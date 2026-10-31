@@ -129,9 +129,18 @@ esac
 
 // The values come from the installation the line names, which setup could not
 // know: it ran before cobra parsed the line. With two installations and none
-// named, there is nothing to offer.
+// named there is nothing to offer, even when one of them has the placeholder's
+// name, as status refuses it then.
 func TestValuesCompleteFromTheInstallationTheLineNames(t *testing.T) {
-	r := withTwoInstallations(t)
+	r := clitest.NewInstalled(t)
+	r.Run("init",
+		"--product", "morzer",
+		"--release", r.Bundle,
+		"--profile", "embedded",
+		"--no-recovery-recipient",
+		"--install-units=false",
+	).ExitCode(0)
+	r.Run("--product", "morzer", "release", "fetch", r.BundleAt("1.1.0")).ExitCode(0)
 	r.Run("--product", "demo", "backup").ExitCode(0)
 	backup, _ := r.Run("--json", "--product", "demo", "backup", "list").Field("data.0.id").(string)
 	if backup == "" {
@@ -140,8 +149,12 @@ func TestValuesCompleteFromTheInstallationTheLineNames(t *testing.T) {
 
 	r.Run("__complete", "restore", "--product", "demo", "--backup", "").ExitCode(0).
 		OutputContains(backup)
-	r.Run("__complete", "restore", "--product", "sandbox", "--backup", "").ExitCode(0).
+	r.Run("__complete", "restore", "--product", "morzer", "--backup", "").ExitCode(0).
 		NoOutputContains(backup)
+	r.Run("__complete", "release", "show", "--product", "morzer", "").ExitCode(0).
+		OutputContains("1.1.0\n")
+	r.Run("__complete", "release", "show", "").ExitCode(0).
+		NoOutputContains("1.1.0", "1.2.0")
 	r.Run("__complete", "restore", "--backup", "").ExitCode(0).
 		NoOutputContains(backup)
 

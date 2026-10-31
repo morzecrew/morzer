@@ -23,12 +23,19 @@ type valueLister func(ctx context.Context, d *ops.Deps) ([]cobra.Completion, err
 // the defaults. Nothing is offered when that installation cannot be read --
 // two on the machine and none named, or under sudo, which runs the completion
 // as the operator -- since an error printed into a command line helps nobody.
+//
+// The ambiguity is refused here as well as by the lookups, because the release
+// store and the backups are listed without loading the installation, and an
+// installation named like resolvePaths' placeholder would answer for them.
 func (a *App) completeValues(list valueLister) cobra.CompletionFunc {
 	return func(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx := cmd.Context()
 		paths, err := a.resolvePaths(ctx)
 		if err == nil {
 			err = a.wireAt(ctx, paths, a.bus, a.redactor, a.log)
+		}
+		if err == nil {
+			err = a.Deps.RequireInstallationChosen()
 		}
 		var out []cobra.Completion
 		if err == nil {
