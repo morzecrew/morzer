@@ -166,7 +166,7 @@ func newConfigUnsetCommand(app *App) *cobra.Command {
 			"Unsetting an installation setting returns it to its absent state, which\n" +
 			"is always the conservative one: nothing here defaults to on.",
 		Args:              cobra.MinimumNArgs(1),
-		ValidArgsFunction: unnamed(app.completeValues(configNames(""))),
+		ValidArgsFunction: unnamed(app.completeValues(unsettable)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var settings, parameters []string
 			for _, name := range args {

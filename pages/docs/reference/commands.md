@@ -758,7 +758,7 @@ Arguments that name something inside an installation complete from it:
 | `task run` | the tasks `task list` shows |
 | `release show` | the versions in the release store, then file names |
 | `update --to`, `rollback --to` | the stored versions newer, or older, than the installed one |
-| `config get`, `config set`, `config unset` | the parameter and setting names, as `name=` for `set` |
+| `config get`, `config set`, `config unset` | the parameter and setting names, as `name=` for `set`; `unset` adds the stale values `config list` reports |
 | `restore --backup`, `backup verify`, `backup target push` | this machine's backups, newest first |
 
 They read the installation the line names, by `--product`, `--config` or

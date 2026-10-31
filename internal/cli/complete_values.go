@@ -169,6 +169,19 @@ func configNames(suffix string) valueLister {
 	}
 }
 
+// unsettable adds to configNames the recorded values the current release no
+// longer declares, which `config list` reports as stale and `config unset` is
+// how an operator clears.
+func unsettable(ctx context.Context, d *ops.Deps) ([]cobra.Completion, error) {
+	out, err := configNames("")(ctx, d)
+	if report, err := ops.ConfigList(ctx, d); err == nil {
+		for _, name := range report.Stale {
+			out = append(out, cobra.CompletionWithDesc(name, "no longer declared by the release"))
+		}
+	}
+	return out, err
+}
+
 // completeConfigAssignments offers `name=` for `config set`, and nothing once
 // the value is being typed.
 func (a *App) completeConfigAssignments(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {

@@ -1,6 +1,7 @@
 package clitest_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
@@ -90,6 +93,17 @@ func TestAnInstallationsOwnValuesComplete(t *testing.T) {
 		OutputContains(":4").NoOutputContains("log_level")
 	r.Run("__complete", "config", "unset", "log_level", "").ExitCode(0).
 		OutputContains("http_port\t").NoOutputContains("log_level")
+
+	// A value an earlier release declared, recorded through the state store as
+	// an update that dropped it would leave it. Only `unset` takes its name.
+	ctx := context.Background()
+	store := state.New(domain.PathsUnder(r.Root, "demo"))
+	inst, err := store.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Parameters = map[string]string{"retired_parameter": "x"}
+	require.NoError(t, store.SaveInstallation(ctx, inst))
+	r.Run("__complete", "config", "unset", "").ExitCode(0).OutputContains("retired_parameter\t")
+	r.Run("__complete", "config", "get", "").ExitCode(0).NoOutputContains("retired_parameter")
 
 	r.Run("__complete", "task", "run", "").ExitCode(0).
 		OutputContains("seed\tFill an empty database", ":4")
