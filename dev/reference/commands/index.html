@@ -1526,6 +1526,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        history
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2515,6 +2526,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        history
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logs" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3401,6 +3423,34 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tr>
 </tbody>
 </table>
+<h2 id="history">history<a class="headerlink" href="#history" title="Permanent link">&para;</a></h2>
+<p>Lists the operations the installation ran, newest first: every <code>apply</code>,
+<code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>, <code>task run</code> and the rest, with its
+status, when it started, what it did to the installed release and how long it
+took. A dry run is listed as one. It reads the operation journal and nothing
+else, so it answers when the Docker daemon is down, and it takes no lock.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--limit</code></td>
+<td>List at most this many operations. Default <code>20</code>; <code>0</code> lists them all.</td>
+</tr>
+</tbody>
+</table>
+<p><code>morzer history &lt;operation-id&gt;</code> shows one operation: its steps with their
+status and duration, the flags it ran with, and its error with the hint. The id
+is the one <code>status</code> names as the last operation, and Tab completes it.</p>
+<p><code>--json</code> carries the journal's own records, as <code>operations</code> with <code>total</code>, the
+number of operations in the journal, or as the one record when an id is given:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">history</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">0</span><span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data.operations[] | select(.status != "succeeded") | .id'</span>
+</code></pre></div>
+<p>An id the journal does not hold exits <a href="../exit-codes/">2</a>.</p>
 <h2 id="logs">logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
 <p>Streams the deployment's logs, resolving the Compose project, its files and its
 environment. Scoped to the project rather than to the manifest's service list,
@@ -3930,6 +3980,10 @@ it, or that its state does not load.</p>
 <tr>
 <td><code>restore --backup</code>, <code>backup verify</code>, <code>backup target push</code></td>
 <td>this machine's backups, newest first</td>
+</tr>
+<tr>
+<td><code>history</code></td>
+<td>the operations in the journal, newest first, with their type and status</td>
 </tr>
 </tbody>
 </table>
