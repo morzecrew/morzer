@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/morzecrew/morzer/internal/events"
@@ -18,11 +19,14 @@ type Notifier interface {
 	// Name identifies the notifier in logs.
 	Name() string
 
+	// Notify delivers one event. Its error names the target, because the
+	// fan-out below joins several and the log line is the only place an
+	// operator learns which one failed.
 	Notify(ctx context.Context, ev events.Event) error
 }
 
-// Notifiers fans out to several notifiers, collecting nothing. It exists so
-// the lifecycle layer holds one Notifier regardless of how many are
+// Notifiers fans out to several notifiers and joins their failures. It exists
+// so the lifecycle layer holds one Notifier regardless of how many are
 // configured.
 type Notifiers []Notifier
 
@@ -39,19 +43,21 @@ func (n Notifiers) Name() string { return "multi" }
 //
 // Fan-out makes the total the slowest target rather than the sum of all of
 // them, so both properties hold at once.
+//
+// Every failure is returned, joined, for the caller to log; none changes the
+// outcome. They were dropped here on the grounds that the adapter logs its
+// own, which the webhook never did, so a failed delivery was logged nowhere
+// (RFC 0043 decision 9).
 func (n Notifiers) Notify(ctx context.Context, ev events.Event) error {
 	var wg sync.WaitGroup
-	for _, one := range n {
+	errs := make([]error, len(n))
+	for i, one := range n {
 		wg.Add(1)
 		go func(target Notifier) {
 			defer wg.Done()
-			// Errors are deliberately dropped here rather than
-			// joined: the caller cannot act on them, and the
-			// contract says they never change the outcome. The
-			// adapter logs its own failures.
-			_ = target.Notify(ctx, ev)
+			errs[i] = target.Notify(ctx, ev)
 		}(one)
 	}
 	wg.Wait()
-	return nil
+	return errors.Join(errs...)
 }

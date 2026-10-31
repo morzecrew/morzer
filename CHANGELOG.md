@@ -62,6 +62,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all is caught before any service restarts. `--yes` skips it; piped values are
   unchanged.
 
+### Fixed
+
+- **A notification a target refuses is logged.** A webhook target that was down
+  or answered an error was reported nowhere: the fan-out dropped the error, and
+  the webhook does not log its own. Each failure is now a `notifier failed`
+  warning naming the target. The operation's outcome is unchanged.
+
 ### Security
 
 - **An image reference with a control character is refused.** Loading a bundle
