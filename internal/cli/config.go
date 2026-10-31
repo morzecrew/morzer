@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -28,8 +29,43 @@ func newConfigCommand(app *App) *cobra.Command {
 		newConfigSetCommand(app),
 		newConfigUnsetCommand(app),
 		newConfigSettingsCommand(app),
+		newConfigDiffCommand(app),
 	)
 	return cmd
+}
+
+// newConfigDiffCommand shows where the files on disk differ from what the
+// release renders, before an `apply` replaces them (RFC 0044 §5.1).
+func newConfigDiffCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "diff",
+		Short: "Show where the configuration files differ from the release",
+		Long: "Renders every configuration file from the installed release and the\n" +
+			"recorded parameters, read-only, and prints a unified diff for each file\n" +
+			"on disk that differs. `apply`, `update`, `rollback` and `config set`\n" +
+			"replace those files, so a hand edit shown here is lost at the next one;\n" +
+			"a change meant to last belongs in a parameter.\n\n" +
+			"A file that cannot be read is listed apart and not compared. Every diff\n" +
+			"is scrubbed of this installation's secret values, and when they cannot\n" +
+			"be loaded only the file names are shown.\n\n" +
+			"Exits 0 whether or not files differ; `morzer doctor` warns about them.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			report, err := ops.ConfigDiff(cmd.Context(), app.Deps)
+			if err != nil {
+				return err
+			}
+			if err := app.render(report); err != nil {
+				return err
+			}
+			// The summary is narration, so stderr: what is piped to a file or
+			// to `patch` is the diffs alone.
+			if app.json == nil && !app.Flags.quiet {
+				fmt.Fprintln(app.Stream.Err, report.Summary())
+			}
+			return nil
+		},
+	}
 }
 
 func newConfigListCommand(app *App) *cobra.Command {

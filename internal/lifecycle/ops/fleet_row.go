@@ -190,7 +190,7 @@ func (d *Deps) fleetDrift(
 		return domain.FleetDrift{Problem: domain.AsError(err).Message}
 	}
 
-	comparison, err := configComparison(ctx, d, inst, rel)
+	comparison, err := configComparison(ctx, d, inst, rel, "")
 	if err != nil {
 		return domain.FleetDrift{Problem: domain.AsError(err).Message}
 	}

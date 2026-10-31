@@ -531,19 +531,16 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			}
 			return true, nil
 		},
+		// The comparison `config diff` shows, scrubbed the same way, so a
+		// plan and that command cannot disagree about a file (RFC 0044
+		// §5.5) and a value pasted into one is not printed by either.
 		PlanDetail: func(ctx context.Context, st *engine.State) (string, string) {
-			rendered, err := renderAll(ctx, st)
+			comparison, err := configComparison(ctx, d, inst, rel, opts.Profile)
 			if err != nil {
 				return "cannot render: " + domain.AsError(err).Message, ""
 			}
-			var diffs []string
-			for target, want := range rendered {
-				existing, _ := os.ReadFile(target)
-				if d := unifiedDiff(target, string(existing), string(want)); d != "" {
-					diffs = append(diffs, d)
-				}
-			}
-			return fmt.Sprintf("%d file(s)", len(rendered)), strings.Join(diffs, "\n")
+			comparison, shown := d.scrubbed(ctx, comparison)
+			return fmt.Sprintf("%d file(s)", comparison.Targets), comparison.text(shown)
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			rendered, err := renderAll(ctx, st)

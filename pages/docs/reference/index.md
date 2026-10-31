@@ -27,6 +27,7 @@ here. The reference column points at the section that documents it; the
 | `morzer config set` | Change one or more parameters, or an installation setting | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config unset` | Return parameters or a setting to their defaults | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config settings` | Show the installation settings and their values | [parameters](parameters.md#changing-one-after-install) |
+| `morzer config diff` | Show where the configuration files differ from the release | [parameters](parameters.md#changing-one-after-install) |
 | `morzer secret` | Manage the encrypted secret state | [secret-commands](secret-commands.md#morzer-secret) |
 | `morzer secret list` | List secret names, fingerprints and metadata — never values | [secret-commands](secret-commands.md#secret-list) |
 | `morzer secret set` | Set a secret, reading the value from the terminal or stdin | [secret-commands](secret-commands.md#secret-set) |

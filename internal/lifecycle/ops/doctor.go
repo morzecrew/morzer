@@ -154,9 +154,11 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 
 	current, _ := d.State.CurrentRelease(ctx)
 	if current.IsZero() {
-		checks = append(checks, d.checkNoReleaseInstalled())
+		checks = append(checks, d.checkNoReleaseInstalled(),
+			d.checkConfigDrift(inst, domain.Release{}, "no release is installed"))
 	} else if rel, err := d.resolveCurrentRelease(ctx, current); err != nil {
-		checks = append(checks, d.checkReleaseBroken(current, err))
+		checks = append(checks, d.checkReleaseBroken(current, err),
+			d.checkConfigDrift(inst, domain.Release{}, "the installed release cannot be read"))
 	} else {
 		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
@@ -165,6 +167,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			preflight.RequiredParameters(rel.Manifest.Parameters, inst.Parameters),
 			d.checkRequiredSecrets(rel),
 			d.checkSecretRotation(rel),
+			d.checkConfigDrift(inst, rel, ""),
 			d.checkRegistryReachable(rel),
 			d.checkImagesLocal(rel),
 			// The same check `apply` refuses on, asked where an

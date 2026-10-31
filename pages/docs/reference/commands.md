@@ -338,10 +338,11 @@ the secret state, service and health status, disk headroom, and the journal.
 
 Exits [3](exit-codes.md) when any check fails; warnings exit 0.
 
-Three checks are advisory by design, and warn rather than fail:
+Four checks are advisory by design, and warn rather than fail:
 
 | Check | What it means |
 | --- | --- |
+| `config.drift` | A configuration file on disk differs from what the installed release renders, or is absent. The next `apply`, `update`, `rollback` or `config set` replaces it, and [`config diff`](../operating/changing-configuration.md#a-hand-edit-is-replaced) shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted. |
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
 | `runtime.images-local` | Some of the release's **pulled** images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is `images.bundled` below. See [Installing without a network](../operating/installing-offline.md). |

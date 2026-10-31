@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`morzer config diff` shows a hand edit before `apply` replaces it.** It
+  prints where each configuration file differs from what the release renders,
+  scrubbed of secret values. `doctor` warns as `config.drift`, and an unattended
+  update leaves the release staged while an edited file would be replaced.
+
 - **`update --dry-run` says what the update risks.** After the plan it says
   whether `morzer rollback` could return to the installed release afterwards,
   or a restore or a parameter the update drops would stop it, which images

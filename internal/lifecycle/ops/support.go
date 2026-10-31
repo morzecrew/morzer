@@ -862,18 +862,15 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 		return nil, src.noRelease("so nothing renders configuration")
 	}
 
-	comparison, err := configComparison(ctx, d, src.Installation, src.Release)
+	comparison, err := configComparison(ctx, d, src.Installation, src.Release, "")
 	if err != nil {
 		return nil, err
 	}
 
-	// slices.Concat rather than append: appending writes into Diffs' spare
-	// capacity when it has any, and `configComparison` is now shared with
-	// the fleet row's drift count. Nothing reads the comparison after this
-	// line today, which is exactly the state in which the trap is invisible.
+	// Unscrubbed here: the archive is scrubbed as a whole, after collection.
 	body := "no drift: every configuration target matches what this release renders\n"
-	if reports := slices.Concat(comparison.Diffs, comparison.Unreadable); len(reports) > 0 {
-		body = strings.Join(reports, "\n")
+	if text := comparison.text(true); text != "" {
+		body = text
 	}
 	return []supportFile{{Name: "config-diff.txt", Data: []byte(body)}}, nil
 }
@@ -890,31 +887,100 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 // The support bundle prints both, because a person reading a ticket wants both.
 // A fleet row counts only the first, and says how many were not compared.
 type ConfigComparison struct {
-	// Diffs is one unified diff per target that differs, in target order.
-	Diffs []string
+	// Targets is how many configuration targets the release renders.
+	Targets int
 
-	// Unreadable is one line per target that could not be read.
-	Unreadable []string
+	// Diffs is one unified diff per target that differs, in target order.
+	Diffs []TargetDiff
+
+	// Unreadable is each target that could not be read, with why.
+	Unreadable []UnreadableTarget
+}
+
+// TargetDiff is one configuration target that differs. Diff is empty when its
+// lines cannot be shown, because nothing could scrub them.
+type TargetDiff struct {
+	Target string `json:"target"`
+	Diff   string `json:"diff,omitempty"`
+}
+
+// UnreadableTarget is one configuration target that could not be read, so it
+// was not compared.
+type UnreadableTarget struct {
+	Target string `json:"target"`
+	Error  string `json:"error"`
+}
+
+func (u UnreadableTarget) line() string {
+	return fmt.Sprintf("%s: cannot be read (%s), so no comparison was made\n", u.Target, u.Error)
+}
+
+// text is the comparison as the support bundle, a plan and `config diff` print
+// it: each diff, or a target named without its lines when they could not be
+// scrubbed, then each target that could not be read.
+func (c ConfigComparison) text(shown bool) string {
+	var parts []string
+	for _, diff := range c.Diffs {
+		if shown {
+			parts = append(parts, diff.Diff)
+			continue
+		}
+		parts = append(parts, "--- "+diff.Target+" differs; its lines are not shown\n")
+	}
+	for _, u := range c.Unreadable {
+		parts = append(parts, u.line())
+	}
+	return strings.Join(parts, "\n")
+}
+
+// scrubbed is the comparison as an operator may be shown it (RFC 0044 decision
+// 10). The rendered side holds no secret value, because the render context
+// holds references; the side on disk holds whatever was pasted into it. So
+// every diff passes through the redactor, armed with this installation's
+// values, and when they cannot be loaded each target is named without its
+// lines. The second result is false only then.
+//
+// Armed only when something differs: arming decrypts the secret state, and a
+// machine whose files all match has nothing to scrub.
+func (d *Deps) scrubbed(ctx context.Context, c ConfigComparison) (ConfigComparison, bool) {
+	if len(c.Diffs) == 0 {
+		return c, true
+	}
+	armed := d.armRedaction(ctx)
+	out := c
+	out.Diffs = make([]TargetDiff, len(c.Diffs))
+	for i, diff := range c.Diffs {
+		out.Diffs[i].Target = diff.Target
+		if armed {
+			out.Diffs[i].Diff = d.Redactor.Apply(diff.Diff)
+		}
+	}
+	return out, armed
 }
 
 // configComparison renders every configuration target and compares it with what
 // is on disk.
 //
-// One computation with two presentations, rather than one per consumer. Two
-// would agree on the day they were written and drift into a drift detector that
-// disagrees with the support bundle sitting beside it -- and the operator
-// holding both would have no way to tell which was lying.
+// One computation behind every view, rather than one per consumer: `config
+// diff`, `config.drift`, the unattended tick, a plan, the support bundle and the
+// fleet row (RFC 0044 §5.5). Two would agree on the day they were written and
+// drift into a drift detector that disagrees with the support bundle sitting
+// beside it -- and the operator holding both would have no way to tell which was
+// lying.
+//
+// profile is what to render with, empty for the installed one: a plan for
+// `update --profile` renders the profile it was asked for.
 func configComparison(
-	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release,
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profile string,
 ) (ConfigComparison, error) {
-	rendered, err := renderConfiguration(ctx, d, inst, rel)
+	rendered, err := renderConfiguration(ctx, d, inst, rel, profile)
 	if err != nil {
 		return ConfigComparison{}, err
 	}
 
 	targets := slices.Sorted(maps.Keys(rendered))
 
-	var out ConfigComparison
+	out := ConfigComparison{Targets: len(targets)}
 	for _, target := range targets {
 		existing, err := os.ReadFile(target)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -924,12 +990,11 @@ func configComparison(
 			// empty, which is a claim about the machine nobody made
 			// -- on a command that exists to report facts about
 			// broken machines.
-			out.Unreadable = append(out.Unreadable, fmt.Sprintf(
-				"%s: cannot be read (%v), so no comparison was made\n", target, err))
+			out.Unreadable = append(out.Unreadable, UnreadableTarget{Target: target, Error: err.Error()})
 			continue
 		}
 		if diff := unifiedDiff(target, string(existing), string(rendered[target])); diff != "" {
-			out.Diffs = append(out.Diffs, diff)
+			out.Diffs = append(out.Diffs, TargetDiff{Target: target, Diff: diff})
 		}
 	}
 	return out, nil
@@ -942,13 +1007,16 @@ func configComparison(
 // `apply --dry-run` show a configuration diff without executing the step that
 // would normally have left the schema in state.
 func renderConfiguration(
-	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release,
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profile string,
 ) (map[string][]byte, error) {
+	if d.Renderer == nil {
+		return nil, domain.Internal(nil, "no template renderer is configured")
+	}
 	schema, err := release.LoadSecretSchema(rel)
 	if err != nil {
 		return nil, err
 	}
-	data, err := d.templateData(inst, rel, "", schema)
+	data, err := d.templateData(inst, rel, profile, schema)
 	if err != nil {
 		return nil, err
 	}

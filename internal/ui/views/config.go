@@ -14,6 +14,13 @@ func init() {
 		Rich:  func(w io.Writer, t *theme.Theme, r ops.ConfigReport) { emit(w, configDoc(doc(w, t), r)) },
 		Plain: func(w io.Writer, r ops.ConfigReport) { emit(w, configDoc(plainDoc(w), r)) },
 	})
+	// The diffs as they are, in both modes: a unified diff is a format other
+	// tools read, and styling it would make the output something `patch`
+	// cannot take.
+	ui.Register(ui.View[ops.ConfigDiffReport]{
+		Rich:  func(w io.Writer, _ *theme.Theme, r ops.ConfigDiffReport) { _, _ = io.WriteString(w, r.Text()) },
+		Plain: func(w io.Writer, r ops.ConfigDiffReport) { _, _ = io.WriteString(w, r.Text()) },
+	})
 }
 
 // configDoc draws the release's parameters and their effective values.
