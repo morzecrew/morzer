@@ -810,6 +810,8 @@ Rules a bundle must satisfy before any of it runs:
   to a default. Vendor keys live under `extensions.<namespace>`.
 - **Images are pinned by digest.** A bare tag is rejected: an unpinned image
   makes a release mutable, and a mutable release makes rollback meaningless.
+  A reference with a control or format character is rejected too: commands
+  print it as written.
 - **Paths are release-relative** and may not escape the root.
 - **A declared-but-missing hook is a validation error**, and so is a hook
   without the executable bit. Both are knowable before the lock is taken.

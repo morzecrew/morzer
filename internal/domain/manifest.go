@@ -979,8 +979,10 @@ func (m *Manifest) ApplyDefaults() {
 
 // digestRef matches an image reference pinned by digest. Anything else -- a
 // bare tag, a floating `latest` -- is rejected: an unpinned image makes a
-// release mutable, and a mutable release makes rollback meaningless.
-var digestRef = regexp.MustCompile(`^[^\s@]+@sha256:[a-f0-9]{64}$`)
+// release mutable, and a mutable release makes rollback meaningless. Control
+// and format characters are refused too: the reference reaches the terminal as
+// the bundle wrote it.
+var digestRef = regexp.MustCompile(`^[^\s@\p{Cc}\p{Cf}]+@sha256:[a-f0-9]{64}$`)
 
 // runtimeName is the grammar of a runtime's name. It is deliberately not a list
 // of them.

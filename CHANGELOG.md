@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`update --dry-run` says what the update risks.** After the plan it says
+  whether `morzer rollback` could return to the installed release afterwards,
+  or a restore or a parameter the update drops would stop it, which images
+  change, and the release notes. `--json` carries them as `data.preview`.
+
 - **`morzer history` lists the operations an installation ran.** Newest
   first, with each one's status, start time, release change and duration;
   `history <operation-id>` adds its steps, flags and error. It reads only the
@@ -56,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `read 41 characters; store it? [Y/n]`, so a paste that landed twice or not at
   all is caught before any service restarts. `--yes` skips it; piped values are
   unchanged.
+
+### Security
+
+- **An image reference with a control character is refused.** Loading a bundle
+  rejects an image `ref` containing a control or format character, such as a
+  terminal escape sequence. Commands print references as the bundle wrote
+  them, so one could otherwise send commands to the operator's terminal.
 
 ## [0.10.0] - 2026-10-30
 

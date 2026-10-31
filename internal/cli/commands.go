@@ -393,14 +393,21 @@ func newUpdateCommand(app *App) *cobra.Command {
 				ref = args[0]
 			}
 
-			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
-				return ops.Update(ctx, app.Deps, ops.UpdateOptions{
+			var result ops.Result
+			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+				var err error
+				result, err = ops.Update(ctx, app.Deps, ops.UpdateOptions{
 					Options:      opts,
 					Ref:          ref,
 					To:           to,
 					ExpectDigest: digest,
 				})
+				return result, err
 			})
+			if err == nil {
+				app.printUpdatePreview(result)
+			}
+			return err
 		},
 	}
 
@@ -545,6 +552,58 @@ func printStagedNotes(ctx context.Context, app *App) {
 	// Markdown -- which is a renderer, which is what this stopped linking.
 	if notes := strings.TrimSpace(release.Notes(rel)); notes != "" {
 		fmt.Fprintf(app.Stream.Err, "\n%s\n", notes)
+	}
+}
+
+// printUpdatePreview follows a planned update's summary with what it risks:
+// whether a rollback stays possible afterwards, which images move, and the
+// release notes. Only a plan carries one, and `--json` carries it as data.
+func (a *App) printUpdatePreview(result ops.Result) {
+	data, _ := result.Data.(map[string]any)
+	preview, ok := data["preview"].(ops.UpdatePreview)
+	if !ok || a.json != nil || a.Flags.quiet {
+		return
+	}
+	w := a.Stream.Err
+	to := result.Record.To.String()
+
+	if rb := preview.Rollback; rb != nil {
+		switch {
+		case rb.RestoreRequired:
+			fmt.Fprintf(w, "\nrollback: once %s is installed, going back to %s needs a restore: %s\n", to, rb.To, rb.Reason)
+		case len(rb.DroppedParameters) > 0:
+			fmt.Fprintf(w, "\nrollback: once %s is installed, `morzer rollback` cannot return to %s: "+
+				"the update drops %s, which %s requires and %s does not declare\n",
+				to, rb.To, strings.Join(rb.DroppedParameters, ", "), rb.To, to)
+		case rb.SchemaChecked:
+			fmt.Fprintf(w, "\nrollback: once %s is installed, `morzer rollback` returns to %s without a restore, "+
+				"as far as the releases declare\n", to, rb.To)
+		default:
+			fmt.Fprintf(w, "\nrollback: %s declares rollback_safe: true; the database schema is not checked, "+
+				"since the releases do not declare the schema %s produces and %s reads\n", to, to, rb.To)
+		}
+
+		if len(preview.Images) == 0 {
+			fmt.Fprintln(w, "images: unchanged")
+		} else {
+			fmt.Fprintln(w, "images:")
+			for _, img := range preview.Images {
+				switch {
+				case img.From == "":
+					fmt.Fprintf(w, "  %s  added: %s\n", img.Name, img.To)
+				case img.To == "":
+					fmt.Fprintf(w, "  %s  removed: %s\n", img.Name, img.From)
+				default:
+					fmt.Fprintf(w, "  %s  %s -> %s\n", img.Name, img.From, img.To)
+				}
+			}
+		}
+	}
+
+	// As `update --check` prints them, and for the same reason: they are
+	// what an operator reads to decide.
+	if notes := strings.TrimSpace(preview.Notes); notes != "" {
+		fmt.Fprintf(w, "\n%s\n", notes)
 	}
 }
 

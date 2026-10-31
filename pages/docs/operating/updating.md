@@ -269,6 +269,30 @@ Resolves and verifies the bundle, runs the compatibility gate, and prints the
 step list with a configuration diff — without taking the deployment lock, so you
 can inspect a plan while something else is running.
 
+After the step list it says what the update risks:
+
+- **rollback**: whether `morzer rollback` could return to the release installed
+  now, once this one is installed, or whether going back would need a restore.
+  It reads the new release's `rollback_safe`, and compares the schema its
+  `database_schema_produces` declares with the installed release's
+  `database_schema_max`. A release declaring `rollback_safe: false` needs a
+  restore whatever the schema. One declaring `true` without both schema values
+  is reported with the schema not checked. The answer rests on what the
+  releases declare; `morzer rollback` itself checks the schema recorded when
+  the release was installed. It also names each parameter the installed
+  release requires and the new one does not declare: the update drops that
+  value, `morzer config set` takes only parameters the running release
+  declares, and so `morzer rollback` would refuse.
+- **images**: each image whose reference changes, is added or is removed.
+- The new release's notes, as `update --check` prints them.
+
+The rollback and images lines need a release to compare against, so they
+appear only when the update replaces one this manager can read. A first
+install shows the notes alone.
+
+`--json` carries the same as `data.preview`: `rollback`, `image_changes` and
+`release_notes`.
+
 For a reference that has to be fetched, a dry run does fetch: a plan that
 refused to could tell you nothing about the release you asked about. It goes to
 the staging directory and is removed when the command ends.
