@@ -1,9 +1,10 @@
 # RFC 0041 — Files an operator passes to a task
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-30: §11's
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-30: §11's
   `OPEN` rows as recommended, except that a task finds its input through both
-  the placeholder and an environment variable (decision 2). **P1 is ready to
-  build**
+  the placeholder and an environment variable (decision 2). **Built
+  2026-10-31** as P1 in #225. Ten entries from the build and its review in
+  [logs/task-inputs.md](../logs/task-inputs.md) are decisions 14–22
 - **Scope:** Named file inputs for a release's tasks. A task declares `inputs`
   in the manifest, and `morzer task run <task> --input <name>=<path>` copies
   each file into a per-operation directory, mounts it read-only into the
@@ -288,6 +289,15 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 11 | `ASSUMED` | `--input` paths are resolved, must be regular files, and are checked and copied through one open descriptor. Symlinks are followed: the operator is already root. |
 | 12 | `LOCKED` | **Whether the attestation lists inputs.** The v2 predicate is closed (`additionalProperties: false`), so listing them is a predicate v3 and `schemas/morzer-attestation-v3.json`. Recommended: v3 with an `inputs` list of name, size and sha256, because an input changes the deployment's data and the statement is what an auditor reads; `attest verify` keeps reading v1 and v2. Alternative: the journal only in P1, and v3 when something else needs it. Was `OPEN`; ruled by the author 2026-10-30: as recommended, predicate v3 with an `inputs` list. |
 | 13 | `ASSUMED` | The copy is bounded by the input's `max_size` and by the free-space budget, not by the size seen at the check. A file that grows past the bound while it is copied is refused, and the size and digest recorded are those of the bytes copied. |
+| 14 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* **Refines decision 3.** A manifest whose tasks declare `inputs` declares `min_manager_version` at least 0.11.0, the release that ships them, through `TaskInputsMinManagerVersion` beside `TasksMinManagerVersion`. See [logs/task-inputs.md](../logs/task-inputs.md) (decision 3, attempt 1). |
+| 15 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* **Refines decision 11.** `--input` paths are opened non-blocking, so a named pipe is refused rather than waited on; the type check and the copy still use that one descriptor. See [logs/task-inputs.md](../logs/task-inputs.md) (decision 11, attempt 1). |
+| 16 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* Staging needs the inputs' total size plus 64 MiB free under `<var>/manager/inputs`, and the copy is bounded by that budget, less the margin, as well as by each `max_size` (decision 13). §5.3 named a margin and no size. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 1, 21:22). |
+| 17 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* `{inputs.<name>}` is replaced wherever it appears inside an element of the declared `command`, so a vendor's `--file={inputs.snapshot}` works, and `release verify` refuses any `{inputs.` that does not name a declared input. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 1, 21:23). |
+| 18 | `ASSUMED` | *(2026-10-30, from the review; accepted 2026-10-31)* Every `task run` sweeps leftover staging directories under the deployment lock before its steps, whether or not the task takes inputs, and a sweep that fails warns rather than failing the task. `doctor` warns about any it finds as `tasks.staged-inputs`. The sweep was first built inside `stage-inputs`, which left a killed task's copy for the next task that happened to declare one. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 2, 21:54, superseding attempt 1, 21:24). |
+| 19 | `ASSUMED` | *(2026-10-30, from the review; accepted 2026-10-31)* `doctor`'s `tasks.staged-inputs` leaves out the directory of the operation holding the deployment lock. `doctor` takes no lock, and that operation may be staging its inputs while `doctor` reads the directory. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 2, 21:55). |
+| 20 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* A step adds a journal flag with `State.SetFlag`, and the engine merges it into a copy of the record's flags before it journals that step, so the flag is kept even when a later step fails. Decision 10's digest is known only once `stage-inputs` has copied, after the operation's flags were fixed. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 1, 21:36). |
+| 21 | `ASSUMED` | *(2026-10-30, from the build; accepted 2026-10-31)* Inputs that do not fit in the free space are refused before the lock with the preflight exit code, 3, as other checks of the machine are, and a file that grows past the free space while it is copied is refused the same way. Running out of space refuses the machine, not the operator's request, which is what §5.2's exit 2 covers. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 1, 21:38). |
+| 22 | `ASSUMED` | *(2026-10-30, from the review; accepted 2026-10-31)* The Compose runtime refuses a mount whose host path contains `:`, by name, before running anything, because `docker compose run` has only the short `--volume` syntax, which splits on `:`. The default layout has none. See [logs/task-inputs.md](../logs/task-inputs.md) (unlisted, attempt 2, 21:56). |
 
 ## 12. Phasing
 
