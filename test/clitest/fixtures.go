@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/morzecrew/morzer/internal/domain"
 )
 
 // The fixtures the command tests act on.
@@ -229,6 +231,39 @@ func (r *Runner) BundleWithARequiredParameter() string {
 	rewritten := strings.Replace(string(data), anchor, added, 1)
 	if rewritten == string(data) {
 		r.t.Fatalf("the example bundle no longer declares parameters; update %s", manifest)
+	}
+	if err := os.WriteFile(manifest, []byte(rewritten), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	return dir
+}
+
+// BundleWithATask is the example bundle declaring one task, seed.
+func (r *Runner) BundleWithATask() string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.t.TempDir(), "task-bundle")
+	copyDir(r.t, r.Bundle, dir)
+
+	manifest := filepath.Join(dir, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+
+	minimum := `min_manager_version: "` + domain.TasksMinManagerVersion + `"`
+	rewritten := strings.NewReplacer(
+		"parameters:\n", `tasks:
+  seed:
+    description: Fill an empty database with demo data
+    service: app
+    command: [seed]
+parameters:
+`,
+		`min_manager_version: "0.0.0"`, minimum,
+	).Replace(string(data))
+	if !strings.Contains(rewritten, "  seed:\n") || !strings.Contains(rewritten, minimum) {
+		r.t.Fatalf("the example bundle no longer has the lines this rewrites; update %s", manifest)
 	}
 	if err := os.WriteFile(manifest, []byte(rewritten), 0o644); err != nil {
 		r.t.Fatal(err)

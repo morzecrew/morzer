@@ -413,6 +413,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
+	_ = cmd.RegisterFlagCompletionFunc("to", app.completeValues(releasesWhere(
+		func(v, installed domain.Version) bool { return v.GreaterThan(installed) })))
 	f.BoolVar(&check, "check", false,
 		"report whether a newer release exists, without installing anything")
 	f.BoolVar(&stage, "stage", false,
@@ -589,6 +591,8 @@ func newRollbackCommand(app *App) *cobra.Command {
 
 	cmd.Flags().StringVar(&to, "to", "",
 		"roll back to this installed version rather than the immediate previous one")
+	_ = cmd.RegisterFlagCompletionFunc("to", app.completeValues(releasesWhere(
+		func(v, installed domain.Version) bool { return v.LessThan(installed) })))
 
 	return cmd
 }
@@ -884,7 +888,8 @@ func newBackupVerifyCommand(app *App) *cobra.Command {
 			"transfer and writes nothing: a backup nobody has read back is a hope,\n" +
 			"and copying one to a bucket does not change that. Worth running on a\n" +
 			"schedule against your oldest retained backup.",
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: onlyFirst(app.completeValues(backups)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireRemoteMode(remote, targetURL, credentialsFile); err != nil {
 				return err
@@ -993,6 +998,7 @@ func newRestoreCommand(app *App) *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVar(&backupID, "backup", "", "backup id; the most recent when omitted")
+	_ = cmd.RegisterFlagCompletionFunc("backup", app.completeValues(backups))
 	f.StringVar(&confirm, "confirm", "", "the installation id, typed to confirm a destructive restore")
 	f.StringSliceVar(&components, "component", nil,
 		"limit the restore to these components: database, files, config, manifest, volumes "+

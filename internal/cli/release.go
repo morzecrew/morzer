@@ -182,6 +182,12 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 			"  morzer release show 1.4.0\n" +
 			"  morzer release show --json | jq .manifest.compatibility",
 		Args: cobra.MaximumNArgs(1),
+		// A directory is accepted too, so a name no version matches falls back
+		// to the file names.
+		ValidArgsFunction: onlyFirst(func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			out, _ := app.completeValues(releasesWhere(anyRelease))(cmd, args, toComplete)
+			return out, cobra.ShellCompDirectiveDefault
+		}),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := app.releaseRoot(cmd.Context(), args)
 			if err != nil {

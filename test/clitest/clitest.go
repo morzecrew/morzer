@@ -44,6 +44,9 @@ type Runner struct {
 func New(t *testing.T) *Runner {
 	t.Helper()
 	requireSOPS(t)
+	// Whoever runs the suite may be inside `morzer shell`, whose pin would
+	// choose an installation for every command here that names none.
+	t.Setenv(cli.ProductEnv, "")
 
 	root := t.TempDir()
 	return &Runner{t: t, Root: root, Bundle: hermeticBundle(t)}

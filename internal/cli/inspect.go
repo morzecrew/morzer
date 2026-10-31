@@ -61,7 +61,8 @@ func newLogsCommand(app *App) *cobra.Command {
 			"  morzer logs app db --follow\n" +
 			"  morzer logs --since 15m\n" +
 			"  morzer logs --json | jq -r 'select(.service == \"app\") | .line'",
-		Args: cobra.ArbitraryArgs,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: unnamed(app.completeValues(services)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			at, err := parseSince(since, time.Now())
 			if err != nil {
@@ -425,7 +426,8 @@ func newExecCommand(app *App) *cobra.Command {
 		Example: "  morzer exec db -- psql -U demo -c 'select count(*) from users'\n" +
 			"  morzer exec app -- ls -la /var/lib/demo\n" +
 			"  morzer exec app -- env | grep DEMO_",
-		Args: cobra.MinimumNArgs(2),
+		Args:              cobra.MinimumNArgs(2),
+		ValidArgsFunction: onlyFirst(app.completeValues(services)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// ArgsLenAtDash is where cobra saw the terminator. Without
 			// one, `morzer exec app ls` would run `ls` too -- which is

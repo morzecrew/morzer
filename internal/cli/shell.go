@@ -34,8 +34,9 @@ func newShellCommand(app *App) *cobra.Command {
 			"and this sets it after sudo. --product and --config still override it\n" +
 			"for one command. Leaving the shell ends the selection; nothing is saved.\n\n" +
 			"The invocation exits with the shell's own status.",
-		Example: "  sudo morzer shell demo",
-		Args:    cobra.ExactArgs(1),
+		Example:           "  sudo morzer shell demo",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: onlyFirst(app.completeProducts),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			product := args[0]
 
