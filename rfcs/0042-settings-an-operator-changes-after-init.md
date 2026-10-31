@@ -1,7 +1,8 @@
 # RFC 0042 — Settings an operator changes after init
 
-- **Status:** 📝 Draft — proposed, with its user-facing decisions `OPEN` for the
-  author to rule
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31 on
+  decisions 2 and 5, as recommended. Decision 4, what a domain change
+  converges, is still `OPEN`
 - **Scope:** Three values `init` fixes that nothing changes afterwards: whether
   a release signature is required, the installation's domains, and the release
   and backup retention counts. Each becomes changeable on a running
@@ -242,17 +243,17 @@ morzer config unset retention.releases
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
+Decision 4 is for the author. Nothing else blocks P1.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | The four values become settings in the existing registry, through `config set` and `config unset`, each under a dotted name so none can shadow a release parameter: `release.require_signature`, `installation.domains`, `retention.releases` and `retention.backups`. No new command, no schema bump: every field exists. |
-| 2 | `OPEN` | **Where the signature requirement changes.** Recommended: the setting `release.require_signature`, since a boolean has none of the two-step rotation that kept the keys out of `config set` (RFC 0004 decision 24). Alternative: `release trust require [--off]`, next to the keys. Either way, this refines RFC 0004 decision 24's "stays fixed at `init`". |
+| 2 | `LOCKED` | **Where the signature requirement changes.** Recommended: the setting `release.require_signature`, since a boolean has none of the two-step rotation that kept the keys out of `config set` (RFC 0004 decision 24). Alternative: `release trust require [--off]`, next to the keys. Either way, this refines RFC 0004 decision 24's "stays fixed at `init`". Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 3 | `ASSUMED` | Turning the requirement on needs a trusted key, and turning it off is refused while `update.auto_apply` is on. Both rules already hold in `Validate`, and the setting refuses with a hint before the lock. It applies from the next fetch or update and re-checks nothing already stored. |
 | 4 | `OPEN` | **What a domain change converges.** Recommended: it renders the configuration and re-creates nothing; the summary says `apply` is needed, as for a parameter with no declared services (`config.go:346-352`). Alternative: it runs the whole `apply` itself, which reaches the services in one command but makes `config set` the first setting that restarts the product. |
-| 5 | `OPEN` | **Whether turning off the signature requirement is journalled.** Recommended: yes, as a `config` record with the flag `release.require_signature=false`, so an incident review finds the downgrade. It would be the first setting with a journal record. Alternative: no record, as for every other setting today. |
+| 5 | `ASSUMED` | **Whether turning off the signature requirement is journalled.** Recommended: yes, as a `config` record with the flag `release.require_signature=false`, so an incident review finds the downgrade. It would be the first setting with a journal record. Alternative: no record, as for every other setting today. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 6 | `ASSUMED` | Domains are validated when set: a host name, or an `https://` URL, with no empty entry and no duplicate. `init` keeps accepting what it accepts today, so an existing installation is not refused at load. |
 | 7 | `ASSUMED` | `retention.releases` and `retention.backups` are whole numbers of at least 1. `unset` returns to the manifest's value, and nothing is pruned when one is set. |
 | 8 | `ASSUMED` | `mode`, the runtime and its options stay immutable. This RFC does not reopen RFC 0016, 0023 decision 3 or 0027 §4.3. |

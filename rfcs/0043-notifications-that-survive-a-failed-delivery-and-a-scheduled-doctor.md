@@ -1,7 +1,7 @@
 # RFC 0043 — Notifications that survive a failed delivery, and a scheduled doctor
 
-- **Status:** 📝 Draft — proposed, with its user-facing decisions `OPEN` for the
-  author to rule
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
+  `OPEN` rows as recommended. P1 is ready to build
 - **Scope:** Two gaps in how a machine nobody is watching tells someone.
   First, a notification that does not reach its target is lost: there is no
   retry and nothing is kept (RFC 0015 decision 6). Second, nothing runs
@@ -263,17 +263,17 @@ ExecStart=<manager> doctor --unattended --plain --log-format json --product <pro
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11 are for the author. Nothing else blocks P1.
+None. The author ruled §11's `OPEN` rows 2026-10-31.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | **Refines RFC 0015 decision 6.** The webhook adapter retries once after one second on a connection error, a timeout, a 408, a 429 or a 5xx, inside the unchanged 15-second aggregate deadline. Its error says whether a resend could succeed: yes for those and for 401, 403 and 404, no for any other 4xx.
-| 2 | `OPEN` | **Whether to keep what did not arrive.** Recommended: an outbox per target under `<var>/manager/notify/outbox/`, bounded at 100 entries, sent by the scheduled `doctor` and `notify flush`, never during an operation. Alternative: the retry alone, keeping RFC 0015's "no persistence". That covers a blip and loses everything sent during an outage. |
+| 2 | `LOCKED` | **Whether to keep what did not arrive.** Recommended: an outbox per target under `<var>/manager/notify/outbox/`, bounded at 100 entries, sent by the scheduled `doctor` and `notify flush`, never during an operation. Alternative: the retry alone, keeping RFC 0015's "no persistence". That covers a blip and loses everything sent during an outage. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 3 | `ASSUMED` | Every forwarded event carries an `id`, a ULID, in the body and as `Idempotency-Key`, kept across redeliveries. It is an addition to the payload. |
-| 4 | `OPEN` | **Whether the doctor timer is on by default.** Recommended: on whenever at least one notify target is configured, and absent otherwise, since a scheduled `doctor` with nobody to tell writes only to the systemd journal. `doctor.scheduled=false` removes it. Alternative: off until an operator sets `doctor.scheduled=true`. That is quieter, and a killed run then reaches nobody by default. |
-| 5 | `OPEN` | **How often an unchanged failure notifies.** Recommended: every scheduled run while a check warns or fails, leaving silencing to the receiver as RFC 0015 §4 does. Alternative: only when the set of non-ok checks changes from the last scheduled run, which needs a small state file and can hide a failure nobody saw the first time. |
+| 4 | `ASSUMED` | **Whether the doctor timer is on by default.** Recommended: on whenever at least one notify target is configured, and absent otherwise, since a scheduled `doctor` with nobody to tell writes only to the systemd journal. `doctor.scheduled=false` removes it. Alternative: off until an operator sets `doctor.scheduled=true`. That is quieter, and a killed run then reaches nobody by default. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
+| 5 | `ASSUMED` | **How often an unchanged failure notifies.** Recommended: every scheduled run while a check warns or fails, leaving silencing to the receiver as RFC 0015 §4 does. Alternative: only when the set of non-ok checks changes from the last scheduled run, which needs a small state file and can hide a failure nobody saw the first time. Was `OPEN`; ruled by the author 2026-10-31: as recommended. |
 | 6 | `ASSUMED` | `doctor --unattended` sends one `doctor.finished` event per run, naming the checks that warn or fail at the level of the worst. It is a new kind, forwarded under RFC 0015 decision 4's allowlist. A run where every check passes sends nothing. It carries the worst level, and the webhook applies `min_level` to it as to `check`. |
 | 7 | `ASSUMED` | The scheduled run leaves the operation holding the deployment lock out of `config.operations`, as RFC 0041 decision 19 does for staged inputs. |
 | 8 | `ASSUMED` | `doctor.schedule` is an `OnCalendar` expression, daily by default with a randomized delay, validated as `backup.schedule` is. The unit follows RFC 0030 decision 1: enabled when first written, and never re-enabled once it exists. |
