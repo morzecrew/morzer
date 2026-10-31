@@ -1578,6 +1578,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passing-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Passing a file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2550,6 +2567,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passing-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Passing a file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3481,7 +3515,7 @@ been told about is beyond that; see
 <a href="../../operating/looking-inside/#it-is-written-down">Looking inside</a>.</p>
 <h2 id="task">task<a class="headerlink" href="#task" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>task<span class="w"> </span>list
-morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>&lt;task&gt;<span class="w"> </span><span class="o">[</span>--<span class="w"> </span>args...<span class="o">]</span>
+morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>&lt;task&gt;<span class="w"> </span><span class="o">[</span>--input<span class="w"> </span>&lt;name&gt;<span class="o">=</span>&lt;path&gt;<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--<span class="w"> </span>args...<span class="o">]</span>
 </code></pre></div>
 <p>Runs a command the release declares under
 <a href="../manifest/#tasks"><code>tasks</code></a>: a one-shot container of a release service, with the
@@ -3489,11 +3523,14 @@ task's command, through the image's entrypoint. Where <a href="#exec"><code>exec
 command the operator writes, a task is one the vendor wrote and named, and says
 which machines it may run on.</p>
 <p><code>task list</code> shows each task's service, the machine modes it allows, whether this
-machine is one of them, whether it takes arguments, and its description.</p>
+machine is one of them, whether it takes arguments, the inputs it needs, and its
+description.</p>
 <p><code>task run</code> is an operation, <code>task</code>. It takes the deployment lock, is refused
 while an earlier operation needs attention, and is journalled, attested and
 reported to the notify targets like a converge:</p>
 <ol>
+<li>the task's <a href="../manifest/#inputs">inputs</a>, when it declares any, are copied
+   for the run;</li>
 <li>secrets and configuration are rendered as <code>apply</code> renders them, so a task
    after a reboot finds the files its service mounts;</li>
 <li>the task's container runs to completion. The services it depends on are
@@ -3506,7 +3543,13 @@ reported to the notify targets like a converge:</p>
 <li>a task whose <code>modes</code> do not include this machine's. <code>--force</code> does not override
   it;</li>
 <li><code>--resume</code>. Running a task's command again is not the same as running it once,
-  and whether that is safe is the vendor's to say.</li>
+  and whether that is safe is the vendor's to say;</li>
+<li>an <code>--input</code> the task does not declare, a declared input not given, a name
+  given twice, a path that is not a regular file once symlinks are followed (a
+  directory, a named pipe, a device), and a file larger than the input's
+  <code>max_size</code>, all with exit 2;</li>
+<li>inputs that do not fit in the free space under the manager's directory, with
+  64 MiB kept back.</li>
 </ul>
 <p>A service the release's runtime configuration does not define is refused before
 the container starts, rather than reported through an exit code that would pass
@@ -3536,6 +3579,24 @@ those values cannot be loaded the record carries <code>args_omitted</code> sayin
 <p>The arguments are passed on the <code>docker compose run</code> command line, which other
 users on the machine can read while the task runs, so they are not the place for
 a credential.</p>
+<h3 id="passing-a-file">Passing a file<a class="headerlink" href="#passing-a-file" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>restore<span class="w"> </span>--input<span class="w"> </span><span class="nv">snapshot</span><span class="o">=</span>./catalog-snapshot.jsonl
+</code></pre></div>
+<p>Each <code>--input</code> is copied into <code>/var/lib/&lt;product&gt;/manager/inputs/&lt;operation-id&gt;/</code>
+before the task runs. That directory is readable only by root, and the copy is
+removed when the operation ends, whether the task succeeded or not. The copy is
+hashed as it is made, and it stops at the input's <code>max_size</code> and at the free
+space, so a file that grows after it was checked is refused. The task reads the
+copy read-only at <code>/morzer/inputs/&lt;name&gt;</code>: exactly the bytes whose digest is
+recorded, whatever happens to your file meanwhile.</p>
+<p>The journal records each input as <code>input.&lt;name&gt;</code>, its size and sha256, and never
+its content or your path. The operation's <a href="../attestations/">attestation</a> lists
+the same. <code>--dry-run</code> checks the inputs and copies nothing. A task killed
+mid-run leaves its copy behind: <code>doctor</code> reports it as <code>tasks.staged-inputs</code>,
+and the next <code>task run</code>, with inputs or without, removes it.</p>
+<p>An installation under a root whose path contains <code>:</code> cannot be given inputs:
+Compose's <code>--volume</code> splits on it, so the run is refused rather than mounting
+the wrong path.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>Coordinates the release's backup hook, wraps the result in a self-describing
 manifest, and verifies the checksums by re-reading what was written.</p>

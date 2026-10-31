@@ -2368,6 +2368,10 @@ the machine owns the key, and their statements verify too.</p>
 <td><code>predicate.steps</code></td>
 <td>Each step, its outcome, and how long it took.</td>
 </tr>
+<tr>
+<td><code>predicate.inputs</code></td>
+<td>The files an operator passed to a task: name, size and sha256, never the content or the operator's path. Absent when there were none.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="configuration-names-always-values-never">Configuration: names always, values never<a class="headerlink" href="#configuration-names-always-values-never" title="Permanent link">&para;</a></h3>
@@ -2427,12 +2431,13 @@ persisted record to feed a new artifact would be the tail wagging the dog.</p>
 <h2 id="validating-one">Validating one<a class="headerlink" href="#validating-one" title="Permanent link">&para;</a></h2>
 <p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema ships with every release, generated from the Go types that produce
 the document rather than written alongside them:</p>
-<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v2.json
+<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v3.json
 </code></pre></div>
-<p>The predicate type is <code>https://morzecrew.github.io/morzer/attestation/v2</code>. v2
-adds <code>signature_verified_when_staged</code> and nothing else. Statements written
-before it say <code>…/attestation/v1</code>, validate against
-<code>schemas/morzer-attestation-v1.json</code>, which stays published unchanged, and are
+<p>The predicate type is <code>https://morzecrew.github.io/morzer/attestation/v3</code>. v3
+adds <code>inputs</code> and nothing else, and v2 added <code>signature_verified_when_staged</code>.
+Statements written before them say <code>…/attestation/v2</code> or <code>…/attestation/v1</code>,
+validate against <code>schemas/morzer-attestation-v2.json</code> or
+<code>schemas/morzer-attestation-v1.json</code>, which stay published unchanged, and are
 still read by <code>attest verify</code>.</p>
 <p>It pins <code>_type</code> and <code>predicateType</code> to single values, so a document from another
 contract does not validate against it — notably a <strong>SLSA provenance</strong> document,

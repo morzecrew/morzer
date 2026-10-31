@@ -1805,6 +1805,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Inputs
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2511,6 +2528,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="tasks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Inputs
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3554,6 +3588,12 @@ deployment lock.</p>
 <td style="text-align: center;"></td>
 <td>Time budget. Default <code>10m</code>.</td>
 </tr>
+<tr>
+<td><code>inputs</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Files an operator passes with <code>task run --input &lt;name&gt;=&lt;path&gt;</code>. See <a href="#inputs">Inputs</a>.</td>
+</tr>
 </tbody>
 </table>
 <p>Names are lowercase letters, digits and dashes, starting with a letter, so a
@@ -3573,6 +3613,59 @@ the point, a report, should say so in its <code>description</code>.</p>
 tasks with less is refused. A manager older than 0.8.0 cannot read <code>tasks:</code>, and
 the declaration makes it refuse the bundle as needing a newer manager instead of
 reporting an unknown field.</p>
+<h3 id="inputs">Inputs<a class="headerlink" href="#inputs" title="Permanent link">&para;</a></h3>
+<p>A task that needs a file from the operator, a data snapshot to load or a CSV to
+import, declares it under <code>inputs</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.11.0"</span>
+
+<span class="nt">tasks</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">restore</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">service</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">worker</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">restore</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"{inputs.snapshot}"</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">inputs</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">snapshot</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Catalogue snapshot (JSONL)</span>
+<span class="w">        </span><span class="nt">max_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2GiB</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td>One line of at most 200 characters, shown by <code>morzer task list</code> and in the refusal when the input is missing.</td>
+</tr>
+<tr>
+<td><code>max_size</code></td>
+<td>size</td>
+<td>The largest file accepted, such as <code>2GiB</code>. Absent, or <code>0</code>, means only the free disk space bounds it.</td>
+</tr>
+</tbody>
+</table>
+<p>Input names are lowercase letters, digits and underscores, starting with a
+letter. Every declared input is required.</p>
+<p>The operator's file is copied for the run and mounted read-only at
+<code>/morzer/inputs/&lt;name&gt;</code>, readable by any user in the image. The task finds it in
+two ways:</p>
+<ul>
+<li><code>{inputs.&lt;name&gt;}</code> anywhere in an element of <code>command</code> is replaced by that
+  path, so <code>[restore, "{inputs.snapshot}"]</code> and <code>["--file={inputs.snapshot}"]</code>
+  both work. Only the release's own <code>command</code> is substituted, never the
+  operator's arguments after <code>--</code>.</li>
+<li>The variable <code>MORZER_INPUT_&lt;NAME&gt;</code>, the name upper-cased, holds the same path,
+  for a command that reads its environment: <code>MORZER_INPUT_SNAPSHOT</code>.</li>
+</ul>
+<p>A <code>{inputs.&lt;name&gt;}</code> that names no declared input, or one left unterminated, is
+refused by <code>release verify</code>.</p>
+<p><strong>Inputs need <code>min_manager_version: "0.11.0"</code> or later</strong>, for the same reason
+tasks need 0.8.0.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>What the manager may do about the project's named volumes, which it captures
 itself rather than through the backup hook.</p>
