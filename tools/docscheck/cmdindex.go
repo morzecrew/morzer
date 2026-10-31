@@ -60,6 +60,7 @@ var referencePage = map[string]string{
 	"stop":         "reference/commands.md",
 	"start":        "reference/commands.md",
 	"doctor":       "reference/commands.md",
+	"history":      "reference/commands.md",
 	"logs":         "reference/commands.md",
 	"ps":           "reference/commands.md",
 	"stats":        "reference/commands.md",

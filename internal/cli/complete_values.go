@@ -192,6 +192,20 @@ func (a *App) completeConfigAssignments(cmd *cobra.Command, args []string, toCom
 	return out, directive | cobra.ShellCompDirectiveNoSpace
 }
 
+// operations offers the journal's operations, newest first, each described by
+// what it was and how it ended.
+func operations(ctx context.Context, d *ops.Deps) ([]cobra.Completion, error) {
+	history, err := ops.ListHistory(ctx, d, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]cobra.Completion, 0, len(history.Operations))
+	for _, rec := range history.Operations {
+		out = append(out, cobra.CompletionWithDesc(rec.ID, string(rec.Type)+" "+string(rec.Status)))
+	}
+	return out, nil
+}
+
 // backups offers this machine's backups, newest first. The listing reads only
 // the backups directory, so no release has to load for it.
 func backups(ctx context.Context, d *ops.Deps) ([]cobra.Completion, error) {
