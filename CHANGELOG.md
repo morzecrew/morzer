@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A notify target that blinks still gets the event.** A target that did not
+  answer, or answered 408, 429 or a 5xx, is tried once more after a second,
+  inside the same fifteen-second deadline. Each event carries an `id`, also sent
+  as `Idempotency-Key`, so a receiver can drop a duplicate.
+
 - **`config set` changes the signature requirement, domains and retention
   after `init`.** `release.require_signature=true` lets an installation made
   without `--require-signature` turn on `update.auto_apply`.

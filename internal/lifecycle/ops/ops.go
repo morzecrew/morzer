@@ -515,6 +515,9 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 	if d.Notifier == nil || !forwardedKinds[ev.Kind] {
 		return
 	}
+	if ev.ID == "" {
+		ev.ID = "evt_" + ulid.MustNew(ulid.Timestamp(d.now()), rand.Reader).String()
+	}
 
 	// Bounded, and *not* detached from the operation's context.
 	//
