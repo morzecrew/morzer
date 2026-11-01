@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,8 +29,7 @@ func handEdit(t *testing.T, h *harness, line string) {
 	f, err := os.OpenFile(applicationTarget(h), os.O_APPEND|os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = f.WriteString(line + "\n")
-	require.NoError(t, err)
-	require.NoError(t, f.Close())
+	require.NoError(t, errors.Join(err, f.Close()))
 }
 
 func appliedHarness(t *testing.T) *harness {
