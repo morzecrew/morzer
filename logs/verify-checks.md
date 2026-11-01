@@ -225,3 +225,34 @@ proposal: ASSUMED — the placeholder is the scaffold's own opening, `TODO -- `,
 ```
 
 **Drift count: 0.**
+
+Review then found the edges of both. `index` of a struct fails at render, and
+`index (.Parameters) "key"` is the same lookup in parentheses. An include that
+climbs out of the bundle with `../`, or whose path Compose interpolates, cannot
+be read here either, and was refused as unreadable instead of left unknown.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T21:40:00Z
+attempt: 3
+claim: `index` of a struct, and of a parenthesised root chain, were not read as the lookups they are
+evidence: internal/adapters/render/gotemplate/references.go:107
+action: decided
+proposal: ASSUMED — `index` reads its receiver bare or in parentheses; a map must hold the key, and a struct is refused, since `index` cannot look up a field.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T21:41:00Z
+attempt: 3
+claim: an include climbing out of the bundle, or naming a path Compose interpolates, was refused as unreadable
+evidence: internal/adapters/runtime/compose/bundle.go:103
+action: decided
+proposal: ASSUMED — such an include is not read and leaves the services unknown, as a remote or absolute one does.
+```
+
+**Drift count: 0.**

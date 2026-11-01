@@ -98,8 +98,9 @@ back to whatever default the file carries and the manifest's digest pin decides
 nothing. `<PRODUCT>` is `metadata.name` in capitals. So is a secret whose
 `services` names a service no Compose file defines, profiles' files included.
 An `include` is followed as Compose follows it, relative to the file that
-includes it. One that leaves the bundle, such as a remote one, is not read, so
-the services are not checked for that bundle.
+includes it. One that leaves the bundle, such as a remote one, or whose path
+Compose would interpolate first, is not read, so the services are not checked
+for that bundle.
 
 It matters because the alternative is worse: without it, a template with an
 unterminated action passes `verify` and fails during an operator's `apply`,
