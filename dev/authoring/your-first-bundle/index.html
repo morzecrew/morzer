@@ -2466,14 +2466,16 @@ macOS the manager refuses <code>owner</code> altogether for now. The
 <p>Reports <strong>every</strong> violation in one pass rather than the first, with the line and
 column from your <abbr title="YAML Ain't Markup Language">YAML</abbr>. Run it in your own CI; it needs no installation on the
 machine. It parses every template you declare, so an unterminated action fails
-here rather than during someone else's <code>apply</code>.</p>
-<p>Once your templates reference secrets and parameters, add the render pass:</p>
+here rather than during someone else's <code>apply</code>, and reads what each one names:
+<code>{{ secretFile .Secrets "db_passwrod" }}</code> is valid syntax and a broken
+deployment, and <code>verify</code> refuses it. It checks the Compose files against the
+manifest the same way, so an <code>${DEMO_IMAGE_*}</code> no image sets is refused.</p>
+<p>Once your templates branch and loop, add the render pass:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--render-check
 </code></pre></div>
-<p>It renders each template against invented values, which catches the mistake
-parsing cannot see — <code>{{ secretFile .Secrets "db_passwrod" }}</code> is valid syntax
-and a broken deployment. It is a smoke test rather than a promise about a
-customer's machine; <a href="../../reference/release-commands/#what-render-check-checks-and-what-it-does-not">what it does and does not
+<p>It renders each template against invented values, which reaches what reading
+cannot: a name used inside <code>range</code> or <code>with</code>, where only a value says what <code>.</code>
+is. It is a smoke test rather than a promise about a customer's machine; <a href="../../reference/release-commands/#what-render-check-checks-and-what-it-does-not">what it does and does not
 check</a>
 is worth reading once before you rely on it.</p>
 <p>There is also a <abbr title="JavaScript Object Notation">JSON</abbr> Schema for editor completion — see

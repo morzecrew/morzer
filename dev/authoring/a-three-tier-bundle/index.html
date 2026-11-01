@@ -2386,7 +2386,10 @@ here is the operator's decision:</p>
 <span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>The backend keeps <code>db_password</code> under both. Someone else's database still
-requires authenticating to it; only the server moves.</p>
+requires authenticating to it; only the server moves, and where it moved to is
+the <code>db_host</code> parameter, which <code>compose.external-db.yaml</code> reads as
+<code>${WEB_PARAM_DB_HOST}</code>. A variable like that with no parameter behind it would
+fall back to its default on every machine, so <code>release verify</code> refuses one.</p>
 <h2 id="installing-it">Installing it<a class="headerlink" href="#installing-it" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./bundle-web<span class="w"> </span>--profile<span class="w"> </span>embedded<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--set<span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">8443</span><span class="w"> </span>--set<span class="w"> </span><span class="nv">api_port</span><span class="o">=</span><span class="m">9443</span>
