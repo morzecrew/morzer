@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A template that fails to render says where and what.** At `apply` the error
+  named only the file. It now gives the line and column and the field as the
+  template wrote it, names its owner by template path rather than Go type, and
+  offers the nearest declared name; `release verify` says it the same way.
+
 - **`release verify` reads what each template names.** A template naming a
   secret, a parameter or a field nothing declares is now refused without
   `--render-check`, in every branch. `build`, `pack`, `archive` and `push` run

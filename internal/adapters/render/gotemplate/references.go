@@ -146,7 +146,8 @@ func (w *refWalker) index(node tparse.Node, chain []string, key string) {
 	case reflect.Map:
 		if v.Type().Key().Kind() == reflect.String &&
 			!v.MapIndex(reflect.ValueOf(key).Convert(v.Type().Key())).IsValid() {
-			w.report(node, fmt.Sprintf("index %s %q names %s", path, key, undeclared(chain[0], key)))
+			w.report(node, fmt.Sprintf("index %s %q names %s%s",
+				path, key, undeclared(chain[0], key), didYouMean(key, mapKeys(v))))
 		}
 	case reflect.Struct:
 		w.report(node, fmt.Sprintf("index cannot look up %q in %s, which is not a map; write %s.%s", key, path, path, key))
@@ -188,7 +189,8 @@ func (w *refWalker) secretFileName(cmd *tparse.CommandNode) {
 	}
 	secrets := w.root.FieldByName("Secrets")
 	if !secrets.MapIndex(reflect.ValueOf(lit.Text)).IsValid() {
-		w.report(cmd, fmt.Sprintf("secretFile names secret %q, which the secret schema does not declare", lit.Text))
+		w.report(cmd, fmt.Sprintf("secretFile names secret %q, which the secret schema does not declare%s",
+			lit.Text, didYouMean(lit.Text, mapKeys(secrets))))
 	}
 }
 
@@ -202,14 +204,16 @@ func (w *refWalker) resolve(node tparse.Node, idents []string) (reflect.Value, b
 		parent := "." + strings.Join(idents[:i], ".")
 		switch v.Kind() {
 		case reflect.Struct:
-			// A method is callable as a field; what it returns is
-			// not followed.
-			if _, ok := reflect.PointerTo(v.Type()).MethodByName(id); ok {
+			// A value method is callable as a field; what it returns
+			// is not followed. A pointer method is not: nothing in a
+			// view executed by value is addressable.
+			if _, ok := v.Type().MethodByName(id); ok {
 				return reflect.Value{}, false
 			}
 			field, ok := v.Type().FieldByName(id)
 			if !ok || !field.IsExported() {
-				w.report(node, fmt.Sprintf("%s: %s has no field %s", path, parentName(parent), id))
+				w.report(node, fmt.Sprintf("%s: %s has no field %s%s",
+					path, parentName(parent), id, didYouMean(id, memberNames(v.Type()))))
 				return reflect.Value{}, false
 			}
 			v = v.FieldByIndex(field.Index)
@@ -219,7 +223,8 @@ func (w *refWalker) resolve(node tparse.Node, idents []string) (reflect.Value, b
 			}
 			entry := v.MapIndex(reflect.ValueOf(id).Convert(v.Type().Key()))
 			if !entry.IsValid() {
-				w.report(node, fmt.Sprintf("%s names %s", path, undeclared(idents[0], id)))
+				w.report(node, fmt.Sprintf("%s names %s%s",
+					path, undeclared(idents[0], id), didYouMean(id, mapKeys(v))))
 				return reflect.Value{}, false
 			}
 			v = entry
