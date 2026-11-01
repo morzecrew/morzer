@@ -9,7 +9,7 @@ summary: One machine can hold more than one installation — what they share, ho
 A machine can run more than one installation, and always could. Every path is
 keyed by the product name — `/etc/demo`, `/var/lib/demo`, `/run/demo`,
 `/opt/demo` — the deployment lock lives under the product's own manager
-directory, and the five systemd units are named per product. Two installations
+directory, and the systemd units are named per product. Two installations
 never contend for anything the manager owns.
 
 What they do share is the host: one Docker daemon, one port space, one

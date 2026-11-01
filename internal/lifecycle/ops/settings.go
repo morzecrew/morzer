@@ -874,6 +874,24 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 //
 // A host with no supervisor is not an error. That is the same host that gets no
 // units at `init`, and a container deployment is a legitimate one.
+// reconcileUnitsAfterConverge rewrites the units to what this manager writes,
+// after an apply, start or update succeeded. Without it a unit an older manager
+// wrote keeps its contents (RFC 0040 decision 13), and one this version adds,
+// such as the doctor timer, waits for an unrelated setting to change. Not at
+// boot: `apply --startup` runs inside the product's own unit, and the next
+// command an operator runs reconciles. A failure warns and changes nothing
+// about the operation's outcome.
+func (d *Deps) reconcileUnitsAfterConverge(ctx context.Context) {
+	inst, err := d.State.LoadInstallation(ctx)
+	if err == nil {
+		err = d.refreshUnits(ctx, inst)
+	}
+	if err != nil {
+		d.warnf("the systemd units were not reconciled: %s; `morzer doctor` reports any that differ",
+			domain.AsError(err).Message)
+	}
+}
+
 func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error {
 	if d.Supervisor == nil || !d.Supervisor.Available(ctx) {
 		return nil

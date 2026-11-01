@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An upgraded machine gets the systemd units this version writes.** `apply`,
+  `start` and `update` reconcile the units after they succeed, so the backup
+  unit gains `--unattended` and a machine with a notify target gains the doctor
+  timer. A unit an operator disabled stays disabled.
+
 - **`config set` no longer renders from a modified release.** `config list`,
   `get`, `set` and `diff` refuse a release directory changed after install, as
   `apply` already did, instead of rendering from what the digest no longer
