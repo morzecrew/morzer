@@ -1,9 +1,10 @@
 # RFC 0044 — Configuration drift an operator can see
 
-- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-10-31:
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-31:
   §11's `OPEN` rows as recommended. **P1 built 2026-10-31** in #235; the six
-  entries its build and review wrote in [logs/config-drift.md](../logs/config-drift.md) are decisions 12–17. P2 is ready
-  to build
+  entries its build and review wrote in [logs/config-drift.md](../logs/config-drift.md) are decisions 12–17. **P2
+  built 2026-11-01** in #241; the four entries its build wrote in
+  [logs/definition-drift.md](../logs/definition-drift.md) are decisions 18–21
 - **Scope:** Where the files on disk differ from what the installed release
   renders from the recorded parameters, shown on the machine: a command that
   prints the differences, and a `doctor` check that warns about them. P2 adds
@@ -302,6 +303,10 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 15 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decisions 1 and 4.** The unattended gate counts only the differing targets that exist on disk: an absent file holds no edit to lose, and counting it held an installation nothing had applied on its first unattended update. `config diff` and `config.drift` still count an absent target. Ruled by the author 2026-11-01. See [logs/config-drift.md](../logs/config-drift.md) (decision 1, attempt 1, 2026-11-01T08:10, which reclassifies the 21:48 entry). |
 | 16 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* Every `config` command that loads the installed release verifies it against the digest recorded at install, as `apply` does, and refuses a release directory changed since. See [logs/config-drift.md](../logs/config-drift.md) (unlisted, attempt 1, 07:47). |
 | 17 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* The tick reports a candidate that failed to install before the drift gate: it is not retried, so it replaces nothing, and its reason says how to retry it. Drift holds every candidate the tick would install. See [logs/config-drift.md](../logs/config-drift.md) (unlisted, attempt 1, 08:12). |
+| 18 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* **Refines decision 11.** A container labelled `com.docker.compose.oneoff=True` is not compared: a `compose run` container carries the service's name and a hash of its own, and `up` never re-creates one. See [logs/definition-drift.md](../logs/definition-drift.md) (decision 11, attempt 1, 09:40, which corrects the 08:41 entry's evidence). |
+| 19 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* `runtime.definition` warns, as `config.drift` does: a service created by hand, or by an older manager, may be what an operator meant, and the next `apply` re-creates it either way. See [logs/definition-drift.md](../logs/definition-drift.md) (unlisted, attempt 1, 08:42). |
+| 20 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* A service created from another definition does not hold an unattended update: the update re-creates every service from the new release's definition, and nothing on disk is lost, which is the whole of decision 4's reason to hold. See [logs/definition-drift.md](../logs/definition-drift.md) (unlisted, attempt 1, 08:43). |
+| 21 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* **Refines decision 11.** `services` in `--json` lists the drifted services, each `{service, declared, running}`, and is `[]` when none did; `services_compared` is false when the runtime could not be asked, and the text output says why. See [logs/definition-drift.md](../logs/definition-drift.md) (decision 11, attempt 1, 08:44). |
 
 ## 12. Phasing
 

@@ -1,9 +1,10 @@
 # RFC 0043 — Notifications that survive a failed delivery, and a scheduled doctor
 
-- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-10-31:
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-31:
   §11's `OPEN` rows as recommended. **P1 built 2026-10-31** in #234; the three
-  entries its build and review wrote in [logs/notify-retry.md](../logs/notify-retry.md) are decisions 14–16. P2 is ready
-  to build
+  entries its build and review wrote in [logs/notify-retry.md](../logs/notify-retry.md) are decisions 14–16. **P2
+  built 2026-11-01** in #242; the eight entries its build wrote in
+  [logs/notify-outbox.md](../logs/notify-outbox.md) are decisions 17–24
 - **Scope:** Two gaps in how a machine nobody is watching tells someone.
   First, a notification that does not reach its target is lost: there is no
   retry and nothing is kept (RFC 0015 decision 6). Second, nothing runs
@@ -311,6 +312,14 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 14 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 3.** The event id is `evt_` and a ULID, minted in `ops.notify` once the event passes the allowlist; an event that already has one keeps it. See [logs/notify-retry.md](../logs/notify-retry.md) (decision 3, attempt 1). |
 | 15 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 1.** An event the adapter cannot encode, or a request it cannot build, is a final `DeliveryError` and is not retried: the same event would fail the same way. See [logs/notify-retry.md](../logs/notify-retry.md) (decision 1, attempt 1, 2026-11-01T07:45). |
 | 16 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* A notify credential whose header is `Idempotency-Key`, in any case, is refused where the other bad credentials are, so `notify target add` refuses it and `doctor` names it: it would replace every event's id with one value. See [logs/notify-retry.md](../logs/notify-retry.md) (unlisted, attempt 1, 07:10). |
+| 17 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* An outbox entry is `<event-id>.<token>.json`, where the token is the first 16 hex digits of the SHA-256 of the target's label, and the entry holds the label: a label can be a URL, which cannot be part of a file name. See [logs/notify-outbox.md](../logs/notify-outbox.md) (unlisted, attempt 1, 08:59). |
+| 18 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* Each target's drop count is kept in `<token>.dropped` beside its entries and removed with its last entry, so `notify.outbox` reports the drops since the target last caught up. See [logs/notify-outbox.md](../logs/notify-outbox.md) (unlisted, attempt 1, 09:00). |
+| 19 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* A send that gets a resendable answer from a target sends none of that target's later entries in the same run; the other targets' entries are still sent. See [logs/notify-outbox.md](../logs/notify-outbox.md) (unlisted, attempt 1, 09:01). |
+| 20 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* A send deletes an entry whose target the installation no longer configures, as `notify target remove` would have, and keeps one whose target is configured but could not be built in that run. See [logs/notify-outbox.md](../logs/notify-outbox.md) (unlisted, attempt 1, 09:02, and the self-audit). |
+| 21 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* **Refines decision 8.** `<product>-doctor.service` runs `doctor --unattended --plain --log-format json --config <path>`, as the other units run theirs; `doctor.schedule` defaults to `*-*-* 06:00:00`, after the nightly backup and update ticks, with `RandomizedDelaySec=1800` and `Persistent=true`. See [logs/notify-outbox.md](../logs/notify-outbox.md) (decision 8, attempt 1). |
+| 22 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* The installation schema goes from 14 to 15, converting nothing: `doctor.schedule` is `policy.doctor_schedule`, and `doctor.scheduled=false` is `policy.skip_scheduled_doctor`, negative so that a missing field means on. See [logs/notify-outbox.md](../logs/notify-outbox.md) (unlisted, attempt 1, 09:04). |
+| 23 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* **Refines decision 6.** `doctor.finished` carries `level` as the worst, `message` naming the checks that warn or fail, and `checks`, each a check result as the `check` event carries it, with its remedy; only the checks that are not ok are in it. See [logs/notify-outbox.md](../logs/notify-outbox.md) (decision 6, attempt 1). |
+| 24 | `ASSUMED` | *(2026-11-01, from the build; accepted 2026-11-01)* **Refines decision 3.** The event id's ULID takes its entropy from a source monotonic within the process, so ids minted in one millisecond sort in the order they were minted, which is the order the outbox sends in. See [logs/notify-outbox.md](../logs/notify-outbox.md) (decision 3, attempt 1, 09:12). |
 
 ## 12. Phasing
 
