@@ -102,8 +102,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   🚧 P1, each target's outcome logged, a retry and an event id, has shipped.
   P2, the outbox and the doctor timer, is one PR and ready to build.
 - **[0044 — Configuration drift an operator can see](0044-configuration-drift-an-operator-can-see.md).**
-  🚧 P1, `config diff`, a `doctor` check and holding an unattended update, has
-  shipped. P2, services whose definition drifted, is one PR and ready to build.
+  🚧 P1, `config diff`, a `doctor` check and holding an unattended update while
+  an existing file differs, has shipped. P2, services whose definition drifted, is one PR and ready to build.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -187,7 +187,7 @@ number in the filename in sync.
 | [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 🚧 In progress | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 | [0040](0040-keeping-an-installation-down.md) | Keeping an installation down | ✅ Complete | Taking a product down on purpose and keeping it down across a reboot and an unattended update, until an operator starts it again. |
 | [0041](0041-files-an-operator-passes-to-a-task.md) | Files an operator passes to a task | ✅ Complete | Passing a local file to a release's task: declared inputs, staged per operation and mounted read-only into the one-off container. |
-| [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | ✅ Complete | Changing on a running installation what `init` fixed and only a repair or a hand-edited state file could change since: the signature requirement, the domains and the retention counts. |
+| [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | ✅ Complete | Changing on a running installation what `init` fixed and since only a repair (the domains) or a hand-edited state file could change: the signature requirement, the domains and the retention counts. |
 | [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | 🚧 In progress | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
 | [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | 🚧 In progress | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
 
