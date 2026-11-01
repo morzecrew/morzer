@@ -259,7 +259,12 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks, d.checkAttestationsPushed(inst))
 	}
 	if inst.Notify.HasTargets() {
-		checks = append(checks, d.checkNotifyTargets(inst), d.checkOutbox())
+		checks = append(checks, d.checkNotifyTargets(inst))
+	}
+	// And while entries wait with no target left to send them, which a
+	// removal that could not delete them leaves behind.
+	if waiting, _ := outboxNames(d.Paths.NotifyOutboxDir(), ""); inst.Notify.HasTargets() || len(waiting) > 0 {
+		checks = append(checks, d.checkOutbox())
 	}
 
 	return checks

@@ -278,6 +278,13 @@ func TestRemovingATargetForgetsItsEntries(t *testing.T) {
 	_, err = ops.NotifyTargetRemove(ctx, h.Deps, ops.Options{}, "chat")
 	require.NoError(t, err)
 	assert.Zero(t, entries(t, h), "the removed target's entries were kept")
+
+	// An entry left with no target at all is still reported.
+	require.NoError(t, os.WriteFile(h.Deps.Paths.NotifyOutboxDir()+"/evt_0.0000000000000000.json",
+		[]byte(`{"target":"chat","event":{"id":"evt_0"}}`), 0o600))
+	doctor, err := ops.Doctor(ctx, h.Deps)
+	require.NoError(t, err)
+	assert.Equal(t, "warn", findCheck(t, doctor, "notify.outbox").Status, "an entry nobody will send went unreported")
 }
 
 // The scheduled run notifies one doctor.finished, at the level of the worst
