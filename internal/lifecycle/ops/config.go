@@ -11,7 +11,6 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
-	"github.com/morzecrew/morzer/internal/release"
 )
 
 // ConfigEntry is one parameter as an operator sees it.
@@ -505,7 +504,9 @@ func (d *Deps) currentInstallationAndRelease(ctx context.Context) (domain.Instal
 			WithHint("install one with `morzer update <bundle>`")
 	}
 
-	rel, err := release.Load(current.Root)
+	// Verified as `apply` verifies it: `config set` renders from this tree
+	// and `config diff` compares against it.
+	rel, err := d.resolveCurrentRelease(ctx, current)
 	if err != nil {
 		return domain.Installation{}, domain.Release{}, err
 	}

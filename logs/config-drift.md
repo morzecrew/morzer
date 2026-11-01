@@ -119,3 +119,22 @@ action: decided
 ```
 
 **Drift count: 0.**
+
+Review found that `config diff` loads the installed release without the digest
+check `apply`, `doctor` and the unattended gate make, through the loader every
+`config` command shares; `config set` renders from that tree and writes what it
+renders. Found after the fix was written, in the same sitting.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T07:47:00Z
+attempt: 1
+claim: `config diff` compares against, and `config set` renders from, a release directory changed after install
+evidence: internal/lifecycle/ops/config.go:509
+action: decided
+proposal: ASSUMED — every `config` command that loads the installed release verifies it against the digest recorded at install, as `apply` does, and refuses a release directory changed since.
+```
+
+**Drift count: 0.**

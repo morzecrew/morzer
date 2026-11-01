@@ -134,6 +134,22 @@ func TestAPastedSecretIsScrubbedFromTheDiff(t *testing.T) {
 	assert.Contains(t, report.Summary(), "not shown")
 }
 
+// A release directory changed after install is refused, as `apply` refuses it:
+// what it renders is no longer what was verified, so it is neither compared
+// against nor rendered from by `config set`.
+func TestAModifiedReleaseIsNotComparedAgainst(t *testing.T) {
+	h := appliedHarness(t)
+	ctx := context.Background()
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(current.Root, "planted"), []byte("x"), 0o600))
+
+	_, err = ops.ConfigDiff(ctx, h.Deps)
+	require.ErrorIs(t, err, domain.ErrDigestMismatch)
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+	require.ErrorIs(t, err, domain.ErrDigestMismatch)
+}
+
 // With no release installed `config diff` fails as `config list` does, and the
 // check says it did not run.
 func TestDriftNeedsAnInstalledRelease(t *testing.T) {

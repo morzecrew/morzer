@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`config set` no longer renders from a modified release.** `config list`,
+  `get`, `set` and `diff` refuse a release directory changed after install, as
+  `apply` already did, instead of rendering from what the digest no longer
+  vouches for.
+
 - **A notification a target refuses is logged.** A webhook target that was down
   or answered an error was reported nowhere: the fan-out dropped the error, and
   the webhook does not log its own. Each failure is now a `notifier failed`
