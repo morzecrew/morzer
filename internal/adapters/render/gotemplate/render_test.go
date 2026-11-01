@@ -86,6 +86,22 @@ func TestAMissingFieldIsRefusedRatherThanRendered(t *testing.T) {
 	}
 }
 
+// TestAnApplyRenderFailureSaysWhereAndTheLikelyFix: an operator is shown the
+// message and the hint, never the cause, so at apply the message is where the
+// location and the fix have to be.
+func TestAnApplyRenderFailureSaysWhereAndTheLikelyFix(t *testing.T) {
+	_, err := render(t, "port: {{ .Parameters.htpp_port }}", testData())
+	if err == nil {
+		t.Fatal("rendered")
+	}
+	msg := domain.AsError(err).Message
+	for _, want := range []string{"application.yaml does not render: 1:", ".Parameters.htpp_port", "did you mean http_port?"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q does not say %q", msg, want)
+		}
+	}
+}
+
 func TestAnUndeclaredSecretIsRefusedByName(t *testing.T) {
 	_, err := render(t, `f: {{ secretFile .Secrets "not_declared" }}`, testData())
 	if err == nil {

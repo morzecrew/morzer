@@ -180,9 +180,10 @@ func CheckRender(rel domain.Release, schema domain.SecretSchema, name string, ra
 	}
 
 	var sb strings.Builder
-	if err := tmpl.Execute(&sb, newView(SyntheticData(rel, schema))); err != nil {
+	v := newView(SyntheticData(rel, schema))
+	if err := tmpl.Execute(&sb, v); err != nil {
 		return domain.ValidationError(fmt.Errorf("%w: %w", domain.ErrTemplateRender, err),
-			"%s does not render: %s", name, executionDetail(name, err)).
+			"%s does not render: %s", name, describe(name, err, v)).
 			WithHint("%s", renderHint(err))
 	}
 	return nil
