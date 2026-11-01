@@ -105,3 +105,21 @@ action: decided
 ```
 
 **Drift count: 0.**
+
+The 08:41 entry cited `compose.go:624`, the line planned before the code,
+which `DefinitionDrift` moved. The same entry, with evidence where the one-off
+check landed:
+
+```divergence
+decision: 11
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-01T09:40:00Z
+attempt: 1
+claim: a one-off container `compose run` started carries the service's name and a hash that never matches the declared one, so counting it reports every task run as drift
+evidence: internal/adapters/runtime/compose/compose.go:331
+action: departed
+proposal: ASSUMED — a container labelled `com.docker.compose.oneoff=True` is not compared; `up` never re-creates one.
+```
+
+**Drift count: 0.**
