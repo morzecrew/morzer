@@ -719,6 +719,7 @@ func newStatusCommand(app *App) *cobra.Command {
 }
 
 func newDoctorCommand(app *App) *cobra.Command {
+	var unattended bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run read-only diagnostics",
@@ -729,7 +730,10 @@ func newDoctorCommand(app *App) *cobra.Command {
 			"nothing -- every check is read-only, which is what makes this safe to\n" +
 			"run on a machine mid-incident.\n\n" +
 			"Exits 3 when any check fails; warnings exit 0, so it works as a\n" +
-			"monitoring probe.",
+			"monitoring probe.\n\n" +
+			"--unattended is the scheduled run: it sends the notification outbox\n" +
+			"first, and notifies one doctor.finished naming the checks that warn or\n" +
+			"fail. A run where every check passes notifies nothing.",
 		Example: "  morzer doctor\n" +
 			"  morzer doctor --verbose            # every check, not just the interesting ones\n" +
 			"  morzer doctor --json | jq .summary",
@@ -737,7 +741,11 @@ func newDoctorCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = app.attachBackupEngine(cmd.Context())
 
-			report, err := ops.Doctor(cmd.Context(), app.Deps)
+			run := ops.Doctor
+			if unattended {
+				run = ops.DoctorUnattended
+			}
+			report, err := run(cmd.Context(), app.Deps)
 			if err != nil {
 				return err
 			}
@@ -767,6 +775,8 @@ func newDoctorCommand(app *App) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&unattended, "unattended", false,
+		"the scheduled run: send the notification outbox, and notify what warns or fails")
 	return cmd
 }
 

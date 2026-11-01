@@ -168,6 +168,16 @@ type UnitParams struct {
 	// nowhere to publish would fail on every tick, and a unit that fails
 	// every tick is a unit an operator learns to ignore.
 	FleetTimer bool
+
+	// DoctorSchedule is an OnCalendar expression for the doctor timer
+	// (RFC 0043 §5.4). Empty takes the supervisor's default.
+	DoctorSchedule string
+
+	// DoctorTimer asks for the doctor pair at all. False on a machine with
+	// no notify target, since a scheduled `doctor` with nobody to tell
+	// writes only to the journal (RFC 0043 decision 4), and false when
+	// `doctor.scheduled` is off.
+	DoctorTimer bool
 }
 
 // Unit is a supervisor unit to install.

@@ -210,7 +210,11 @@ func NotifyTargetAdd(ctx context.Context, d *Deps, opts NotifyTargetAddOptions) 
 			return nil
 		}
 		current.Notify.Targets = append(current.Notify.Targets, cfg)
-		return d.saveInstallation(ctx, current)
+		if err := d.saveInstallation(ctx, current); err != nil {
+			return err
+		}
+		d.refreshNotifyUnits(ctx, current)
+		return nil
 	})
 	switch {
 	case err != nil:
@@ -267,7 +271,16 @@ func NotifyTargetRemove(ctx context.Context, d *Deps, opts Options, which string
 			return nil
 		}
 		current.Notify.Targets = slices.Delete(slices.Clone(current.Notify.Targets), idx, idx+1)
-		return d.saveInstallation(ctx, current)
+		if err := d.saveInstallation(ctx, current); err != nil {
+			return err
+		}
+		// What it had still to accept goes with it (RFC 0043 §5.2).
+		if err := d.forgetTarget(ctx, removed.Label()); err != nil {
+			d.warnf("the target was removed and its undelivered notifications were not: %s",
+				domain.AsError(err).Message)
+		}
+		d.refreshNotifyUnits(ctx, current)
+		return nil
 	})
 	switch {
 	case err != nil:
@@ -276,6 +289,18 @@ func NotifyTargetRemove(ctx context.Context, d *Deps, opts Options, which string
 		return Result{Summary: "would remove notify target " + removed.Label()}, nil
 	}
 	return Result{Summary: "notify target " + removed.Label() + " removed"}, nil
+}
+
+// refreshNotifyUnits reconciles the doctor timer, which exists while a target
+// does (RFC 0043 decision 4). A failure does not fail the change, for the
+// reason a backup target's does not: the target is on disk, and re-running the
+// command would meet "already a notify target".
+func (d *Deps) refreshNotifyUnits(ctx context.Context, inst domain.Installation) {
+	if err := d.refreshUnits(ctx, inst); err != nil {
+		d.warnf("the notify targets were changed and the doctor timer was not reconciled: %s; "+
+			"`morzer doctor` reports it until something reconciles the units",
+			domain.AsError(err).Message)
+	}
 }
 
 // NotifyTarget is one configured target as `notify target list` reports it:

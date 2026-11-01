@@ -170,6 +170,41 @@ var settings = map[string]setting{
 		Stored: func(i domain.Installation) string { return strconv.Itoa(i.Policy.RetainPreUpdateBackups) },
 		Clear:  func(i *domain.Installation) { i.Policy.RetainPreUpdateBackups = 0 },
 	},
+	"doctor.schedule": {
+		Description: "when the scheduled doctor runs, as a systemd OnCalendar expression",
+		Read:        func(i domain.Installation) string { return i.Policy.DoctorSchedule },
+		Apply: func(ctx context.Context, d *Deps, i *domain.Installation, raw string) error {
+			schedule := strings.TrimSpace(raw)
+			if err := domain.ValidateDoctorSchedule(schedule); err != nil {
+				return err
+			}
+			if err := d.checkSchedule(ctx, schedule); err != nil {
+				return err
+			}
+			i.Policy.DoctorSchedule = schedule
+			return nil
+		},
+		// Back to the morning default. Whether the timer exists is
+		// `doctor.scheduled`'s question and the notify targets'.
+		Clear: func(i *domain.Installation) { i.Policy.DoctorSchedule = "" },
+	},
+	"doctor.scheduled": {
+		Description: "whether doctor runs on a timer and notifies what it finds, while a notify target is configured",
+		Read: func(i domain.Installation) string {
+			return strconv.FormatBool(!i.Policy.SkipScheduledDoctor)
+		},
+		// Positive here and negative in the record, as `backup.scheduled`
+		// is and for its reason: a missing field must mean the timer runs.
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Policy.SkipScheduledDoctor = !v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.SkipScheduledDoctor = false },
+	},
 	"backup.scheduled": {
 		Description: "whether this manager runs backups on a timer at all",
 		Read: func(i domain.Installation) string {
@@ -813,6 +848,12 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// target. The phone-home question that made update checking
 		// opt-in does not arise.
 		FleetTimer: inst.Backup.HasTargets(),
+
+		// Whenever someone is configured to be told, and not when the
+		// operator turned it off (RFC 0043 decision 4): a scheduled
+		// `doctor` with no target writes only to the journal.
+		DoctorTimer:    inst.Notify.HasTargets() && !inst.Policy.SkipScheduledDoctor,
+		DoctorSchedule: inst.Policy.DoctorSchedule,
 	}
 }
 

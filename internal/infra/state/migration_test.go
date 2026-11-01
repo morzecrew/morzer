@@ -238,6 +238,16 @@ func TestAnUnmigratableSchemaRefuses(t *testing.T) {
 func TestASchemaThirteenInstallationIsNotStopped(t *testing.T) {
 	got, err := migrateInstallation(domain.Installation{SchemaVersion: 13})
 	require.NoError(t, err)
-	assert.Equal(t, 14, got.SchemaVersion)
+	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
 	assert.Nil(t, got.Stopped)
+}
+
+// 14 -> 15 added the doctor timer's fields (RFC 0043). A machine written before
+// them has the default schedule and a timer whenever a target is configured.
+func TestASchemaFourteenInstallationKeepsTheDoctorTimer(t *testing.T) {
+	got, err := migrateInstallation(domain.Installation{SchemaVersion: 14})
+	require.NoError(t, err)
+	assert.Equal(t, 15, got.SchemaVersion)
+	assert.Empty(t, got.Policy.DoctorSchedule)
+	assert.False(t, got.Policy.SkipScheduledDoctor)
 }

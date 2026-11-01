@@ -83,6 +83,10 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Policy.StaleBackupAfter":       keep("when doctor warns; local"),
 		"Policy.BackupSchedule": keep("when scheduled backups run -- local behaviour, and a " +
 			"sandbox with no targets left backs up to its own disk"),
+		"Policy.DoctorSchedule": keep("when the scheduled doctor runs -- local behaviour, and it " +
+			"reports only to notify targets, which a sandbox does not keep"),
+		"Policy.SkipScheduledDoctor": keep("whether the scheduled doctor runs at all -- local, " +
+			"and with no notify target left a sandbox has no doctor timer either way"),
 		"Policy.SkipScheduledBackups": keep("whether this machine's backups are the manager's " +
 			"job at all -- local, and a sandbox of a machine backed up at the " +
 			"storage layer should not start taking its own on a timer just " +

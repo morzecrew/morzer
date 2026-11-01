@@ -226,11 +226,12 @@ func resendable(status int) bool {
 
 // accepts applies the per-target severity floor.
 //
-// Only check events carry a severity to compare. Everything that reaches here
+// Only doctor's events carry a severity to compare: a check, and the scheduled
+// run's `doctor.finished` (RFC 0043 decision 6). Everything that reaches here
 // has already passed the kind allowlist in the lifecycle layer, so an event of
 // any other forwarded kind is delivered.
 func (n *Notifier) accepts(ev events.Event) bool {
-	if ev.Kind != events.KindCheck {
+	if ev.Kind != events.KindCheck && ev.Kind != events.KindDoctorFinished {
 		return true
 	}
 	return levelRank(ev.Level) >= levelRank(n.minLevel)

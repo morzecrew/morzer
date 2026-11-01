@@ -46,6 +46,7 @@ here. The reference column points at the section that documents it; the
 | `morzer notify target add` | Report to a webhook | [commands](commands.md#notify-target) |
 | `morzer notify target remove` | Stop reporting to a webhook | [commands](commands.md#notify-target) |
 | `morzer notify target list` | List the webhooks this deployment reports to | [commands](commands.md#notify-target) |
+| `morzer notify flush` | Send the notifications a target has still to accept | [commands](commands.md#notify-flush) |
 | `morzer doctor` | Run read-only diagnostics | [commands](commands.md#doctor) |
 | `morzer history` | List the operations this installation ran, newest first | [commands](commands.md#history) |
 | `morzer logs` | Read the deployment's logs | [commands](commands.md#logs) |

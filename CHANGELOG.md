@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A notification a target missed is kept and sent later.** An event a down
+  target could accept later waits in an outbox, up to 100 per target, and
+  `morzer notify flush` or the scheduled `doctor` sends it, oldest first, with
+  the same `id`.
+
+- **`doctor` runs on a timer and notifies what it finds.** With a notify
+  target configured, a timer runs `doctor --unattended` each morning by default
+  and sends one `doctor.finished` naming what warns or fails; `doctor.schedule`
+  moves it and `doctor.scheduled=false` removes it. State moves to schema 15.
+
 - **`morzer config diff` shows a hand edit before `apply` replaces it.** It
   prints where configuration files differ from what the release renders,
   scrubbed of this installation's secrets. `doctor` warns as `config.drift`,
