@@ -338,11 +338,19 @@ the secret state, service and health status, disk headroom, and the journal.
 
 Exits [3](exit-codes.md) when any check fails; warnings exit 0.
 
-Four checks are advisory by design, and warn rather than fail:
+`--unattended` is the [scheduled run](../operating/notifications.md#the-scheduled-doctor):
+it sends the notification outbox first, then notifies one `doctor.finished`
+naming the checks that warn or fail. A run where every check passes notifies
+nothing. Every run leaves out of `config.operations` the operation holding the
+deployment lock while it is running, so a backup in progress is not reported as
+unfinished.
+
+Five checks are advisory by design, and warn rather than fail:
 
 | Check | What it means |
 | --- | --- |
 | `config.drift` | A configuration file on disk differs from what the installed release renders, or is absent. The next `apply`, `update`, `rollback` or `config set` replaces it, and [`config diff`](../operating/changing-configuration.md#a-hand-edit-is-replaced) shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted. |
+| `notify.outbox` | A notify target has events it did not accept waiting in the [outbox](../operating/notifications.md#delivery): it names the target, how many, and how many were dropped past the bound of 100. `morzer notify flush` sends them once the target answers, as the scheduled `doctor` does. |
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
 | `runtime.images-local` | Some of the release's **pulled** images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is `images.bundled` below. See [Installing without a network](../operating/installing-offline.md). |
@@ -712,7 +720,10 @@ Manages the webhooks this deployment reports to. See
 names before recording it, and sends nothing: an `https` URL with no password
 in it, and any secret it reads, set and well formed. `morzer notify target list`
 shows them, naming a URL kept in a secret by its secret.
-`morzer notify target remove <url|name>` stops reporting to one.
+`morzer notify target remove <url|name>` stops reporting to one, and deletes
+what the outbox held for it. The first target added installs the
+[doctor timer](../operating/notifications.md#the-scheduled-doctor), and removing
+the last removes it.
 
 | Flag | Meaning |
 | --- | --- |
@@ -720,6 +731,15 @@ shows them, naming a URL kept in a secret by its secret.
 | `--url-secret` | Name of a secret holding the whole URL, in place of `[url]`, for services where the URL is the credential. |
 | `--credentials` | Name of a secret holding a header to send: a YAML document with `header` and `value`. |
 | `--min-level` | Lowest `doctor` finding sent to this target: `warn` or `error`. Default `error`. |
+
+### notify flush
+
+`morzer notify flush` sends the [outbox](../operating/notifications.md#delivery)
+now, oldest first: the events a target was down for, or answered in a way a later
+send can get past. Each is deleted once its target answers, and kept while it is
+still down; a target still down gets no more of its entries that run. One
+sender runs at a time, so while the scheduled `doctor` is sending, this sends
+nothing and says so. It exits 0 whatever the targets answered.
 
 ## version
 

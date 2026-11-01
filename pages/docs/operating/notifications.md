@@ -66,10 +66,12 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.
 
 ## What is sent
 
-Three kinds of event, and no others:
+Four kinds of event, and no others:
 
 - `operation.finished` — the outcome of an `apply`, `update`, `rollback`,
   `config`, `backup` or `restore`, including **failures**.
+- `doctor.finished` — what the [scheduled `doctor`](#the-scheduled-doctor)
+  found, when a check warns or fails, at the target's `min_level` or above.
 - `check` — a `doctor` result at or above the target's `min_level`.
 - `update.staged` — a followed reference moved, and the release it points at
   was fetched and verified: the [update channel](unattended-updates.md), on a
@@ -98,22 +100,55 @@ party's servers.
 Progress, plans and step narration are not forwarded either. They are what a
 terminal is for.
 
+## The scheduled doctor
+
+Once a target is configured, a `<product>-doctor.timer` runs `doctor
+--unattended` every morning, after the nightly backup and update ticks. It sends
+what the [outbox](#delivery) holds, runs every check, and sends one
+`doctor.finished` naming the checks that warn or fail, with their remedies, at
+the level of the worst. A run where every check passes sends nothing. A target
+left at the default `min_level` of `error` hears only about failures.
+
+A backup running at the same moment is not reported as unfinished: `doctor`
+leaves out the operation holding the deployment lock while it runs.
+
+```sh
+morzer config set doctor.schedule='Mon..Fri *-*-* 07:00:00'   # when it runs
+morzer config set doctor.scheduled=false                      # no timer at all
+```
+
+The timer exists while a target does, and goes when the last one is removed.
+
+## Delivery
+
+Each target gets five seconds per attempt, and fifteen seconds cover the whole
+fan-out. A target that did not answer, or answered 408, 429 or a 5xx, is tried
+once more after a second, inside those fifteen.
+
+An event a target did not accept, and could accept later, is kept in the
+**outbox**: no answer, a 408, 429 or 5xx, a redirect, or a 401, 403 or 404,
+which a fixed credential or URL gets past. Any other 4xx refuses the event
+itself, and it is not kept. The scheduled `doctor` sends the outbox, and so
+does `morzer notify flush`, oldest first; an entry goes once its target
+answers. Nothing sends it during an operation, so an operation never waits on a
+target that is down.
+
+```sh
+morzer notify flush      # sent 3; kept 2 for a target that is still down
+```
+
+A target keeps at most 100 entries, and past that its oldest are dropped.
+`doctor` warns about what is waiting as `notify.outbox`, naming the target, the
+count and how many were dropped. `notify target remove` deletes the target's
+entries.
+
+So delivery is at least once for what the outbox keeps, and best-effort for the
+rest. A target can receive an event twice: an attempt may have arrived and its
+answer been lost, or a send stopped between the answer and deleting the entry.
+The `id` is how to tell. **The journal is still the record**, and a
+notification is how a human learns to go and read it.
+
 ## What you should not build on it
-
-**Delivery is best-effort.** Each target gets five seconds per attempt, and
-fifteen seconds cover the whole fan-out. A target that did not answer, or
-answered 408, 429 or a 5xx, is tried once more after a second, inside those
-fifteen. Nothing else is retried, and nothing is queued. A target that was down
-for longer means you were not told.
-
-A target can receive an event twice: the first attempt may have arrived and its
-answer been lost. The `id` is how to tell.
-
-This is a deliberate choice rather than a gap: a queue that survives reboots is
-a different component with different failure modes, and a one-shot CLI is a poor
-host for one. The consequence is worth stating plainly — **the journal is the
-record, and the notification is how a human learns to go and read it.** Do not
-build a process that assumes every failure produced a message.
 
 **A run the operating system kills does not notify.** Delivery happens inside
 the operation, so an ordinary failure — a hook exiting non-zero, a push that
