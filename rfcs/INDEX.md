@@ -18,12 +18,12 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023**, 0038's row 1, **0042**, **0043** and **0044** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023**, **0037**, **0042**, **0043** and **0044** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
-author's rulings, and apart from that row of 0038 are not work yet. Each
+building P2 is the correct outcome. 0038 is ruled, and its stored credentials
+wait on a vendor asking, as 0037's signed index does. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
 
@@ -88,13 +88,13 @@ phase shipped, and a reader deciding what to work on needs the other half.
   when an operator asks to keep them, and the Quadlet implementation with
   0023 P3.
 - **[0037 — Freshness of a signed release](0037-freshness-of-a-signed-release.md).**
-  📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. A
-  version high-water mark is ready to build once ruled; the signed channel
-  index is gated on a vendor asking for it.
+  📝 Proposed, and ruled by the author 2026-11-01 as recommended. P1, the
+  version high-water mark, is ready to build; the signed channel index is gated
+  on a vendor asking for it.
 - **[0038 — Credentials for HTTPS bundle sources](0038-credentials-for-https-bundle-sources.md).**
-  📝 Proposed, with its user-facing decisions `OPEN`. Its row 1, a journal
-  defect that records a reference's password, stands apart and can be fixed
-  now; stored credentials are gated on a vendor asking for them.
+  📝 Proposed, and ruled by the author 2026-11-01 as recommended. Its row 1, a
+  journal defect that recorded a reference's password, shipped in #170; stored
+  credentials are gated on a vendor asking for them.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.

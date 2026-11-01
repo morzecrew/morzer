@@ -1,7 +1,8 @@
 # RFC 0038 — Credentials for HTTPS bundle sources
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11; not scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-01: §11's
+  `OPEN` rows as recommended. Row 1 shipped in #170; P1 is gated on a vendor
+  asking
 - **Scope:** How the manager authenticates to an HTTPS server that serves
   release bundles only to customers who log in. Covers where a credential lives
   (the installation's secret store, named per host in `installation.yaml`),
@@ -211,11 +212,11 @@ is ignored, so one request never carries two answers.
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Fix the journal defect now, apart from this RFC?** Recommended yes: `update` journals a reference's userinfo password verbatim (`update.go:338`), and the fix is to pass the flag through `RedactRefCredentials` as `SourceRef` already is. One line and a regression test, whatever is decided about the rest. |
-| 2 | `OPEN` | **Build stored credentials now, or gate them on a vendor asking?** Recommended: gate. Userinfo works for the occasional manual fetch once row 1 is fixed, OCI covers authenticated distribution with ambient credentials, and no vendor has asked. |
-| 3 | `OPEN` | **Configuration shape: per host (`sources.https[].host`) or per reference?** Recommended per host: a credential belongs to a server, and a per-reference credential would have to be repeated for every version an operator installs. |
-| 4 | `OPEN` | **Userinfo references once stored credentials exist: keep silently, warn, or refuse?** Recommended: warn that the password is on the command line and point at `sources.https`, without refusing, since refusing breaks scripts that work today. |
-| 5 | `OPEN` | **Schemes: bearer and basic, or bearer only?** Recommended both: basic is what many simple download servers speak, and it costs one branch. |
+| 1 | `ASSUMED` | **Fix the journal defect now, apart from this RFC?** Recommended yes: `update` journals a reference's userinfo password verbatim (`update.go:338`), and the fix is to pass the flag through `RedactRefCredentials` as `SourceRef` already is. One line and a regression test, whatever is decided about the rest. Was `OPEN`; ruled by the author 2026-11-01: as recommended; the fix had already landed in #170. |
+| 2 | `ASSUMED` | **Build stored credentials now, or gate them on a vendor asking?** Recommended: gate. Userinfo works for the occasional manual fetch once row 1 is fixed, OCI covers authenticated distribution with ambient credentials, and no vendor has asked. Was `OPEN`; ruled by the author 2026-11-01: as recommended, gated on a vendor asking. |
+| 3 | `ASSUMED` | **Configuration shape: per host (`sources.https[].host`) or per reference?** Recommended per host: a credential belongs to a server, and a per-reference credential would have to be repeated for every version an operator installs. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
+| 4 | `ASSUMED` | **Userinfo references once stored credentials exist: keep silently, warn, or refuse?** Recommended: warn that the password is on the command line and point at `sources.https`, without refusing, since refusing breaks scripts that work today. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
+| 5 | `ASSUMED` | **Schemes: bearer and basic, or bearer only?** Recommended both: basic is what many simple download servers speak, and it costs one branch. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
 | 6 | `ASSUMED` | The credential's value lives in the installation's secret store and is referenced by name, as backup credentials are (RFC 0009). Rejected: `.netrc` and environment variables (§5.1). |
 | 7 | `ASSUMED` | Matching is per request, on the exact authority: host case-insensitive, port defaulted to 443 on both sides, `https` only, with no suffix or wildcard matching. A redirect to another host, or to the same host on another port, never carries the credential. |
 | 8 | `ASSUMED` | A configured credential takes precedence over userinfo in the reference, so a request never carries two. |
