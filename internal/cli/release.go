@@ -193,10 +193,12 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 			return out, cobra.ShellCompDirectiveDefault
 		}),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// An archive names itself as the root: the directory it
-			// was read from is removed before the command returns.
-			if len(args) == 1 && atomicfs.IsTarZst(args[0]) {
-				rel, cleanup, err := openBundle(cmd.Context(), args[0])
+			// A file is a bundle or nothing: an archive, which names
+			// itself as the root because the directory it was read
+			// from is removed before the command returns, or a file
+			// openBundle says is not one.
+			if len(args) == 1 && isFile(args[0]) {
+				rel, cleanup, err := openBundle(args[0])
 				if err != nil {
 					return err
 				}
@@ -254,7 +256,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			"  morzer release verify ./bundle --signing-key RWQ… --render-check",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rel, cleanup, err := openBundle(cmd.Context(), args[0])
+			rel, cleanup, err := openBundle(args[0])
 			if err != nil {
 				return err
 			}
@@ -703,11 +705,11 @@ func pruneSummary(res ops.PruneResult) string {
 // openBundle loads the bundle at path: a directory, or a tar.zst archive of
 // one, unpacked into a temporary directory that cleanup removes.
 //
-// Unpacked by the local source's Fetch rather than here, so the limits that
+// Unpacked by the local source rather than here, so the limits that
 // stop a hostile archive are the ones `init` and `update` apply, and an error
 // about the contents names the archive rather than a directory that is gone.
-func openBundle(ctx context.Context, path string) (domain.Release, func(), error) {
-	if !atomicfs.IsTarZst(path) {
+func openBundle(path string) (domain.Release, func(), error) {
+	if !local.IsArchive(path) {
 		rel, err := release.Load(path)
 		return rel, func() {}, err
 	}
@@ -716,16 +718,17 @@ func openBundle(ctx context.Context, path string) (domain.Release, func(), error
 		return domain.Release{}, func() {}, domain.Internal(err, "cannot create a temporary directory")
 	}
 	cleanup := func() { _ = atomicfs.RemoveAll(tmp) }
-	if _, err := local.New().Fetch(ctx, ports.Ref{Scheme: local.Scheme, Location: path}, tmp); err != nil {
-		cleanup()
-		return domain.Release{}, func() {}, err
-	}
-	rel, err := release.LoadAs(tmp, path)
+	rel, err := local.New().Unpack(path, tmp)
 	if err != nil {
 		cleanup()
 		return domain.Release{}, func() {}, err
 	}
 	return rel, cleanup, nil
+}
+
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // releaseRoot resolves an optional version argument to a release directory.

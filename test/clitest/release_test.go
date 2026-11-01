@@ -444,10 +444,12 @@ func TestVerifyAndShowReadTheArchiveAnAuthorShips(t *testing.T) {
 	scratch := t.TempDir()
 	t.Setenv("TMPDIR", scratch)
 
-	digest, ok := r.Run("--json", "release", "verify", r.Bundle).ExitCode(0).Field("data.digest").(string)
-	require.True(t, ok, "verify --json reports the digest")
+	digest, _ := r.Run("--json", "release", "verify", r.Bundle).ExitCode(0).Field("data.digest").(string)
+	require.NotEmpty(t, digest, "verify --json reports the digest")
 	r.Run("release", "verify", archive, "--digest", digest).ExitCode(0).
 		OutputContains("bundle is valid")
+	r.Run("release", "verify", archive, "--digest", "sha256:"+strings.Repeat("0", 64)).Failed().
+		OutputContains("expected")
 	r.Run("release", "show", archive).ExitCode(0).
 		OutputContains("demo").ShowsPath(archive)
 
@@ -459,8 +461,16 @@ func TestVerifyAndShowReadTheArchiveAnAuthorShips(t *testing.T) {
 	raw, err := os.ReadFile(archive)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(gz, raw, 0o600))
-	r.Run("release", "verify", gz).Failed().
-		SaysAll("is not a directory", "tar.zst archive", "`morzer release archive` writes")
+	for _, cmd := range []string{"verify", "show"} {
+		r.Run("release", cmd, gz).Failed().
+			SaysAll("is not a directory", "tar.zst archive", "`morzer release archive` writes")
+	}
+
+	// A directory is read as one, whatever its name says.
+	named := filepath.Join(t.TempDir(), "demo.tar.zst")
+	require.NoError(t, os.Rename(r.Bundle, named))
+	r.Run("release", "verify", named).ExitCode(0)
+	r.Run("release", "show", named).ExitCode(0).OutputContains("demo")
 }
 
 // TestRenderCheckIsOptIn.
