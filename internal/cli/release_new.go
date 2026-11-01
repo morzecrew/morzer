@@ -187,6 +187,28 @@ func scaffoldFiles(name, vendor string) map[string]string {
 // error rather than a TODO nobody removed.
 const placeholderDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
+// scaffoldPlaceholders names what the scaffold left for the vendor to fill in
+// and is still there: an image pinned to placeholderDigest, and a description
+// starting with TODO.
+//
+// `verify` warns about them, because the scaffold must verify unedited (RFC
+// 0013 decision 11), and `build` refuses them, as it refuses the placeholder
+// version 0.0.0: a release carrying either installs nothing that pulls, or
+// tells an operator nothing about itself.
+func scaffoldPlaceholders(m domain.Manifest) []string {
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(m.Images)) {
+		if digest, ok := m.Images[name].Digest(); ok && digest == placeholderDigest {
+			out = append(out, fmt.Sprintf("images.%s is pinned to the placeholder digest %s",
+				name, placeholderDigest))
+		}
+	}
+	if strings.HasPrefix(m.Metadata.Description, "TODO") {
+		out = append(out, "metadata.description is still the scaffold's TODO")
+	}
+	return out
+}
+
 const scaffoldManifest = `# yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json
 #
 # A skeleton. It verifies as it stands and deploys nothing useful, which is the

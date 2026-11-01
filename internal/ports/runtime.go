@@ -619,6 +619,30 @@ type DefinitionDrifter interface {
 	DefinitionDrift(ctx context.Context, cfg RuntimeConfig) ([]ServiceDefinition, error)
 }
 
+// BundleReader reads a runtime's own files in a bundle without the runtime:
+// `release verify` runs on a vendor's build machine, which may have none.
+//
+// Optional and type-asserted, like DefinitionDrifter: a runtime that cannot
+// read its files alone is not checked.
+type BundleReader interface {
+	// ReadBundle reports what the files, named relative to root and read
+	// inside it, define and interpolate.
+	ReadBundle(root string, files []string) (BundleFiles, error)
+}
+
+// BundleFiles is what a bundle's runtime files say about themselves.
+type BundleFiles struct {
+	// Services are the services the files define.
+	Services []string
+
+	// ServicesPartial is set when a file takes services from somewhere the
+	// reader does not follow, so Services may not be all of them.
+	ServicesPartial bool
+
+	// Variables are the names the files interpolate.
+	Variables []string
+}
+
 // ServiceDefinition is one service's declared definition hash against its
 // containers'.
 type ServiceDefinition struct {

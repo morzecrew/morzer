@@ -346,15 +346,17 @@ func TestRetentionCountsOnlyTheReleasesItMayRemove(t *testing.T) {
 	list.SaysAll("+ 1.5.0", "staged")
 }
 
-// TestRenderCheckCatchesWhatParsingCannot is the pair that keeps the two modes
-// from collapsing into one.
+// TestEachCheckCatchesWhatTheOneBeforeCannot keeps verify's three template
+// passes from collapsing into one another.
 //
 // A template naming a secret the schema does not declare parses perfectly: it is
-// a function call with a string argument, and nothing at parse time knows what
-// the bundle declares. It fails the moment it is rendered. Without both halves
-// asserted here, `--render-check` could be an alias for the parse pass and
-// nothing would notice -- which is the flag's entire justification gone.
-func TestRenderCheckCatchesWhatParsingCannot(t *testing.T) {
+// a function call with a string argument. Reading the template finds it, so
+// plain `verify` refuses it. A field read through a dot `with` has moved is out
+// of reach of reading -- only the value says what the dot is -- and rendering
+// finds it. Without each half asserted here, `--render-check` could become an
+// alias for the plain pass, or the plain pass could quietly stop reading, and
+// nothing would notice.
+func TestEachCheckCatchesWhatTheOneBeforeCannot(t *testing.T) {
 	r := clitest.New(t)
 
 	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml.tmpl")
@@ -369,24 +371,63 @@ func TestRenderCheckCatchesWhatParsingCannot(t *testing.T) {
 	if err := os.WriteFile(tmpl, []byte(broken), 0o600); err != nil {
 		t.Fatalf("cannot write the template: %v", err)
 	}
-
-	r.Run("release", "verify", r.Bundle).ExitCode(0).
-		OutputContains("bundle is valid")
-
-	failed := r.Run("release", "verify", r.Bundle, "--render-check").Failed()
-	failed.OutputContains("does not render")
-	// And names the secret, because "does not render" alone tells an author
-	// which template failed and nothing about why.
+	failed := r.Run("release", "verify", r.Bundle).Failed()
+	failed.OutputContains("does not declare")
+	// And names the secret, because "does not declare" alone tells an
+	// author which template failed and nothing about what.
 	failed.OutputContains("db_passwrod")
 
-	// A correct bundle still passes both, so the new gate cannot start
-	// refusing what it is supposed to bless.
+	moved := "data: {{ with .Paths }}{{ .Dta }}{{ end }}\n"
+	if err := os.WriteFile(tmpl, []byte(moved), 0o600); err != nil {
+		t.Fatalf("cannot write the template: %v", err)
+	}
+	r.Run("release", "verify", r.Bundle).ExitCode(0).
+		OutputContains("bundle is valid")
+	r.Run("release", "verify", r.Bundle, "--render-check").Failed().
+		OutputContains("does not render")
+
+	// A correct bundle still passes both, so neither gate starts refusing
+	// what it is supposed to bless.
 	if err := os.WriteFile(tmpl, original, 0o600); err != nil {
 		t.Fatalf("cannot restore the template: %v", err)
 	}
 	r.Run("release", "verify", r.Bundle).ExitCode(0)
 	r.Run("release", "verify", r.Bundle, "--render-check").ExitCode(0).
 		OutputContains("synthetic context")
+}
+
+// TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare covers
+// the two halves of a release that only meet at deployment.
+//
+// An image variable no manifest entry sets falls back to whatever default the
+// Compose file carries, so the manifest's digest pin decides nothing; a secret
+// restarting a service no file defines fails the first rotation. Both are read
+// from the files, so plain `verify` refuses them with no Docker installed. The
+// service lives in a profile's file, which is read too.
+func TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare(t *testing.T) {
+	r := clitest.New(t)
+	edit := func(rel, old, new string) func() {
+		t.Helper()
+		path := filepath.Join(r.Bundle, rel)
+		original, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Contains(t, string(original), old)
+		require.NoError(t, os.WriteFile(path,
+			[]byte(strings.Replace(string(original), old, new, 1)), 0o600))
+		return func() { require.NoError(t, os.WriteFile(path, original, 0o600)) }
+	}
+
+	restore := edit("compose/compose.yaml", "${DEMO_IMAGE_APP:-", "${DEMO_IMAGE_AP:-")
+	r.Run("release", "verify", r.Bundle).Failed().
+		SaysAll("DEMO_IMAGE_AP is interpolated", "no image or parameter")
+	restore()
+
+	restore = edit("secrets.schema.yaml", "services: [app, db]", "services: [app, dbb]")
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains(`secret "db_password" restarts service "dbb"`)
+	restore()
+
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
 }
 
 // TestRenderCheckIsOptIn.
@@ -399,11 +440,12 @@ func TestRenderCheckIsOptIn(t *testing.T) {
 	r := clitest.New(t)
 
 	tmpl := filepath.Join(r.Bundle, "templates", "application.yaml.tmpl")
-	// `.Installation.Urrl` is a field that does not exist on the type: it
-	// parses, and rendering it is an error rather than an empty string
-	// because the renderer runs with missingkey=error.
+	// `.Urrl` does not exist on the installation: it parses, reading
+	// cannot follow the dot `with` moved, and rendering it is an error
+	// rather than an empty string because the renderer runs with
+	// missingkey=error.
 	if err := os.WriteFile(tmpl,
-		[]byte("url: {{ .Installation.Urrl }}\n"), 0o600); err != nil {
+		[]byte("url: {{ with .Installation }}{{ .Urrl }}{{ end }}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

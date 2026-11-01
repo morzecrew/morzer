@@ -98,7 +98,7 @@ func newReleasePackCommand(app *App) *cobra.Command {
 			// mismatch belongs on the vendor's machine rather than
 			// the customer's, and this is the command that has just
 			// rewritten the tree the checksum list describes.
-			if err := checkBundleIntegrity(rel); err != nil {
+			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
 				return err
 			}
 
