@@ -159,8 +159,8 @@ func TestAnUnreachableTargetIsRetriedOnce(t *testing.T) {
 	}
 }
 
-// The retry waits inside the caller's deadline and never past it, so an
-// operation waits no longer than it did with one attempt.
+// The retry waits inside the caller's deadline and never past it, so the
+// longest an operation can wait is unchanged.
 func TestTheRetryKeepsInsideTheDeadline(t *testing.T) {
 	a := &answering{statuses: []int{http.StatusServiceUnavailable, http.StatusOK}}
 	srv := httptest.NewTLSServer(a)

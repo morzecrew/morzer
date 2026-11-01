@@ -136,8 +136,9 @@ func (n *Notifier) Name() string { return n.name }
 
 // Notify posts one event, and once more after a pause when the answer could
 // change in a second: no answer at all, a 408, a 429 or a 5xx (RFC 0043 §5.1).
-// The retry waits inside the caller's deadline, which is unchanged, so an
-// operation never waits longer than it did with one attempt.
+// The retry waits inside the caller's deadline, which is unchanged, so the
+// longest an operation can wait is too. A target that times out twice holds
+// it for 11 seconds rather than 5, still inside that deadline.
 //
 // Returning an error is informational -- the lifecycle layer logs and drops it.
 // See ports.Notifier. It is a *ports.DeliveryError.
@@ -202,7 +203,8 @@ func (n *Notifier) failed(resendable bool, err error) error {
 }
 
 // retried is an answer that may change in a second: none (a refused
-// connection or a timeout), a 408, a 429 or a 5xx.
+// connection or a timeout), a 408, a 429 or a 5xx. A status of 600 or more
+// counts as a 5xx, as RFC 9110 §15 asks of a client.
 func retried(status int) bool {
 	return status == 0 || status == http.StatusRequestTimeout ||
 		status == http.StatusTooManyRequests || status >= 500
