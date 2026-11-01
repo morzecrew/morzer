@@ -672,11 +672,7 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 	return nil
 }
 
-// ServiceImages answers from Images. With no names it covers the services Up
-// starts, which are ValidateResult's, so a service a test leaves out of those
-// is one the configuration runs only on demand -- a one-shot behind a profile.
-// An empty image is a service built rather than pulled, reported with no
-// reference as the real runtime reports it.
+// DefinitionDrift answers from Definitions.
 func (r *Runtime) DefinitionDrift(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceDefinition, error) {
 	if err := r.record("DefinitionDrift"); err != nil {
 		return nil, err
@@ -685,6 +681,12 @@ func (r *Runtime) DefinitionDrift(ctx context.Context, cfg ports.RuntimeConfig) 
 	defer r.mu.Unlock()
 	return slices.Clone(r.Definitions), nil
 }
+
+// ServiceImages answers from Images. With no names it covers the services Up
+// starts, which are ValidateResult's, so a service a test leaves out of those
+// is one the configuration runs only on demand -- a one-shot behind a profile.
+// An empty image is a service built rather than pulled, reported with no
+// reference as the real runtime reports it.
 
 func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
 	if err := r.record("ServiceImages"); err != nil {

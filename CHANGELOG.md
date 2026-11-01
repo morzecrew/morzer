@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`config diff` lists services created from another definition.** A service
+  whose containers do not run the definition the installed release declares is
+  listed, and `doctor` warns as `runtime.definition`; the next `apply`
+  re-creates it.
+
 - **`morzer config diff` shows a hand edit before `apply` replaces it.** It
   prints where configuration files differ from what the release renders,
   scrubbed of this installation's secrets. `doctor` warns as `config.drift`,

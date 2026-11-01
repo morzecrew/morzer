@@ -234,12 +234,13 @@ release's proxy or yours, needs one before the name is served.
 
 ```sh
 morzer config diff            # each file that differs, then a summary on stderr
-morzer config diff --json     # release, targets, redacted, drift, unreadable
+morzer config diff --json     # release, targets, redacted, drift, unreadable, services
 ```
 
 Renders every configuration file from the installed release and the recorded
 parameters, and shows where the file on disk differs, scrubbed of secret
-values. It changes nothing and exits 0 whether or not a file differs. What the
+values, and which services were created from another definition than the
+release declares. It changes nothing and exits 0 whether or not a file differs. What the
 output means, and what replaces a hand edit, is in
 [A hand edit is replaced](../operating/changing-configuration.md#a-hand-edit-is-replaced).
 
