@@ -722,8 +722,8 @@ in it, and any secret it reads, set and well formed. `morzer notify target list`
 shows them, naming a URL kept in a secret by its secret.
 `morzer notify target remove <url|name>` stops reporting to one, and deletes
 what the outbox held for it. The first target added installs the
-[doctor timer](../operating/notifications.md#the-scheduled-doctor), and removing
-the last removes it.
+[doctor timer](../operating/notifications.md#the-scheduled-doctor) unless
+`doctor.scheduled` is off, and removing the last removes it.
 
 | Flag | Meaning |
 | --- | --- |
