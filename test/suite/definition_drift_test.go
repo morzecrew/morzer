@@ -98,6 +98,9 @@ func TestADriftedServiceDoesNotHoldAnUnattendedUpdate(t *testing.T) {
 	applyBaseline(t, h)
 	armAutoApply(t, h)
 	h.Runtime.Definitions = []ports.ServiceDefinition{{Service: "web", Declared: "aaa", Running: []string{"old"}}}
+	report, err := ops.ConfigDiff(context.Background(), h.Deps)
+	require.NoError(t, err)
+	require.Len(t, report.Services, 1, "no service drifted, so the test proves nothing")
 
 	res, err := ops.RunUnattended(context.Background(), h.Deps, ops.UnattendedOptions{})
 	require.NoError(t, err)
