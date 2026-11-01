@@ -106,6 +106,7 @@ func TestAnAbsentFileIsDriftAndAnUnreadableOneIsNot(t *testing.T) {
 	check := findCheck(t, doctor, "config.drift")
 	assert.Equal(t, "ok", check.Status)
 	assert.Contains(t, check.Message, applicationTarget(h))
+	assert.NotContains(t, check.Message, "every configuration file", "it claims the file it could not read")
 }
 
 // A value pasted into a file is scrubbed before the diff is shown. With the

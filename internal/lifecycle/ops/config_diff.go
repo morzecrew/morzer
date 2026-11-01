@@ -140,8 +140,11 @@ func (d *Deps) checkConfigDrift(inst domain.Installation, rel domain.Release, sk
 				unread = "; not compared, because they cannot be read: " + strings.Join(names, ", ")
 			}
 			if len(comparison.Diffs) == 0 {
-				return preflight.OK("every configuration file matches what %s renders%s",
-					rel.Version(), unread)
+				matched := "every configuration file matches"
+				if unread != "" {
+					matched = "every file that could be read matches"
+				}
+				return preflight.OK("%s what %s renders%s", matched, rel.Version(), unread)
 			}
 			names := make([]string, len(comparison.Diffs))
 			for i, diff := range comparison.Diffs {
