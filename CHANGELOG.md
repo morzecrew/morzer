@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`morzer config diff` shows a hand edit before `apply` replaces it.** It
+  prints where configuration files differ from what the release renders,
+  scrubbed of this installation's secrets. `doctor` warns as `config.drift`,
+  and an unattended update leaves the release staged while an edited file would
+  be replaced.
+
 - **A notify target that blinks still gets the event.** A target that did not
   answer, or answered 408, 429 or a 5xx, is tried once more after a second,
   inside the same fifteen-second deadline. Each event carries an `id`, also sent
@@ -74,6 +80,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged.
 
 ### Fixed
+
+- **`config set` no longer renders from a modified release.** `config list`,
+  `get`, `set` and `diff` refuse a release directory changed after install, as
+  `apply` already did, instead of rendering from what the digest no longer
+  vouches for.
 
 - **A notification a target refuses is logged.** A webhook target that was down
   or answered an error was reported nowhere: the fan-out dropped the error, and

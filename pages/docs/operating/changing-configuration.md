@@ -78,8 +78,9 @@ start-up rather than from the environment.
 morzer config set http_port=9000 --dry-run
 ```
 
-Shows the step list and a diff of any configuration file that would change.
-A plan never claims a service was re-created; it says what *would* happen.
+Shows the step list and a diff of any configuration file that would change,
+the same diff [`config diff`](#a-hand-edit-is-replaced) shows. A plan never
+claims a service was re-created; it says what *would* happen.
 
 ## What is not a parameter
 
@@ -119,6 +120,43 @@ config
 
 The file is rewritten from the recorded state by the next `config set`, or by
 `morzer init --repair`.
+
+## A hand edit is replaced
+
+A configuration file the release renders, such as `/etc/demo/application.yaml`,
+is rewritten from the release and the recorded parameters by every `apply`,
+`update`, `rollback` and `config set`. An edit made to it by hand works until
+the next one of those, and is then gone. An unattended update leaves the release
+staged rather than replace an edited file, but nothing keeps the edit.
+
+`morzer config diff` shows what would be replaced, before it is:
+
+```console
+$ sudo morzer config diff
+--- /etc/demo/application.yaml
+@@ -3,1 +3,1 @@
+- log_level: debug
++ log_level: info
+
+1 of 4 configuration files differ from what 1.2.0 renders.
+`morzer apply` replaces them; a change meant to last belongs in a parameter.
+```
+
+The diffs go to stdout and the summary to stderr, and the command exits 0
+whether or not anything differs; `doctor`'s `config.drift` check is the one that
+warns. `--json` carries `release`, `targets`, `redacted`, `drift` (each
+`{target, diff}`) and `unreadable` (each `{target, error}`).
+
+Every diff is scrubbed of this installation's secret values before it is shown,
+because a value pasted into a file would otherwise print. When the secret state
+cannot be decrypted, only the file names are shown and `redacted` is `false`.
+A secret this installation does not hold, such as a third party's key pasted in
+by hand, is not one it can recognise.
+
+A file that cannot be read is listed apart and not compared. Run without
+`sudo`, that is every root-only file. A change meant to last belongs in a
+[parameter](../reference/parameters.md), if the release declares one, or in the
+release.
 
 ## After a release changes what it declares
 

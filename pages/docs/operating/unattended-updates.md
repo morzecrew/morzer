@@ -52,6 +52,23 @@ Anything that fails the gate is still fetched, verified, staged and notified.
 Nothing is silently skipped, and the operator's remaining decision is only the
 one that costs downtime.
 
+Two things hold a staged release before the gate is asked at all: a product
+that is [stopped](taking-a-product-down.md), and a configuration file on disk
+that differs from what the installed release renders. The update would replace
+that file, and a hand edit replaced at night with nobody watching cannot be
+recovered. The tick says which:
+
+```text
+1 configuration file differs from what the installed release renders, so the
+release is staged and not installed; `morzer config diff` shows them
+```
+
+`morzer apply` replaces the file and the next tick installs; `morzer update
+--to <version>` installs now. A file that cannot be read does not hold the
+release, and nor does one that is absent, which loses nothing when written. A
+tick that cannot render the installed release's configuration to compare holds,
+and says why.
+
 ## Turning it on
 
 ```sh

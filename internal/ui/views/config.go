@@ -14,6 +14,12 @@ func init() {
 		Rich:  func(w io.Writer, t *theme.Theme, r ops.ConfigReport) { emit(w, configDoc(doc(w, t), r)) },
 		Plain: func(w io.Writer, r ops.ConfigReport) { emit(w, configDoc(plainDoc(w), r)) },
 	})
+	// The diffs as they are, in both modes, so grep and a pager read them as
+	// written. Not a patch: the lines are scrubbed of secret values.
+	ui.Register(ui.View[ops.ConfigDiffReport]{
+		Rich:  func(w io.Writer, _ *theme.Theme, r ops.ConfigDiffReport) { _, _ = io.WriteString(w, r.Text()) },
+		Plain: func(w io.Writer, r ops.ConfigDiffReport) { _, _ = io.WriteString(w, r.Text()) },
+	})
 }
 
 // configDoc draws the release's parameters and their effective values.

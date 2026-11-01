@@ -498,9 +498,11 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	// would start the product the operator took down. Read again rather
 	// than from inst, because following the channel took time a `stop` may
 	// have landed in.
-	if now, err := d.State.LoadInstallation(ctx); err != nil {
+	now, err := d.State.LoadInstallation(ctx)
+	if err != nil {
 		return out, err
-	} else if now.Stopped != nil {
+	}
+	if now.Stopped != nil {
 		out.Assessment = domain.UnattendedAssessment{
 			Reasons: []string{now.Stopped.Describe() + ", so the release is staged and not installed; " +
 				"the first tick after `morzer start` installs it"},
@@ -512,6 +514,14 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		out.Skipped = fmt.Sprintf("%s did not install (%s) and is not retried "+
 			"until the channel moves; `morzer update --to %s` tries again",
 			candidate.Version, candidate.Failed, candidate.Version)
+		return out, nil
+	}
+	// While a configuration file differs from what the installed release
+	// renders (RFC 0044 decision 4): the update would replace a hand edit
+	// with nobody watching. After the failed check, since a candidate that
+	// is not retried replaces nothing, and its reason says how to retry it.
+	if held := d.heldForDrift(ctx, now); held != "" {
+		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
 		return out, nil
 	}
 
