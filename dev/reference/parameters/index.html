@@ -2634,7 +2634,10 @@ declaration it can read rather than a fact it would be guessing at. It travels
 with the installation, so <code>morzer init --repair</code> reproduces it and
 <a href="../installation-commands/#installation-describe"><code>installation describe</code></a> records it.</p>
 <p><code>systemctl disable</code> decides whether an existing timer <strong>runs</strong>, and it now
-sticks: reconciliation no longer re-enables a unit that already exists. Only
+sticks: reconciliation no longer re-enables a unit that already exists. The
+units are reconciled when a setting or a target changes, and after each
+<code>apply</code>, <code>start</code> and <code>update</code> that succeeds, so a machine an older manager set
+up gets the units this one writes without being switched back on. Only
 <code>morzer init --repair --install-units</code> switches it back on, which is the one
 command whose job is to put a machine right. <code>doctor</code> reports a unit you
 disabled as <code>not enabled</code>, and names both ways out of that.</p>

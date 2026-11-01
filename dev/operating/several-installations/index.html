@@ -2267,7 +2267,7 @@
 <p>A machine can run more than one installation, and always could. Every path is
 keyed by the product name — <code>/etc/demo</code>, <code>/var/lib/demo</code>, <code>/run/demo</code>,
 <code>/opt/demo</code> — the deployment lock lives under the product's own manager
-directory, and the five systemd units are named per product. Two installations
+directory, and the systemd units are named per product. Two installations
 never contend for anything the manager owns.</p>
 <p>What they do share is the host: one Docker daemon, one port space, one
 filesystem, one set of CPUs. morzer does not pretend otherwise. This page is
