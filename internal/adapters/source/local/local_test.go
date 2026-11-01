@@ -227,6 +227,26 @@ func TestFetchCopiesRatherThanLinking(t *testing.T) {
 	}
 }
 
+// TestADirectoryNamedLikeAnArchiveIsADirectory: the suffix says how to read a
+// file, and a directory is read as one whatever it is called.
+func TestADirectoryNamedLikeAnArchiveIsADirectory(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "demo.tar.zst")
+	if err := copyTree(bundleDir(t), src); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "release")
+
+	if _, err := local.New().Fetch(context.Background(), ref(src), dest); err != nil {
+		t.Fatalf("a bundle directory named like an archive was not fetched: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "manifest.yaml")); err != nil {
+		t.Errorf("the manifest did not arrive: %v", err)
+	}
+	if _, err := local.New().Resolve(context.Background(), ref(src)); err != nil {
+		t.Errorf("a bundle directory named like an archive was not resolved: %v", err)
+	}
+}
+
 // TestFetchIntoTheSourceItselfIsANoOp. The walk would otherwise recurse into
 // its own output.
 func TestFetchIntoTheSourceItselfIsANoOp(t *testing.T) {

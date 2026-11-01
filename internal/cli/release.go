@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
+	"github.com/morzecrew/morzer/internal/adapters/source/local"
 	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -178,10 +179,11 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 		Short: "Show a release manifest; the installed one when no version is given",
 		Long: "The manifest as the manager reads it: images, profiles, the digest and\n" +
 			"the compatibility declarations that `update` and `rollback` gate on.\n\n" +
-			"Reads what is installed. To inspect a bundle that is not installed yet,\n" +
-			"unpack it: `release verify <bundle-dir>` checks it and names what it is.",
+			"Reads what is installed, or the bundle a path names: its directory, or\n" +
+			"the tar.zst archive `release archive` writes.",
 		Example: "  morzer release show\n" +
 			"  morzer release show 1.4.0\n" +
+			"  morzer release show ./demo-1.4.0.tar.zst\n" +
 			"  morzer release show --json | jq .manifest.compatibility",
 		Args: cobra.MaximumNArgs(1),
 		// A directory is accepted too, so a name no version matches falls back
@@ -191,6 +193,19 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 			return out, cobra.ShellCompDirectiveDefault
 		}),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// A file is a bundle or nothing: an archive, which names
+			// itself as the root because the directory it was read
+			// from is removed before the command returns, or a file
+			// openBundle says is not one.
+			if len(args) == 1 && isFile(args[0]) {
+				rel, cleanup, err := openBundle(args[0])
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				return app.render(views.Release{Manifest: rel.Manifest, Root: args[0], Digest: rel.Digest})
+			}
+
 			root, err := app.releaseRoot(cmd.Context(), args)
 			if err != nil {
 				return err
@@ -226,6 +241,8 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			"and parameter variables and the services secrets restart against the\n" +
 			"manifest, computes the content digest, and verifies SHA256SUMS when the\n" +
 			"bundle ships one.\n\n" +
+			"The path is a bundle directory, or the tar.zst archive `release archive`\n" +
+			"writes, unpacked under the same limits `init` applies.\n\n" +
 			"Pass --signing-key to check the bundle's signature too. This is the\n" +
 			"command a bundle vendor runs in their own CI, so it needs no\n" +
 			"installation on the machine.\n\n" +
@@ -235,15 +252,15 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			"choose. What it adds is what only executing finds: a field used through\n" +
 			"a dot range or with moved, and a function given the wrong type.",
 		Example: "  morzer release verify ./bundle\n" +
+			"  morzer release verify ./demo-1.4.0.tar.zst --signing-key RWQ…\n" +
 			"  morzer release verify ./bundle --signing-key RWQ… --render-check",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := args[0]
-
-			rel, err := release.Load(path)
+			rel, cleanup, err := openBundle(args[0])
 			if err != nil {
 				return err
 			}
+			defer cleanup()
 
 			// The vendor's CI is the one place a deprecation warning
 			// can still change the bundle before anyone installs it.
@@ -683,6 +700,35 @@ func pruneSummary(res ops.PruneResult) string {
 		lines = append(lines, fmt.Sprintf("%s no images: %s", removed, res.Images.Skipped))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// openBundle loads the bundle at path: a directory, or a tar.zst archive of
+// one, unpacked into a temporary directory that cleanup removes.
+//
+// Unpacked by the local source rather than here, so the limits that
+// stop a hostile archive are the ones `init` and `update` apply, and an error
+// about the contents names the archive rather than a directory that is gone.
+func openBundle(path string) (domain.Release, func(), error) {
+	if !local.IsArchive(path) {
+		rel, err := release.Load(path)
+		return rel, func() {}, err
+	}
+	tmp, err := os.MkdirTemp("", "morzer-bundle-")
+	if err != nil {
+		return domain.Release{}, func() {}, domain.Internal(err, "cannot create a temporary directory")
+	}
+	cleanup := func() { _ = atomicfs.RemoveAll(tmp) }
+	rel, err := local.New().Unpack(path, tmp)
+	if err != nil {
+		cleanup()
+		return domain.Release{}, func() {}, err
+	}
+	return rel, cleanup, nil
+}
+
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // releaseRoot resolves an optional version argument to a release directory.

@@ -27,10 +27,13 @@ kept regardless.
 ## release show
 
 ```sh
-morzer release show [version]
+morzer release show [version | bundle-dir | archive]
 ```
 
-Shows a release manifest — the installed one when no version is given.
+Shows a release manifest — the installed one when no version is given. A path
+shows a bundle that is not installed: its directory, or the `tar.zst` archive
+[`release archive`](#release-archive) writes, whose path is then reported as the
+root.
 
 ## release new
 
@@ -79,6 +82,12 @@ Validates a bundle's manifest, **parses every template it declares and checks
 what each one names**, checks the runtime files against the manifest, and
 checks its integrity, without installing anything. This is the command a bundle
 vendor runs in their own CI.
+
+The path is a bundle directory, or the `tar.zst` archive
+[`release archive`](#release-archive) writes — the file that actually reaches a
+customer. An archive is unpacked into a temporary directory under the limits
+`init` applies, checked exactly as its directory would be, `--signing-key` and
+`--digest` included, and removed afterwards.
 
 The template pass reads templates; it does not render them. It refuses a
 template that does not parse, and one that names a secret your schema does not
