@@ -287,6 +287,90 @@ func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, se
 	return parseServiceImages(res.Stdout)
 }
 
+var _ ports.DefinitionDrifter = (*Runtime)(nil)
+
+// DefinitionDrift compares each service's declared definition hash, from
+// `compose config --hash '*'`, with the `com.docker.compose.config-hash` label
+// on its containers, from `compose ps --all` (RFC 0044 §5.4). The hash is what
+// `up` compares to decide whether to re-create a container, so a mismatch is
+// exactly a service the next `up` would re-create. Measured with Compose 5.5.1.
+func (r *Runtime) DefinitionDrift(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceDefinition, error) {
+	cmd := r.command(cfg, 60*time.Second, r.args(cfg, "config", "--hash", "*")...)
+	cmd.OnLine = nil
+	res, err := r.runner.Run(ctx, cmd)
+	if err != nil {
+		return nil, wrapExit(err, "cannot read the services' definition hashes",
+			"`docker compose config --hash '*'` needs a Compose that supports it")
+	}
+	declared, err := parseConfigHashes(res.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd = r.command(cfg, 60*time.Second, r.args(cfg, "ps", "--all", "--format", "json")...)
+	cmd.OnLine = nil
+	res, err = r.runner.Run(ctx, cmd)
+	if err != nil {
+		return nil, wrapExit(err, "cannot read service status",
+			"check that the Docker daemon is running: `docker info`")
+	}
+	entries, err := parsePSEntries(res.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]ports.ServiceDefinition, 0, len(declared))
+	index := make(map[string]int, len(declared))
+	for _, d := range declared {
+		index[d.Service] = len(out)
+		out = append(out, d)
+	}
+	for _, e := range entries {
+		// A `compose run` container carries a hash of its own, and `up`
+		// never re-creates it.
+		if label(e.Labels, "com.docker.compose.oneoff") == "True" {
+			continue
+		}
+		i, ok := index[e.Service]
+		if !ok {
+			continue // an orphan, which `up --remove-orphans` handles
+		}
+		out[i].Running = append(out[i].Running, label(e.Labels, "com.docker.compose.config-hash"))
+	}
+	return out, nil
+}
+
+// parseConfigHashes reads `compose config --hash`'s `<service> <hash>` lines,
+// in the order printed.
+func parseConfigHashes(raw string) ([]ports.ServiceDefinition, error) {
+	var out []ports.ServiceDefinition
+	for line := range strings.SplitSeq(strings.TrimSpace(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if len(fields) != 2 {
+			return nil, domain.RuntimeError(nil, "cannot parse compose config --hash output: %q", line)
+		}
+		out = append(out, ports.ServiceDefinition{Service: fields[0], Declared: fields[1]})
+	}
+	return out, nil
+}
+
+// label reads one label from `ps`'s comma-separated Labels. A value can itself
+// hold commas -- the config_files label lists every file -- so a key is looked
+// for only at the start of the string or right after a comma.
+func label(labels, key string) string {
+	for rest := labels; rest != ""; {
+		item, next, _ := strings.Cut(rest, ",")
+		if k, v, ok := strings.Cut(item, "="); ok && k == key {
+			return v
+		}
+		rest = next
+	}
+	return ""
+}
+
 // parseServiceImages extracts each service's image from `compose config
 // --format json`. A service with no image, one built rather than pulled, is
 // reported with an empty reference rather than left out: it is still a service
@@ -618,6 +702,8 @@ type psEntry struct {
 	Health   string `json:"Health"`
 	ExitCode int    `json:"ExitCode"`
 	Status   string `json:"Status"`
+	// Labels is every label, comma-separated, as one string.
+	Labels string `json:"Labels"`
 }
 
 // Status reports the state of every service.
