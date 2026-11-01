@@ -40,6 +40,7 @@ func TestNotifyTargetAddRefusesWhatTheWiringWouldDrop(t *testing.T) {
 	r.SetSecret("plain_url", "http://hooks.example/T0/B1/XXsecretXX")
 	r.SetSecret("bad_header", "header: Authorization Bearer\nvalue: x\n")
 	r.SetSecret("bad_value", "header: Authorization\nvalue: \"Bearer a\\nX-Injected: b\"\n")
+	r.SetSecret("id_header", "header: idempotency-key\nvalue: x\n")
 
 	for name, tc := range map[string]struct {
 		args []string
@@ -66,6 +67,8 @@ func TestNotifyTargetAddRefusesWhatTheWiringWouldDrop(t *testing.T) {
 		// net/http refuses these at every delivery, which drops them.
 		"a header name http refuses":  {[]string{"https://hooks.example/a", "--credentials", "bad_header"}, "not a valid HTTP header"},
 		"a header value http refuses": {[]string{"https://hooks.example/a", "--credentials", "bad_value"}, "not a valid HTTP header"},
+		// It would replace every event's id with one value.
+		"the event id's header": {[]string{"https://hooks.example/a", "--credentials", "id_header"}, "Idempotency-Key"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			res := r.Run(append([]string{"notify", "target", "add"}, tc.args...)...).

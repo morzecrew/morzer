@@ -83,7 +83,8 @@ emits. A service wanting a different body gets a two-line receiver.
 
 Each event sent to a target carries an `id`, such as `evt_01J…`, in the body and
 as the `Idempotency-Key` header. A retried event carries the same `id`, so a
-receiver that keeps the ones it has seen can drop the duplicate.
+receiver that keeps the ones it has seen can drop the duplicate. A
+`--credentials` document cannot name that header.
 
 ### What is not sent, and why
 

@@ -55,3 +55,22 @@ proposal: ASSUMED — an event the adapter cannot encode, or a request it cannot
 ```
 
 **Drift count: 0.**
+
+Review found a gap decision 3 leaves: the credential document names any header,
+and `post` sets it after `Idempotency-Key`, so a document naming that header
+replaces every event's id with one fixed value, and a receiver that drops
+duplicates drops every event after the first.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T07:10:00Z
+attempt: 1
+claim: a notify credential whose header is `Idempotency-Key` replaces the event id on every request
+evidence: internal/adapters/notify/webhook/webhook.go:181
+action: decided
+proposal: ASSUMED — a credential document naming `Idempotency-Key`, in any case, is refused where the other bad credentials are, so `notify target add` refuses it and `doctor` names it.
+```
+
+**Drift count: 0.**

@@ -113,6 +113,14 @@ func ResolveNotifyTarget(
 			WithHint("a header name is one token, such as `Authorization`, and " +
 				"its value is one line")
 	}
+	// The webhook sends each event's id in this header (RFC 0043 decision 3),
+	// and a credential naming it would replace every id with one value, so a
+	// receiver dropping duplicates would drop every event after the first.
+	if strings.EqualFold(creds.Header, "Idempotency-Key") {
+		return NotifyEndpoint{}, domain.ValidationError(nil,
+			"the secret %q names the header Idempotency-Key, which carries each event's id", cfg.Credentials).
+			WithHint("name the header the receiver authenticates with, such as `Authorization`")
+	}
 	out.Header, out.Value = creds.Header, creds.Value
 	return out, nil
 }
