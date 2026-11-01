@@ -3,9 +3,11 @@ package compose
 import (
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 
@@ -24,8 +26,10 @@ var interpolation = regexp.MustCompile(`\$\$|\$\{?([A-Za-z_][A-Za-z0-9_]*)`)
 // merge of them, because it runs where no Docker is installed.
 //
 // Values only: Compose interpolates no key and no comment, so a commented-out
-// line naming a variable is not a reference to it. A file with `include` takes
-// services from files this does not follow, and says so.
+// line naming a variable is not a reference to it. An `include` is followed as
+// Compose follows it, relative to the file that includes it, while it stays
+// inside the bundle; one that does not, such as a remote one, leaves the
+// services it adds unknown, and says so.
 func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
@@ -36,8 +40,17 @@ func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, er
 	var out ports.BundleFiles
 	services := map[string]bool{}
 	variables := map[string]bool{}
-	for _, name := range files {
-		raw, err := dir.ReadFile(filepath.ToSlash(filepath.Clean(name)))
+	seen := map[string]bool{}
+	queue := slices.Clone(files)
+	for len(queue) > 0 {
+		name := path.Clean(filepath.ToSlash(queue[0]))
+		queue = queue[1:]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		raw, err := dir.ReadFile(name)
 		if err != nil {
 			return ports.BundleFiles{}, domain.ValidationError(err, "cannot read %s", name)
 		}
@@ -51,14 +64,58 @@ func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, er
 				services[service] = true
 			}
 		}
-		if _, ok := doc["include"]; ok {
+		included, complete := includes(doc["include"])
+		if !complete {
 			out.ServicesPartial = true
+		}
+		for _, inc := range included {
+			queue = append(queue, path.Join(path.Dir(name), inc))
 		}
 		collectVariables(doc, variables)
 	}
 	out.Services = slices.Sorted(maps.Keys(services))
 	out.Variables = slices.Sorted(maps.Keys(variables))
 	return out, nil
+}
+
+// includes returns the bundle-relative paths an `include` names, in its short
+// and long spellings, and whether that is all of them: a remote or absolute
+// one, or a shape this does not know, is not followed.
+func includes(v any) ([]string, bool) {
+	if v == nil {
+		return nil, true
+	}
+	entries, ok := v.([]any)
+	if !ok {
+		return nil, false
+	}
+	var out []string
+	complete := true
+	add := func(p any) {
+		s, ok := p.(string)
+		if !ok || path.IsAbs(s) || strings.Contains(s, "://") || strings.HasPrefix(s, "git@") {
+			complete = false
+			return
+		}
+		out = append(out, s)
+	}
+	for _, e := range entries {
+		switch t := e.(type) {
+		case string:
+			add(t)
+		case map[string]any:
+			if paths, ok := t["path"].([]any); ok {
+				for _, p := range paths {
+					add(p)
+				}
+			} else {
+				add(t["path"])
+			}
+		default:
+			complete = false
+		}
+	}
+	return out, complete
 }
 
 func collectVariables(v any, into map[string]bool) {

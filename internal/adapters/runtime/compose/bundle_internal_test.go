@@ -40,10 +40,31 @@ func TestReadBundleReportsWhatTheFilesDefineAndInterpolate(t *testing.T) {
 	}, got.Variables)
 }
 
-func TestReadBundleSaysWhenAFileIncludesServicesItDoesNotRead(t *testing.T) {
+// TestReadBundleFollowsAnIncludeInsideTheBundle reads an included file as
+// Compose does, relative to the file including it, in both spellings.
+func TestReadBundleFollowsAnIncludeInsideTheBundle(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "compose", "db"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "compose", "compose.yaml"),
+		[]byte("include:\n  - other.yaml\n  - path: [db/db.yaml]\nservices:\n  app:\n    image: x\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "compose", "other.yaml"),
+		[]byte("services:\n  worker:\n    image: ${DEMO_IMAGE_WORKER}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "compose", "db", "db.yaml"),
+		[]byte("include: [../other.yaml]\nservices:\n  db:\n    image: ${DEMO_IMAGE_DB}\n"), 0o600))
+
+	got, err := (&Runtime{}).ReadBundle(root, []string{"compose/compose.yaml"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"app", "db", "worker"}, got.Services)
+	assert.False(t, got.ServicesPartial)
+	assert.Equal(t, []string{"DEMO_IMAGE_DB", "DEMO_IMAGE_WORKER"}, got.Variables)
+}
+
+// An include the reader cannot follow inside the bundle, such as a remote one,
+// leaves the services it would add unknown.
+func TestReadBundleSaysWhenAnIncludeIsOutOfReach(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "compose.yaml"),
-		[]byte("include:\n  - other.yaml\nservices:\n  app:\n    image: x\n"), 0o600))
+		[]byte("include:\n  - oci://registry.example/stack:1\nservices:\n  app:\n    image: x\n"), 0o600))
 
 	got, err := (&Runtime{}).ReadBundle(root, []string{"compose.yaml"})
 	require.NoError(t, err)
