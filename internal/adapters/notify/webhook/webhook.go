@@ -28,6 +28,9 @@ import (
 // down.
 const DefaultTimeout = 5 * time.Second
 
+// DefaultRetryAfter is the pause before the one retry (RFC 0043 decision 1).
+const DefaultRetryAfter = time.Second
+
 // Notifier posts events to one endpoint.
 type Notifier struct {
 	name     string
@@ -36,6 +39,8 @@ type Notifier struct {
 	value    string
 	minLevel events.Level
 	client   *http.Client
+
+	retryAfter time.Duration
 }
 
 var _ ports.Notifier = (*Notifier)(nil)
@@ -61,6 +66,9 @@ type Options struct {
 
 	// Client is injectable for tests. Nil takes a bounded default.
 	Client *http.Client
+
+	// RetryAfter is injectable for tests. Zero takes DefaultRetryAfter.
+	RetryAfter time.Duration
 }
 
 // New builds a notifier, refusing an endpoint it should not talk to.
@@ -103,14 +111,19 @@ func New(opts Options) (*Notifier, error) {
 	if name == "" {
 		name = "webhook"
 	}
+	retryAfter := opts.RetryAfter
+	if retryAfter == 0 {
+		retryAfter = DefaultRetryAfter
+	}
 
 	return &Notifier{
-		name:     name,
-		url:      url,
-		header:   opts.Header,
-		value:    opts.Value,
-		minLevel: level,
-		client:   client,
+		name:       name,
+		url:        url,
+		header:     opts.Header,
+		value:      opts.Value,
+		minLevel:   level,
+		client:     client,
+		retryAfter: retryAfter,
 	}, nil
 }
 
@@ -121,25 +134,51 @@ func New(opts Options) (*Notifier, error) {
 // where it would surface.
 func (n *Notifier) Name() string { return n.name }
 
-// Notify posts one event.
+// Notify posts one event, and once more after a pause when the answer could
+// change in a second: no answer at all, a 408, a 429 or a 5xx (RFC 0043 §5.1).
+// The retry waits inside the caller's deadline, which is unchanged, so the
+// longest an operation can wait is too. A target that times out twice holds
+// it for 11 seconds rather than 5, still inside that deadline.
 //
 // Returning an error is informational -- the lifecycle layer logs and drops it.
-// See ports.Notifier.
+// See ports.Notifier. It is a *ports.DeliveryError.
 func (n *Notifier) Notify(ctx context.Context, ev events.Event) error {
 	if !n.accepts(ev) {
 		return nil
 	}
 
+	// Failures before a request exists are final: the same event would
+	// fail the same way.
 	body, err := json.Marshal(ev)
 	if err != nil {
-		return domain.Internal(err, "cannot serialise an event for %s", n.name)
+		return n.failed(false, domain.Internal(err, "cannot serialise an event for %s", n.name))
 	}
 
+	status, err := n.post(ctx, body, ev.ID)
+	if err != nil && retried(status) {
+		select {
+		case <-time.After(n.retryAfter):
+			status, err = n.post(ctx, body, ev.ID)
+		case <-ctx.Done():
+		}
+	}
+	if err != nil {
+		return n.failed(resendable(status), err)
+	}
+	return nil
+}
+
+// post makes one attempt, and reports the status it was answered with, or 0
+// when there was no answer.
+func (n *Notifier) post(ctx context.Context, body []byte, id string) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.url, bytes.NewReader(body))
 	if err != nil {
-		return domain.RuntimeError(err, "cannot build a request for %s", n.name)
+		return -1, domain.RuntimeError(err, "cannot build a request for %s", n.name)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if id != "" {
+		req.Header.Set("Idempotency-Key", id)
+	}
 	if n.header != "" {
 		req.Header.Set(n.header, n.value)
 	}
@@ -148,15 +187,41 @@ func (n *Notifier) Notify(ctx context.Context, ev events.Event) error {
 	if err != nil {
 		// The URL is never in the message: net/http puts it in its own
 		// error string, which is why the cause is not wrapped.
-		return domain.RuntimeError(nil, "cannot reach the notify target %s", n.name)
+		return 0, domain.RuntimeError(nil, "cannot reach the notify target %s", n.name)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return domain.RuntimeError(nil,
+		return resp.StatusCode, domain.RuntimeError(nil,
 			"the notify target %s answered %d", n.name, resp.StatusCode)
 	}
-	return nil
+	return resp.StatusCode, nil
+}
+
+func (n *Notifier) failed(resendable bool, err error) error {
+	return &ports.DeliveryError{Target: n.name, Resendable: resendable, Err: err}
+}
+
+// retried is an answer that may change in a second: none (a refused
+// connection or a timeout), a 408, a 429 or a 5xx. A status of 600 or more
+// counts as a 5xx, as RFC 9110 §15 asks of a client.
+func retried(status int) bool {
+	return status == 0 || status == http.StatusRequestTimeout ||
+		status == http.StatusTooManyRequests || status >= 500
+}
+
+// resendable is an answer a later send could get past (RFC 0043 decisions 1
+// and 13): what is retried, a credential or a URL that can be fixed, and a
+// redirect, which the client refuses to follow and so returns as the answer.
+// Any other 4xx refuses the content itself.
+func resendable(status int) bool {
+	switch {
+	case retried(status), status >= 300 && status < 400:
+		return true
+	default:
+		return status == http.StatusUnauthorized || status == http.StatusForbidden ||
+			status == http.StatusNotFound
+	}
 }
 
 // accepts applies the per-target severity floor.

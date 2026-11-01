@@ -81,6 +81,11 @@ Three kinds of event, and no others:
 The payload is the manager's own event JSON, the same shape `--log-format json`
 emits. A service wanting a different body gets a two-line receiver.
 
+Each event sent to a target carries an `id`, such as `evt_01J…`, in the body and
+as the `Idempotency-Key` header. A retried event carries the same `id`, so a
+receiver that keeps the ones it has seen can drop the duplicate. A
+`--credentials` document cannot name that header.
+
 ### What is not sent, and why
 
 Step output is never forwarded. It carries raw hook stdout, `docker compose`
@@ -95,9 +100,14 @@ terminal is for.
 
 ## What you should not build on it
 
-**Delivery is at-most-once.** One attempt per target, five seconds each, fifteen
-seconds for the whole fan-out, no retries and no queue. A target that was down
-means you were not told.
+**Delivery is best-effort.** Each target gets five seconds per attempt, and
+fifteen seconds cover the whole fan-out. A target that did not answer, or
+answered 408, 429 or a 5xx, is tried once more after a second, inside those
+fifteen. Nothing else is retried, and nothing is queued. A target that was down
+for longer means you were not told.
+
+A target can receive an event twice: the first attempt may have arrived and its
+answer been lost. The `id` is how to tell.
 
 This is a deliberate choice rather than a gap: a queue that survives reboots is
 a different component with different failure modes, and a one-shot CLI is a poor

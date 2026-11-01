@@ -85,6 +85,11 @@ const (
 // Events carry no secrets. The engine redacts before publishing, so a
 // presenter can never be the thing that leaks one.
 type Event struct {
+	// ID is set on an event forwarded to a notify target, once, and kept
+	// across a redelivery, so a receiver can tell a retry from a second
+	// event (RFC 0043 decision 3).
+	ID string `json:"id,omitempty"`
+
 	Kind Kind      `json:"kind"`
 	At   time.Time `json:"at"`
 
