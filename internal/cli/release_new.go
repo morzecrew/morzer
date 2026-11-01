@@ -187,9 +187,13 @@ func scaffoldFiles(name, vendor string) map[string]string {
 // error rather than a TODO nobody removed.
 const placeholderDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
+// placeholderDescription opens the description the scaffold writes. Matched
+// whole, so a real description that starts with the letters is not refused.
+const placeholderDescription = "TODO -- "
+
 // scaffoldPlaceholders names what the scaffold left for the vendor to fill in
-// and is still there: an image pinned to placeholderDigest, and a description
-// starting with TODO.
+// and is still there: an image pinned to placeholderDigest, and the description
+// it writes, which starts with placeholderDescription.
 //
 // `verify` warns about them, because the scaffold must verify unedited (RFC
 // 0013 decision 11), and `build` refuses them, as it refuses the placeholder
@@ -203,7 +207,7 @@ func scaffoldPlaceholders(m domain.Manifest) []string {
 				name, placeholderDigest))
 		}
 	}
-	if strings.HasPrefix(m.Metadata.Description, "TODO") {
+	if strings.HasPrefix(m.Metadata.Description, placeholderDescription) {
 		out = append(out, "metadata.description is still the scaffold's TODO")
 	}
 	return out
@@ -222,7 +226,7 @@ metadata:
   # and VERSION together; hand-maintaining the one field the tooling owns is how
   # the two come to disagree.
   version: 0.0.0
-  description: TODO -- one line, shown by ` + "`release show`" + `
+  description: ` + placeholderDescription + `one line, shown by ` + "`release show`" + `
   vendor: __VENDOR__
   release_notes: RELEASE.md
   # support_url: https://support.example/__NAME__

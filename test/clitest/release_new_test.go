@@ -96,7 +96,7 @@ func TestTheScaffoldsPlaceholdersAreWhatTheBuildRefuses(t *testing.T) {
 	r.Run("release", "build", dir, "--version", "0.1.0").Failed().
 		SaysAll("images.app is pinned to the placeholder digest", "metadata.description")
 	r.Run("release", "verify", dir).ExitCode(0).
-		SaysAll("warning: images.app", "`release build` refuses it")
+		SaysAll("warning: images.app", "warning: metadata.description", "`release build` refuses it")
 
 	manifest := filepath.Join(dir, "manifest.yaml")
 	raw, err := os.ReadFile(manifest)
@@ -104,7 +104,7 @@ func TestTheScaffoldsPlaceholdersAreWhatTheBuildRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	filled := strings.Replace(string(raw), strings.Repeat("0", 64), strings.Repeat("1", 64), 1)
-	filled = strings.Replace(filled, "description: TODO", "description: My product. Formerly TODO", 1)
+	filled = strings.Replace(filled, "description: TODO -- ", "description: TODOist, ", 1)
 	if err := os.WriteFile(manifest, []byte(filled), 0o600); err != nil {
 		t.Fatal(err)
 	}
