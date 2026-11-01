@@ -138,3 +138,39 @@ proposal: ASSUMED — every `config` command that loads the installed release ve
 ```
 
 **Drift count: 0.**
+
+Two of the entries above are corrected by review, in place of an edit.
+
+The 21:12 entry read a gap where there was none. Decision 10 scrubs "every diff
+before it is shown", which takes in the plan's diff once §5.5 builds it on the
+same comparison. The plan's diff is scrubbed as decided, so that entry records
+no departure:
+
+```divergence
+decision: 10
+grade: ASSUMED
+kind: resolved
+at: 2026-11-01T08:10:00Z
+attempt: 1
+claim: decision 10 covers the plan's diff, and `apply --dry-run` scrubs it as decided
+evidence: internal/lifecycle/ops/apply.go:537
+action: decided
+```
+
+The 21:48 entry is a `spec-gap`, not a `discovery`: decisions 1 and 4 read
+together hold an installation nothing has applied, which was knowable from the
+RFC before any code. The same departure, classed as it should have been:
+
+```divergence
+decision: 1
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-01T08:10:00Z
+attempt: 1
+claim: counting an absent target as drift makes the unattended gate hold an installation that was never applied, where no edit could be lost
+evidence: internal/lifecycle/ops/config_diff.go:196
+action: departed
+proposal: ASSUMED — the unattended gate counts only the differing targets that exist on disk; `config diff` and `config.drift` still count an absent one, as decision 1 says.
+```
+
+**Drift count: 0.**
