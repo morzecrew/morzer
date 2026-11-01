@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -428,6 +429,38 @@ func TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare(t *tes
 	restore()
 
 	r.Run("release", "verify", r.Bundle).ExitCode(0)
+}
+
+// TestVerifyAndShowReadTheArchiveAnAuthorShips: the archive `release archive`
+// writes is what reaches a customer, so it is what an author checks. It is
+// unpacked as `init` unpacks one, checked as its directory would be, and the
+// temporary directory it was unpacked into is gone afterwards.
+func TestVerifyAndShowReadTheArchiveAnAuthorShips(t *testing.T) {
+	r := clitest.New(t)
+	r.Run("release", "build", r.Bundle).ExitCode(0)
+	archive := filepath.Join(t.TempDir(), "demo-1.2.0.tar.zst")
+	r.Run("release", "archive", r.Bundle, "--output", archive).ExitCode(0)
+
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+
+	digest, ok := r.Run("--json", "release", "verify", r.Bundle).ExitCode(0).Field("data.digest").(string)
+	require.True(t, ok, "verify --json reports the digest")
+	r.Run("release", "verify", archive, "--digest", digest).ExitCode(0).
+		OutputContains("bundle is valid")
+	r.Run("release", "show", archive).ExitCode(0).
+		OutputContains("demo").ShowsPath(archive)
+
+	left, err := os.ReadDir(scratch)
+	require.NoError(t, err)
+	assert.Empty(t, left, "the archive was unpacked into a directory nothing removed")
+
+	gz := filepath.Join(t.TempDir(), "demo-1.2.0.tar.gz")
+	raw, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(gz, raw, 0o600))
+	r.Run("release", "verify", gz).Failed().
+		SaysAll("is not a directory", "tar.zst archive", "`morzer release archive` writes")
 }
 
 // TestRenderCheckIsOptIn.
