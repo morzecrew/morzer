@@ -15,9 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same `id`.
 
 - **`doctor` runs on a timer and notifies what it finds.** With a notify
-  target configured, a morning timer runs `doctor --unattended` and sends one
-  `doctor.finished` naming what warns or fails; `doctor.schedule` and
-  `doctor.scheduled` set it. Installation state moves to schema 15.
+  target configured, a timer runs `doctor --unattended` each morning by default
+  and sends one `doctor.finished` naming what warns or fails; `doctor.schedule`
+  moves it and `doctor.scheduled=false` removes it. State moves to schema 15.
 
 - **`morzer config diff` shows a hand edit before `apply` replaces it.** It
   prints where configuration files differ from what the release renders,
