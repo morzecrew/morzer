@@ -51,3 +51,25 @@ proposal: ASSUMED — a regular file that is not a tar.zst archive is refused sa
 ```
 
 **Drift count: 0.**
+
+## Corrected in review
+
+The 23:10 entry unpacked through `Fetch` and then loaded the bundle again, and
+both it and `Fetch` took the `tar.zst` suffix to mean an archive, so a bundle
+directory named `demo.tar.zst` was extracted, and refused, at `init` and
+`update` as well as here. The suffixes are `.tar.zst` and `.tzst`; the
+23:11 entry's "tar.zst" names the format, not one spelling of it.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T00:10:00Z
+attempt: 2
+claim: a directory named with an archive suffix was read as an archive, and an archive given to verify was loaded twice
+evidence: internal/adapters/source/local/local.go:124
+action: decided
+proposal: ASSUMED — an archive is a regular file with a tar.zst suffix, decided once by `local.IsArchive` for the source and the CLI alike; `verify` and `show` unpack through the source's `Unpack`, which `Fetch` uses too and which returns the release it loaded. `show` given any other file says what a bundle is, as `verify` does.
+```
+
+**Drift count: 0.**

@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the build as 0.0.0 already did. `release verify` warns about
   both and still passes.
 
+### Fixed
+
+- **A bundle directory named like an archive is read as a directory.** `init`,
+  `update` and `release fetch` tried to extract a directory whose name ends in
+  `.tar.zst` or `.tzst`, and refused it.
+
 ## [0.11.0] - 2026-11-01
 
 An operator can now see what a machine did and what it is about to do: `morzer
