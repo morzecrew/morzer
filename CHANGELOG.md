@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`morzer config diff` shows a hand edit before `apply` replaces it.** It
-  prints where each configuration file differs from what the release renders,
-  scrubbed of secret values. `doctor` warns as `config.drift`, and an unattended
-  update leaves the release staged while an edited file would be replaced.
+  prints where configuration files differ from what the release renders,
+  scrubbed of this installation's secrets. `doctor` warns as `config.drift`,
+  and an unattended update leaves the release staged while an edited file would
+  be replaced.
 
 - **`config set` changes the signature requirement, domains and retention
   after `init`.** `release.require_signature=true` lets an installation made
