@@ -19,10 +19,10 @@ target was down for is kept and sent later, and a scheduled `doctor` reports
 what warns or fails.
 
 Upgrading moves installation state from schema 13 to 15, so a 0.10.0 manager
-refuses a machine 0.11.0 has run on. The first `apply` or `update` after
-upgrading rewrites the systemd units: the backup unit learns to skip a stopped
-product, and a machine with a notify target gains `<product>-doctor.timer`.
-Scripts and receivers may notice:
+refuses a machine 0.11.0 has run on. The first `apply`, `start` or `update`
+after upgrading rewrites the systemd units: the backup unit learns to skip a
+stopped product, and a machine with a notify target gains
+`<product>-doctor.timer`. Scripts and receivers may notice:
 
 - An unattended update leaves the release staged, not installed, while a
   configuration file on disk differs from what the installed release renders.
