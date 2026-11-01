@@ -1,7 +1,9 @@
 # RFC 0044 — Configuration drift an operator can see
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
-  `OPEN` rows as recommended. P1 is ready to build
+- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-10-31:
+  §11's `OPEN` rows as recommended. **P1 built 2026-10-31** in #235; the six
+  entries its build and review wrote in [logs/config-drift.md](../logs/config-drift.md) are decisions 12–17. P2 is ready
+  to build
 - **Scope:** Where the files on disk differ from what the installed release
   renders from the recorded parameters, shown on the machine: a command that
   prints the differences, and a `doctor` check that warns about them. P2 adds
@@ -294,6 +296,12 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 9 | `ASSUMED` | Secret values are never compared or shown. The invariant is the support bundle's: the render context holds secret references, not values. *(Superseded by decision 10.)* |
 | 10 | `ASSUMED` | *(2026-10-31, from the review.)* Every diff is scrubbed by the redactor before it is shown, on both sides: the rendered side holds no secret value by the support bundle's invariant, but the on-disk side holds whatever was pasted into it. When redaction cannot be armed, no diff lines are shown, only the target names. |
 | 11 | `ASSUMED` | *(2026-10-31, from the review.)* P2 reads definition hashes through an optional `ports.DefinitionDrifter`, type-asserted as `ImageRemover` is. A service drifts when any container's hash differs from the declared one, stopped containers included. A service with no container and an orphan container are not drift, and a runtime that cannot answer is not compared. |
+| 12 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 10.** The redactor is armed only when a file differs, and `redacted` is false only when a file differs and its lines could not be scrubbed. See [logs/config-drift.md](../logs/config-drift.md) (decision 10, attempt 1, 21:13). |
+| 13 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 1.** With no differing target, `config.drift` is ok and names the unreadable ones; an unreadable target never makes it warn. See [logs/config-drift.md](../logs/config-drift.md) (decision 1, attempt 1, 21:14). |
+| 14 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* A tick that cannot compare the configuration files leaves the release staged, with the reason, as it does for drift; unreadable targets do not hold it. See [logs/config-drift.md](../logs/config-drift.md) (unlisted, attempt 1, 21:15). |
+| 15 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decisions 1 and 4.** The unattended gate counts only the differing targets that exist on disk: an absent file holds no edit to lose, and counting it held an installation nothing had applied on its first unattended update. `config diff` and `config.drift` still count an absent target. Ruled by the author 2026-11-01. See [logs/config-drift.md](../logs/config-drift.md) (decision 1, attempt 1, 2026-11-01T08:10, which reclassifies the 21:48 entry). |
+| 16 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* Every `config` command that loads the installed release verifies it against the digest recorded at install, as `apply` does, and refuses a release directory changed since. See [logs/config-drift.md](../logs/config-drift.md) (unlisted, attempt 1, 07:47). |
+| 17 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* The tick reports a candidate that failed to install before the drift gate: it is not retried, so it replaces nothing, and its reason says how to retry it. Drift holds every candidate the tick would install. See [logs/config-drift.md](../logs/config-drift.md) (unlisted, attempt 1, 08:12). |
 
 ## 12. Phasing
 

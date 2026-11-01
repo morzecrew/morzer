@@ -1,7 +1,9 @@
 # RFC 0043 — Notifications that survive a failed delivery, and a scheduled doctor
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
-  `OPEN` rows as recommended. P1 is ready to build
+- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-10-31:
+  §11's `OPEN` rows as recommended. **P1 built 2026-10-31** in #234; the three
+  entries its build and review wrote in [logs/notify-retry.md](../logs/notify-retry.md) are decisions 14–16. P2 is ready
+  to build
 - **Scope:** Two gaps in how a machine nobody is watching tells someone.
   First, a notification that does not reach its target is lost: there is no
   retry and nothing is kept (RFC 0015 decision 6). Second, nothing runs
@@ -306,6 +308,9 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 11 | `ASSUMED` | *(2026-10-31, from the review.)* One sender at a time: sending the outbox takes the `notify-outbox` lock without waiting, and a sender that finds it held sends nothing. Each entry is deleted under the lock once its target answers. |
 | 12 | `ASSUMED` | *(2026-10-31, from the review.)* `config.operations` skips the unfinished record whose id is the deployment lock holder's `OperationID` (`Locker.Owner`), and only while that record is `running`. Every `doctor` run does this. |
 | 13 | `ASSUMED` | *(2026-10-31, from the review.)* A 3xx is resendable and not retried at once. The client refuses redirects, so a redirect is an answer, and a fixed URL can still deliver it. |
+| 14 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 3.** The event id is `evt_` and a ULID, minted in `ops.notify` once the event passes the allowlist; an event that already has one keeps it. See [logs/notify-retry.md](../logs/notify-retry.md) (decision 3, attempt 1). |
+| 15 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 1.** An event the adapter cannot encode, or a request it cannot build, is a final `DeliveryError` and is not retried: the same event would fail the same way. See [logs/notify-retry.md](../logs/notify-retry.md) (decision 1, attempt 1, 2026-11-01T07:45). |
+| 16 | `ASSUMED` | *(2026-11-01, from the review; accepted 2026-11-01)* A notify credential whose header is `Idempotency-Key`, in any case, is refused where the other bad credentials are, so `notify target add` refuses it and `doctor` names it: it would replace every event's id with one value. See [logs/notify-retry.md](../logs/notify-retry.md) (unlisted, attempt 1, 07:10). |
 
 ## 12. Phasing
 
