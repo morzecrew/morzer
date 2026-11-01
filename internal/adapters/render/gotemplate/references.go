@@ -3,7 +3,6 @@ package gotemplate
 import (
 	"fmt"
 	"reflect"
-	"slices"
 	"strings"
 	tparse "text/template/parse"
 
@@ -91,8 +90,8 @@ func (w *refWalker) pipe(p *tparse.PipeNode, dotIsRoot, rootKnown bool) {
 	}
 	for _, cmd := range p.Cmds {
 		w.secretFileName(cmd)
-		if idents, ok := indexed(cmd, dotIsRoot, rootKnown); ok {
-			w.resolve(cmd, idents)
+		if chain, key, ok := indexed(cmd, dotIsRoot, rootKnown); ok {
+			w.index(cmd, chain, key)
 			continue
 		}
 		for _, arg := range cmd.Args {
@@ -101,38 +100,57 @@ func (w *refWalker) pipe(p *tparse.PipeNode, dotIsRoot, rootKnown bool) {
 	}
 }
 
-// indexed reads `index <chain> "key"` as the chain followed by the key, because
-// that is what it looks up -- and unlike a field, an index a map does not hold
-// renders as nothing rather than failing, so it is the lookup most worth
-// reading. Only a chain from the root context, and only a literal key.
-func indexed(cmd *tparse.CommandNode, dotIsRoot, rootKnown bool) ([]string, bool) {
+// indexed recognises `index <chain> "key"` with the chain from the root
+// context, bare or in parentheses, and the key a literal. Unlike a field, a key
+// a map does not hold renders as nothing rather than failing, so it is the
+// lookup most worth reading.
+func indexed(cmd *tparse.CommandNode, dotIsRoot, rootKnown bool) ([]string, string, bool) {
 	if len(cmd.Args) != 3 {
-		return nil, false
+		return nil, "", false
 	}
 	fn, ok := cmd.Args[0].(*tparse.IdentifierNode)
 	if !ok || fn.Ident != "index" {
-		return nil, false
+		return nil, "", false
 	}
 	key, ok := cmd.Args[2].(*tparse.StringNode)
 	if !ok {
-		return nil, false
+		return nil, "", false
 	}
-	var chain []string
-	switch n := cmd.Args[1].(type) {
+	receiver := cmd.Args[1]
+	if p, ok := receiver.(*tparse.PipeNode); ok && len(p.Decl) == 0 &&
+		len(p.Cmds) == 1 && len(p.Cmds[0].Args) == 1 {
+		receiver = p.Cmds[0].Args[0]
+	}
+	switch n := receiver.(type) {
 	case *tparse.FieldNode:
-		if !dotIsRoot {
-			return nil, false
+		if dotIsRoot {
+			return n.Ident, key.Text, true
 		}
-		chain = n.Ident
 	case *tparse.VariableNode:
-		if !rootKnown || n.Ident[0] != "$" || len(n.Ident) < 2 {
-			return nil, false
+		if rootKnown && n.Ident[0] == "$" && len(n.Ident) > 1 {
+			return n.Ident[1:], key.Text, true
 		}
-		chain = n.Ident[1:]
-	default:
-		return nil, false
 	}
-	return append(slices.Clone(chain), key.Text), true
+	return nil, "", false
+}
+
+// index checks the key against what the chain reached: a map must hold it, and
+// a struct cannot be indexed at all.
+func (w *refWalker) index(node tparse.Node, chain []string, key string) {
+	v, ok := w.resolve(node, chain)
+	if !ok {
+		return
+	}
+	path := "." + strings.Join(chain, ".")
+	switch v.Kind() {
+	case reflect.Map:
+		if v.Type().Key().Kind() == reflect.String &&
+			!v.MapIndex(reflect.ValueOf(key).Convert(v.Type().Key())).IsValid() {
+			w.report(node, fmt.Sprintf("index %s %q names %s", path, key, undeclared(chain[0], key)))
+		}
+	case reflect.Struct:
+		w.report(node, fmt.Sprintf("index cannot look up %q in %s, which is not a map; write %s.%s", key, path, path, key))
+	}
 }
 
 func (w *refWalker) arg(node tparse.Node, dotIsRoot, rootKnown bool) {
@@ -175,8 +193,9 @@ func (w *refWalker) secretFileName(cmd *tparse.CommandNode) {
 }
 
 // resolve follows a chain of names from the root context and reports the first
-// one that resolves to nothing.
-func (w *refWalker) resolve(node tparse.Node, idents []string) {
+// one that resolves to nothing. It returns what the chain reached, and false
+// when it reported or cannot follow further.
+func (w *refWalker) resolve(node tparse.Node, idents []string) (reflect.Value, bool) {
 	v := w.root
 	for i, id := range idents {
 		path := "." + strings.Join(idents[:i+1], ".")
@@ -186,29 +205,30 @@ func (w *refWalker) resolve(node tparse.Node, idents []string) {
 			// A method is callable as a field; what it returns is
 			// not followed.
 			if _, ok := reflect.PointerTo(v.Type()).MethodByName(id); ok {
-				return
+				return reflect.Value{}, false
 			}
 			field, ok := v.Type().FieldByName(id)
 			if !ok || !field.IsExported() {
 				w.report(node, fmt.Sprintf("%s: %s has no field %s", path, parentName(parent), id))
-				return
+				return reflect.Value{}, false
 			}
 			v = v.FieldByIndex(field.Index)
 		case reflect.Map:
 			if v.Type().Key().Kind() != reflect.String {
-				return
+				return reflect.Value{}, false
 			}
 			entry := v.MapIndex(reflect.ValueOf(id).Convert(v.Type().Key()))
 			if !entry.IsValid() {
 				w.report(node, fmt.Sprintf("%s names %s", path, undeclared(idents[0], id)))
-				return
+				return reflect.Value{}, false
 			}
 			v = entry
 		default:
 			w.report(node, fmt.Sprintf("%s: %s is a %s, which has no fields", path, parentName(parent), v.Kind()))
-			return
+			return reflect.Value{}, false
 		}
 	}
+	return v, true
 }
 
 // parentName is how a message names the receiver: by the path a template
