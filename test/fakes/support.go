@@ -426,11 +426,11 @@ func (b *Backup) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 	return removed, nil
 }
 
-// Locker is an in-memory ports.Locker.
+// Locker is an in-memory ports.Locker, one lock per name as the file locker
+// keeps one file per name.
 type Locker struct {
-	mu    sync.Mutex
-	held  bool
-	owner ports.LockOwner
+	mu   sync.Mutex
+	held map[string]ports.LockOwner
 
 	// FailAcquire makes every acquisition report the lock as held, for
 	// testing the exit-code-4 path.
@@ -453,19 +453,21 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.FailAcquire || l.held {
+	owner, held := l.held[name]
+	if l.FailAcquire || held {
 		return nil, domain.Locked("the %s lock is held by %s operation %s",
-			name, l.owner.Type, l.owner.OperationID)
+			name, owner.Type, owner.OperationID)
 	}
 
-	l.held = true
-	l.owner = opts.Owner
+	if l.held == nil {
+		l.held = map[string]ports.LockOwner{}
+	}
+	l.held[name] = opts.Owner
 
 	return func() error {
 		l.mu.Lock()
 		defer l.mu.Unlock()
-		l.held = false
-		l.owner = ports.LockOwner{}
+		delete(l.held, name)
 		return nil
 	}, nil
 }
@@ -473,7 +475,8 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 func (l *Locker) Owner(ctx context.Context, name string) (ports.LockOwner, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.owner, l.held, nil
+	owner, held := l.held[name]
+	return owner, held, nil
 }
 
 // Renderer is a ports.Renderer that returns canned output, for tests that care

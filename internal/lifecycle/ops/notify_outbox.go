@@ -151,8 +151,17 @@ func readDropped(dir, token string) int {
 }
 
 // forgetTarget removes a target's entries and its drop count, as `notify target
-// remove` does.
-func (d *Deps) forgetTarget(label string) error {
+// remove` does. Under the outbox lock, waiting for a send in progress, so no
+// sender posts an entry it read before the target went.
+func (d *Deps) forgetTarget(ctx context.Context, label string) error {
+	release, err := d.Locker.Acquire(ctx, outboxLock, ports.LockOptions{
+		Wait:  true,
+		Owner: ports.LockOwner{PID: os.Getpid(), Type: "notify-target-remove", StartedAt: domain.NewTime(d.now())},
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
 	dir := d.Paths.NotifyOutboxDir()
 	token := outboxToken(label)
 	names, err := outboxNames(dir, token)
@@ -180,12 +189,22 @@ type OutboxReport struct {
 	Refused int `json:"refused"`
 	// Orphaned are entries whose target is no longer configured.
 	Orphaned int `json:"orphaned"`
+
+	// Waiting is what a dry run found in the outbox, and sent none of.
+	Waiting int  `json:"waiting,omitempty"`
+	DryRun  bool `json:"dry_run,omitempty"`
 }
 
 // Summary says what the send did, in one line.
 func (r OutboxReport) Summary() string {
 	if r.Busy {
 		return "another sender holds the notification outbox, so nothing was sent"
+	}
+	if r.DryRun {
+		if r.Waiting == 0 {
+			return "the notification outbox is empty"
+		}
+		return fmt.Sprintf("would send %d notification(s) waiting in the outbox", r.Waiting)
 	}
 	if r.Sent+r.Kept+r.Refused+r.Orphaned == 0 {
 		return "the notification outbox is empty"
@@ -204,9 +223,18 @@ func (r OutboxReport) Summary() string {
 }
 
 // NotifyFlush sends the outbox now (RFC 0043 §5.2).
-func NotifyFlush(ctx context.Context, d *Deps) (OutboxReport, error) {
+func NotifyFlush(ctx context.Context, d *Deps, opts Options) (OutboxReport, error) {
 	if _, err := d.loadInstallation(ctx); err != nil {
 		return OutboxReport{}, err
+	}
+	if opts.DryRun {
+		names, err := outboxNames(d.Paths.NotifyOutboxDir(), "")
+		return OutboxReport{DryRun: true, Waiting: len(names)}, err
+	}
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
 	}
 	return d.sendOutbox(ctx)
 }

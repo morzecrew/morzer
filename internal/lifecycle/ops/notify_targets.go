@@ -275,7 +275,7 @@ func NotifyTargetRemove(ctx context.Context, d *Deps, opts Options, which string
 			return err
 		}
 		// What it had still to accept goes with it (RFC 0043 §5.2).
-		if err := d.forgetTarget(removed.Label()); err != nil {
+		if err := d.forgetTarget(ctx, removed.Label()); err != nil {
 			d.warnf("the target was removed and its undelivered notifications were not: %s",
 				domain.AsError(err).Message)
 		}

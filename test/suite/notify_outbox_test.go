@@ -154,13 +154,13 @@ func TestADownTargetsEventIsKeptAndFlushedOnce(t *testing.T) {
 	finishAnOperation(t, h)
 	require.Equal(t, 2, entries(t, h))
 	before := len(down.requests())
-	report, err := ops.NotifyFlush(ctx, h.Deps)
+	report, err := ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, report.Kept)
 	assert.Len(t, down.requests(), before+2, "a target that is down was tried for every entry")
 
 	down.answer(http.StatusNoContent)
-	report, err = ops.NotifyFlush(ctx, h.Deps)
+	report, err = ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, report.Sent)
 	got := down.requests()
@@ -170,7 +170,7 @@ func TestADownTargetsEventIsKeptAndFlushedOnce(t *testing.T) {
 	assert.Zero(t, entries(t, h), "a delivered entry was kept")
 
 	total := len(got)
-	report, err = ops.NotifyFlush(ctx, h.Deps)
+	report, err = ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Zero(t, report.Sent, "an entry was sent twice")
 	assert.Len(t, down.requests(), total)
@@ -190,13 +190,13 @@ func TestASecondSenderSendsNothing(t *testing.T) {
 
 	release, err := h.Deps.Locker.Acquire(ctx, "notify-outbox", ports.LockOptions{Owner: ports.LockOwner{PID: os.Getpid()}})
 	require.NoError(t, err)
-	report, err := ops.NotifyFlush(ctx, h.Deps)
+	report, err := ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.True(t, report.Busy)
 	assert.Len(t, target.requests(), before, "a second sender sent")
 	require.NoError(t, release())
 
-	report, err = ops.NotifyFlush(ctx, h.Deps)
+	report, err = ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, report.Sent)
 	assert.Len(t, target.requests(), before+1)
@@ -229,7 +229,7 @@ func TestWhichAnswersAreKept(t *testing.T) {
 			}
 			require.Equal(t, 1, entries(t, h))
 			target.answer(http.StatusOK)
-			report, err := ops.NotifyFlush(context.Background(), h.Deps)
+			report, err := ops.NotifyFlush(context.Background(), h.Deps, ops.Options{})
 			require.NoError(t, err)
 			assert.Equal(t, 1, report.Sent)
 			assert.Zero(t, entries(t, h))
@@ -251,7 +251,7 @@ func TestOnlyTheDownTargetKeepsTheEvent(t *testing.T) {
 	assert.Len(t, up.requests(), 1)
 	require.Equal(t, 1, entries(t, h))
 
-	report, err := ops.NotifyFlush(ctx, h.Deps)
+	report, err := ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, report.Kept)
 	assert.Len(t, up.requests(), 1, "the target that accepted heard the event again")
@@ -405,7 +405,7 @@ func TestAnEntryWaitsForATargetThatCannotBeBuilt(t *testing.T) {
 	require.Equal(t, 1, entries(t, h))
 
 	h.Deps.Notifier = nil
-	report, err := ops.NotifyFlush(ctx, h.Deps)
+	report, err := ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, entries(t, h), "an entry was deleted because its target could not be built this run")
 	assert.Equal(t, 1, report.Kept)
@@ -415,8 +415,26 @@ func TestAnEntryWaitsForATargetThatCannotBeBuilt(t *testing.T) {
 	require.NoError(t, err)
 	inst.Notify.Targets = nil
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
-	report, err = ops.NotifyFlush(ctx, h.Deps)
+	report, err = ops.NotifyFlush(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, report.Orphaned)
 	assert.Zero(t, entries(t, h))
+}
+
+// `notify flush --dry-run` says what is waiting and sends nothing.
+func TestADryRunFlushSendsNothing(t *testing.T) {
+	h := appliedHarness(t)
+	target := newHook(t, http.StatusServiceUnavailable)
+	configure(t, h, "chat")
+	h.Deps.Notifier = ports.Notifiers{target.target(t, "chat", "")}
+	finishAnOperation(t, h)
+	target.answer(http.StatusNoContent)
+	before := len(target.requests())
+
+	report, err := ops.NotifyFlush(context.Background(), h.Deps, ops.Options{DryRun: true})
+	require.NoError(t, err)
+	assert.Len(t, target.requests(), before, "a dry run sent")
+	assert.Equal(t, 1, entries(t, h), "a dry run deleted an entry")
+	assert.Equal(t, 1, report.Waiting)
+	assert.Contains(t, report.Summary(), "would send 1")
 }

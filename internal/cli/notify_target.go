@@ -52,7 +52,7 @@ func newNotifyFlushCommand(app *App) *cobra.Command {
 			"another holds it, this sends nothing.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			report, err := ops.NotifyFlush(cmd.Context(), app.Deps)
+			report, err := ops.NotifyFlush(cmd.Context(), app.Deps, app.operationOptions())
 			if err != nil {
 				return err
 			}
