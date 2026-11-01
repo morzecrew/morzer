@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -86,6 +88,47 @@ func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
 		}
 	}
 	return out, nil
+}
+
+// DoctorUnattended is the scheduled `doctor` (RFC 0043 §5.4): it sends the
+// outbox, runs every check, and notifies one `doctor.finished` naming the
+// checks that warn or fail. A run where every check passes notifies nothing.
+func DoctorUnattended(ctx context.Context, d *Deps) (DoctorReport, error) {
+	// First, so `notify.outbox` reports what is still waiting after it.
+	sent, err := d.sendOutbox(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Warn("cannot send the notification outbox", "error", err)
+	} else if sent != (OutboxReport{}) {
+		logging.FromContext(ctx).Info(sent.Summary())
+	}
+
+	report, err := Doctor(ctx, d)
+	if err != nil {
+		return report, err
+	}
+	product := ""
+	if inst, err := d.loadInstallation(ctx); err == nil {
+		product = inst.Product
+	}
+	if ev, ok := doctorFinished(product, report.Results); ok {
+		d.notify(ctx, ev)
+	}
+	return report, nil
+}
+
+// doctorFinished is the run's one event, naming the checks that are not ok, or
+// none when every check passed (RFC 0043 decision 6).
+func doctorFinished(product string, results []events.CheckResult) (events.Event, bool) {
+	var notOK []events.CheckResult
+	for _, res := range results {
+		if res.Status != events.CheckOK {
+			notOK = append(notOK, res)
+		}
+	}
+	if len(notOK) == 0 {
+		return events.Event{}, false
+	}
+	return events.DoctorFinished(product, notOK), true
 }
 
 // supportURL is what the installed release says about getting help, or "".
@@ -221,6 +264,11 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if inst.Notify.HasTargets() {
 		checks = append(checks, d.checkNotifyTargets(inst))
 	}
+	// And while entries wait with no target left to send them, which a
+	// removal that could not delete them leaves behind.
+	if waiting, _ := outboxNames(d.Paths.NotifyOutboxDir(), ""); inst.Notify.HasTargets() || len(waiting) > 0 {
+		checks = append(checks, d.checkOutbox())
+	}
 
 	return checks
 }
@@ -354,6 +402,8 @@ func policyEqual(a, b domain.Policy) bool {
 		a.StaleBackupAfter == b.StaleBackupAfter &&
 		a.BackupSchedule == b.BackupSchedule &&
 		a.SkipScheduledBackups == b.SkipScheduledBackups &&
+		a.DoctorSchedule == b.DoctorSchedule &&
+		a.SkipScheduledDoctor == b.SkipScheduledDoctor &&
 		strings.Join(a.SigningKeys, ",") == strings.Join(b.SigningKeys, ",")
 }
 
@@ -383,6 +433,18 @@ func (d *Deps) checkUnfinishedOperations() preflight.Check {
 			if err != nil {
 				return preflight.Warn("", "cannot read the operation journal: %v",
 					domain.AsError(err).Message)
+			}
+			// The operation holding the deployment lock is running now,
+			// not left behind: a backup the scheduled doctor runs beside
+			// is not unfinished (RFC 0043 decision 12). Only while it is
+			// running; one that needs attention is reported whoever holds
+			// the lock.
+			if d.Locker != nil {
+				if owner, held, err := d.Locker.Owner(ctx, "deployment"); err == nil && held {
+					unfinished = slices.DeleteFunc(unfinished, func(rec domain.OperationRecord) bool {
+						return rec.ID == owner.OperationID && rec.Status == domain.StatusRunning
+					})
+				}
 			}
 			if len(unfinished) == 0 {
 				return preflight.OK("no unfinished operations")

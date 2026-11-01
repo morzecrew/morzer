@@ -1,7 +1,8 @@
 # RFC 0037 — Freshness of a signed release
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11; not scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-01: §11's
+  `OPEN` rows as recommended. **P1 is ready to build**; P2 is gated on a vendor
+  asking
 - **Scope:** What stops a correctly signed but *stale* release from being
   installed, or from being the newest thing a machine ever learns of. Covers
   two threats SECURITY.md lists as one known gap: a rollback to an older signed
@@ -341,11 +342,11 @@ document signed with the same minisign key that signs their bundles:
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build layer 1 (the installed floor and channel marks) now?** Recommended yes: it needs nothing from a vendor, turns the existing downgrade warning into a refusal, and closes the rollback attack within a channel for every machine that has fetched the newer release from it. |
-| 2 | `OPEN` | **Build layer 2 (the signed index) now, or gate it on a vendor asking?** Recommended: gate it. It costs a vendor periodic re-signing, and no vendor has asked; the design here is enough to build from when one does. |
-| 3 | `OPEN` | **An expired index: refuse to stage, or stage and warn?** Recommended: warn, in `status`, `doctor` and the tick's notification, and refuse only under unattended `auto_apply`. A freeze is a reason to look, and refusing manual updates would block the operator from installing the fix they went to get by hand. |
-| 4 | `OPEN` | **Name and shape of the override.** Recommended `update --allow-older`, journalled, with no persistent setting: going back past what a machine has seen should be a decision made each time. |
-| 5 | `OPEN` | **Does an export carry the channel marks?** Recommended yes: a rebuilt machine that forgot its channel delivered 1.4.0 can be offered 1.3.0 again. |
+| 1 | `ASSUMED` | **Build layer 1 (the installed floor and channel marks) now?** Recommended yes: it needs nothing from a vendor, turns the existing downgrade warning into a refusal, and closes the rollback attack within a channel for every machine that has fetched the newer release from it. Was `OPEN`; ruled by the author 2026-11-01: as recommended, layer 1 is built now as P1. |
+| 2 | `ASSUMED` | **Build layer 2 (the signed index) now, or gate it on a vendor asking?** Recommended: gate it. It costs a vendor periodic re-signing, and no vendor has asked; the design here is enough to build from when one does. Was `OPEN`; ruled by the author 2026-11-01: as recommended, gated on a vendor asking. |
+| 3 | `ASSUMED` | **An expired index: refuse to stage, or stage and warn?** Recommended: warn, in `status`, `doctor` and the tick's notification, and refuse only under unattended `auto_apply`. A freeze is a reason to look, and refusing manual updates would block the operator from installing the fix they went to get by hand. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
+| 4 | `ASSUMED` | **Name and shape of the override.** Recommended `update --allow-older`, journalled, with no persistent setting: going back past what a machine has seen should be a decision made each time. Was `OPEN`; ruled by the author 2026-11-01: as recommended, `update --allow-older`, journalled, with no persistent setting. |
+| 5 | `ASSUMED` | **Does an export carry the channel marks?** Recommended yes: a rebuilt machine that forgot its channel delivered 1.4.0 can be offered 1.3.0 again. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
 | 6 | `ASSUMED` | A floor is a release *version*, not a time: versions already order releases, and a timestamp would be a second ordering that can disagree with the first. |
 | 7 | `ASSUMED` | `rollback` is exempt from both floors, and moves the installed floor down with the release; it has its own schema checks, and going back is its purpose. |
 | 8 | `ASSUMED` | The index is signed with the vendor's bundle key from `policy.signing_keys`, not a separate key, so a vendor has one key to protect and an installation one list to configure. |

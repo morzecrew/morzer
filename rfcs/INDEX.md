@@ -18,12 +18,12 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023**, 0038's row 1, **0042**, **0043** and **0044** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023**, **0037**, **0043** and **0044** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0037 and 0038 are proposals waiting on the
-author's rulings, and apart from that row of 0038 are not work yet. Each
+building P2 is the correct outcome. 0038 is ruled, and its stored credentials
+wait on a vendor asking, as 0037's signed index does. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
 
@@ -88,27 +88,22 @@ phase shipped, and a reader deciding what to work on needs the other half.
   when an operator asks to keep them, and the Quadlet implementation with
   0023 P3.
 - **[0037 — Freshness of a signed release](0037-freshness-of-a-signed-release.md).**
-  📝 Proposed, with its user-facing decisions `OPEN` for the author to rule. A
-  version high-water mark is ready to build once ruled; the signed channel
-  index is gated on a vendor asking for it.
+  📝 Proposed, and ruled by the author 2026-11-01 as recommended. P1, the
+  version high-water mark, is ready to build; the signed channel index is gated
+  on a vendor asking for it.
 - **[0038 — Credentials for HTTPS bundle sources](0038-credentials-for-https-bundle-sources.md).**
-  📝 Proposed, with its user-facing decisions `OPEN`. Its row 1, a journal
-  defect that records a reference's password, stands apart and can be fixed
-  now; stored credentials are gated on a vendor asking for them.
+  📝 Proposed, and ruled by the author 2026-11-01 as recommended. Its row 1, a
+  journal defect that recorded a reference's password, shipped in #170; stored
+  credentials are gated on a vendor asking for them.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
-- **[0042 — Settings an operator changes after init](0042-settings-an-operator-changes-after-init.md).**
-  📝 Ruled by the author 2026-10-31. P1, the four settings, is one PR and ready
-  to build.
 - **[0043 — Notifications that survive a failed delivery, and a scheduled doctor](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md).**
-  📝 Ruled by the author 2026-10-31. P1, each target's outcome logged, a retry
-  and an event id, is one PR and ready to build; P2 adds the outbox and the
-  doctor timer.
+  🚧 P1, each target's outcome logged, a retry and an event id, has shipped.
+  P2, the outbox and the doctor timer, is one PR and ready to build.
 - **[0044 — Configuration drift an operator can see](0044-configuration-drift-an-operator-can-see.md).**
-  📝 Ruled by the author 2026-10-31. P1, `config diff`, a `doctor` check and
-  holding an unattended update, is one PR and ready to build; P2 adds services
-  whose definition drifted.
+  🚧 P1, `config diff`, a `doctor` check and holding an unattended update while
+  an existing file differs, has shipped. P2, services whose definition drifted, is one PR and ready to build.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -192,9 +187,9 @@ number in the filename in sync.
 | [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 🚧 In progress | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 | [0040](0040-keeping-an-installation-down.md) | Keeping an installation down | ✅ Complete | Taking a product down on purpose and keeping it down across a reboot and an unattended update, until an operator starts it again. |
 | [0041](0041-files-an-operator-passes-to-a-task.md) | Files an operator passes to a task | ✅ Complete | Passing a local file to a release's task: declared inputs, staged per operation and mounted read-only into the one-off container. |
-| [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | 📝 Draft | Changing on a running installation what `init` fixed and nothing since could change: the signature requirement, the domains and the retention counts. |
-| [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | 📝 Draft | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
-| [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | 📝 Draft | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
+| [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | ✅ Complete | Changing on a running installation what `init` fixed and since only a repair (the domains) or a hand-edited state file could change: the signature requirement, the domains and the retention counts. |
+| [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | 🚧 In progress | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
+| [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | 🚧 In progress | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
 
 ## Status legend
 

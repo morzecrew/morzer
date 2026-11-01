@@ -1,8 +1,9 @@
 # RFC 0042 — Settings an operator changes after init
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-10-31: §11's
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-31: §11's
   `OPEN` rows as recommended, except that a domain change re-creates every
-  running service (decision 4). P1 is ready to build
+  running service (decision 4). **Built 2026-10-31** as P1 in #233. The five
+  entries the build wrote in [logs/settings-after-init.md](../logs/settings-after-init.md) are decisions 10–14
 - **Scope:** Three values `init` fixes that nothing changes afterwards: whether
   a release signature is required, the installation's domains, and the release
   and backup retention counts. Each becomes changeable on a running
@@ -280,6 +281,11 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 7 | `ASSUMED` | `retention.releases` and `retention.backups` are whole numbers of at least 1. `unset` returns to the manifest's value, and nothing is pruned when one is set. |
 | 8 | `ASSUMED` | `mode`, the runtime and its options stay immutable. This RFC does not reopen RFC 0016, 0023 decision 3 or 0027 §4.3. |
 | 9 | `ASSUMED` | *(2026-10-31, from the review.)* A domain change runs as a journalled `config` operation of three steps: record the installation, render the configuration, re-create the running services. Each of the first two compensates, so a failed render leaves the recorded domains and the files as they were, and `--dry-run` plans the steps without running them. A setting's `Apply` stays validation and an in-memory record. |
+| 10 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 3.** The signature rules are checked over the installation the whole command produces, before the lock and again under it, so `config set update.auto_apply=false release.require_signature=false` is not refused for a state the same command ends. `update.auto_apply=true` without a required signature is refused there too: with the hint to require one, or, when the same command turns off a signature that was required, to turn `update.auto_apply` off in it. See [logs/settings-after-init.md](../logs/settings-after-init.md) (unlisted, attempt 1, 20:14). |
+| 11 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 7.** `retention.releases` and `retention.backups` read as the recorded count, and empty when unset, as `backup.schedule` reads empty when it takes the supervisor's default; the description says unset follows the release. See [logs/settings-after-init.md](../logs/settings-after-init.md) (decision 7, attempt 1). |
+| 12 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 6.** A host name is dot-separated labels of letters, digits and inner hyphens, at most 63 characters each and 253 in all, or an IP address. A port or a path needs the `https://` form, a URL carries no user name, and duplicates compare without case, as DNS does. See [logs/settings-after-init.md](../logs/settings-after-init.md) (decision 6, attempt 1). |
+| 13 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 9.** With no release installed, a domain change records the installation and nothing else, and the next `update` renders it. See [logs/settings-after-init.md](../logs/settings-after-init.md) (decision 9, attempt 1). |
+| 14 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* A journalled setting change notifies as `config set` does. One that rendered the configuration attests as `config set` does; the signature record alone, which renders nothing, does not. See [logs/settings-after-init.md](../logs/settings-after-init.md) (unlisted, attempt 1, 20:18). |
 
 ## 12. Phasing
 
