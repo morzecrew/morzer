@@ -2256,6 +2256,10 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.</p
 </ul>
 <p>The payload is the manager's own event <abbr title="JavaScript Object Notation">JSON</abbr>, the same shape <code>--log-format json</code>
 emits. A service wanting a different body gets a two-line receiver.</p>
+<p>Each event sent to a target carries an <code>id</code>, such as <code>evt_01J…</code>, in the body and
+as the <code>Idempotency-Key</code> header. A retried event carries the same <code>id</code>, so a
+receiver that keeps the ones it has seen can drop the duplicate. A
+<code>--credentials</code> document cannot name that header.</p>
 <h3 id="what-is-not-sent-and-why">What is not sent, and why<a class="headerlink" href="#what-is-not-sent-and-why" title="Permanent link">&para;</a></h3>
 <p>Step output is never forwarded. It carries raw hook stdout, <code>docker compose</code>
 stderr, and whatever a vendor's migration script prints — the highest-volume,
@@ -2266,9 +2270,13 @@ party's servers.</p>
 <p>Progress, plans and step narration are not forwarded either. They are what a
 terminal is for.</p>
 <h2 id="what-you-should-not-build-on-it">What you should not build on it<a class="headerlink" href="#what-you-should-not-build-on-it" title="Permanent link">&para;</a></h2>
-<p><strong>Delivery is at-most-once.</strong> One attempt per target, five seconds each, fifteen
-seconds for the whole fan-out, no retries and no queue. A target that was down
-means you were not told.</p>
+<p><strong>Delivery is best-effort.</strong> Each target gets five seconds per attempt, and
+fifteen seconds cover the whole fan-out. A target that did not answer, or
+answered 408, 429 or a 5xx, is tried once more after a second, inside those
+fifteen. Nothing else is retried, and nothing is queued. A target that was down
+for longer means you were not told.</p>
+<p>A target can receive an event twice: the first attempt may have arrived and its
+answer been lost. The <code>id</code> is how to tell.</p>
 <p>This is a deliberate choice rather than a gap: a queue that survives reboots is
 a different component with different failure modes, and a one-shot <abbr title="Command-Line Interface">CLI</abbr> is a poor
 host for one. The consequence is worth stating plainly — <strong>the journal is the
