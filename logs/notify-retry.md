@@ -74,3 +74,28 @@ proposal: ASSUMED — a credential document naming `Idempotency-Key`, in any cas
 ```
 
 **Drift count: 0.**
+
+The entry at 20:53 cited `webhook.go:133`, the line planned before the code,
+which now falls in `Name`'s comment. The same entry, with evidence where the
+code landed:
+
+```divergence
+decision: 1
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-01T07:45:00Z
+attempt: 1
+claim: a failure before any request reaches the target has no resend classification
+evidence: internal/adapters/notify/webhook/webhook.go:152-154
+action: departed
+proposal: ASSUMED — an event the adapter cannot encode, or a request it cannot build, is a final `DeliveryError`, not retried: the same event would fail the same way.
+```
+
+**Followed, and §5.1's wording is wider than the design:** §5.1 says "an
+operation never waits longer than today". That holds for the 15-second
+deadline, which is unchanged. It does not hold for one slow target: a target
+that times out twice holds the operation 11 seconds (two 5-second requests and
+the one-second pause), where one attempt held it 5. The retry stays as decision
+1 has it. The code comments now say the bound is unchanged, not the wait.
+
+**Drift count: 0.**
