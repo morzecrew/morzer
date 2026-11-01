@@ -9,6 +9,7 @@
 package events
 
 import (
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -47,6 +48,11 @@ const (
 	// about what is running. It is news precisely because it is not an
 	// outcome -- it is a decision waiting for a person.
 	KindUpdateStaged Kind = "update.staged"
+
+	// KindDoctorFinished is the scheduled `doctor`'s one event per run,
+	// sent only when a check warns or fails (RFC 0043 decision 6). It
+	// carries the worst level, and the checks that are not ok.
+	KindDoctorFinished Kind = "doctor.finished"
 )
 
 // AllKinds is every event kind, so a consumer that must classify all of them
@@ -66,6 +72,7 @@ var AllKinds = []Kind{
 	KindMessage,
 	KindCheck,
 	KindUpdateStaged,
+	KindDoctorFinished,
 }
 
 // Level classifies a message for presenters that style by severity.
@@ -134,6 +141,10 @@ type Event struct {
 
 	// Check is a doctor result, set only on KindCheck.
 	Check *CheckResult `json:"check,omitempty"`
+
+	// Checks are the results that warn or fail, set only on
+	// KindDoctorFinished.
+	Checks []CheckResult `json:"checks,omitempty"`
 
 	// Err is the failure, set on finished events that failed.
 	Err *domain.Error `json:"error,omitempty"`
@@ -271,6 +282,26 @@ func UpdateStaged(name, version, ref, summary string) Event {
 		Message: sprintf("%s %s is staged from %s and is waiting to be installed",
 			name, version, ref),
 		Detail: summary,
+	}
+}
+
+// DoctorFinished is one scheduled `doctor` run's findings: the checks that warn
+// or fail, at the level of the worst.
+func DoctorFinished(product string, notOK []CheckResult) Event {
+	lvl := LevelWarn
+	ids := make([]string, len(notOK))
+	for i, r := range notOK {
+		ids[i] = r.ID
+		if r.Status == CheckFail {
+			lvl = LevelError
+		}
+	}
+	return Event{
+		Kind: KindDoctorFinished, At: time.Now(), Level: lvl,
+		Description: product + " doctor",
+		Message: sprintf("doctor on %s: %d check(s) warn or fail: %s",
+			product, len(notOK), strings.Join(ids, ", ")),
+		Checks: notOK,
 	}
 }
 

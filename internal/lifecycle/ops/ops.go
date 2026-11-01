@@ -460,6 +460,10 @@ var forwardedKinds = map[events.Kind]bool{
 	// and the person is not at the terminal where the timer ran.
 	events.KindUpdateStaged: true,
 
+	// The scheduled `doctor`'s findings, one per run and only when a check
+	// is not ok (RFC 0043 decision 6): the reason that timer exists.
+	events.KindDoctorFinished: true,
+
 	events.KindOperationStarted: false, // the outcome is the news, not the start
 	events.KindStepStarted:      false, // narration
 	events.KindStepProgress:     false, // narration
@@ -516,7 +520,9 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 		return
 	}
 	if ev.ID == "" {
-		ev.ID = "evt_" + ulid.MustNew(ulid.Timestamp(d.now()), rand.Reader).String()
+		// Monotonic within the process, so two events in one millisecond
+		// still sort as they happened: the outbox sends in id order.
+		ev.ID = "evt_" + ulid.MustNew(ulid.Timestamp(d.now()), ulid.DefaultEntropy()).String()
 	}
 
 	// Bounded, and *not* detached from the operation's context.
@@ -540,6 +546,10 @@ func (d *Deps) notify(ctx context.Context, ev events.Event) {
 	if err := d.Notifier.Notify(ctx, ev); err != nil {
 		logging.FromContext(ctx).Warn("notifier failed",
 			"notifier", d.Notifier.Name(), "error", err)
+		// Kept for the scheduled doctor and `notify flush` to send, where
+		// a target could accept it later (RFC 0043 §5.2). Never sent from
+		// here: an operation must not wait on a target that is down.
+		d.keepUndelivered(ctx, ev, err)
 	}
 }
 

@@ -130,8 +130,12 @@ func (p Paths) ManagerDir() string { return filepath.Join(p.VarDir, "manager") }
 // InputsDir holds the files operators pass to tasks, one directory per
 // operation, removed when it ends (RFC 0041). On disk rather than under /run:
 // an input can be gigabytes, and /run is memory.
-func (p Paths) InputsDir() string  { return filepath.Join(p.ManagerDir(), "inputs") }
-func (p Paths) StagingDir() string { return filepath.Join(p.VarDir, "manager", "staging") }
+func (p Paths) InputsDir() string { return filepath.Join(p.ManagerDir(), "inputs") }
+
+// NotifyOutboxDir holds the notifications a target has still to accept
+// (RFC 0043 §5.2).
+func (p Paths) NotifyOutboxDir() string { return filepath.Join(p.ManagerDir(), "notify", "outbox") }
+func (p Paths) StagingDir() string      { return filepath.Join(p.VarDir, "manager", "staging") }
 func (p Paths) InstallationState() string {
 	return filepath.Join(p.ManagerDir(), "installation.json")
 }

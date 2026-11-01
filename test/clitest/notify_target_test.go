@@ -112,3 +112,9 @@ func TestDoctorNamesANotifyTargetThatStoppedResolving(t *testing.T) {
 	r.Run("secret", "remove", "chat_webhook", "--force").ExitCode(0)
 	r.Run("doctor").OutputContains("dropped: chat").NoOutputContains("XXsecretXX")
 }
+
+// `notify flush` with nothing waiting says so and exits 0 (RFC 0043 §5.2).
+func TestNotifyFlushWithAnEmptyOutbox(t *testing.T) {
+	r := NewInstalled(t)
+	r.Run("notify", "flush").ExitCode(0).OutputContains("the notification outbox is empty")
+}

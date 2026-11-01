@@ -90,14 +90,18 @@ func TestMinLevelGatesChecksInBothDirections(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ev := events.Event{Kind: events.KindCheck, Level: tc.level}
-			if err := n.Notify(context.Background(), ev); err != nil {
-				t.Fatalf("delivery failed: %v", err)
+			// The scheduled doctor's one event is gated as a check
+			// is (RFC 0043 decision 6).
+			for _, kind := range []events.Kind{events.KindCheck, events.KindDoctorFinished} {
+				ev := events.Event{Kind: kind, Level: tc.level}
+				if err := n.Notify(context.Background(), ev); err != nil {
+					t.Fatalf("delivery failed: %v", err)
+				}
 			}
 
-			delivered := got.Load() == 1
-			if delivered != tc.want {
-				t.Errorf("delivered = %t, want %t", delivered, tc.want)
+			delivered := got.Load() == 2
+			if delivered != tc.want || (got.Load() != 0 && got.Load() != 2) {
+				t.Errorf("delivered %d of 2, want both %t", got.Load(), tc.want)
 			}
 		})
 	}

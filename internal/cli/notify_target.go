@@ -18,7 +18,7 @@ func newNotifyCommand(app *App) *cobra.Command {
 		Short: "Manage where operation outcomes are reported",
 		Long: "Where this deployment reports what happened with nobody watching: the\n" +
 			"outcome of every operation, a release staged by the update timer, and\n" +
-			"doctor's findings. Off until a target is added.\n\n" +
+			"what the scheduled doctor finds. Off until a target is added.\n\n" +
 			"Docs: https://morzecrew.github.io/morzer/latest/operating/notifications/",
 	}
 	target := &cobra.Command{
@@ -27,18 +27,39 @@ func newNotifyCommand(app *App) *cobra.Command {
 		Long: "A target is an https webhook that receives each operation's outcome,\n" +
 			"news that a release was staged, and doctor's findings at or above its\n" +
 			"minimum level. The payload is morzer's event JSON.\n\n" +
-			"Delivery is at most once: a target that is down when an operation\n" +
-			"finishes is not told, and the operation's outcome never depends on it.\n" +
-			"The journal is the record; a notification is how somebody learns to\n" +
-			"read it.",
+			"A target that is down when an event is sent is tried once more, and\n" +
+			"then the event is kept in the outbox, up to 100 per target, for the\n" +
+			"scheduled doctor or `morzer notify flush` to send. The operation's\n" +
+			"outcome never depends on it, and the journal stays the record.",
 	}
 	target.AddCommand(
 		newNotifyTargetAddCommand(app),
 		newNotifyTargetRemoveCommand(app),
 		newNotifyTargetListCommand(app),
 	)
-	cmd.AddCommand(target)
+	cmd.AddCommand(target, newNotifyFlushCommand(app))
 	return cmd
+}
+
+func newNotifyFlushCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "flush",
+		Short: "Send the notifications a target has still to accept",
+		Long: "Sends the outbox now, oldest first: the events a target was down for,\n" +
+			"or answered in a way a later send could get past. Each is deleted once\n" +
+			"its target answers, and kept while it is still down. The scheduled\n" +
+			"doctor sends the outbox too, and one sender runs at a time: while\n" +
+			"another holds it, this sends nothing.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			report, err := ops.NotifyFlush(cmd.Context(), app.Deps)
+			if err != nil {
+				return err
+			}
+			app.finish(ops.Result{Summary: report.Summary(), Data: report})
+			return nil
+		},
+	}
 }
 
 func newNotifyTargetAddCommand(app *App) *cobra.Command {
