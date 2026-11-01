@@ -1,0 +1,4166 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Lifecycle management for a self-hosted product on a single machine">
+      
+      
+        <meta name="author" content="Lev Litvinov">
+      
+      
+        <link rel="canonical" href="https://morzecrew.github.io/morzer/0.11/reference/commands/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../backup-targets/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.52">
+    
+    
+      
+        <title>Commands - morzer</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../../assets/stylesheets/modern/main.8b3b5a67.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/modern/palette.dfe2e883.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#commands" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="morzer" class="md-header__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            morzer
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Commands
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="none" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../get-started/installation/" class="md-tabs__link">
+          
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../operating/updating/" class="md-tabs__link">
+          
+  
+  Operating
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../authoring/" class="md-tabs__link">
+          
+  
+  Authoring
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+      
+    
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../explanation/architecture/" class="md-tabs__link">
+          
+  
+  Explanation
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="morzer" class="md-nav__button md-logo" aria-label="morzer" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    morzer
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/morzecrew/morzer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5v52c0 15 12.5 23.5 27.5 17.5C441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5v-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21"/></svg>
+  </div>
+  <div class="md-source__repository">
+    morzer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Home
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Get started
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Get started
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/installation/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-download" viewBox="0 0 24 24"><path d="M12 15V3M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing morzer
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/first-deployment/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-rocket" viewBox="0 0 24 24"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first deployment
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Operating
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Operating
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/updating/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Updating
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/unattended-updates/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-timer" viewBox="0 0 24 24"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Unattended updates
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/rolling-back/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-down-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Rolling back
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/taking-a-product-down/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-pause-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 15V9M14 15V9"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Taking a product down for a while
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing secrets
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/backups/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-archive" viewBox="0 0 24 24"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backups and restore
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/changing-configuration/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Changing configuration
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/installing-offline/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-wifi-off" viewBox="0 0 24 24"><path d="M12 20h.01M8.5 16.429a5 5 0 0 1 7 0M5 12.859a10 10 0 0 1 5.17-2.69M19 12.859a10 10 0 0 0-2.007-1.523M2 8.82a15 15 0 0 1 4.177-2.643M22 8.82a15 15 0 0 0-11.288-3.764M2 2l20 20"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Installing without a network
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/notifications/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Notifications
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/looking-inside/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Looking inside
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/asking-for-help/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Asking for help
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/several-installations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-life-buoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Recovering a lost machine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Authoring
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Authoring
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a bundle is
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/your-first-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Your first bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/a-three-tier-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  A three-tier bundle
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Writing hooks
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/backing-up-volumes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive" viewBox="0 0 24 24"><path d="M10 16h.01M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM21.946 12.013H2.054M6 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Declaring volume consistency
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/bundled-images/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-container" viewBox="0 0 24 24"><path d="M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z"/><path d="M10 21.9V14L2.1 9.1M10 14l11.9-6.9M14 19.8v-8.1M18 17.5V9.4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Bundled images
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../authoring/publishing/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-upload" viewBox="0 0 24 24"><path d="M12 3v12M17 8l-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Signing and publishing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Reference
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Reference
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Every command
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-terminal" viewBox="0 0 24 24"><path d="M12 19h8M4 17l6-6-6-6"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Commands
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Global flags
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Global flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-installation-a-command-acts-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Which installation a command acts on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Index
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#init" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        init
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="init">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-interactive-first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The interactive first run
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        apply
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        update
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        rollback
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stop
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        start
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        status
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#watching" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Watching
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        doctor
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        history
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        logs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stats
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exec" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        exec
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        task
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passing-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Passing a file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backup-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup list
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup push
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup verify
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        restore
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-flush" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify flush
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        version
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        completion install
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="completion install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-completes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What completes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backup-targets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-upload" viewBox="0 0 24 24"><path d="m16 6-4-4-4 4M12 2v8"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Backup target URLs
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  secret
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  release
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation-commands/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-hard-drive-download" viewBox="0 0 24 24"><path d="M12 2v8M16 6l-4 4-4-4"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 18h.01M10 18h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  installation
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exit-codes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Exit codes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-modes/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Output modes
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../parameters/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3M12 19H3M14 3v4M16 17v4M21 12h-9M21 19h-5M21 5h-7M8 10v4M8 12H3"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Parameters
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../manifest/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-code" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Manifest
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../variables/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Variables
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-plug" viewBox="0 0 24 24"><path d="M12 22v-5M15 8V2M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1zM9 8V2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Hook ABI
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../attestations/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-file-signature" viewBox="0 0 24 24"><path d="M14.364 13.634a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506l4.013-4.009a1 1 0 0 0-3.004-3.004zM14.487 7.858A1 1 0 0 1 14 7V2"/><path d="M20 19.645V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l2.516 2.516M8 18h1"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Attestations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../support-bundle/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12"/><path d="M3.29 7 12 12l8.71-5M7.5 4.27l9 5.15"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What a support bundle contains
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The fleet view
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Explanation
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+  Explanation
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/the-step-engine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-list-checks" viewBox="0 0 24 24"><path d="M13 5h8M13 12h8M13 19h8M3 17l2 2 4-4M3 7l2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The step engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/secrets/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  The secrets model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/what-is-tested/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  What is tested
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Global flags
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Global flags">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-installation-a-command-acts-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Which installation a command acts on
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Index
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#init" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        init
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="init">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-interactive-first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The interactive first run
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        apply
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        update
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        rollback
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stop" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stop
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        start
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        status
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#watching" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Watching
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        doctor
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        history
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        logs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ps" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        ps
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        stats
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exec" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        exec
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        task
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="task">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#passing-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Passing a file
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backup-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup list
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup push
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-fetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup fetch
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backup-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        backup verify
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        restore
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify target
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-flush" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify flush
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        version
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completion-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        completion install
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="completion install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-completes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What completes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+    
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+  
+  
+
+
+<h1 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h1>
+<p>Every command is <code>morzer &lt;command&gt; [flags]</code>. The two command groups with their
+own subcommands live on their own pages:
+<a href="../secret-commands/"><code>secret</code></a> and <a href="../release-commands/"><code>release</code></a>.</p>
+<p><a href="../">Every command</a> is the generated list of all of them with the page
+that documents each — start there when you know a command exists and not where
+it is written up.</p>
+<p>Every mutating command takes the deployment lock, journals what it did before
+and after each step, and can be planned first with <code>--dry-run</code>. Every command
+maps its failure onto a stable <a href="../exit-codes/">exit code</a>.</p>
+<h2 id="global-flags">Global flags<a class="headerlink" href="#global-flags" title="Permanent link">&para;</a></h2>
+<p>These are accepted by every command.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--json</code></td>
+<td>Machine-readable output. stdout carries exactly one <abbr title="JavaScript Object Notation">JSON</abbr> object; narration moves to stderr.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Plan only; make no changes. Prints the step list and, where applicable, a configuration diff. A plan validates the release manifest it plans against, and the <code>--set</code> values against it, refusing what the operation would refuse; where it could not read the bundle — a remote reference is not fetched for a plan — it says so. The digest and signature are verified when the operation runs, not by a plan.</td>
+</tr>
+<tr>
+<td><code>--yes</code></td>
+<td>Assume yes for confirmations. Destructive actions still need <code>--force</code>.</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Confirm a destructive operation. It authorises destructive actions, not incorrect ones — a refusal on safety grounds is not overridden by it.</td>
+</tr>
+<tr>
+<td><code>--timeout</code></td>
+<td>Overall time budget for the operation, as a Go duration (<code>30m</code>, <code>2h</code>).</td>
+</tr>
+<tr>
+<td><code>--verbose</code>, <code>-v</code></td>
+<td>Verbose output, including per-step detail and the subprocess log.</td>
+</tr>
+<tr>
+<td><code>--quiet</code>, <code>-q</code></td>
+<td>Errors only.</td>
+</tr>
+<tr>
+<td><code>--log-format</code></td>
+<td><code>text</code> (default) or <code>json</code>. Logs always go to stderr.</td>
+</tr>
+<tr>
+<td><code>--no-color</code></td>
+<td>Disable colour. Equivalent to <code>NO_COLOR</code> or <code>CLICOLOR=0</code> in the environment; the live renderer still draws, since every state carries a symbol too.</td>
+</tr>
+<tr>
+<td><code>--plain</code></td>
+<td>Line-oriented output; no interactive rendering. Already automatic under CI, systemd, <code>TERM=dumb</code> and without a terminal — see <a href="../output-modes/">Output modes</a>.</td>
+</tr>
+<tr>
+<td><code>--resume</code></td>
+<td>Continue an interrupted operation from where its journal left off.</td>
+</tr>
+<tr>
+<td><code>--wait</code></td>
+<td>Wait for the deployment lock instead of failing with exit 4.</td>
+</tr>
+<tr>
+<td><code>--config</code></td>
+<td>Path to an installation's <code>installation.yaml</code>, which selects that installation: <code>/etc/demo/installation.yaml</code> means the <code>demo</code> layout, and a path with a prefix means that prefix. Equivalent to <code>--product</code> (and <code>--root</code>); naming both is refused when they disagree.</td>
+</tr>
+<tr>
+<td><code>--product</code></td>
+<td>Product name. Inferred from the installation when omitted, and required on a host with more than one.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="which-installation-a-command-acts-on">Which installation a command acts on<a class="headerlink" href="#which-installation-a-command-acts-on" title="Permanent link">&para;</a></h3>
+<p>A machine may hold several installations: every path is keyed by the product
+name, so <code>/etc/demo</code> and <code>/etc/other</code> are separate deployments with separate
+locks, separate secret state and separate systemd units.</p>
+<p>Selection, in order:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Rank</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--config &lt;path&gt;</code></td>
+<td>1</td>
+<td>Selects the layout the file sits in. This is what the generated systemd units pass.</td>
+</tr>
+<tr>
+<td><code>--product &lt;name&gt;</code></td>
+<td>1</td>
+<td>With <code>--root</code> when the layout is relocated.</td>
+</tr>
+<tr>
+<td><code>MORZER_PRODUCT</code></td>
+<td>2</td>
+<td>For a shell session pinned to one installation. Both flags override it.</td>
+</tr>
+<tr>
+<td>Discovery</td>
+<td>3</td>
+<td>Used only when the machine holds <strong>exactly one</strong> installation.</td>
+</tr>
+</tbody>
+</table>
+<p><code>--config</code> and <code>--product</code> share a rank because they are alternatives rather than
+a precedence: naming both is refused when they disagree, and accepted when they
+name the same installation.</p>
+<p>On a machine with more than one installation, a command that acts on one and was
+given no selector is refused, and the refusal names what it found:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>status
+<span class="go">error: this machine has 2 installations, so --product is required</span>
+<span class="go">hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`; `morzer ls` lists them</span>
+</code></pre></div>
+<p>Commands that touch no installation are unaffected: <code>version</code>, <code>ls</code>, <code>doctor</code>,
+<code>init</code>, <code>installation import</code>, and the bundle-authoring half of <code>release</code> —
+<code>new</code>, <code>verify</code>, <code>pack</code>, <code>build</code> and <code>archive</code>.</p>
+<p><a href="../../operating/several-installations/">Several installations</a> is the whole
+picture: what two deployments share, and what <code>doctor</code> says about it.</p>
+<h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#init"><code>init</code></a></td>
+<td>Create a new installation.</td>
+</tr>
+<tr>
+<td><a href="#apply"><code>apply</code></a></td>
+<td>Converge the system to the installed release.</td>
+</tr>
+<tr>
+<td><a href="#update"><code>update</code></a></td>
+<td>Install a new release over the current one.</td>
+</tr>
+<tr>
+<td><a href="#rollback"><code>rollback</code></a></td>
+<td>Return to the previous release.</td>
+</tr>
+<tr>
+<td><a href="#stop"><code>stop</code></a></td>
+<td>Take the product down and keep it down until it is started.</td>
+</tr>
+<tr>
+<td><a href="#start"><code>start</code></a></td>
+<td>Bring a stopped product back.</td>
+</tr>
+<tr>
+<td><a href="#status"><code>status</code></a></td>
+<td>Show what is deployed and whether it is working.</td>
+</tr>
+<tr>
+<td><a href="#doctor"><code>doctor</code></a></td>
+<td>Run read-only diagnostics.</td>
+</tr>
+<tr>
+<td><a href="#logs"><code>logs</code></a></td>
+<td>Read the deployment's logs.</td>
+</tr>
+<tr>
+<td><a href="#ps"><code>ps</code></a></td>
+<td>List the deployment's containers.</td>
+</tr>
+<tr>
+<td><a href="#stats"><code>stats</code></a></td>
+<td>Show CPU, memory and I/O per container.</td>
+</tr>
+<tr>
+<td><a href="#exec"><code>exec</code></a></td>
+<td>Run a command inside a running service.</td>
+</tr>
+<tr>
+<td><a href="#task"><code>task</code></a></td>
+<td>List and run the commands the release declares.</td>
+</tr>
+<tr>
+<td><a href="#backup"><code>backup</code></a></td>
+<td>Back up the database, files, configuration and secret state.</td>
+</tr>
+<tr>
+<td><a href="#restore"><code>restore</code></a></td>
+<td>Restore from a backup.</td>
+</tr>
+<tr>
+<td><a href="#notify"><code>notify</code></a></td>
+<td>Manage where operation outcomes are reported.</td>
+</tr>
+<tr>
+<td><a href="#version"><code>version</code></a></td>
+<td>Print version, commit, and supported manifest API versions.</td>
+</tr>
+<tr>
+<td><a href="#completion-install"><code>completion install</code></a></td>
+<td>Put the shell completion script where your shell reads it.</td>
+</tr>
+<tr>
+<td><a href="../parameters/#changing-one-after-install"><code>config</code></a></td>
+<td>Read and change the release parameters.</td>
+</tr>
+<tr>
+<td><a href="../secret-commands/"><code>secret</code></a></td>
+<td>Manage the encrypted secret state.</td>
+</tr>
+<tr>
+<td><a href="../release-commands/"><code>release</code></a></td>
+<td>Inspect and manage release bundles.</td>
+</tr>
+<tr>
+<td><a href="../installation-commands/#installation-list"><code>ls</code></a></td>
+<td>List the installations on this machine.</td>
+</tr>
+<tr>
+<td><a href="../installation-commands/"><code>installation</code></a></td>
+<td>List, export, rebuild and remove installations.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="init">init<a class="headerlink" href="#init" title="Permanent link">&para;</a></h2>
+<p>Creates the directory layout, the machine's age identity, the installation
+configuration, the encrypted secret state and, optionally, the systemd units.</p>
+<p>It never overwrites an existing installation, and it does not start the product:
+run <code>apply</code> afterwards.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./bundle<span class="w"> </span>--profile<span class="w"> </span>embedded<span class="w"> </span>--domain<span class="w"> </span>example.com<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--recovery-recipient<span class="w"> </span>age1...
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--release</code></td>
+<td>Release bundle to stage during init. The product name is taken from its manifest.</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>Deployment profile from the release manifest.</td>
+</tr>
+<tr>
+<td><code>--domain</code></td>
+<td>Public domain. Repeat for several; the first is canonical.</td>
+</tr>
+<tr>
+<td><code>--recovery-recipient</code></td>
+<td>Offline age public key that can also decrypt the secret state.</td>
+</tr>
+<tr>
+<td><code>--no-recovery-recipient</code></td>
+<td>Proceed without one. Losing this machine then loses its secrets.</td>
+</tr>
+<tr>
+<td><code>--generate-secrets</code></td>
+<td>Generate every secret the release declares a generator for. Default <code>true</code>.</td>
+</tr>
+<tr>
+<td><code>--install-units</code></td>
+<td>Install systemd units when systemd is available. Default <code>true</code>.</td>
+</tr>
+<tr>
+<td><code>--backup-schedule</code></td>
+<td>systemd <code>OnCalendar</code> expression for scheduled backups.</td>
+</tr>
+<tr>
+<td><code>--signing-key</code></td>
+<td>minisign public key a release signature must verify against. Repeat for several.</td>
+</tr>
+<tr>
+<td><code>--require-signature</code></td>
+<td>Refuse any release that is not signed by one of those keys.</td>
+</tr>
+<tr>
+<td><code>--product</code></td>
+<td>Product name, when no <code>--release</code> is given to take it from.</td>
+</tr>
+<tr>
+<td><code>--set</code></td>
+<td>Set a release parameter, as <code>name=value</code>. Repeat for several. Needs <code>--release</code> to validate against. See <a href="../parameters/">Parameters</a>.</td>
+</tr>
+<tr>
+<td><code>--repair</code></td>
+<td>Restore missing directories on an existing installation. It restores a layout; <code>morzer config set installation.domains</code> is how the domains change afterwards. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
+</tr>
+<tr>
+<td><code>--mode</code></td>
+<td>What this machine is for: <code>dev</code> for a sandbox, or production (the default). Fixed at creation and never changeable — see <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">unattended updates</a>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-interactive-first-run">The interactive first run<a class="headerlink" href="#the-interactive-first-run" title="Permanent link">&para;</a></h3>
+<p>At a terminal, with something required still missing, <code>init</code> asks for it —
+product name, deployment profile (offering what the release declares), domains,
+and the recovery key, with an option to generate one on the spot.</p>
+<p>It is a front-end over the flags and never a second path. It fills the same
+options the flags do, and prints the command line that would have produced the
+same result:</p>
+<div class="highlight"><pre><span></span><code>equivalent to:
+  morzer init \
+      --product demo \
+      --profile embedded \
+      --domain demo.example \
+      --recovery-recipient age1vm6ncva…
+</code></pre></div>
+<p>Put that in your provisioning script and you never need the wizard again, which
+is the point of printing it.</p>
+<p>It never runs with <code>--yes</code>, <code>--json</code> or <code>--quiet</code>, without a terminal, or when
+the command line already answers everything. A CI job, a systemd unit and a
+scripted install all take the flags exactly as given.</p>
+<p><code>--require-signature</code> without <code>--signing-key</code> is refused: no bundle could
+satisfy it, and a policy nothing can satisfy is a configuration error rather
+than something to discover on the next update. A key that does not parse is
+refused too. The keys change afterwards with <a href="../release-commands/#release-trust"><code>morzer release
+trust</code></a>, and whether a signature is required
+with <code>morzer config set release.require_signature</code>. <code>installation.yaml</code> shows
+both, but it is a report, and editing it changes nothing.</p>
+<div class="admonition warning">
+<p class="admonition-title">Keep the recovery key off this machine</p>
+<p>A recovery key stored on the machine it is meant to recover protects
+nothing. <code>init</code> insists on one, or on <code>--no-recovery-recipient</code> said out
+loud.</p>
+</div>
+<h2 id="apply">apply<a class="headerlink" href="#apply" title="Permanent link">&para;</a></h2>
+<p>Renders configuration and secrets, pulls images, runs migrations, starts
+services and waits for health.</p>
+<p>Idempotent: applying an unchanged system runs nothing and says so. Each step
+answers a <code>Check</code> before it runs, and a satisfied postcondition marks it skipped
+rather than repeating the work.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--profile</code></td>
+<td>Override the installation's deployment profile.</td>
+</tr>
+<tr>
+<td><code>--startup</code></td>
+<td>Boot-time mode: skip pulls when images are local, skip migrations when the schema is current.</td>
+</tr>
+</tbody>
+</table>
+<p><code>--startup</code> is what the systemd unit uses. It exists so a machine rebooting
+without network connectivity still comes back up.</p>
+<h2 id="update">update<a class="headerlink" href="#update" title="Permanent link">&para;</a></h2>
+<p>Installs a new release over the current one.</p>
+<p>Takes a bundle path, or <code>--to &lt;version&gt;</code> for a release already fetched into the
+release store. A pre-update backup is taken by default.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>update<span class="w"> </span>./bundle-1.3.0
+morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w"> </span><span class="m">1</span>.3.0
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to</code></td>
+<td>Install a version already in the release store, instead of a bundle path.</td>
+</tr>
+<tr>
+<td><code>--digest</code></td>
+<td>Expected bundle content digest. A mismatch refuses the update.</td>
+</tr>
+<tr>
+<td><code>--profile</code></td>
+<td>Override the installation's deployment profile.</td>
+</tr>
+<tr>
+<td><code>--skip-backup</code></td>
+<td>Skip the pre-update backup. Requires <code>--force</code> and is recorded in the journal.</td>
+</tr>
+<tr>
+<td><code>--generate-secrets</code></td>
+<td>Generate the secrets the new release adds with a <code>generator</code>. Default <code>true</code>; <code>false</code> is recorded in the journal, and <code>--resume</code> keeps it.</td>
+</tr>
+<tr>
+<td><code>--check</code></td>
+<td>Report whether a newer release exists, without installing anything.</td>
+</tr>
+<tr>
+<td><code>--stage</code></td>
+<td>Follow the configured channel: fetch and verify what it points at, without installing it.</td>
+</tr>
+<tr>
+<td><code>--unattended</code></td>
+<td>One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see <a href="../../operating/unattended-updates/">unattended updates</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>Before it converges, an update generates each secret the new release declares
+with a generator, has no value here, and the release being replaced did not
+declare. The step names them, and a plan names what it would generate; no value
+is printed or journaled. A secret both releases declare and nobody set is left
+unset, and <code>apply</code> and <code>rollback</code> generate nothing. See
+<a href="../../operating/updating/#what-happens-in-order">updating</a>.</p>
+<p><code>--check</code> and <code>--stage</code> are alternatives, and both stop short of installing.
+See <a href="../../operating/updating/#following-a-channel">following a channel</a> for what
+staging leaves behind and what a poll costs.</p>
+<p>A failed update rolls back to the release that was running, unless its
+migrations have already left a database that release cannot read, or cannot be
+shown to read because its manifest no longer loads. Then it stops
+at exit 12 and leaves the new release in place; see <a href="../../operating/updating/#a-failure-after-the-migrations">a failure after the
+migrations</a>. <strong>The
+database is never rolled back automatically</strong>: when a migration cannot be undone,
+the release says so through <code>compatibility.rollback_safe</code>, and the answer is a
+restore from the backup taken here.</p>
+<h2 id="rollback">rollback<a class="headerlink" href="#rollback" title="Permanent link">&para;</a></h2>
+<p>Returns to the previous release.</p>
+<p>It is not "update in reverse". It assesses three questions first — are the
+containers reversible, is the schema compatible, is a restore required — and
+refuses when the answers do not permit a safe return, naming the backup to
+restore from instead.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to</code></td>
+<td>Roll back to this installed version rather than the immediate previous one.</td>
+</tr>
+</tbody>
+</table>
+<p>Each rollback promotes the release it displaced to <em>previous</em>, so a second
+rollback without <code>--to</code> returns to where the first started. Reaching a release
+two steps back means naming it.</p>
+<p><code>--force</code> does not override a refusal. Force authorises destructive actions, not
+incorrect ones, and the failure mode here is quiet data corruption rather than a
+visible break.</p>
+<h2 id="stop">stop<a class="headerlink" href="#stop" title="Permanent link">&para;</a></h2>
+<p>Stops every service and records the stop, so the product stays down across a
+reboot and an unattended update until <code>morzer start</code>. Containers, networks and
+volumes are kept: no flag of <code>stop</code> or <code>start</code> can remove a volume.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--reason</code></td>
+<td>Why, in one line of at most 200 characters; shown by <code>status</code>, <code>doctor</code> and <code>ls</code> until <code>start</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>While stopped, <code>apply</code>, <code>update</code>, <code>rollback</code> and <code>task run</code> are refused with
+<a href="../exit-codes/">exit 2</a>, the update timer stages without installing, and the
+scheduled backup is skipped. <code>restore</code> and an explicit <code>backup</code> still run.
+<a href="../../operating/taking-a-product-down/">Taking a product down for a while</a> has
+the full table.</p>
+<p>Refused, with exit 2, before the first <code>apply</code>: there is nothing to stop. A stop
+killed between recording and stopping is finished with <code>--resume</code>.</p>
+<h2 id="start">start<a class="headerlink" href="#start" title="Permanent link">&para;</a></h2>
+<p>Applies the current release, then clears the stop. Cleared only once the release
+has converged, so a <code>start</code> that fails keeps boot and the update timer away until
+it succeeds.</p>
+<p>It does not install a release staged while the product was stopped; the next
+tick of the update timer, or <code>morzer update</code>, does. On a product that is not
+stopped, <code>start</code> is <code>apply</code>, and says nothing was stopped.</p>
+<h2 id="status">status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
+<p>Shows what is deployed, which services are up, the last backup, the last
+operation, and anything needing attention.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--clear-intervention</code></td>
+<td>Acknowledge a <code>requires-manual-intervention</code> operation. An empty value selects the only one.</td>
+</tr>
+<tr>
+<td><code>--watch</code></td>
+<td>Refresh until interrupted. Needs a terminal.</td>
+</tr>
+<tr>
+<td><code>--interval</code></td>
+<td>How often <code>--watch</code> refreshes. Default <code>2s</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Before the first <code>apply</code>, nothing is running, so <code>status</code> does not ask the
+runtime. It shows <code>next</code> instead, with the command that starts the product, or
+<code>morzer update &lt;bundle&gt;</code> when no release is installed yet. <code>--json</code> carries the
+same sentence as <code>next</code>. While an operation holds the lock there is no <code>next</code>.</p>
+<p>While the product is <a href="#stop">stopped</a>, <code>status</code> shows <code>stopped by the operator
+since &lt;time&gt;: &lt;reason&gt;</code> above the services, its stopped services are not drawn
+as failures, and <code>next</code> names <code>morzer start</code>. <code>--json</code> carries the stop as a
+<code>stopped</code> object with <code>at</code>, <code>reason</code>, <code>operation_id</code> and <code>release</code>.</p>
+<p>An operation that ended in <a href="../exit-codes/">exit 12</a> keeps surfacing in <code>status</code>
+and <code>doctor</code> until it is cleared explicitly. That is deliberate: the flag exists
+to stop an operator proceeding as though nothing happened.</p>
+<h3 id="watching">Watching<a class="headerlink" href="#watching" title="Permanent link">&para;</a></h3>
+<p><code>--watch</code> redraws the status on a timer until you press <code>q</code>. It is the only view
+that takes over the screen, and it restores what was there when it exits — there
+is nothing in a repeatedly-redrawn table worth keeping in the scrollback.</p>
+<p>It observes and never acts. No key restarts a service or clears an
+intervention: those take the deployment lock and are journaled, which makes them
+commands rather than keystrokes.</p>
+<p>A refresh that fails leaves the last good reading on screen with the error
+underneath, because a runtime that briefly stops answering is exactly when the
+previous reading matters most. Refreshes never overlap: if one is still in
+flight when the timer fires, the tick is skipped rather than queued against a
+runtime that is already struggling.</p>
+<p>It is refused without a terminal, rather than falling back to printing the table
+in a loop — a <code>--watch</code> left in a unit file would otherwise fill a journal with
+thousands of copies of the same output. For scripts, poll <code>morzer status --json</code>
+instead.</p>
+<h2 id="doctor">doctor<a class="headerlink" href="#doctor" title="Permanent link">&para;</a></h2>
+<p>Read-only diagnostics, with a suggested remedy for every non-ok result. It
+checks tool versions against what the release requires, the installation layout,
+the secret state, service and health status, disk headroom, and the journal.</p>
+<p>Exits <a href="../exit-codes/">3</a> when any check fails; warnings exit 0.</p>
+<p><code>--unattended</code> is the <a href="../../operating/notifications/#the-scheduled-doctor">scheduled run</a>:
+it sends the notification outbox first, then notifies one <code>doctor.finished</code>
+naming the checks that warn or fail. A run where every check passes notifies
+nothing. Every run leaves out of <code>config.operations</code> the operation holding the
+deployment lock while it is running, so a backup in progress is not reported as
+unfinished.</p>
+<p>Six checks are advisory by design, and warn rather than fail:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.drift</code></td>
+<td>A configuration file on disk differs from what the installed release renders, or is absent. The next <code>apply</code>, <code>update</code>, <code>rollback</code> or <code>config set</code> replaces it, and <a href="../../operating/changing-configuration/#a-hand-edit-is-replaced"><code>config diff</code></a> shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted.</td>
+</tr>
+<tr>
+<td><code>runtime.definition</code></td>
+<td>A service's containers were created from another definition than the installed release declares: the hash Compose labels each container with differs from <code>docker compose config --hash</code>. The next <code>apply</code> re-creates it, and <a href="../../operating/changing-configuration/#a-service-created-from-another-definition"><code>config diff</code></a> lists it. A service with no container, an orphan container and a one-off <code>run</code> container are not counted. A runtime that cannot be asked is reported as not compared.</td>
+</tr>
+<tr>
+<td><code>notify.outbox</code></td>
+<td>A notify target has events it did not accept waiting in the <a href="../../operating/notifications/#delivery">outbox</a>: it names the target, how many, and how many were dropped past the bound of 100. <code>morzer notify flush</code> sends them once the target answers, as the scheduled <code>doctor</code> does.</td>
+</tr>
+<tr>
+<td><code>secrets.rotation</code></td>
+<td>A secret is older than the <code>rotation_period</code> its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all.</td>
+</tr>
+<tr>
+<td><code>secrets.ephemeral-storage</code></td>
+<td>The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this.</td>
+</tr>
+<tr>
+<td><code>runtime.images-local</code></td>
+<td>Some of the release's <strong>pulled</strong> images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is <code>images.bundled</code> below. See <a href="../../operating/installing-offline/">Installing without a network</a>.</td>
+</tr>
+</tbody>
+</table>
+<p>The rotation remedy names the command that will actually work: <code>secret rotate</code>
+for a secret the release declares a generator for, and <code>secret set</code> for one it
+does not — pointing at <code>rotate</code> there would point at a command that fails.</p>
+<p>These checks <strong>fail</strong> rather than warn:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>images.bundled</code></td>
+<td>An image the release marks <code>from: bundle</code> is not in the local image store. Fatal, and <code>apply</code> refuses on it: a bundled image is deployed under a tag the manager creates, and letting a converge proceed without it would send the deployment to the vendor's registry for whatever that tag pointed at. <code>morzer release ingest</code> loads it out of the bundle, with no network.</td>
+</tr>
+<tr>
+<td><code>runtime.declared</code></td>
+<td>The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh <code>init</code> and a <code>restore</code>. On a machine with no installation yet, <code>doctor</code> instead checks the tools that runtime needs, which is what <code>init</code> will want next.</td>
+</tr>
+<tr>
+<td><code>runtime.services</code></td>
+<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is <a href="#stop">stopped</a> with <code>morzer stop</code>, it reports the stop as information, however old, and <code>runtime.health</code> does not probe.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="history">history<a class="headerlink" href="#history" title="Permanent link">&para;</a></h2>
+<p>Lists the operations the installation ran, newest first: every <code>apply</code>,
+<code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>, <code>task run</code> and the rest, with its
+status, when it started, what it did to the installed release and how long it
+took. A dry run is listed as one. It reads the operation journal and nothing
+else, so it answers when the Docker daemon is down, and it takes no lock.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--limit</code></td>
+<td>List at most this many operations. Default <code>20</code>; <code>0</code> lists them all.</td>
+</tr>
+</tbody>
+</table>
+<p><code>morzer history &lt;operation-id&gt;</code> shows one operation: its steps with their
+status and duration, the flags it ran with, and its error with the hint. The id
+is the one <code>status</code> names as the last operation, and Tab completes it.</p>
+<p><code>--json</code> carries the journal's own records, as <code>operations</code> with <code>total</code>, the
+number of operations in the journal, or as the one record when an id is given:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">history</span><span class="w"> </span>--limit<span class="w"> </span><span class="m">0</span><span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data.operations[] | select(.status != "succeeded") | .id'</span>
+</code></pre></div>
+<p>An id the journal does not hold exits <a href="../exit-codes/">2</a>.</p>
+<h2 id="logs">logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
+<p>Streams the deployment's logs, resolving the Compose project, its files and its
+environment. Scoped to the project rather than to the manifest's service list,
+so a sidecar the vendor's Compose file starts is included.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--follow</code>, <code>-f</code></td>
+<td>Keep the stream open. Ctrl-C exits 0.</td>
+</tr>
+<tr>
+<td><code>--tail</code></td>
+<td>Lines of history before following. Default <code>100</code>; <code>0</code> is the whole retained backlog, which is also the default with <code>--follow</code>.</td>
+</tr>
+<tr>
+<td><code>--since</code></td>
+<td>A duration back from now (<code>10m</code>, <code>2h</code>) or an RFC 3339 instant <strong>with a zone</strong>. A timestamp with no zone is refused rather than assumed local.</td>
+</tr>
+<tr>
+<td><code>--no-redact</code></td>
+<td>Do not scrub this installation's secret values. Prints a warning to stderr.</td>
+</tr>
+</tbody>
+</table>
+<p>Takes no lock: reading logs must never queue behind an update, since during one
+is when they are most wanted. Nothing is stored, rotated or shipped.</p>
+<p>A stream the runtime could not produce — the Docker daemon is down, or a named
+service does not exist — exits 7 with the runtime's own reason, rather than 0
+having printed nothing.</p>
+<p>Secret values are scrubbed by default, holding bytes to a line boundary so a
+value split across two reads is still caught, and dropping any line over 64 KiB
+rather than passing it through unmatched. It is best effort — a value the
+service <em>derived</em> from a secret is beyond any redactor. See
+<a href="../../operating/looking-inside/#redaction-and-what-it-cannot-do">Looking inside</a>.</p>
+<p><code>--json</code> is the one exception to the <a href="../output-modes/#the-one-streaming-exception">single-envelope
+contract</a>: one object per line, no
+envelope, and the exit code is what says whether the stream ended cleanly.</p>
+<h2 id="ps">ps<a class="headerlink" href="#ps" title="Permanent link">&para;</a></h2>
+<p>The service table <code>status</code> draws, on its own: what is running, whether it is
+healthy, which image, and the runtime's own sentence about it. No flags, no
+lock, and nothing changed.</p>
+<p>The container column is never dropped on a narrow terminal — it is the only
+thing that tells two replicas of one service apart.</p>
+<h2 id="stats">stats<a class="headerlink" href="#stats" title="Permanent link">&para;</a></h2>
+<p>One sample of CPU, memory and I/O, one row per container.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--watch</code></td>
+<td>Re-sample until interrupted. Refused with <code>--json</code>.</td>
+</tr>
+<tr>
+<td><code>--interval</code></td>
+<td>How often <code>--watch</code> re-samples. Default <code>2s</code>, floor <code>1s</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Never an aggregate per service: a scaled service is several containers, and one
+row under the service's name would be one replica's numbers wearing the whole
+service's label. The total line covers CPU and memory, which add, and not the
+memory limit, which does not; <code>--json</code> emits the rows and no total.</p>
+<p>A <code>-</code> in a column — <code>null</code> under <code>--json</code> — is a figure this host does not
+account for, which is what a rootless daemon reports for block I/O. It is not a
+zero, because a container that has written nothing reports one of those.</p>
+<p>At a terminal <code>--watch</code> redraws; elsewhere it appends a block per sample, unlike
+<a href="#watching"><code>status --watch</code></a>, which is refused without a terminal. A sequence
+of samples is a time series worth keeping; a redrawn status table is not.</p>
+<p>A runtime that cannot report statistics refuses by name with
+<a href="../exit-codes/">exit 7</a> rather than returning an empty table, which would be
+indistinguishable from an idle deployment.</p>
+<h2 id="exec">exec<a class="headerlink" href="#exec" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;service&gt;<span class="w"> </span>--<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>args...<span class="o">]</span>
+</code></pre></div>
+<p>Runs one command inside a running container of the named service and propagates
+its exit code, so a failed command fails the invocation. Everything after <code>--</code>
+is the container's command line and nothing else; the terminator is required.</p>
+<p>The command's output is printed when it ends, its stdout on stdout and its
+stderr on stderr, unchanged. The first 256 KiB of each is kept, so a longer
+output is cut; a warning on stderr after it says so, and with <code>--json</code>
+<code>truncated</code> is true. The exit code is still the command's own, so <code>exec</code>
+cannot carry a dump larger than that.</p>
+<p>Not an interactive shell: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that
+prompts waits for an answer nobody can give. There is no <code>--user</code> and no
+shortcut for running as root.</p>
+<p>A service that is not running is refused by name, with the state it is in, and
+exit 7. A scaled service is refused only when none of its instances is running,
+because Compose runs the command in one that is. A command that fails because
+its service stopped or its containers were removed is refused too: a failed
+command is checked against the service's state again, after whatever it
+printed, so the runtime's own failure is not passed off as the command's exit
+code. A command that succeeded is not checked, and a state that cannot be read
+leaves the command's exit code as it was.</p>
+<p>Journaled with its type, service, argv and exit code — and never its output. The
+argv is redacted with this installation's known secret values first, because a
+password in an argv is the ordinary case; when those values cannot be loaded at
+all the record keeps everything else and carries <code>argv_omitted</code> saying why,
+rather than writing down a command line it could not scrub. A credential the
+manager has never
+been told about is beyond that; see
+<a href="../../operating/looking-inside/#it-is-written-down">Looking inside</a>.</p>
+<h2 id="task">task<a class="headerlink" href="#task" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>task<span class="w"> </span>list
+morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>&lt;task&gt;<span class="w"> </span><span class="o">[</span>--input<span class="w"> </span>&lt;name&gt;<span class="o">=</span>&lt;path&gt;<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--<span class="w"> </span>args...<span class="o">]</span>
+</code></pre></div>
+<p>Runs a command the release declares under
+<a href="../manifest/#tasks"><code>tasks</code></a>: a one-shot container of a release service, with the
+task's command, through the image's entrypoint. Where <a href="#exec"><code>exec</code></a> runs a
+command the operator writes, a task is one the vendor wrote and named, and says
+which machines it may run on.</p>
+<p><code>task list</code> shows each task's service, the machine modes it allows, whether this
+machine is one of them, whether it takes arguments, the inputs it needs, and its
+description.</p>
+<p><code>task run</code> is an operation, <code>task</code>. It takes the deployment lock, is refused
+while an earlier operation needs attention, and is journalled, attested and
+reported to the notify targets like a converge:</p>
+<ol>
+<li>the task's <a href="../manifest/#inputs">inputs</a>, when it declares any, are copied
+   for the run;</li>
+<li>secrets and configuration are rendered as <code>apply</code> renders them, so a task
+   after a reboot finds the files its service mounts;</li>
+<li>the task's container runs to completion. The services it depends on are
+   started first, so a task runs whether or not the deployment is up.</li>
+</ol>
+<p>Refused before anything runs, and journalled as nothing:</p>
+<ul>
+<li>a task the release does not declare, naming the ones it does;</li>
+<li>arguments to a task whose release does not declare <code>args: true</code> for it;</li>
+<li>a task whose <code>modes</code> do not include this machine's. <code>--force</code> does not override
+  it;</li>
+<li><code>--resume</code>. Running a task's command again is not the same as running it once,
+  and whether that is safe is the vendor's to say;</li>
+<li>an <code>--input</code> the task does not declare, a declared input not given, a name
+  given twice, a path that is not a regular file once symlinks are followed (a
+  directory, a named pipe, a device), and a file larger than the input's
+  <code>max_size</code>, all with exit 2;</li>
+<li>inputs that do not fit in the free space under the manager's directory, with
+  64 MiB kept back.</li>
+</ul>
+<p>A service the release's runtime configuration does not define is refused before
+the container starts, rather than reported through an exit code that would pass
+for the task's own.</p>
+<p>The task's output is printed only when asked. <code>--output</code> prints it when the task
+finishes: its stdout on stdout, so a report can be piped to a file
+(<code>morzer task run report --output &gt; report.txt</code>), and its stderr on stderr. It is
+kept line by line and printed ending in a newline. As with <code>exec</code>, the first
+256 KiB of each is kept, so a longer report is cut, and a warning on stderr after
+it says so; with <code>--json</code>, <code>truncated</code> is true and both streams are in the
+envelope whatever the flags. From Compose 2.36 on, Compose's own progress for
+the services the task starts first is not part of it. The live view tails it
+while it runs, and <code>--verbose</code> prints it as it arrives. Without either flag, a
+task that fails shows the last 10 lines of its stderr, and one that succeeds
+shows nothing of its own. The invocation exits with the
+task's own exit code. A non-zero exit fails the operation: it is <code>failed</code>, with
+nothing rolled back and nothing flagged, since the task's effects are the
+vendor's. Its error names the exit code and quotes none of the output, which the
+journal does not keep.</p>
+<p>Not an interactive session: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin. <code>--dry-run</code> lists the
+steps and the command the task would run. The arguments in that command are
+scrubbed, as they are in the journal, and left out when they cannot be.</p>
+<p>The journal keeps the task's name, its service and the arguments, with this
+installation's known secret values scrubbed first, and never the output. When
+those values cannot be loaded the record carries <code>args_omitted</code> saying why, as
+<a href="#exec"><code>exec</code></a>'s does.</p>
+<p>The arguments are passed on the <code>docker compose run</code> command line, which other
+users on the machine can read while the task runs, so they are not the place for
+a credential.</p>
+<h3 id="passing-a-file">Passing a file<a class="headerlink" href="#passing-a-file" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>restore<span class="w"> </span>--input<span class="w"> </span><span class="nv">snapshot</span><span class="o">=</span>./catalog-snapshot.jsonl
+</code></pre></div>
+<p>Each <code>--input</code> is copied into <code>/var/lib/&lt;product&gt;/manager/inputs/&lt;operation-id&gt;/</code>
+before the task runs. That directory is readable only by root, and the copy is
+removed when the operation ends, whether the task succeeded or not. The copy is
+hashed as it is made, and it stops at the input's <code>max_size</code> and at the free
+space, so a file that grows after it was checked is refused. The task reads the
+copy read-only at <code>/morzer/inputs/&lt;name&gt;</code>: exactly the bytes whose digest is
+recorded, whatever happens to your file meanwhile.</p>
+<p>The journal records each input as <code>input.&lt;name&gt;</code>, its size and sha256, and never
+its content or your path. The operation's <a href="../attestations/">attestation</a> lists
+the same. <code>--dry-run</code> checks the inputs and copies nothing. A task killed
+mid-run leaves its copy behind: <code>doctor</code> reports it as <code>tasks.staged-inputs</code>,
+and the next <code>task run</code>, with inputs or without, removes it.</p>
+<p>An installation under a root whose path contains <code>:</code> cannot be given inputs:
+Compose's <code>--volume</code> splits on it, so the run is refused rather than mounting
+the wrong path.</p>
+<h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
+<p>Coordinates the release's backup hook, wraps the result in a self-describing
+manifest, and verifies the checksums by re-reading what was written.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--component</code></td>
+<td>Limit the backup to these components: <code>database</code>, <code>files</code>, <code>config</code>, <code>export</code>, <code>manifest</code>, <code>volumes</code>.</td>
+</tr>
+<tr>
+<td><code>--reason</code></td>
+<td>Why this backup was taken; recorded in its manifest. Default <code>manual</code>.</td>
+</tr>
+<tr>
+<td><code>--no-verify</code></td>
+<td>Skip re-reading the backup to check its checksums.</td>
+</tr>
+<tr>
+<td><code>--no-prune</code></td>
+<td>Skip applying the retention policy afterwards.</td>
+</tr>
+<tr>
+<td><code>--no-push</code></td>
+<td>Do not copy the backup to the configured targets; it stays only on this machine.</td>
+</tr>
+<tr>
+<td><code>--no-prune-remote</code></td>
+<td>Skip applying the retention policy on the targets.</td>
+</tr>
+<tr>
+<td><code>--unattended</code></td>
+<td>The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is <a href="#stop">stopped</a>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-list">backup list<a class="headerlink" href="#backup-list" title="Permanent link">&para;</a></h3>
+<p>Lists backups, newest first.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--remote</code></td>
+<td>List what is on the configured backup targets instead.</td>
+</tr>
+<tr>
+<td><code>--target</code></td>
+<td>List one target by URL, whether or not this installation configures it.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-target">backup target<a class="headerlink" href="#backup-target" title="Permanent link">&para;</a></h3>
+<p>Manages where backups are kept besides this machine. See
+<a href="../backup-targets/">backup target URLs</a>.</p>
+<p><code>morzer backup target add &lt;url&gt;</code> records a target, checking it answers first.
+<code>morzer backup target list</code> shows them and whether each is reachable.
+<code>morzer backup target remove &lt;url&gt;</code> stops using one and deletes nothing that is
+already there.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--credentials</code></td>
+<td>Name of a secret holding this target's credential document.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-push">backup push<a class="headerlink" href="#backup-push" title="Permanent link">&para;</a></h3>
+<p>Copies an existing backup to every configured target, verifying it again first.
+Takes a backup id; the most recent when omitted.</p>
+<p>This is the retry for a push that failed. A backup whose push failed is still on
+this machine, verified and correct — what failed was the network or the medium,
+and the remedy should not be taking another backup.</p>
+<h3 id="backup-fetch">backup fetch<a class="headerlink" href="#backup-fetch" title="Permanent link">&para;</a></h3>
+<p>Copies a backup down from a target into this machine's backup store, and
+verifies it. Takes a backup id; the newest on the target when omitted.</p>
+<p>Restoring is a separate command on purpose: a backup that has come back from a
+bucket is one you should be able to look at before it overwrites a database.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--target</code></td>
+<td>Target URL to fetch from; the installation's targets when omitted.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="backup-verify">backup verify<a class="headerlink" href="#backup-verify" title="Permanent link">&para;</a></h3>
+<p>Re-reads a backup and checks its checksums. Takes a backup id; locally, the most
+recent backup when omitted.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>01J8ZP...
+morzer<span class="w"> </span>backup<span class="w"> </span>verify<span class="w"> </span>--remote
+</code></pre></div>
+<p>With <code>--remote</code> it checks the copy on the configured targets instead, streaming
+each component through a checksum and keeping nothing. A full transfer, and the
+only thing that notices rot on a target.</p>
+<p>Omitting the id means something different in each mode: locally it verifies the
+most recent backup, and with <code>--remote</code> it verifies <strong>every</strong> backup on every
+configured target, which is what a scheduled check wants.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--remote</code></td>
+<td>Check the copy on the configured backup targets; a full transfer.</td>
+</tr>
+<tr>
+<td><code>--target</code></td>
+<td>Verify on one target by URL, whether or not this installation configures it.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td><abbr title="YAML Ain't Markup Language">YAML</abbr> file holding the target's credentials, for a machine whose secret state is not readable yet.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="restore">restore<a class="headerlink" href="#restore" title="Permanent link">&para;</a></h2>
+<p>Restores from a backup.</p>
+<p>Destructive: it requires <code>--force</code> <strong>and</strong> <code>--confirm &lt;installation-id&gt;</code>, typed
+out. A restore that could be triggered by one mistyped command is a restore
+waiting to destroy a production database.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--backup</code></td>
+<td>Backup id. The most recent when omitted.</td>
+</tr>
+<tr>
+<td><code>--component</code></td>
+<td>Limit the restore to these components: <code>database</code>, <code>files</code>, <code>config</code>, <code>manifest</code>, <code>volumes</code>. <code>secrets</code>, a retired component, is still accepted for older backups.</td>
+</tr>
+<tr>
+<td><code>--confirm</code></td>
+<td>The installation id, typed to confirm a destructive restore.</td>
+</tr>
+<tr>
+<td><code>--allow-cross-installation</code></td>
+<td>Restore a backup that belongs to a different installation.</td>
+</tr>
+</tbody>
+</table>
+<p><code>--allow-cross-installation</code> is separate from <code>--force</code> because <code>--force</code> is
+already required for every restore: using it for both would mean the
+cross-installation guard was only ever checked after the one thing that disabled
+it. Restoring another deployment's data is a distinct decision and gets its own
+answer.</p>
+<p>If the machine is a rebuild of the one the backup came from,
+<a href="../installation-commands/#installation-import"><code>installation import</code></a> is the
+right answer instead — it restores the original id, so the guard never fires.</p>
+<p>Restore declares that it requires manual intervention on failure: a half-restored
+database is a state no automatic action can repair, so a failure here exits
+<a href="../exit-codes/">12</a> rather than pretending compensation succeeded.</p>
+<h2 id="notify">notify<a class="headerlink" href="#notify" title="Permanent link">&para;</a></h2>
+<h3 id="notify-target">notify target<a class="headerlink" href="#notify-target" title="Permanent link">&para;</a></h3>
+<p>Manages the webhooks this deployment reports to. See
+<a href="../../operating/notifications/">notifications</a> for what is sent.</p>
+<p><code>morzer notify target add [url]</code> records a target. It checks what the target
+names before recording it, and sends nothing: an <code>https</code> URL with no password
+in it, and any secret it reads, set and well formed. <code>morzer notify target list</code>
+shows them, naming a URL kept in a secret by its secret.
+<code>morzer notify target remove &lt;url|name&gt;</code> stops reporting to one, and deletes
+what the outbox held for it. The first target added installs the
+<a href="../../operating/notifications/#the-scheduled-doctor">doctor timer</a> unless
+<code>doctor.scheduled</code> is off, and removing the last removes it.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--name</code></td>
+<td>What diagnostics call the target. Required with <code>--url-secret</code>.</td>
+</tr>
+<tr>
+<td><code>--url-secret</code></td>
+<td>Name of a secret holding the whole URL, in place of <code>[url]</code>, for services where the URL is the credential.</td>
+</tr>
+<tr>
+<td><code>--credentials</code></td>
+<td>Name of a secret holding a header to send: a <abbr title="YAML Ain't Markup Language">YAML</abbr> document with <code>header</code> and <code>value</code>.</td>
+</tr>
+<tr>
+<td><code>--min-level</code></td>
+<td>Lowest <code>doctor</code> finding sent to this target: <code>warn</code> or <code>error</code>. Default <code>error</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="notify-flush">notify flush<a class="headerlink" href="#notify-flush" title="Permanent link">&para;</a></h3>
+<p><code>morzer notify flush</code> sends the <a href="../../operating/notifications/#delivery">outbox</a>
+now, oldest first: the events a target was down for, or answered in a way a later
+send can get past. Each is deleted once its target answers, and kept while it is
+still down; a target still down gets no more of its entries that run. One
+sender runs at a time, so while the scheduled <code>doctor</code> is sending, this sends
+nothing and says so. It exits 0 whatever the targets answered.</p>
+<h2 id="version">version<a class="headerlink" href="#version" title="Permanent link">&para;</a></h2>
+<p>Prints the manager version, the commit it was built from, and the manifest API
+versions it can read.</p>
+<p>Under <code>--json</code> the supported API versions are a list, so a bundle author can
+check compatibility programmatically rather than by trial and error.</p>
+<h2 id="completion-install">completion install<a class="headerlink" href="#completion-install" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w">            </span><span class="c1"># the shell $SHELL names</span>
+morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>zsh
+morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>--print-path
+sudo<span class="w"> </span>morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>bash<span class="w"> </span>--system
+</code></pre></div>
+<p>Generates the completion script and puts it where that shell reads completions
+from, creating the directory when it is missing.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--print-path</code></td>
+<td>Print where the file would go and write nothing.</td>
+</tr>
+<tr>
+<td><code>--system</code></td>
+<td>Write the distribution's own completion directory instead of one under your home. Needs the privileges for it.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Shell</th>
+<th>Where it goes</th>
+<th>What else</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bash</code></td>
+<td><code>${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/morzer</code></td>
+<td>bash reads that directory through the bash-completion package, 2.8 or newer. Without it, source the file from <code>~/.bashrc</code>.</td>
+</tr>
+<tr>
+<td><code>zsh</code></td>
+<td><code>${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_morzer</code></td>
+<td>the directory must be on <code>fpath</code> before <code>compinit</code>; the command prints the line to add.</td>
+</tr>
+<tr>
+<td><code>fish</code></td>
+<td><code>${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions/morzer.fish</code></td>
+<td>read on the next start.</td>
+</tr>
+</tbody>
+</table>
+<p>Those paths are a table in the code rather than a guess, because the failure of
+a completion is silence — no error, no warning, just a Tab key that does
+nothing. It is also the only place this project knows them: the
+<a href="../../get-started/installation/">install script</a> calls this command rather than
+learning the paths itself, so there is no second copy to drift.</p>
+<p>Writing is idempotent: the same path and the same bytes every run.</p>
+<p><strong>A shell it cannot place a file for is not a failure.</strong> No <code>$SHELL</code>, an
+unrecognised one, or something exotic: the script goes to stdout with a note
+naming the shells it can place, and the command exits 0. That keeps
+<code>morzer completion install &gt; somewhere</code> useful, and keeps an installer's
+optional completion step from failing an install.</p>
+<p>PowerShell is generated by <code>morzer completion powershell</code> and not installed by
+this: its location is a profile script this program has no business editing.</p>
+<h3 id="what-completes">What completes<a class="headerlink" href="#what-completes" title="Permanent link">&para;</a></h3>
+<p>Commands and flags complete everywhere. <code>--product</code> and <code>morzer shell</code> also
+complete the names <code>morzer ls</code> lists, read from the state files alone, with no
+Docker call, no lock and no network. zsh and fish show each one's release beside
+it, or that its state does not load.</p>
+<p>Arguments that name something inside an installation complete from it:</p>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Offers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logs</code>, <code>exec</code></td>
+<td>the services <code>ps</code> lists, with their state</td>
+</tr>
+<tr>
+<td><code>task run</code></td>
+<td>the tasks <code>task list</code> shows</td>
+</tr>
+<tr>
+<td><code>release show</code></td>
+<td>the versions in the release store, then file names</td>
+</tr>
+<tr>
+<td><code>update --to</code>, <code>rollback --to</code></td>
+<td>the stored versions newer, or older, than the installed one</td>
+</tr>
+<tr>
+<td><code>config get</code>, <code>config set</code>, <code>config unset</code></td>
+<td>the parameter and setting names, as <code>name=</code> for <code>set</code>; <code>unset</code> adds the stale values <code>config list</code> reports</td>
+</tr>
+<tr>
+<td><code>restore --backup</code>, <code>backup verify</code>, <code>backup target push</code></td>
+<td>this machine's backups, newest first</td>
+</tr>
+<tr>
+<td><code>history</code></td>
+<td>the operations in the journal, newest first, with their type and status</td>
+</tr>
+</tbody>
+</table>
+<p>They read the installation the line names, by <code>--product</code>, <code>--config</code> or
+<code>MORZER_PRODUCT</code>, or the only one on the machine. With several and none named,
+nothing is offered. Services ask the Docker daemon, as <code>ps</code> does, and offer
+nothing if it has not answered within three seconds; the rest read the state
+files.</p>
+<p>Under <code>sudo</code> the completion runs as you, not as root, and cannot open an
+installation's directory. It then offers the products whose service unit the
+manager wrote in <code>/etc/systemd/system</code>, which is world-readable, described as
+not readable as this user. An installation created with
+<code>--install-units=false</code> has no unit and is not offered then; run the
+completion in a root shell to see it. The arguments in the table offer nothing
+under <code>sudo</code>, since they need the installation itself: <code>sudo morzer shell
+&lt;product&gt;</code> gives a root shell where they complete.</p>
+
+
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-circle-arrow-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Every command">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Every command
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../backup-targets/" class="md-footer__link md-footer__link--next" aria-label="Next: Backup target URLs">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Backup target URLs
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2026 Lev Litvinov and contributors
+    </div>
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate":null,"base":"../..","features":["search.highlight","navigation.footer","navigation.instant","navigation.instant.progress","navigation.tabs","navigation.sections","navigation.path","navigation.top","toc.follow","content.code.copy","content.code.select","content.code.annotate","content.tooltips"],"search":"../../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":{"alias":true,"default":"latest","provider":"mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.ed145cee.min.js"></script>
+      
+    
+  </body>
+</html>
