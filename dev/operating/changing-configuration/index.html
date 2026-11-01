@@ -871,6 +871,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-hand-edit-is-replaced" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A hand edit is replaced
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#after-a-release-changes-what-it-declares" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2092,6 +2103,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-hand-edit-is-replaced" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A hand edit is replaced
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#after-a-release-changes-what-it-declares" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2239,8 +2261,9 @@ a secret reaches a container as a mounted file, and restarting re-reads it.</p>
 <h2 id="plan-it-first">Plan it first<a class="headerlink" href="#plan-it-first" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w"> </span>--dry-run
 </code></pre></div>
-<p>Shows the step list and a diff of any configuration file that would change.
-A plan never claims a service was re-created; it says what <em>would</em> happen.</p>
+<p>Shows the step list and a diff of any configuration file that would change,
+the same diff <a href="#a-hand-edit-is-replaced"><code>config diff</code></a> shows. A plan never
+claims a service was re-created; it says what <em>would</em> happen.</p>
 <h2 id="what-is-not-a-parameter">What is not a parameter<a class="headerlink" href="#what-is-not-a-parameter" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2311,6 +2334,35 @@ naming the fields that disagree:</p>
 </code></pre></div>
 <p>The file is rewritten from the recorded state by the next <code>config set</code>, or by
 <code>morzer init --repair</code>.</p>
+<h2 id="a-hand-edit-is-replaced">A hand edit is replaced<a class="headerlink" href="#a-hand-edit-is-replaced" title="Permanent link">&para;</a></h2>
+<p>A configuration file the release renders, such as <code>/etc/demo/application.yaml</code>,
+is rewritten from the release and the recorded parameters by every <code>apply</code>,
+<code>update</code>, <code>rollback</code> and <code>config set</code>. An edit made to it by hand works until
+the next one of those, and is then gone. An unattended update leaves the release
+staged rather than replace an edited file, but nothing keeps the edit.</p>
+<p><code>morzer config diff</code> shows what would be replaced, before it is:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>sudo<span class="w"> </span>morzer<span class="w"> </span>config<span class="w"> </span>diff
+<span class="go">--- /etc/demo/application.yaml</span>
+<span class="go">@@ -3,1 +3,1 @@</span>
+<span class="go">- log_level: debug</span>
+<span class="go">+ log_level: info</span>
+
+<span class="go">1 of 4 configuration files differ from what 1.2.0 renders.</span>
+<span class="go">`morzer apply` replaces them; a change meant to last belongs in a parameter.</span>
+</code></pre></div>
+<p>The diffs go to stdout and the summary to stderr, and the command exits 0
+whether or not anything differs; <code>doctor</code>'s <code>config.drift</code> check is the one that
+warns. <code>--json</code> carries <code>release</code>, <code>targets</code>, <code>redacted</code>, <code>drift</code> (each
+<code>{target, diff}</code>) and <code>unreadable</code> (each <code>{target, error}</code>).</p>
+<p>Every diff is scrubbed of this installation's secret values before it is shown,
+because a value pasted into a file would otherwise print. When the secret state
+cannot be decrypted, only the file names are shown and <code>redacted</code> is <code>false</code>.
+A secret this installation does not hold, such as a third party's key pasted in
+by hand, is not one it can recognise.</p>
+<p>A file that cannot be read is listed apart and not compared. Run without
+<code>sudo</code>, that is every root-only file. A change meant to last belongs in a
+<a href="../../reference/parameters/">parameter</a>, if the release declares one, or in the
+release.</p>
 <h2 id="after-a-release-changes-what-it-declares">After a release changes what it declares<a class="headerlink" href="#after-a-release-changes-what-it-declares" title="Permanent link">&para;</a></h2>
 <p>An update can add a parameter — it takes its default, and one with no default
 waits for <code>config set</code> — or drop one. The update retires a value you recorded

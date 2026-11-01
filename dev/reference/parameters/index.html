@@ -1656,6 +1656,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#config-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>config diff</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2192,6 +2203,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#config-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>config diff</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2582,6 +2604,15 @@ domains back, and <code>--dry-run</code> shows the steps without running them.</
 re-created: <code>morzer start</code> brings every service up with the new value.</p>
 <p>morzer issues no certificate for a new domain. Whatever terminates TLS, the
 release's proxy or yours, needs one before the name is served.</p>
+<h3 id="config-diff"><code>config diff</code><a class="headerlink" href="#config-diff" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w">            </span><span class="c1"># each file that differs, then a summary on stderr</span>
+morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w"> </span>--json<span class="w">     </span><span class="c1"># release, targets, redacted, drift, unreadable</span>
+</code></pre></div>
+<p>Renders every configuration file from the installed release and the recorded
+parameters, and shows where the file on disk differs, scrubbed of secret
+values. It changes nothing and exits 0 whether or not a file differs. What the
+output means, and what replaces a hand edit, is in
+<a href="../../operating/changing-configuration/#a-hand-edit-is-replaced">A hand edit is replaced</a>.</p>
 <h2 id="turning-scheduled-backups-off">Turning scheduled backups off<a class="headerlink" href="#turning-scheduled-backups-off" title="Permanent link">&para;</a></h2>
 <p>Two ways, and they are not the same thing.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>backup.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">   </span><span class="c1"># this machine's backups are not morzer's job</span>

@@ -3374,7 +3374,7 @@ instead.</p>
 checks tool versions against what the release requires, the installation layout,
 the secret state, service and health status, disk headroom, and the journal.</p>
 <p>Exits <a href="../exit-codes/">3</a> when any check fails; warnings exit 0.</p>
-<p>Three checks are advisory by design, and warn rather than fail:</p>
+<p>Four checks are advisory by design, and warn rather than fail:</p>
 <table>
 <thead>
 <tr>
@@ -3383,6 +3383,10 @@ the secret state, service and health status, disk headroom, and the journal.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>config.drift</code></td>
+<td>A configuration file on disk differs from what the installed release renders, or is absent. The next <code>apply</code>, <code>update</code>, <code>rollback</code> or <code>config set</code> replaces it, and <a href="../../operating/changing-configuration/#a-hand-edit-is-replaced"><code>config diff</code></a> shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted.</td>
+</tr>
 <tr>
 <td><code>secrets.rotation</code></td>
 <td>A secret is older than the <code>rotation_period</code> its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all.</td>

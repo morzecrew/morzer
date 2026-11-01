@@ -2348,6 +2348,19 @@ anything measured.</p>
 <p>Anything that fails the gate is still fetched, verified, staged and notified.
 Nothing is silently skipped, and the operator's remaining decision is only the
 one that costs downtime.</p>
+<p>Two things hold a staged release before the gate is asked at all: a product
+that is <a href="../taking-a-product-down/">stopped</a>, and a configuration file on disk
+that differs from what the installed release renders. The update would replace
+that file, and a hand edit replaced at night with nobody watching cannot be
+recovered. The tick says which:</p>
+<div class="highlight"><pre><span></span><code>1 configuration file differs from what the installed release renders, so the
+release is staged and not installed; `morzer config diff` shows them
+</code></pre></div>
+<p><code>morzer apply</code> replaces the file and the next tick installs; <code>morzer update
+--to &lt;version&gt;</code> installs now. A file that cannot be read does not hold the
+release, and nor does one that is absent, which loses nothing when written. A
+tick that cannot render the installed release's configuration to compare holds,
+and says why.</p>
 <h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.channel<span class="o">=</span>oci://registry.example/demo/bundle:stable
