@@ -48,7 +48,9 @@ func newConfigDiffCommand(app *App) *cobra.Command {
 			"A file that cannot be read is listed apart and not compared. Every diff\n" +
 			"is scrubbed of this installation's secret values, and when they cannot\n" +
 			"be loaded only the file names are shown.\n\n" +
-			"Exits 0 whether or not files differ; `morzer doctor` warns about them.",
+			"It also lists the services whose containers were created from another\n" +
+			"definition than the release declares, which the next `apply` re-creates.\n\n" +
+			"Exits 0 whether or not anything differs; `morzer doctor` warns about it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report, err := ops.ConfigDiff(cmd.Context(), app.Deps)

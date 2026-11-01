@@ -345,11 +345,12 @@ nothing. Every run leaves out of `config.operations` the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.
 
-Five checks are advisory by design, and warn rather than fail:
+Six checks are advisory by design, and warn rather than fail:
 
 | Check | What it means |
 | --- | --- |
 | `config.drift` | A configuration file on disk differs from what the installed release renders, or is absent. The next `apply`, `update`, `rollback` or `config set` replaces it, and [`config diff`](../operating/changing-configuration.md#a-hand-edit-is-replaced) shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted. |
+| `runtime.definition` | A service's containers were created from another definition than the installed release declares: the hash Compose labels each container with differs from `docker compose config --hash`. The next `apply` re-creates it, and [`config diff`](../operating/changing-configuration.md#a-service-created-from-another-definition) lists it. A service with no container, an orphan container and a one-off `run` container are not counted. A runtime that cannot be asked is reported as not compared. |
 | `notify.outbox` | A notify target has events it did not accept waiting in the [outbox](../operating/notifications.md#delivery): it names the target, how many, and how many were dropped past the bound of 100. `morzer notify flush` sends them once the target answers, as the scheduled `doctor` does. |
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |

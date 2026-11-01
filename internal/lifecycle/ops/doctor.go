@@ -198,10 +198,12 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	current, _ := d.State.CurrentRelease(ctx)
 	if current.IsZero() {
 		checks = append(checks, d.checkNoReleaseInstalled(),
-			d.checkConfigDrift(inst, domain.Release{}, "no release is installed"))
+			d.checkConfigDrift(inst, domain.Release{}, "no release is installed"),
+			d.checkDefinitionDrift(inst, domain.Release{}, "no release is installed"))
 	} else if rel, err := d.resolveCurrentRelease(ctx, current); err != nil {
 		checks = append(checks, d.checkReleaseBroken(current, err),
-			d.checkConfigDrift(inst, domain.Release{}, "the installed release cannot be read"))
+			d.checkConfigDrift(inst, domain.Release{}, "the installed release cannot be read"),
+			d.checkDefinitionDrift(inst, domain.Release{}, "the installed release cannot be read"))
 	} else {
 		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
@@ -219,6 +221,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			// remedy, which is what runtime.images-local never had.
 			preflight.BundledImages(rel.Manifest.BundledImageRefs(), d.imagePresence()),
 			d.checkServices(inst, rel),
+			d.checkDefinitionDrift(inst, rel, ""),
 			d.checkHealth(inst, rel),
 		)
 		if d.Runtime != nil {

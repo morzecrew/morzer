@@ -635,3 +635,59 @@ func TestRunOneShotRefusesAMountPathWithAColon(t *testing.T) {
 		t.Error("compose was run with a mount it cannot express")
 	}
 }
+
+// The shapes Compose 5.5.1 printed for a project with two replicas, a profiled
+// task and a `compose run` container: `config --hash '*'` leaves out a service
+// whose profile is not active, and `ps --all` lists the run container with its
+// own hash.
+func TestDefinitionDriftReadsTheDeclaredAndTheCreatedHashes(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("config --hash", "web aaa\ndb bbb\nidle ccc\n")
+	runner.OnOutput("ps --all", strings.Join([]string{
+		`{"Service":"web","Name":"demo-web-1","State":"running","Labels":"com.docker.compose.oneoff=False,com.docker.compose.config-hash=aaa"}`,
+		`{"Service":"web","Name":"demo-web-2","State":"running","Labels":"com.docker.compose.config-hash=old,com.docker.compose.oneoff=False"}`,
+		`{"Service":"web","Name":"demo-web-run-1","State":"running","Labels":"com.docker.compose.oneoff=True,com.docker.compose.config-hash=zzz"}`,
+		// A value can hold commas; the hash after it is still found.
+		`{"Service":"db","Name":"demo-db-1","State":"exited","Labels":"com.docker.compose.project.config_files=/rel/a.yaml,/rel/b.yaml,com.docker.compose.config-hash=bbb"}`,
+		`{"Service":"gone","Name":"demo-gone-1","State":"running","Labels":"com.docker.compose.config-hash=yyy"}`,
+	}, "\n"))
+
+	defs, err := r.DefinitionDrift(context.Background(), cfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]ports.ServiceDefinition{}
+	for _, d := range defs {
+		got[d.Service] = d
+	}
+	if len(defs) != 3 {
+		t.Fatalf("definitions = %+v, want the three declared services and no orphan", defs)
+	}
+	if !got["web"].Drifted() || len(got["web"].Running) != 2 {
+		t.Errorf("web = %+v, want two replicas, one created from another definition, and no run container", got["web"])
+	}
+	if got["db"].Drifted() || len(got["db"].Running) != 1 {
+		t.Errorf("db = %+v, want its stopped container compared and matching", got["db"])
+	}
+	if got["idle"].Drifted() || len(got["idle"].Running) != 0 {
+		t.Errorf("idle = %+v, want a service with no container, not drift", got["idle"])
+	}
+	if !runner.Ran("config --hash *") || !runner.Ran("--project-name demo") {
+		t.Errorf("the hashes were not asked of this project:\n%s", runner.CommandLines())
+	}
+}
+
+// A Compose without `config --hash` fails the command, and the caller reports
+// the services as not compared.
+func TestDefinitionDriftFailsOnAComposeWithoutHashes(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnExit("config --hash", 1, "unknown flag: --hash")
+
+	_, err := r.DefinitionDrift(context.Background(), cfg())
+	if err == nil {
+		t.Fatal("a Compose that cannot print hashes was read as one with no services")
+	}
+	if !strings.Contains(domain.AsError(err).Message, "definition hashes") {
+		t.Errorf("error = %v", err)
+	}
+}

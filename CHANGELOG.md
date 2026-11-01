@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`config diff` lists services created from another definition.** A service
+  whose containers do not run the definition the installed release declares is
+  listed, and `doctor` warns as `runtime.definition`; the next `apply`
+  re-creates it.
+
 - **A notification a target missed is kept and sent later.** An event a down
   target could accept later waits in an outbox, up to 100 per target, and
   `morzer notify flush` or the scheduled `doctor` sends it, oldest first, with

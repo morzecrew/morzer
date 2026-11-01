@@ -605,6 +605,40 @@ type ServiceImager interface {
 	ServiceImages(ctx context.Context, cfg RuntimeConfig, services ...string) (map[string]string, error)
 }
 
+// DefinitionDrifter compares the definition each service would be created from
+// now with the one its containers were created from (RFC 0044 §5.4).
+//
+// Optional and type-asserted, like ImageRemover: a runtime that records no
+// definition on what it creates has nothing to compare, and is reported as not
+// compared rather than as drift.
+type DefinitionDrifter interface {
+	// DefinitionDrift reports each service the configuration declares, with
+	// the hash its declared definition has and the hash each of its
+	// containers was created with, stopped ones included. A container the
+	// configuration does not declare, and a one-off container, are left out.
+	DefinitionDrift(ctx context.Context, cfg RuntimeConfig) ([]ServiceDefinition, error)
+}
+
+// ServiceDefinition is one service's declared definition hash against its
+// containers'.
+type ServiceDefinition struct {
+	Service  string
+	Declared string
+	// Running holds one hash per container, in no particular order.
+	Running []string
+}
+
+// Drifted reports whether `up` would re-create the service: some container
+// carries another hash. A service with no container has nothing to differ.
+func (s ServiceDefinition) Drifted() bool {
+	for _, hash := range s.Running {
+		if hash != s.Declared {
+			return true
+		}
+	}
+	return false
+}
+
 // VolumeInspector reports the storage a project's resolved configuration
 // declares.
 //

@@ -69,6 +69,9 @@ type Runtime struct {
 	RemovedImages []string
 	ImagesInUse   []string
 
+	// Definitions is what DefinitionDrift reports. Nil reports none.
+	Definitions []ports.ServiceDefinition
+
 	// removed are names RemoveImage took out of the store and nothing has
 	// put back, so HasImage answers as the daemon would afterwards.
 	removed map[string]bool
@@ -669,11 +672,22 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 	return nil
 }
 
+// DefinitionDrift answers from Definitions.
+func (r *Runtime) DefinitionDrift(ctx context.Context, cfg ports.RuntimeConfig) ([]ports.ServiceDefinition, error) {
+	if err := r.record("DefinitionDrift"); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.Definitions), nil
+}
+
 // ServiceImages answers from Images. With no names it covers the services Up
 // starts, which are ValidateResult's, so a service a test leaves out of those
 // is one the configuration runs only on demand -- a one-shot behind a profile.
 // An empty image is a service built rather than pulled, reported with no
 // reference as the real runtime reports it.
+
 func (r *Runtime) ServiceImages(ctx context.Context, cfg ports.RuntimeConfig, services ...string) (map[string]string, error) {
 	if err := r.record("ServiceImages"); err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // ConfigDiffReport is where the configuration files on disk differ from what
@@ -23,6 +24,22 @@ type ConfigDiffReport struct {
 
 	Drift      []TargetDiff       `json:"drift"`
 	Unreadable []UnreadableTarget `json:"unreadable"`
+
+	// Services are the services created from another definition than the
+	// release declares, which the next `up` re-creates (§5.4).
+	// ServicesCompared is false when the runtime could not be asked, and
+	// ServicesSkipped says why.
+	Services         []ServiceDrift `json:"services"`
+	ServicesCompared bool           `json:"services_compared"`
+	ServicesSkipped  string         `json:"-"`
+}
+
+// ServiceDrift is one service whose containers were created from another
+// definition: the hash the release declares, and one per container.
+type ServiceDrift struct {
+	Service  string   `json:"service"`
+	Declared string   `json:"declared"`
+	Running  []string `json:"running"`
 }
 
 // ConfigDiff compares the files on disk with what the installed release renders
@@ -37,13 +54,17 @@ func ConfigDiff(ctx context.Context, d *Deps) (ConfigDiffReport, error) {
 		return ConfigDiffReport{}, err
 	}
 	comparison, shown := d.scrubbed(ctx, comparison)
+	services, skipped := d.definitionDrift(ctx, inst, rel)
 
 	out := ConfigDiffReport{
-		Release:    rel.Version().String(),
-		Targets:    comparison.Targets,
-		Redacted:   shown,
-		Drift:      comparison.Diffs,
-		Unreadable: comparison.Unreadable,
+		Release:          rel.Version().String(),
+		Targets:          comparison.Targets,
+		Redacted:         shown,
+		Drift:            comparison.Diffs,
+		Unreadable:       comparison.Unreadable,
+		Services:         services,
+		ServicesCompared: skipped == "",
+		ServicesSkipped:  skipped,
 	}
 	// Lists rather than nulls, for a script that ranges over them.
 	if out.Drift == nil {
@@ -52,12 +73,62 @@ func ConfigDiff(ctx context.Context, d *Deps) (ConfigDiffReport, error) {
 	if out.Unreadable == nil {
 		out.Unreadable = []UnreadableTarget{}
 	}
+	if out.Services == nil {
+		out.Services = []ServiceDrift{}
+	}
 	return out, nil
 }
 
-// Text is the diffs and the unreadable targets, for stdout.
+// definitionDrift asks the runtime which services the next `up` would
+// re-create (RFC 0044 §5.4). skipped says why nothing was compared: a runtime
+// without the capability, or one that cannot answer, is never drift (decision
+// 11).
+func (d *Deps) definitionDrift(
+	ctx context.Context, inst domain.Installation, rel domain.Release,
+) (drifted []ServiceDrift, skipped string) {
+	drifter, ok := d.Runtime.(ports.DefinitionDrifter)
+	if !ok {
+		return nil, "this runtime records no service definitions"
+	}
+	cfg, err := d.runtimeConfig(rel, inst, "")
+	if err != nil {
+		return nil, domain.AsError(err).Message
+	}
+	defs, err := drifter.DefinitionDrift(ctx, cfg)
+	if err != nil {
+		return nil, domain.AsError(err).Message
+	}
+	for _, def := range defs {
+		if def.Drifted() {
+			drifted = append(drifted, ServiceDrift{Service: def.Service, Declared: def.Declared, Running: def.Running})
+		}
+	}
+	return drifted, ""
+}
+
+// Text is the diffs, the unreadable targets and the drifted services, for
+// stdout.
 func (r ConfigDiffReport) Text() string {
-	return ConfigComparison{Diffs: r.Drift, Unreadable: r.Unreadable}.text(r.Redacted)
+	text := ConfigComparison{Diffs: r.Drift, Unreadable: r.Unreadable}.text(r.Redacted)
+	if len(r.Services) == 0 {
+		return text
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	if text != "" {
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(&b, "services created from another definition than %s declares:\n", r.Release)
+	for _, s := range r.Services {
+		differs := 0
+		for _, hash := range s.Running {
+			if hash != s.Declared {
+				differs++
+			}
+		}
+		fmt.Fprintf(&b, "  %s (%d of %d containers)\n", s.Service, differs, len(s.Running))
+	}
+	return b.String()
 }
 
 // Summary is what `config diff` says beneath them, on stderr.
@@ -86,6 +157,15 @@ func (r ConfigDiffReport) Summary() string {
 		lines = append(lines, "1 could not be read, so it was not compared.")
 	default:
 		lines = append(lines, fmt.Sprintf("%d could not be read, so they were not compared.", n))
+	}
+	switch n := len(r.Services); {
+	case !r.ServicesCompared:
+		lines = append(lines, "The services were not compared: "+r.ServicesSkipped+".")
+	case n == 1:
+		lines = append(lines, "1 service was created from another definition; the next `apply` re-creates it.")
+	case n > 1:
+		lines = append(lines, fmt.Sprintf(
+			"%d services were created from another definition; the next `apply` re-creates them.", n))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -155,6 +235,38 @@ func (d *Deps) checkConfigDrift(inst domain.Installation, rel domain.Release, sk
 					"and a change meant to last belongs in a parameter",
 				"%s from what %s renders: %s%s",
 				configFiles(len(names)), rel.Version(), strings.Join(names, ", "), unread)
+		},
+	}
+}
+
+// checkDefinitionDrift warns while a service's containers were created from
+// another definition than the release declares (RFC 0044 §5.4): the next `up`,
+// and so `apply`, re-creates them. A warning, as config.drift is: a service
+// created by hand, or by an older manager, can be what an operator meant.
+func (d *Deps) checkDefinitionDrift(inst domain.Installation, rel domain.Release, skip string) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.definition",
+		Category:    preflight.CategoryRuntime,
+		Description: "the services run the definition the release declares",
+		Run: func(ctx context.Context) events.CheckResult {
+			if skip != "" {
+				return preflight.OK("not checked: %s", skip)
+			}
+			drifted, skipped := d.definitionDrift(ctx, inst, rel)
+			if skipped != "" {
+				return preflight.OK("not compared: %s", skipped)
+			}
+			if len(drifted) == 0 {
+				return preflight.OK("every service runs the definition %s declares", rel.Version())
+			}
+			names := make([]string, len(drifted))
+			for i, s := range drifted {
+				names[i] = s.Service
+			}
+			return preflight.Warn(
+				"the next `morzer apply` re-creates them; `morzer config diff` lists them",
+				"%d service(s) created from another definition than %s declares: %s",
+				len(drifted), rel.Version(), strings.Join(names, ", "))
 		},
 	}
 }

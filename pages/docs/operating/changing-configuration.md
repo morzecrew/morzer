@@ -145,7 +145,8 @@ $ sudo morzer config diff
 The diffs go to stdout and the summary to stderr, and the command exits 0
 whether or not anything differs; `doctor`'s `config.drift` check is the one that
 warns. `--json` carries `release`, `targets`, `redacted`, `drift` (each
-`{target, diff}`) and `unreadable` (each `{target, error}`).
+`{target, diff}`) and `unreadable` (each `{target, error}`), and the services
+[below](#a-service-created-from-another-definition).
 
 Every diff is scrubbed of this installation's secret values before it is shown,
 because a value pasted into a file would otherwise print. When the secret state
@@ -157,6 +158,34 @@ A file that cannot be read is listed apart and not compared. Run without
 `sudo`, that is every root-only file. A change meant to last belongs in a
 [parameter](../reference/parameters.md), if the release declares one, or in the
 release.
+
+### A service created from another definition
+
+`config diff` also lists, under its own heading, the services whose containers
+were created from another definition than the installed release declares. Compose
+labels each container with the hash of the definition it was created from, and
+`docker compose config --hash` prints the hash each service would get now; a
+service whose containers carry another one is what the next `apply` re-creates.
+That is a container started by hand with `docker compose up` from an edited file,
+or one an older release created and nothing has re-created since.
+
+```console
+$ sudo morzer config diff
+services created from another definition than 1.2.0 declares:
+  web (1 of 2 containers)
+
+no drift: the configuration file matches what 1.2.0 renders
+1 service was created from another definition; the next `apply` re-creates it.
+```
+
+A stopped container is compared as a running one is. A service with no
+container, a container of a service the release no longer declares, and a
+one-off container `task run` left behind are not. `--json` carries the services
+as `services` (each `{service, declared, running}`, with one hash per container)
+and `services_compared`, which is `false` when the runtime could not be asked;
+the summary then says why. `doctor` warns about them as `runtime.definition`.
+An unattended update is not held for them: it re-creates every service from the
+new release whatever it was created from, and loses nothing on disk.
 
 ## After a release changes what it declares
 
