@@ -234,7 +234,7 @@ release's proxy or yours, needs one before the name is served.
 
 ```sh
 morzer config diff            # each file that differs, then a summary on stderr
-morzer config diff --json     # release, targets, redacted, drift, unreadable, services
+morzer config diff --json     # release, targets, redacted, drift, unreadable, services, services_compared
 ```
 
 Renders every configuration file from the installed release and the recorded
