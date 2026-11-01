@@ -109,7 +109,7 @@ import (
 // Bumped to 14 for `stopped` (RFC 0040 decision 6). An older manager would drop
 // the record on its next write, and the boot-time `apply` would then start a
 // product an operator had taken down on purpose.
-const InstallationSchemaVersion = 14
+const InstallationSchemaVersion = 15
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -788,6 +788,18 @@ type Policy struct {
 	// It does not mean "take no backups". `morzer backup` still works, and
 	// a backup that exists is still expected to reach a target.
 	SkipScheduledBackups bool `yaml:"skip_scheduled_backups" json:"skip_scheduled_backups,omitempty"`
+
+	// DoctorSchedule is when the scheduled `doctor` runs, as the
+	// supervisor's own calendar expression (RFC 0043 §5.4). Empty means the
+	// supervisor's default. Rendered into `OnCalendar=` as BackupSchedule
+	// is, and bounded the same way.
+	DoctorSchedule string `yaml:"doctor_schedule" json:"doctor_schedule,omitempty"`
+
+	// SkipScheduledDoctor removes the doctor timer, which otherwise exists
+	// whenever a notify target is configured (RFC 0043 decision 4).
+	// Negative for the reason SkipScheduledBackups is: a field missing from
+	// a hand-edited state file must mean the timer runs.
+	SkipScheduledDoctor bool `yaml:"skip_scheduled_doctor" json:"skip_scheduled_doctor,omitempty"`
 }
 
 // ValidateBackupSchedule refuses a schedule that could not safely be rendered.
@@ -816,6 +828,11 @@ func ValidateBackupSchedule(raw string) error { return validateSchedule("a backu
 // for the same reason: it is the other value rendered into `OnCalendar=` from
 // the state file.
 func ValidateUpdateSchedule(raw string) error { return validateSchedule("an update schedule", raw) }
+
+// ValidateDoctorSchedule is ValidateBackupSchedule for the doctor timer
+// (RFC 0043 decision 8), the third value rendered into `OnCalendar=` from the
+// state file.
+func ValidateDoctorSchedule(raw string) error { return validateSchedule("a doctor schedule", raw) }
 
 // ValidateUpdateRandomizedDelay refuses a spread the timer cannot render. It
 // renders whole seconds, so 500ms would run with no delay while `status`
@@ -1063,6 +1080,9 @@ func (i Installation) Validate() error {
 	}
 	if err := ValidateUpdateSchedule(i.Update.Schedule); err != nil {
 		v.add("update.schedule", "%s", AsError(err).Message)
+	}
+	if err := ValidateDoctorSchedule(i.Policy.DoctorSchedule); err != nil {
+		v.add("policy.doctor_schedule", "%s", AsError(err).Message)
 	}
 
 	// An unknown mode is refused rather than read as production. A typo --

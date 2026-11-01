@@ -1059,3 +1059,50 @@ func TestARollbackAfterAnInterruptStillStopsWhatItStarted(t *testing.T) {
 		}
 	}
 }
+
+// The doctor pair exists only when asked for, runs the scheduled doctor
+// against the installation's file, and takes its OnCalendar from the setting,
+// the morning default when unset (RFC 0043 §5.4).
+func TestTheDoctorTimerIsGeneratedOnlyWhenAskedFor(t *testing.T) {
+	params := systemd.UnitParams{
+		Product: "demo", ManagerPath: "/usr/local/bin/morzer", ConfigPath: "/etc/demo/installation.yaml",
+	}
+	units, err := systemd.BuildUnits(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range units {
+		if strings.Contains(u.Name, "-doctor.") {
+			t.Errorf("%s was generated with nobody to tell", u.Name)
+		}
+	}
+
+	params.DoctorTimer = true
+	for schedule, want := range map[string]string{"": systemd.DefaultDoctorSchedule, "Mon *-*-* 07:00:00": "Mon *-*-* 07:00:00"} {
+		params.DoctorSchedule = schedule
+		units, err := systemd.BuildUnits(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		byName := map[string]ports.Unit{}
+		for _, u := range units {
+			byName[u.Name] = u
+		}
+		service, timer := byName[systemd.DoctorServiceUnitName("demo")], byName[systemd.DoctorTimerUnitName("demo")]
+		if !strings.Contains(string(service.Contents),
+			"doctor --unattended --plain --log-format json --config /etc/demo/installation.yaml") {
+			t.Errorf("the doctor service does not run the scheduled doctor:\n%s", service.Contents)
+		}
+		if service.Enable || !timer.Enable {
+			t.Errorf("enabled: service %t, timer %t; want the timer only", service.Enable, timer.Enable)
+		}
+		if !strings.Contains(string(timer.Contents), "OnCalendar="+want+"\n") {
+			t.Errorf("schedule %q rendered:\n%s", schedule, timer.Contents)
+		}
+	}
+
+	params.DoctorSchedule = "daily\nUnit=evil.service"
+	if _, err := systemd.BuildUnits(params); err == nil {
+		t.Error("a doctor schedule with a line break was rendered")
+	}
+}

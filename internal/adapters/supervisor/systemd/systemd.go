@@ -442,6 +442,14 @@ type UnitParams struct {
 	// fails on every tick is one an operator stops reading.
 	FleetTimer bool
 
+	// DoctorSchedule is an OnCalendar expression for the doctor timer.
+	DoctorSchedule string
+
+	// DoctorTimer generates the doctor pair at all (RFC 0043 §5.4): false on
+	// a machine with no notify target, for the reason FleetTimer is false on
+	// one with nowhere to publish.
+	DoctorTimer bool
+
 	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
 	//
 	// The odd one out by name, and it has to be: the other two conditionals
@@ -473,6 +481,8 @@ func UpdateServiceUnitName(product string) string { return product + "-update.se
 func UpdateTimerUnitName(product string) string   { return product + "-update.timer" }
 func FleetServiceUnitName(product string) string  { return product + "-fleet.service" }
 func FleetTimerUnitName(product string) string    { return product + "-fleet.timer" }
+func DoctorServiceUnitName(product string) string { return product + "-doctor.service" }
+func DoctorTimerUnitName(product string) string   { return product + "-doctor.timer" }
 
 // serviceTemplate is the main unit.
 //
@@ -647,6 +657,44 @@ RandomizedDelaySec=900
 WantedBy=timers.target
 `
 
+// doctorServiceTemplate runs the scheduled `doctor` (RFC 0043 §5.4): it sends
+// the outbox, runs every check and notifies one `doctor.finished` when one
+// warns or fails.
+//
+// No Restart=, like the update and fleet ticks: a failing check is the report,
+// and the next tick carries the current truth. It exits 3 on a failed check,
+// which systemd records as the unit's failure.
+const doctorServiceTemplate = `[Unit]
+Description={{.Description}}
+After=network-online.target {{.Product}}.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{.ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+`
+
+// doctorTimerTemplate schedules it. Persistent catches up a machine that was
+// off, and the delay spreads machines that report to one receiver.
+const doctorTimerTemplate = `[Unit]
+Description={{.Description}}
+
+[Timer]
+OnCalendar={{.DoctorSchedule}}
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target
+`
+
+// DefaultDoctorSchedule runs the scheduled `doctor` each morning, after the
+// nightly backup and update ticks, so it reports on both.
+const DefaultDoctorSchedule = "*-*-* 06:00:00"
+
 // DefaultFleetSchedule publishes on the hour.
 //
 // See fleetTimerTemplate: hourly against a staleness default of a day gives a
@@ -680,6 +728,7 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		{"backup schedule", p.BackupSchedule},
 		{"update schedule", p.UpdateSchedule},
 		{"fleet schedule", p.FleetSchedule},
+		{"doctor schedule", p.DoctorSchedule},
 	} {
 		if strings.ContainsAny(s.value, "\n\r") {
 			return nil, domain.Internal(nil,
@@ -699,6 +748,9 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	}
 	if strings.TrimSpace(p.FleetSchedule) == "" {
 		p.FleetSchedule = DefaultFleetSchedule
+	}
+	if strings.TrimSpace(p.DoctorSchedule) == "" {
+		p.DoctorSchedule = DefaultDoctorSchedule
 	}
 	if p.UpdateJitter <= 0 {
 		p.UpdateJitter = DefaultUpdateJitter
@@ -754,6 +806,17 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		)
 	}
 
+	if p.DoctorTimer {
+		specs = append(specs,
+			unitSpec{DoctorServiceUnitName(p.Product), doctorServiceTemplate,
+				p.Product + " doctor", false},
+			// The timer is enabled and the service is not: enabling a
+			// oneshot runs it at every boot.
+			unitSpec{DoctorTimerUnitName(p.Product), doctorTimerTemplate,
+				p.Product + " scheduled doctor", true},
+		)
+	}
+
 	units := make([]ports.Unit, 0, len(specs))
 	for _, spec := range specs {
 		params := p
@@ -797,6 +860,8 @@ func UnitNames(product string) []string {
 		UpdateTimerUnitName(product),
 		FleetServiceUnitName(product),
 		FleetTimerUnitName(product),
+		DoctorServiceUnitName(product),
+		DoctorTimerUnitName(product),
 	}
 }
 
@@ -834,6 +899,8 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		UpdateJitter:     params.UpdateJitter,
 		FleetSchedule:    params.FleetSchedule,
 		FleetTimer:       params.FleetTimer,
+		DoctorSchedule:   params.DoctorSchedule,
+		DoctorTimer:      params.DoctorTimer,
 	})
 }
 
