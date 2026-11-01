@@ -679,13 +679,13 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		// about UpdateTimer or FleetTimer vacuous -- it would pass
 		// whether the lifecycle layer set the field or not, which is
 		// the only thing such a test is checking.
-		if strings.Contains(name, "-update.") && !params.UpdateTimer {
+		if strings.HasPrefix(name, params.Product+"-update.") && !params.UpdateTimer {
 			continue
 		}
-		if strings.Contains(name, "-fleet.") && !params.FleetTimer {
+		if strings.HasPrefix(name, params.Product+"-fleet.") && !params.FleetTimer {
 			continue
 		}
-		if strings.Contains(name, "-doctor.") && !params.DoctorTimer {
+		if strings.HasPrefix(name, params.Product+"-doctor.") && !params.DoctorTimer {
 			continue
 		}
 		// And the backup pair, which is conditional the other way round
@@ -693,7 +693,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		// wants none. A fake that always returned it would make a test
 		// about the declaration pass whether the lifecycle layer set the
 		// field or not -- the same vacuum the two lines above avoid.
-		if strings.Contains(name, "-backup.") && params.SkipBackupTimer {
+		if strings.HasPrefix(name, params.Product+"-backup.") && params.SkipBackupTimer {
 			continue
 		}
 		out = append(out, ports.Unit{
