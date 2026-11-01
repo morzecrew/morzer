@@ -3402,7 +3402,7 @@ naming the checks that warn or fail. A run where every check passes notifies
 nothing. Every run leaves out of <code>config.operations</code> the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.</p>
-<p>Five checks are advisory by design, and warn rather than fail:</p>
+<p>Six checks are advisory by design, and warn rather than fail:</p>
 <table>
 <thead>
 <tr>
@@ -3414,6 +3414,10 @@ unfinished.</p>
 <tr>
 <td><code>config.drift</code></td>
 <td>A configuration file on disk differs from what the installed release renders, or is absent. The next <code>apply</code>, <code>update</code>, <code>rollback</code> or <code>config set</code> replaces it, and <a href="../../operating/changing-configuration/#a-hand-edit-is-replaced"><code>config diff</code></a> shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted.</td>
+</tr>
+<tr>
+<td><code>runtime.definition</code></td>
+<td>A service's containers were created from another definition than the installed release declares: the hash Compose labels each container with differs from <code>docker compose config --hash</code>. The next <code>apply</code> re-creates it, and <a href="../../operating/changing-configuration/#a-service-created-from-another-definition"><code>config diff</code></a> lists it. A service with no container, an orphan container and a one-off <code>run</code> container are not counted. A runtime that cannot be asked is reported as not compared.</td>
 </tr>
 <tr>
 <td><code>notify.outbox</code></td>

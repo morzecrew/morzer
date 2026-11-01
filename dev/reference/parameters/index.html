@@ -2614,11 +2614,12 @@ re-created: <code>morzer start</code> brings every service up with the new value
 release's proxy or yours, needs one before the name is served.</p>
 <h3 id="config-diff"><code>config diff</code><a class="headerlink" href="#config-diff" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w">            </span><span class="c1"># each file that differs, then a summary on stderr</span>
-morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w"> </span>--json<span class="w">     </span><span class="c1"># release, targets, redacted, drift, unreadable</span>
+morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w"> </span>--json<span class="w">     </span><span class="c1"># release, targets, redacted, drift, unreadable, services, services_compared</span>
 </code></pre></div>
 <p>Renders every configuration file from the installed release and the recorded
 parameters, and shows where the file on disk differs, scrubbed of secret
-values. It changes nothing and exits 0 whether or not a file differs. What the
+values, and which services were created from another definition than the
+release declares. It changes nothing and exits 0 whether or not a file differs. What the
 output means, and what replaces a hand edit, is in
 <a href="../../operating/changing-configuration/#a-hand-edit-is-replaced">A hand edit is replaced</a>.</p>
 <h2 id="turning-scheduled-backups-off">Turning scheduled backups off<a class="headerlink" href="#turning-scheduled-backups-off" title="Permanent link">&para;</a></h2>

@@ -879,6 +879,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="A hand edit is replaced">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-service-created-from-another-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A service created from another definition
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2111,6 +2128,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="A hand edit is replaced">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-service-created-from-another-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A service created from another definition
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2353,7 +2387,8 @@ staged rather than replace an edited file, but nothing keeps the edit.</p>
 <p>The diffs go to stdout and the summary to stderr, and the command exits 0
 whether or not anything differs; <code>doctor</code>'s <code>config.drift</code> check is the one that
 warns. <code>--json</code> carries <code>release</code>, <code>targets</code>, <code>redacted</code>, <code>drift</code> (each
-<code>{target, diff}</code>) and <code>unreadable</code> (each <code>{target, error}</code>).</p>
+<code>{target, diff}</code>) and <code>unreadable</code> (each <code>{target, error}</code>), and the services
+<a href="#a-service-created-from-another-definition">below</a>.</p>
 <p>Every diff is scrubbed of this installation's secret values before it is shown,
 because a value pasted into a file would otherwise print. When the secret state
 cannot be decrypted, only the file names are shown and <code>redacted</code> is <code>false</code>.
@@ -2363,6 +2398,29 @@ by hand, is not one it can recognise.</p>
 <code>sudo</code>, that is every root-only file. A change meant to last belongs in a
 <a href="../../reference/parameters/">parameter</a>, if the release declares one, or in the
 release.</p>
+<h3 id="a-service-created-from-another-definition">A service created from another definition<a class="headerlink" href="#a-service-created-from-another-definition" title="Permanent link">&para;</a></h3>
+<p><code>config diff</code> also lists, under its own heading, the services whose containers
+were created from another definition than the installed release declares. Compose
+labels each container with the hash of the definition it was created from, and
+<code>docker compose config --hash</code> prints the hash each service would get now; a
+service whose containers carry another one is what the next <code>apply</code> re-creates.
+That is a container started by hand with <code>docker compose up</code> from an edited file,
+or one an older release created and nothing has re-created since.</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>sudo<span class="w"> </span>morzer<span class="w"> </span>config<span class="w"> </span>diff
+<span class="go">services created from another definition than 1.2.0 declares:</span>
+<span class="go">  web (1 of 2 containers)</span>
+
+<span class="go">no drift: the configuration file matches what 1.2.0 renders</span>
+<span class="go">1 service was created from another definition; the next `apply` re-creates it.</span>
+</code></pre></div>
+<p>A stopped container is compared as a running one is. A service with no
+container, a container of a service the release no longer declares, and a
+one-off container <code>task run</code> left behind are not. <code>--json</code> carries the services
+as <code>services</code> (each <code>{service, declared, running}</code>, with one hash per container)
+and <code>services_compared</code>, which is <code>false</code> when the runtime could not be asked;
+the summary then says why. <code>doctor</code> warns about them as <code>runtime.definition</code>.
+An unattended update is not held for them: it re-creates every service from the
+new release whatever it was created from, and loses nothing on disk.</p>
 <h2 id="after-a-release-changes-what-it-declares">After a release changes what it declares<a class="headerlink" href="#after-a-release-changes-what-it-declares" title="Permanent link">&para;</a></h2>
 <p>An update can add a parameter — it takes its default, and one with no default
 waits for <code>config set</code> — or drop one. The update retires a value you recorded
