@@ -853,10 +853,11 @@ func collectParameters(ctx context.Context, d *Deps, _ *supportSource) ([]suppor
 // collectConfigDiff renders what the release would write and diffs it against
 // what is on disk.
 //
-// Safe to include by an invariant rather than by inspection: `templateData`
-// puts secret *references* in the render context -- a name to the path of its
-// rendered file -- and never the values, so a configuration target cannot embed
-// a secret to leak here.
+// The rendered side holds no secret value, by an invariant: `templateData` puts
+// secret *references* in the render context -- a name to the path of its
+// rendered file -- and never the values. The on-disk side holds whatever was
+// pasted into the file, so what keeps a value out of the bundle is the scrub
+// the archive gets after collection.
 func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supportFile, error) {
 	if !src.HasRelease {
 		return nil, src.noRelease("so nothing renders configuration")
