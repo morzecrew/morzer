@@ -2357,6 +2357,13 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set
 signatures — at the moment you set it, not at the tick that would have acted on
 it. A machine that accepts the setting and then refuses to act every night is
 worse than one that refuses the setting: you would believe it was armed.</p>
+<p>An installation created without <code>--require-signature</code> requires one with two
+commands. Trust the vendor's key, then require it:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>RWQ...vendor-public-key...
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>release.require_signature<span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<p>Turning the requirement off again is refused while <code>update.auto_apply</code> is on,
+and is recorded in <code>morzer history</code> when it happens.</p>
 <p>With <code>update.check</code> on, setting a channel installs a <code>&lt;product&gt;-update.timer</code>,
 and clearing either one removes the timer again: a channel with checking off is
 followed by nothing. <code>morzer status</code> shows the channel on its <code>following</code> line,

@@ -1645,6 +1645,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#changing-the-domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Changing the domains
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2170,6 +2181,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#changing-the-domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Changing the domains
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2460,7 +2482,7 @@ log_level            enum       info             release
 <p>A parameter is declared by the vendor and reaches the deployment. An
 <strong>installation setting</strong> is your arrangement with the manager — whether it may
 contact a registry, which reference it follows — and changes nothing that is
-running.</p>
+running. The one exception is <code>installation.domains</code>, below.</p>
 <p>They share <code>morzer config</code> because that is where you look to change a value, and
 they cannot collide: a parameter name is lowercase letters, digits and
 underscores, so a dotted name is always a setting.</p>
@@ -2512,6 +2534,22 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td><code>retention.pre_update_backups</code></td>
 <td>How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least <code>1</code>. Absent takes <code>3</code>. See <a href="../../operating/backups/#retention">retention</a>.</td>
 </tr>
+<tr>
+<td><code>retention.releases</code></td>
+<td>How many releases the store keeps beside the current, previous and staged ones, which are never pruned; at least <code>1</code>. Absent takes the release's <code>retention.releases</code>.</td>
+</tr>
+<tr>
+<td><code>retention.backups</code></td>
+<td>How many of the newest backups retention keeps; at least <code>1</code>. Absent takes the release's <code>retention.backups</code>.</td>
+</tr>
+<tr>
+<td><code>release.require_signature</code></td>
+<td>Refuse any release not signed by a key <a href="../release-commands/#release-trust"><code>release trust</code></a> lists. <code>true</code> needs a trusted key; <code>false</code> is refused while <code>update.auto_apply</code> is on, and is journalled. See <a href="../../operating/unattended-updates/#turning-it-on">unattended updates</a>.</td>
+</tr>
+<tr>
+<td><code>installation.domains</code></td>
+<td>The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an <code>https://</code> URL. A change renders the configuration and re-creates every running service.</td>
+</tr>
 </tbody>
 </table>
 <p><code>backup.schedule</code> is the same value <code>morzer init --backup-schedule</code> takes, and
@@ -2523,6 +2561,27 @@ by <code>config set</code>, and by <code>init --backup-schedule</code> before an
 an expression systemd cannot read is refused rather than left as a timer that
 never loads. On a host without <code>systemd-analyze</code> there is nothing to ask, and
 the value is stored as given.</p>
+<p>A retention count takes effect where retention already runs: releases after an
+update and at <code>morzer release prune</code>, backups after a backup. Setting one prunes
+nothing by itself.</p>
+<p><code>release.require_signature</code> applies from the next <code>release fetch</code> or <code>update</code>.
+The installed release keeps running and nothing already in the store is checked
+again, but an <code>update --to</code> a stored release whose signature does not verify is
+then refused.</p>
+<h3 id="changing-the-domains">Changing the domains<a class="headerlink" href="#changing-the-domains" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>installation.domains<span class="o">=</span>demo.example,www.demo.example
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>installation.domains<span class="w">     </span><span class="c1"># no domain, as an install without --domain</span>
+</code></pre></div>
+<p>A domain reaches the deployment three ways: the templates' <code>.Domain</code> and
+<code>.Domains</code>, the services' <code>DOMAIN</code> variable, and the public URL <code>status</code> shows.
+No release says which services read it, so the change renders the configuration
+and re-creates <strong>every running service</strong>, which is a short outage. It runs as
+one <code>config</code> operation in <code>morzer history</code>: a render that fails puts the old
+domains back, and <code>--dry-run</code> shows the steps without running them.</p>
+<p>While the product is <a href="../../operating/taking-a-product-down/">stopped</a>, nothing is
+re-created: <code>morzer start</code> brings every service up with the new value.</p>
+<p>morzer issues no certificate for a new domain. Whatever terminates TLS, the
+release's proxy or yours, needs one before the name is served.</p>
 <h2 id="turning-scheduled-backups-off">Turning scheduled backups off<a class="headerlink" href="#turning-scheduled-backups-off" title="Permanent link">&para;</a></h2>
 <p>Two ways, and they are not the same thing.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>backup.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">   </span><span class="c1"># this machine's backups are not morzer's job</span>

@@ -3127,7 +3127,7 @@ run <code>apply</code> afterwards.</p>
 </tr>
 <tr>
 <td><code>--repair</code></td>
-<td>Restore missing directories on an existing installation. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
+<td>Restore missing directories on an existing installation. It restores a layout; <code>morzer config set installation.domains</code> is how the domains change afterwards. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
 </tr>
 <tr>
 <td><code>--mode</code></td>
@@ -3158,9 +3158,9 @@ scripted install all take the flags exactly as given.</p>
 satisfy it, and a policy nothing can satisfy is a configuration error rather
 than something to discover on the next update. A key that does not parse is
 refused too. The keys change afterwards with <a href="../release-commands/#release-trust"><code>morzer release
-trust</code></a>; whether a signature is required
-cannot yet be changed after <code>init</code>. <code>installation.yaml</code> shows both, but it is a
-report, and editing it changes nothing.</p>
+trust</code></a>, and whether a signature is required
+with <code>morzer config set release.require_signature</code>. <code>installation.yaml</code> shows
+both, but it is a report, and editing it changes nothing.</p>
 <div class="admonition warning">
 <p class="admonition-title">Keep the recovery key off this machine</p>
 <p>A recovery key stored on the machine it is meant to recover protects

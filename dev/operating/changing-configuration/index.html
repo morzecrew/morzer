@@ -2275,12 +2275,16 @@ A plan never claims a service was re-created; it says what <em>would</em> happen
 <td><code>config set backup.before_update=false</code></td>
 </tr>
 <tr>
-<td>Domains, whether a signature is required</td>
-<td>Not yet changeable after <code>init</code></td>
+<td>The domains</td>
+<td><code>config set installation.domains=&lt;a&gt;,&lt;b&gt;</code>, which re-creates every running service</td>
+</tr>
+<tr>
+<td>Whether a signature is required</td>
+<td><code>config set release.require_signature=true</code>, after <code>release trust add</code></td>
 </tr>
 <tr>
 <td>How many releases and ordinary backups to keep</td>
-<td>The manifest's <a href="../../reference/manifest/#retention"><code>retention</code></a>; no command overrides it yet</td>
+<td><code>config set retention.releases=&lt;n&gt; retention.backups=&lt;n&gt;</code>; unset follows the manifest's <a href="../../reference/manifest/#retention"><code>retention</code></a></td>
 </tr>
 <tr>
 <td>The service topology</td>
