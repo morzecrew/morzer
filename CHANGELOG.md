@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-01
+
+An operator can now see what a machine did and what it is about to do: `morzer
+history` lists the operations it ran, `update --dry-run` says what an update
+risks, and `config diff` shows a hand edit, and a service created from another
+definition, before `apply` replaces it. `morzer stop` keeps a product down until
+`morzer start`, `config set` changes the signature requirement, the domains and
+retention after `init`, and a task takes files with `--input`. A notification a
+target was down for is kept and sent later, and a scheduled `doctor` reports
+what warns or fails.
+
+Upgrading moves installation state from schema 13 to 15, so a 0.10.0 manager
+refuses a machine 0.11.0 has run on. The first `apply` or `update` after
+upgrading rewrites the systemd units: the backup unit learns to skip a stopped
+product, and a machine with a notify target gains `<product>-doctor.timer`.
+Scripts and receivers may notice:
+
+- An unattended update leaves the release staged, not installed, while a
+  configuration file on disk differs from what the installed release renders.
+  `morzer config diff` shows the difference and `morzer apply` replaces it.
+
+- A notify target hears `doctor.finished` each morning while a check warns or
+  fails, at or above its `min_level`. Every event carries an `id`, also sent as
+  `Idempotency-Key`, which a redelivery keeps; a `--credentials` document naming
+  that header is refused.
+
+- `doctor` gains `config.drift`, `runtime.definition` and `notify.outbox`. Each
+  warns, so the exit code is unchanged.
+
+- `config list`, `get`, `set` and `diff` refuse a release directory changed
+  after install, as `apply` already did.
+
+- A usage error prints two lines instead of the command's usage, still exiting
+  2, and `secret set` at a terminal asks before storing; `--yes` skips it.
+
+- A bundle whose tasks declare `inputs` needs
+  `compatibility.min_manager_version: "0.11.0"`. Attestation statements are
+  predicate v3; v1 and v2 are still read.
+
+Under `--json`, commands gain fields and no existing field changed meaning.
+
 ### Added
 
 - **`config diff` lists services created from another definition.** A service
@@ -860,7 +901,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.10.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/morzecrew/morzer/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/morzecrew/morzer/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/morzecrew/morzer/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/morzecrew/morzer/compare/v0.7.0...v0.8.0
