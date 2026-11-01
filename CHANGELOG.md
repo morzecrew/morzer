@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`release verify` and `release show` take an archive.** Each accepts the
+  `tar.zst` archive `release archive` writes as well as a bundle directory,
+  unpacked under the limits `init` applies, so an author can check the file a
+  customer receives.
+
 ### Changed
 
 - **`release verify` reads what each template names.** A template naming a
