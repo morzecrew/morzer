@@ -1714,6 +1714,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#notify-flush" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify flush
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2714,6 +2725,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#notify-flush" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        notify flush
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3374,7 +3396,13 @@ instead.</p>
 checks tool versions against what the release requires, the installation layout,
 the secret state, service and health status, disk headroom, and the journal.</p>
 <p>Exits <a href="../exit-codes/">3</a> when any check fails; warnings exit 0.</p>
-<p>Four checks are advisory by design, and warn rather than fail:</p>
+<p><code>--unattended</code> is the <a href="../../operating/notifications/#the-scheduled-doctor">scheduled run</a>:
+it sends the notification outbox first, then notifies one <code>doctor.finished</code>
+naming the checks that warn or fail. A run where every check passes notifies
+nothing. Every run leaves out of <code>config.operations</code> the operation holding the
+deployment lock while it is running, so a backup in progress is not reported as
+unfinished.</p>
+<p>Five checks are advisory by design, and warn rather than fail:</p>
 <table>
 <thead>
 <tr>
@@ -3386,6 +3414,10 @@ the secret state, service and health status, disk headroom, and the journal.</p>
 <tr>
 <td><code>config.drift</code></td>
 <td>A configuration file on disk differs from what the installed release renders, or is absent. The next <code>apply</code>, <code>update</code>, <code>rollback</code> or <code>config set</code> replaces it, and <a href="../../operating/changing-configuration/#a-hand-edit-is-replaced"><code>config diff</code></a> shows how it differs. A hand edit can be deliberate, so this warns. A file that cannot be read is named and not counted.</td>
+</tr>
+<tr>
+<td><code>notify.outbox</code></td>
+<td>A notify target has events it did not accept waiting in the <a href="../../operating/notifications/#delivery">outbox</a>: it names the target, how many, and how many were dropped past the bound of 100. <code>morzer notify flush</code> sends them once the target answers, as the scheduled <code>doctor</code> does.</td>
 </tr>
 <tr>
 <td><code>secrets.rotation</code></td>
@@ -3850,7 +3882,10 @@ database is a state no automatic action can repair, so a failure here exits
 names before recording it, and sends nothing: an <code>https</code> URL with no password
 in it, and any secret it reads, set and well formed. <code>morzer notify target list</code>
 shows them, naming a URL kept in a secret by its secret.
-<code>morzer notify target remove &lt;url|name&gt;</code> stops reporting to one.</p>
+<code>morzer notify target remove &lt;url|name&gt;</code> stops reporting to one, and deletes
+what the outbox held for it. The first target added installs the
+<a href="../../operating/notifications/#the-scheduled-doctor">doctor timer</a> unless
+<code>doctor.scheduled</code> is off, and removing the last removes it.</p>
 <table>
 <thead>
 <tr>
@@ -3877,6 +3912,13 @@ shows them, naming a URL kept in a secret by its secret.
 </tr>
 </tbody>
 </table>
+<h3 id="notify-flush">notify flush<a class="headerlink" href="#notify-flush" title="Permanent link">&para;</a></h3>
+<p><code>morzer notify flush</code> sends the <a href="../../operating/notifications/#delivery">outbox</a>
+now, oldest first: the events a target was down for, or answered in a way a later
+send can get past. Each is deleted once its target answers, and kept while it is
+still down; a target still down gets no more of its entries that run. One
+sender runs at a time, so while the scheduled <code>doctor</code> is sending, this sends
+nothing and says so. It exits 0 whatever the targets answered.</p>
 <h2 id="version">version<a class="headerlink" href="#version" title="Permanent link">&para;</a></h2>
 <p>Prints the manager version, the commit it was built from, and the manifest API
 versions it can read.</p>

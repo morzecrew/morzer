@@ -930,6 +930,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-scheduled-doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The scheduled doctor
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Delivery
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-you-should-not-build-on-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2094,6 +2116,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-scheduled-doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The scheduled doctor
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Delivery
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-you-should-not-build-on-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2242,10 +2286,12 @@ morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w
 <p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
 the trade: you lose "unreachable host x" and keep the token out of your logs.</p>
 <h2 id="what-is-sent">What is sent<a class="headerlink" href="#what-is-sent" title="Permanent link">&para;</a></h2>
-<p>Three kinds of event, and no others:</p>
+<p>Four kinds of event, and no others:</p>
 <ul>
 <li><code>operation.finished</code> — the outcome of an <code>apply</code>, <code>update</code>, <code>rollback</code>,
   <code>config</code>, <code>backup</code> or <code>restore</code>, including <strong>failures</strong>.</li>
+<li><code>doctor.finished</code> — what the <a href="#the-scheduled-doctor">scheduled <code>doctor</code></a>
+  found, when a check warns or fails, at the target's <code>min_level</code> or above.</li>
 <li><code>check</code> — a <code>doctor</code> result at or above the target's <code>min_level</code>.</li>
 <li><code>update.staged</code> — a followed reference moved, and the release it points at
   was fetched and verified: the <a href="../unattended-updates/">update channel</a>, on a
@@ -2269,19 +2315,43 @@ when the blast radius of it being wrong is a local log rather than a third
 party's servers.</p>
 <p>Progress, plans and step narration are not forwarded either. They are what a
 terminal is for.</p>
+<h2 id="the-scheduled-doctor">The scheduled doctor<a class="headerlink" href="#the-scheduled-doctor" title="Permanent link">&para;</a></h2>
+<p>Once a target is configured, a <code>&lt;product&gt;-doctor.timer</code> runs <code>doctor
+--unattended</code> every morning, after the nightly backup and update ticks. It sends
+what the <a href="#delivery">outbox</a> holds, runs every check, and sends one
+<code>doctor.finished</code> naming the checks that warn or fail, with their remedies, at
+the level of the worst. A run where every check passes sends nothing. A target
+left at the default <code>min_level</code> of <code>error</code> hears only about failures.</p>
+<p>A backup running at the same moment is not reported as unfinished: <code>doctor</code>
+leaves out the operation holding the deployment lock while it runs.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>doctor.schedule<span class="o">=</span><span class="s1">'Mon..Fri *-*-* 07:00:00'</span><span class="w">   </span><span class="c1"># when it runs</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>doctor.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">                      </span><span class="c1"># no timer at all</span>
+</code></pre></div>
+<p>The timer exists while a target does, and goes when the last one is removed.</p>
+<h2 id="delivery">Delivery<a class="headerlink" href="#delivery" title="Permanent link">&para;</a></h2>
+<p>Each target gets five seconds per attempt, and fifteen seconds cover the whole
+fan-out. A target that did not answer, or answered 408, 429 or a 5xx, is tried
+once more after a second, inside those fifteen.</p>
+<p>An event a target did not accept, and could accept later, is kept in the
+<strong>outbox</strong>: no answer, a 408, 429 or 5xx, a redirect, or a 401, 403 or 404,
+which a fixed credential or URL gets past. Any other 4xx refuses the event
+itself, and it is not kept. The scheduled <code>doctor</code> sends the outbox, and so
+does <code>morzer notify flush</code>, oldest first; an entry goes once its target
+answers. Nothing sends it during an operation, so an operation waits on a
+target that is down no longer than the first attempt and its retry, inside the
+fifteen seconds.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>notify<span class="w"> </span>flush<span class="w">      </span><span class="c1"># sent 3; kept 2 for a target that is still down</span>
+</code></pre></div>
+<p>A target keeps at most 100 entries, and past that its oldest are dropped.
+<code>doctor</code> warns about what is waiting as <code>notify.outbox</code>, naming the target, the
+count and how many were dropped. <code>notify target remove</code> deletes the target's
+entries.</p>
+<p>So delivery is at least once for what the outbox keeps, and best-effort for the
+rest. A target can receive an event twice: an attempt may have arrived and its
+answer been lost, or a send stopped between the answer and deleting the entry.
+The <code>id</code> is how to tell. <strong>The journal is still the record</strong>, and a
+notification is how a human learns to go and read it.</p>
 <h2 id="what-you-should-not-build-on-it">What you should not build on it<a class="headerlink" href="#what-you-should-not-build-on-it" title="Permanent link">&para;</a></h2>
-<p><strong>Delivery is best-effort.</strong> Each target gets five seconds per attempt, and
-fifteen seconds cover the whole fan-out. A target that did not answer, or
-answered 408, 429 or a 5xx, is tried once more after a second, inside those
-fifteen. Nothing else is retried, and nothing is queued. A target that was down
-for longer means you were not told.</p>
-<p>A target can receive an event twice: the first attempt may have arrived and its
-answer been lost. The <code>id</code> is how to tell.</p>
-<p>This is a deliberate choice rather than a gap: a queue that survives reboots is
-a different component with different failure modes, and a one-shot <abbr title="Command-Line Interface">CLI</abbr> is a poor
-host for one. The consequence is worth stating plainly — <strong>the journal is the
-record, and the notification is how a human learns to go and read it.</strong> Do not
-build a process that assumes every failure produced a message.</p>
 <p><strong>A run the operating system kills does not notify.</strong> Delivery happens inside
 the operation, so an ordinary failure — a hook exiting non-zero, a push that
 could not reach its target, a health check that never passed — is reported

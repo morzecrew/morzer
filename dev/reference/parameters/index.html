@@ -2549,6 +2549,14 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>Whether this manager runs backups on a timer at all. Absent means it does.</td>
 </tr>
 <tr>
+<td><code>doctor.schedule</code></td>
+<td>When the <a href="../../operating/notifications/#the-scheduled-doctor">scheduled <code>doctor</code></a> runs, as a systemd <code>OnCalendar</code> expression. Absent takes the morning default, <code>*-*-* 06:00:00</code>.</td>
+</tr>
+<tr>
+<td><code>doctor.scheduled</code></td>
+<td>Whether <code>doctor</code> runs on a timer and notifies what it finds. Absent means it does, while a notify target is configured; with none there is no timer.</td>
+</tr>
+<tr>
 <td><code>backup.before_update</code></td>
 <td>Whether an update takes a backup before it changes anything. Absent means it does. Only a <a href="../../operating/unattended-updates/#dev-mode-a-machine-that-is-a-sandbox-from-birth">dev-mode</a> machine may set <code>false</code>; on a production machine, <code>update --skip-backup --force</code> skips it for one update.</td>
 </tr>
