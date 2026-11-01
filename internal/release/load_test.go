@@ -306,6 +306,34 @@ func TestLoadSecretSchemaRefusesWhatItCannotRead(t *testing.T) {
 	}
 }
 
+// TestASecretSchemaSymlinkOutOfTheBundleIsRefused pins why LoadSecretSchema
+// may read with os.ReadFile: the bundle never loads with a symlink in it, so no
+// schema is read through one, and none can be quoted back in a parse error.
+func TestASecretSchemaSymlinkOutOfTheBundleIsRefused(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "host.yaml")
+	dir := bundle(t, func(d string) {
+		schema := filepath.Join(d, "secrets.schema.yaml")
+		raw, err := os.ReadFile(schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(outside, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(schema); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, schema); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	_, err := release.Load(dir)
+	if err == nil || !strings.Contains(err.Error(), "non-regular file") {
+		t.Fatalf("a bundle whose secret schema is a symlink out of it loaded: %v", err)
+	}
+}
+
 func TestLoadSecretSchemaOnABundleThatDeclaresNone(t *testing.T) {
 	dir := bundle(t, func(d string) {
 		edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
