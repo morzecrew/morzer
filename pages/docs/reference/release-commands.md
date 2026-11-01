@@ -115,6 +115,8 @@ did not write it.
 
 It reports **every** violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.
+A field, parameter or secret nothing declares is reported with the declared name
+it most likely meant, when one is close.
 
 It warns, and still exits 0, about what [`release new`](#release-new) left
 for you to fill in: an image pinned to the all-zero digest, and a
