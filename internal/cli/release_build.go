@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -66,6 +67,14 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// After the version, which is the placeholder a scaffold
+			// meets first, and before anything is written.
+			if placeholders := scaffoldPlaceholders(loaded.Manifest); len(placeholders) > 0 {
+				return domain.ValidationError(nil,
+					"the manifest still carries what `release new` left to fill in:\n  - %s",
+					strings.Join(placeholders, "\n  - ")).
+					WithHint("replace each with the real value")
+			}
 			if err := clearStaleSignature(app, dir, force); err != nil {
 				return err
 			}
@@ -95,7 +104,7 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := checkBundleIntegrity(rel); err != nil {
+			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
 				return err
 			}
 

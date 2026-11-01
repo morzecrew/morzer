@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -219,16 +221,19 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 		Use:   "verify <path>",
 		Short: "Validate a bundle's manifest and check its integrity",
 		Long: "Loads and validates the manifest, checks every referenced file exists,\n" +
-			"parses every template it declares, computes the content digest, and\n" +
-			"verifies SHA256SUMS when the bundle ships one.\n\n" +
+			"parses every template it declares and refuses one naming a secret, a\n" +
+			"parameter or a field nothing declares, checks the runtime files' image\n" +
+			"and parameter variables and the services secrets restart against the\n" +
+			"manifest, computes the content digest, and verifies SHA256SUMS when the\n" +
+			"bundle ships one.\n\n" +
 			"Pass --signing-key to check the bundle's signature too. This is the\n" +
 			"command a bundle vendor runs in their own CI, so it needs no\n" +
 			"installation on the machine.\n\n" +
 			"--render-check additionally renders each template against a synthetic\n" +
 			"context. It is a smoke test, not a guarantee: the values are invented,\n" +
 			"so a template that branches on them exercises only the branch they\n" +
-			"choose. What it does catch is a template referring to a field or a\n" +
-			"secret that nothing declares.",
+			"choose. What it adds is what only executing finds: a field used through\n" +
+			"a dot range or with moved, and a function given the wrong type.",
 		Example: "  morzer release verify ./bundle\n" +
 			"  morzer release verify ./bundle --signing-key RWQ… --render-check",
 		Args: cobra.ExactArgs(1),
@@ -260,8 +265,11 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			if warning, ok := rel.Manifest.UndeclaredSchemaWarning(); ok {
 				fmt.Fprintf(app.Stream.Err, "warning: %s\n", warning)
 			}
+			for _, p := range scaffoldPlaceholders(rel.Manifest) {
+				fmt.Fprintf(app.Stream.Err, "warning: %s; `release build` refuses it\n", p)
+			}
 
-			if err := checkBundleIntegrity(rel); err != nil {
+			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
 				return err
 			}
 
@@ -335,7 +343,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 // `archive` would otherwise be gated by two rules that drift apart, and the
 // direction they drift in is always the same one -- the producing command grows
 // lenient, because that is the one somebody is fighting at the time.
-func checkBundleIntegrity(rel domain.Release) error {
+func checkBundleIntegrity(rel domain.Release, runtime ports.Runtime) error {
 	if err := checkProviders(rel.Manifest); err != nil {
 		return err
 	}
@@ -345,6 +353,19 @@ func checkBundleIntegrity(rel domain.Release) error {
 	// `apply`, and a parse failure there is the failure this moves earlier,
 	// not a place to add work.
 	if err := checkTemplatesParse(rel); err != nil {
+		return err
+	}
+
+	// Before anything is blamed for naming a secret in it, a schema that
+	// cannot be read is reported as itself.
+	schema, err := release.LoadSecretSchema(rel)
+	if err != nil {
+		return err
+	}
+	if err := checkTemplateReferences(rel, schema); err != nil {
+		return err
+	}
+	if err := checkRuntimeFiles(rel, schema, runtime); err != nil {
 		return err
 	}
 
@@ -419,6 +440,91 @@ func checkTemplatesParse(rel domain.Release) error {
 			strings.Join(problems, "\n  - ")).
 			WithHint("a template that cannot parse cannot render, so this bundle " +
 				"would fail during an operator's `apply`")
+	}
+	return nil
+}
+
+// checkTemplateReferences refuses a template naming a secret, a parameter or a
+// field that no installation's render context has.
+//
+// Unconditional, unlike rendering: it reads every branch of the template and
+// renders none, so it invents no value and claims only that each name it read
+// resolves (RFC 0013 decision 12 is why rendering stays behind a flag).
+func checkTemplateReferences(rel domain.Release, schema domain.SecretSchema) error {
+	problems := checkEveryTemplate(rel, func(name string, raw []byte) error {
+		return gotemplate.CheckReferences(rel, schema, name, raw)
+	})
+
+	if len(problems) > 0 {
+		return domain.ValidationError(domain.ErrTemplateReference,
+			"the bundle declares templates that name what it does not declare:\n  - %s",
+			strings.Join(problems, "\n  - ")).
+			WithHint("declare the secret in the secret schema or the parameter in "+
+				"the manifest, or correct the name. Top-level fields: %s",
+				strings.Join(ports.TemplateFields(), ", "))
+	}
+	return nil
+}
+
+// checkRuntimeFiles refuses what the bundle's runtime files depend on and the
+// manifest does not declare: an image or parameter variable nothing sets, and a
+// service a secret's rotation would restart that no file defines.
+//
+// The files are read by the runtime's adapter, which knows what they mean, and
+// a runtime that cannot read them alone is not checked. Only the two variable
+// families the manifest names are judged: any other name in the product's
+// namespace falls back to its default everywhere, which may be what was meant.
+func checkRuntimeFiles(rel domain.Release, schema domain.SecretSchema, runtime ports.Runtime) error {
+	reader, ok := runtime.(ports.BundleReader)
+	if !ok {
+		return nil
+	}
+	decl, ok := rel.Manifest.DeclaredRuntimes()[runtime.Name()]
+	if !ok {
+		return nil
+	}
+	files := decl.Files
+	for _, profile := range slices.Sorted(maps.Keys(decl.Profiles)) {
+		for _, f := range decl.Profiles[profile] {
+			if !slices.Contains(files, f) {
+				files = append(files, f)
+			}
+		}
+	}
+	read, err := reader.ReadBundle(rel.Root, files)
+	if err != nil {
+		return err
+	}
+
+	var problems []string
+	prefix := ports.HookEnv{Product: rel.Name()}.Prefix() + "_"
+	declared := ops.ReleaseVariables(rel.Name(), rel.Manifest)
+	for _, v := range read.Variables {
+		judged := strings.HasPrefix(v, prefix+"IMAGE_") || strings.HasPrefix(v, prefix+"PARAM_")
+		if judged && !declared[v] {
+			problems = append(problems, fmt.Sprintf(
+				"%s is interpolated, and no image or parameter in the manifest sets it", v))
+		}
+	}
+	// A file that includes others defines services this did not read, and
+	// refusing one of those would refuse a correct bundle.
+	if !read.ServicesPartial {
+		for _, s := range schema.Secrets {
+			for _, svc := range s.Services {
+				if !slices.Contains(read.Services, svc) {
+					problems = append(problems, fmt.Sprintf(
+						"secret %q restarts service %q, which no runtime file defines", s.Name, svc))
+				}
+			}
+		}
+	}
+
+	if len(problems) > 0 {
+		return domain.ValidationError(nil,
+			"the bundle's runtime files and its manifest disagree:\n  - %s",
+			strings.Join(problems, "\n  - ")).
+			WithHint("declare the image or parameter, or correct the variable; " +
+				"a secret's services must be ones the runtime files define")
 	}
 	return nil
 }

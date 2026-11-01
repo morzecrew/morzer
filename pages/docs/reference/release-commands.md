@@ -63,7 +63,9 @@ is honest. Every value that must change before you publish is marked `TODO`.
 The version is `0.0.0` deliberately — a placeholder
 [`release build`](#release-build) stamps. A scaffold that wrote `1.0.0` would
 be inviting you to hand-maintain the one field the tooling owns, and `build`
-refuses `0.0.0` precisely so a forgotten `--version` cannot ship it.
+refuses `0.0.0` precisely so a forgotten `--version` cannot ship it. The image
+digest of all zeros and the `TODO` description are refused by `build` for the
+same reason, and `verify` warns about them.
 
 It refuses to write over anything. Scaffold into an empty directory.
 
@@ -73,16 +75,32 @@ It refuses to write over anything. Scaffold into an empty directory.
 morzer release verify <path>
 ```
 
-Validates a bundle's manifest, **parses every template it declares**, and
+Validates a bundle's manifest, **parses every template it declares and checks
+what each one names**, checks the runtime files against the manifest, and
 checks its integrity, without installing anything. This is the command a bundle
 vendor runs in their own CI.
 
-The template pass is parsing, not rendering. A template that parses can still
-fail against a real context — the render context has values only an
-installation can supply — so a clean `verify` means the templates are
-syntactically sound, not that they will produce what you expect. Parsing needs
-no installation, no parameters and no network, which is what makes it safe to
-run on every commit.
+The template pass reads templates; it does not render them. It refuses a
+template that does not parse, and one that names a secret your schema does not
+declare, a parameter your manifest does not declare, or a field the render
+context does not have — in every branch, `{{ else }}` included. What reading
+cannot follow is a name used through a dot that `range` or `with` has moved, or
+inside a `define`, because only a value says what the dot is there;
+`--render-check` reaches those. A clean `verify` means every name it could
+follow exists, not that the templates will produce what you expect. Reading needs no
+installation, no parameters and no network, which is what makes it safe to run
+on every commit.
+
+The runtime files are read too, with no Docker. A
+`${<PRODUCT>_IMAGE_<NAME>}` or `${<PRODUCT>_PARAM_<NAME>}` that no image or
+parameter in the manifest sets is refused, because on every machine it falls
+back to whatever default the file carries and the manifest's digest pin decides
+nothing. `<PRODUCT>` is `metadata.name` in capitals. So is a secret whose
+`services` names a service no Compose file defines, profiles' files included.
+An `include` is followed as Compose follows it, relative to the file that
+includes it. One that leaves the bundle, such as a remote one, or whose path
+Compose would interpolate first, is not read, so the services are not checked
+for that bundle.
 
 It matters because the alternative is worse: without it, a template with an
 unterminated action passes `verify` and fails during an operator's `apply`,
@@ -98,7 +116,12 @@ did not write it.
 It reports **every** violation in one pass rather than the first, because a
 bundle author fixing one problem should not discover the next one on the retry.
 
-It warns, and still exits 0, when the manifest migrates with a
+It warns, and still exits 0, about what [`release new`](#release-new) left
+for you to fill in: an image pinned to the all-zero digest, and a
+`metadata.description` that is still the scaffold's `TODO --`. [`release build`](#release-build)
+refuses both.
+
+It also warns, and still exits 0, when the manifest migrates with a
 `runtime-service` step and declares no `database_schema_produces`. A container
 cannot report the schema it leaves, so without the declaration an installation's
 schema stays unknown and its schema checks are skipped; see the
@@ -121,10 +144,10 @@ structural rather than a maturity gap: there is no real context here, which is
 exactly what lets you run this in CI. It will never become the default, and
 there will never be a `--no-render-check`.
 
-What it does catch is the class parsing cannot: a reference to a field the
-render context does not define, and a `secretFile` call naming a secret your
-schema does not declare. Those fail on every machine, so catching them on yours
-is free.
+What it adds to the plain pass is what only executing a template finds: a
+field used through a dot `range` or `with` moved, or inside a `define`, and a
+function handed a value of the wrong type. Those fail on every machine, so
+catching them on yours is free.
 
 Two things are *not* invented, and they are why the check has teeth: secret
 names come from the schema your manifest declares, and parameters from your own
@@ -212,7 +235,8 @@ same way `verify` does.
 | `--force` | Discard an existing `SHA256SUMS.minisig`, which regenerating the list invalidates. |
 
 With neither version flag, the manifest's own version is used and nothing is
-stamped — except `0.0.0`, which is refused. See
+stamped — except `0.0.0`, which is refused. It also refuses a manifest still
+carrying the scaffold's all-zero image digest or `TODO` description. See
 [Versioning](../authoring/publishing.md#versioning) for the scheme and why the
 patch is bumped.
 

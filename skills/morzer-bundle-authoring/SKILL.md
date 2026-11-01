@@ -26,9 +26,10 @@ morzer release verify ./my-product --render-check
 ```
 
 `release verify` reports every violation in one pass, with the line and column,
-and needs no installation. `--render-check` renders each template against
-invented values, which catches a misspelt secret or parameter name that parsing
-cannot. **Run both after every change, and do not call a bundle finished until
+and needs no installation. It refuses a template naming a secret, parameter or
+field nothing declares, and a Compose image or parameter variable the manifest
+does not set. `--render-check` renders each template against invented values,
+which reaches names used inside `range` and `with` that reading cannot. **Run both after every change, and do not call a bundle finished until
 both pass.** A bundle that verifies can still be wrong in ways only a deployment
 shows (below), so a passing verify is the floor, not the proof.
 

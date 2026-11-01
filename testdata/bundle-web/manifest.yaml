@@ -77,6 +77,11 @@ parameters:
     # No services: the backend reads this from its rendered configuration file
     # at start-up, so the change needs a full `apply` rather than a re-create.
     # Declaring nothing is how a vendor says that.
+  db_host:
+    type: string
+    default: db.internal
+    description: Database host the backend connects to under the external-db profile
+    services: [backend]
 
 images:
   frontend: registry.example/web/frontend@sha256:0000000000000000000000000000000000000000000000000000000000000001

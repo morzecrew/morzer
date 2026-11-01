@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`release verify` reads what each template names.** A template naming a
+  secret, a parameter or a field nothing declares is now refused without
+  `--render-check`, in every branch. `build`, `pack`, `archive` and `push` run
+  the same check, so a bundle that passed them before may not.
+
+- **`release verify` checks the Compose files against the manifest.** It
+  refuses a `${<PRODUCT>_IMAGE_*}` or `${<PRODUCT>_PARAM_*}` variable nothing
+  sets, and a secret restarting a service no Compose file defines, unless a
+  file includes one from outside the bundle. `build`, `pack`, `archive` and
+  `push` refuse them too.
+
+- **`release build` refuses what `release new` left to fill in.** An image
+  pinned to the all-zero digest, or the scaffold's `TODO --` description, stops
+  the build as 0.0.0 already did. `release verify` warns about
+  both and still passes.
+
 ## [0.11.0] - 2026-11-01
 
 An operator can now see what a machine did and what it is about to do: `morzer

@@ -77,20 +77,39 @@ func TestReleaseNewCarriesTheConventions(t *testing.T) {
 	}
 }
 
-// TestTheScaffoldedVersionIsAPlaceholderTheBuildRefuses couples two decisions
-// that were made in different RFCs.
+// TestTheScaffoldsPlaceholdersAreWhatTheBuildRefuses couples decisions made in
+// different RFCs.
 //
-// The scaffold writes 0.0.0 so nobody hand-maintains the field the tooling
-// owns; `build` refuses 0.0.0 so a forgotten --version in CI cannot ship a
-// bundle that is clean at every gate and collides with the next one. Each is
-// only safe because of the other, and nothing else would notice if one moved.
-func TestTheScaffoldedVersionIsAPlaceholderTheBuildRefuses(t *testing.T) {
+// The scaffold writes 0.0.0, a digest that refers to nothing and a TODO
+// description, so the vendor fills them in rather than inherits plausible
+// values. `build` refuses each, so a forgotten one cannot ship a bundle that is
+// clean at every gate; `verify` only warns, because the scaffold must verify
+// unedited. Each is only safe because of the other, and nothing else would
+// notice if one moved.
+func TestTheScaffoldsPlaceholdersAreWhatTheBuildRefuses(t *testing.T) {
 	r := clitest.New(t)
 	dir := filepath.Join(t.TempDir(), "my-product")
 	r.Run("release", "new", dir).ExitCode(0)
 
 	r.Run("release", "build", dir).Failed().OutputContains("0.0.0")
 
+	r.Run("release", "build", dir, "--version", "0.1.0").Failed().
+		SaysAll("images.app is pinned to the placeholder digest", "metadata.description")
+	r.Run("release", "verify", dir).ExitCode(0).
+		SaysAll("warning: images.app", "warning: metadata.description", "`release build` refuses it")
+
+	manifest := filepath.Join(dir, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filled := strings.Replace(string(raw), strings.Repeat("0", 64), strings.Repeat("1", 64), 1)
+	filled = strings.Replace(filled, "description: TODO -- ", "description: TODOist, ", 1)
+	if err := os.WriteFile(manifest, []byte(filled), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("release", "verify", dir).ExitCode(0).NoOutputContains("placeholder")
 	r.Run("release", "build", dir, "--version", "0.1.0").ExitCode(0).OutputContains("0.1.0")
 }
 

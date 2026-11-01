@@ -1089,6 +1089,21 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 	}, nil
 }
 
+// ReleaseVariables are the variables a release's manifest adds to what its
+// runtime files may interpolate: one per image and one per parameter, named as
+// the configuration above names them, so `release verify` and a deployment
+// cannot disagree about what a file may use.
+func ReleaseVariables(product string, m domain.Manifest) map[string]bool {
+	out := make(map[string]bool, len(m.Images)+len(m.Parameters))
+	for name := range m.Images {
+		out[envName(product, "IMAGE_"+imageVarName(name))] = true
+	}
+	for name := range m.Parameters {
+		out[envName(product, "PARAM_"+parameterVarName(name))] = true
+	}
+	return out
+}
+
 // envName builds a product-namespaced variable name, matching the hook ABI.
 func envName(product, key string) string {
 	return ports.HookEnv{Product: product}.Var(key)

@@ -108,6 +108,12 @@ var (
 	// would have to over-claim about one of them.
 	ErrTemplateRender = errors.New("template does not render")
 
+	// ErrTemplateReference marks a template naming a secret, a parameter or
+	// a field its context does not have, found by reading the template
+	// rather than rendering it. Unconditional, as a parse failure is: no
+	// value was invented to find it.
+	ErrTemplateReference = errors.New("template names something undeclared")
+
 	// ErrMeasureIncomplete marks a measurement that did not run, as opposed
 	// to one that ran and could not produce an answer.
 	//

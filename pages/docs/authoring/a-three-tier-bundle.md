@@ -176,7 +176,10 @@ runtimes:
 ```
 
 The backend keeps `db_password` under both. Someone else's database still
-requires authenticating to it; only the server moves.
+requires authenticating to it; only the server moves, and where it moved to is
+the `db_host` parameter, which `compose.external-db.yaml` reads as
+`${WEB_PARAM_DB_HOST}`. A variable like that with no parameter behind it would
+fall back to its default on every machine, so `release verify` refuses one.
 
 ## Installing it
 
