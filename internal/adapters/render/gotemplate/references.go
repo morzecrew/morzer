@@ -204,9 +204,10 @@ func (w *refWalker) resolve(node tparse.Node, idents []string) (reflect.Value, b
 		parent := "." + strings.Join(idents[:i], ".")
 		switch v.Kind() {
 		case reflect.Struct:
-			// A method is callable as a field; what it returns is
-			// not followed.
-			if _, ok := reflect.PointerTo(v.Type()).MethodByName(id); ok {
+			// A value method is callable as a field; what it returns
+			// is not followed. A pointer method is not: nothing in a
+			// view executed by value is addressable.
+			if _, ok := v.Type().MethodByName(id); ok {
 				return reflect.Value{}, false
 			}
 			field, ok := v.Type().FieldByName(id)

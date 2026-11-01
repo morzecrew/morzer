@@ -168,11 +168,11 @@ func syntheticValue(spec domain.ParameterSpec) string {
 
 // CheckRender renders a template against the synthetic context.
 //
-// The message carries the execution error whole, because that is where the
-// information is: text/template reports the line, the column and the action that
-// failed, and "does not render" without them tells an author which file to look
-// at and nothing about where. It is the same text an operator would have met at
-// apply, which is the point of moving it earlier.
+// The message carries where and what the execution failed on, because that is
+// where the information is: "does not render" alone tells an author which file
+// to look at and nothing about where. describe restates text/template's error in
+// the template's terms, and it is the same text an operator meets at apply,
+// which is the point of moving it earlier.
 func CheckRender(rel domain.Release, schema domain.SecretSchema, name string, raw []byte) error {
 	tmpl, err := parse(name, raw)
 	if err != nil {

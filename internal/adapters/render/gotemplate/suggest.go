@@ -13,10 +13,22 @@ import (
 // didYouMean names the candidate a misspelt name most likely meant, or
 // nothing when none is near: within a third of the name's length, at least one
 // edit, ignoring case. A wrong suggestion costs more than none.
+//
+// Nothing longer than maxSuggestible is compared: no name that long is a typo
+// of a declared one, and the distance costs the product of the two lengths.
 func didYouMean(name string, candidates []string) string {
-	limit := max(1, len([]rune(name))/3)
+	n := len([]rune(name))
+	if n > maxSuggestible {
+		return ""
+	}
+	limit := max(1, n/3)
 	best, bestDistance := "", limit+1
 	for _, c := range slices.Sorted(slices.Values(candidates)) {
+		// Two names further apart in length than the limit are
+		// further apart than it in edits, so they are not compared.
+		if d := len([]rune(c)) - n; d > limit || -d > limit {
+			continue
+		}
 		if d := distance(strings.ToLower(name), strings.ToLower(c)); d < bestDistance {
 			best, bestDistance = c, d
 		}
@@ -26,6 +38,8 @@ func didYouMean(name string, candidates []string) string {
 	}
 	return "; did you mean " + best + "?"
 }
+
+const maxSuggestible = 64
 
 // distance is the optimal string alignment distance: edits, with a swap of
 // two neighbours counted as one, because that is the commonest typo.
@@ -55,7 +69,8 @@ func distance(a, b string) int {
 }
 
 // memberNames are what a template can name on a value of this type: its
-// exported fields and its methods.
+// exported fields and its value methods. The view is executed by value, so
+// nothing in it is addressable and a pointer method is not callable.
 func memberNames(t reflect.Type) []string {
 	var out []string
 	for i := range t.NumField() {
@@ -63,9 +78,8 @@ func memberNames(t reflect.Type) []string {
 			out = append(out, f.Name)
 		}
 	}
-	pt := reflect.PointerTo(t)
-	for i := range pt.NumMethod() {
-		out = append(out, pt.Method(i).Name)
+	for i := range t.NumMethod() {
+		out = append(out, t.Method(i).Name)
 	}
 	return out
 }
@@ -116,7 +130,8 @@ func ownerOf(goType string) (string, []string, bool) {
 }
 
 var (
-	execFailure = regexp.MustCompile(`^(\d+:\d+): executing "[^"]*" at <(.*)>: (.*)$`)
+	// (?s): a `required` message may hold a newline, and so may its cause.
+	execFailure = regexp.MustCompile(`(?s)^(\d+:\d+): executing "[^"]*" at <(.*?)>: (.*)$`)
 	noField     = regexp.MustCompile(`^can't evaluate field (\w+) in type (\S+)$`)
 	noKey       = regexp.MustCompile(`^map has no entry for key "(.*)"$`)
 	rootChain   = regexp.MustCompile(`^\$?((?:\.\w+)+)$`)

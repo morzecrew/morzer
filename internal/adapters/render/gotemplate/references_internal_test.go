@@ -63,6 +63,8 @@ func TestReadingATemplateFindsWhatItNamesAndNothingDeclares(t *testing.T) {
 			`{{ index .Parameters "htpp_port" }}`, `did you mean http_port?`},
 		{"a misspelt field is offered the real one",
 			`{{ .Installation.Urrl }}`, `.Installation has no field Urrl; did you mean URL?`},
+		{"a method only a pointer has",
+			`{{ .Release.Version.UnmarshalText }}`, `.Release.Version has no field UnmarshalText`},
 		{"a moved dot is left alone",
 			`{{ with .Paths }}{{ .Data }}{{ .Anything }}{{ end }}{{ range .Domains }}{{ .Whatever }}{{ end }}`, ""},
 		{"a define's dot is left alone",

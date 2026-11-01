@@ -28,6 +28,10 @@ func TestARenderFailureSaysWhereAndWhatInTheTemplatesTerms(t *testing.T) {
 			`.Paths has no field Zzzzzz: `},
 		{`{{ with .Secrets }}{{ .typo }}{{ end }}`,
 			`.typo: map has no entry for key "typo"`},
+		{`{{ .Release.Version.UnmarshalTxt }}`,
+			`.Release.Version has no field UnmarshalTxt; did you mean MarshalText?`},
+		{"{{ required \"choose\\nthe port\" \"\" }}",
+			"1:3: required \"choose\\nthe port\" \"\": error calling required: choose\nthe port"},
 		{`{{ upper .Domains }}`,
 			`1:9: .Domains: wrong type for value; expected string; got []string`},
 	}
@@ -56,8 +60,11 @@ func TestASuggestionIsOfferedOnlyWhenNear(t *testing.T) {
 		{"url", "URL"},
 		{"Zzzzzz", ""},
 		{"x", ""},
+		{strings.Repeat("Data", 20), ""},
+		{strings.Repeat("Data", 16) + "xy", ""},
 	} {
-		got := didYouMean(tc.name, []string{"URL", "http_port", "Data"})
+		got := didYouMean(tc.name, []string{"URL", "http_port", "Data",
+			strings.Repeat("Data", 20) + "x", strings.Repeat("Data", 16)})
 		if want := map[bool]string{true: "", false: "; did you mean " + tc.want + "?"}[tc.want == ""]; got != want {
 			t.Errorf("didYouMean(%q) = %q, want %q", tc.name, got, want)
 		}
