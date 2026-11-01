@@ -3,6 +3,7 @@ package gotemplate
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	tparse "text/template/parse"
 
@@ -90,10 +91,48 @@ func (w *refWalker) pipe(p *tparse.PipeNode, dotIsRoot, rootKnown bool) {
 	}
 	for _, cmd := range p.Cmds {
 		w.secretFileName(cmd)
+		if idents, ok := indexed(cmd, dotIsRoot, rootKnown); ok {
+			w.resolve(cmd, idents)
+			continue
+		}
 		for _, arg := range cmd.Args {
 			w.arg(arg, dotIsRoot, rootKnown)
 		}
 	}
+}
+
+// indexed reads `index <chain> "key"` as the chain followed by the key, because
+// that is what it looks up -- and unlike a field, an index a map does not hold
+// renders as nothing rather than failing, so it is the lookup most worth
+// reading. Only a chain from the root context, and only a literal key.
+func indexed(cmd *tparse.CommandNode, dotIsRoot, rootKnown bool) ([]string, bool) {
+	if len(cmd.Args) != 3 {
+		return nil, false
+	}
+	fn, ok := cmd.Args[0].(*tparse.IdentifierNode)
+	if !ok || fn.Ident != "index" {
+		return nil, false
+	}
+	key, ok := cmd.Args[2].(*tparse.StringNode)
+	if !ok {
+		return nil, false
+	}
+	var chain []string
+	switch n := cmd.Args[1].(type) {
+	case *tparse.FieldNode:
+		if !dotIsRoot {
+			return nil, false
+		}
+		chain = n.Ident
+	case *tparse.VariableNode:
+		if !rootKnown || n.Ident[0] != "$" || len(n.Ident) < 2 {
+			return nil, false
+		}
+		chain = n.Ident[1:]
+	default:
+		return nil, false
+	}
+	return append(slices.Clone(chain), key.Text), true
 }
 
 func (w *refWalker) arg(node tparse.Node, dotIsRoot, rootKnown bool) {
