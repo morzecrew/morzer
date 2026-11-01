@@ -51,3 +51,24 @@ proposal: ASSUMED — the nearest candidate is offered when it is within a third
 ```
 
 **Drift count: 0.**
+
+## Corrected in review
+
+The 22:31 entry offered an owner's methods, and listed them from the pointer
+type. The view is executed by value, so nothing in it is addressable and a
+pointer method is not callable: `.Release.Version` was offered
+`UnmarshalText`, and plain `verify` passed a template naming it.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T23:40:00Z
+attempt: 2
+claim: a pointer method was offered as a suggestion and passed as a field, though a view executed by value cannot call one
+evidence: internal/adapters/render/gotemplate/suggest.go:74
+action: decided
+proposal: ASSUMED — candidates are the owner's exported fields and value methods, and plain `verify` accepts a value method only; a name longer than 64 is offered nothing, since none is a typo of a declared one and the comparison costs the product of the lengths.
+```
+
+**Drift count: 0.**
