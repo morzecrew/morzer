@@ -59,7 +59,7 @@ func newConfigDiffCommand(app *App) *cobra.Command {
 				return err
 			}
 			// The summary is narration, so stderr: what is piped to a file or
-			// to `patch` is the diffs alone.
+			// a pager is the diffs alone.
 			if app.json == nil && !app.Flags.quiet {
 				fmt.Fprintln(app.Stream.Err, report.Summary())
 			}
