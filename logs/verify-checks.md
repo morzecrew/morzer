@@ -170,3 +170,58 @@ action: decided
 ```
 
 **Drift count: 0.**
+
+## Corrected in review
+
+Three of the entries above were decided too narrowly, and review showed it.
+Each is replaced by the entry below it rather than edited.
+
+The 19:13 entry skipped the services check whenever a file used `include`, and
+read no variable from an included file, so an undeclared image variable there
+passed. Compose follows a local `include` relative to the file that includes
+it (measured with Compose 5.5.1), and the reader can too.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T21:10:00Z
+attempt: 2
+claim: an included file's services and variables were not read, though a local include is a file inside the bundle like any other
+evidence: internal/adapters/runtime/compose/bundle.go:67
+action: decided
+proposal: ASSUMED — an `include` is followed relative to the file that includes it while it stays inside the bundle, in the short and the long spelling, for services and variables both. One that leaves the bundle, such as a remote or absolute one, is not read, and only then is the services check skipped.
+```
+
+The 19:10 entry checked field chains and `secretFile`, and not
+`index .Parameters "name"`. An index a map does not hold renders as nothing
+rather than failing, which makes it the lookup most worth reading.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T21:11:00Z
+attempt: 2
+claim: `index` of a root map with a literal key was not read, and a key the map does not hold renders empty
+evidence: internal/adapters/render/gotemplate/references.go:108
+action: decided
+proposal: ASSUMED — `index <chain> "key"`, with the chain from the root context and the key a literal, is read as the chain followed by the key, so an undeclared parameter or secret named that way is refused like a field.
+```
+
+The 19:14 entry matched a description starting with `TODO`, which also refuses
+a real one such as "TODOist".
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T21:12:00Z
+attempt: 2
+claim: a description that merely starts with the letters TODO is not the scaffold's placeholder
+evidence: internal/cli/release_new.go:192
+action: decided
+proposal: ASSUMED — the placeholder is the scaffold's own opening, `TODO -- `, which the scaffold now writes from the same constant the check matches.
+```
+
+**Drift count: 0.**

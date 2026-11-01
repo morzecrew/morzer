@@ -86,8 +86,8 @@ declare, a parameter your manifest does not declare, or a field the render
 context does not have — in every branch, `{{ else }}` included. What reading
 cannot follow is a name used through a dot that `range` or `with` has moved, or
 inside a `define`, because only a value says what the dot is there;
-`--render-check` reaches those. A clean `verify` means every name the templates
-use exists, not that they will produce what you expect. Reading needs no
+`--render-check` reaches those. A clean `verify` means every name it could
+follow exists, not that the templates will produce what you expect. Reading needs no
 installation, no parameters and no network, which is what makes it safe to run
 on every commit.
 
@@ -97,8 +97,9 @@ parameter in the manifest sets is refused, because on every machine it falls
 back to whatever default the file carries and the manifest's digest pin decides
 nothing. `<PRODUCT>` is `metadata.name` in capitals. So is a secret whose
 `services` names a service no Compose file defines, profiles' files included.
-When a Compose file uses `include`, the services are not checked, since the
-included ones are not read.
+An `include` is followed as Compose follows it, relative to the file that
+includes it. One that leaves the bundle, such as a remote one, is not read, so
+the services are not checked for that bundle.
 
 It matters because the alternative is worse: without it, a template with an
 unterminated action passes `verify` and fails during an operator's `apply`,
@@ -116,7 +117,7 @@ bundle author fixing one problem should not discover the next one on the retry.
 
 It warns, and still exits 0, about what [`release new`](#release-new) left
 for you to fill in: an image pinned to the all-zero digest, and a
-`metadata.description` starting with `TODO`. [`release build`](#release-build)
+`metadata.description` that is still the scaffold's `TODO --`. [`release build`](#release-build)
 refuses both.
 
 It also warns, and still exits 0, when the manifest migrates with a
