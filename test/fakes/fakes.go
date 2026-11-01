@@ -85,6 +85,10 @@ type Runtime struct {
 	// which release a project was brought up from.
 	UpConfigs []ports.RuntimeConfig
 
+	// UpOptions is what each Up was asked to do, in the same order, so a
+	// test can tell a forced re-creation from a convergence.
+	UpOptions []ports.UpOptions
+
 	// DownConfigs is what each Down was handed, so a test can tell a project
 	// taken down with its release's files from one taken down by name.
 	DownConfigs []ports.RuntimeConfig
@@ -290,6 +294,7 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	defer r.mu.Unlock()
 	r.UpCount++
 	r.UpConfigs = append(r.UpConfigs, cfg)
+	r.UpOptions = append(r.UpOptions, opts)
 	for _, name := range r.ValidateResult.Services {
 		r.Services[name] = ports.ServiceState{
 			Name: name, State: "running", Health: ports.HealthHealthy,

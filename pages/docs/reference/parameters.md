@@ -162,7 +162,7 @@ log_level            enum       info             release
 A parameter is declared by the vendor and reaches the deployment. An
 **installation setting** is your arrangement with the manager — whether it may
 contact a registry, which reference it follows — and changes nothing that is
-running.
+running. The one exception is `installation.domains`, below.
 
 They share `morzer config` because that is where you look to change a value, and
 they cannot collide: a parameter name is lowercase letters, digits and
@@ -185,6 +185,10 @@ morzer config unset update.channel           # back to absent, which is always t
 | `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
 | `backup.before_update` | Whether an update takes a backup before it changes anything. Absent means it does. Only a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine may set `false`; on a production machine, `update --skip-backup --force` skips it for one update. |
 | `retention.pre_update_backups` | How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least `1`. Absent takes `3`. See [retention](../operating/backups.md#retention). |
+| `retention.releases` | How many releases the store keeps beside the current, previous and staged ones, which are never pruned; at least `1`. Absent takes the release's `retention.releases`. |
+| `retention.backups` | How many of the newest backups retention keeps; at least `1`. Absent takes the release's `retention.backups`. |
+| `release.require_signature` | Refuse any release not signed by a key [`release trust`](release-commands.md#release-trust) lists. `true` needs a trusted key; `false` is refused while `update.auto_apply` is on, and is journalled. See [unattended updates](../operating/unattended-updates.md#turning-it-on). |
+| `installation.domains` | The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an `https://` URL. A change renders the configuration and re-creates every running service. |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
@@ -196,6 +200,35 @@ by `config set`, and by `init --backup-schedule` before anything is created — 
 an expression systemd cannot read is refused rather than left as a timer that
 never loads. On a host without `systemd-analyze` there is nothing to ask, and
 the value is stored as given.
+
+A retention count takes effect where retention already runs: releases after an
+update and at `morzer release prune`, backups after a backup. Setting one prunes
+nothing by itself.
+
+`release.require_signature` applies from the next `release fetch` or `update`.
+The installed release keeps running and nothing already in the store is checked
+again, but an `update --to` a stored release whose signature does not verify is
+then refused.
+
+### Changing the domains
+
+```sh
+morzer config set installation.domains=demo.example,www.demo.example
+morzer config unset installation.domains     # no domain, as an install without --domain
+```
+
+A domain reaches the deployment three ways: the templates' `.Domain` and
+`.Domains`, the services' `DOMAIN` variable, and the public URL `status` shows.
+No release says which services read it, so the change renders the configuration
+and re-creates **every running service**, which is a short outage. It runs as
+one `config` operation in `morzer history`: a render that fails puts the old
+domains back, and `--dry-run` shows the steps without running them.
+
+While the product is [stopped](../operating/taking-a-product-down.md), nothing is
+re-created: `morzer start` brings every service up with the new value.
+
+morzer issues no certificate for a new domain. Whatever terminates TLS, the
+release's proxy or yours, needs one before the name is served.
 
 ## Turning scheduled backups off
 

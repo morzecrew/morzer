@@ -131,7 +131,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--require-signature` | Refuse any release that is not signed by one of those keys. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
-| `--repair` | Restore missing directories on an existing installation. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
+| `--repair` | Restore missing directories on an existing installation. It restores a layout; `morzer config set installation.domains` is how the domains change afterwards. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
 | `--mode` | What this machine is for: `dev` for a sandbox, or production (the default). Fixed at creation and never changeable — see [unattended updates](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
 
 ### The interactive first run
@@ -164,9 +164,9 @@ scripted install all take the flags exactly as given.
 satisfy it, and a policy nothing can satisfy is a configuration error rather
 than something to discover on the next update. A key that does not parse is
 refused too. The keys change afterwards with [`morzer release
-trust`](release-commands.md#release-trust); whether a signature is required
-cannot yet be changed after `init`. `installation.yaml` shows both, but it is a
-report, and editing it changes nothing.
+trust`](release-commands.md#release-trust), and whether a signature is required
+with `morzer config set release.require_signature`. `installation.yaml` shows
+both, but it is a report, and editing it changes nothing.
 
 !!! warning "Keep the recovery key off this machine"
 

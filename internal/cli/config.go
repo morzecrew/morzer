@@ -113,7 +113,9 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"A dotted name is an installation setting rather than a release\n" +
 			"parameter — `update.check`, `update.channel`. Those are the operator's\n" +
 			"arrangement with the manager, change nothing that is running, and are\n" +
-			"listed by `morzer config settings`.",
+			"listed by `morzer config settings`. The exception is\n" +
+			"`installation.domains`, which renders the configuration and re-creates\n" +
+			"every running service.",
 		Example: "  morzer config set http_port=8443\n" +
 			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
 			"  morzer config set update.check=true            # an installation setting",
@@ -163,8 +165,10 @@ func newConfigUnsetCommand(app *App) *cobra.Command {
 			"and re-creates the dependent services.\n\n" +
 			"This is also how a value left behind by an older release is cleared:\n" +
 			"`config list` reports those as stale.\n\n" +
-			"Unsetting an installation setting returns it to its absent state, which\n" +
-			"is always the conservative one: nothing here defaults to on.",
+			"Unsetting an installation setting returns it to its absent state.\n" +
+			"Nothing here defaults to on, so that is the conservative state for every\n" +
+			"setting but `release.require_signature`, whose unset is refused while\n" +
+			"`update.auto_apply` is on.",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: unnamed(app.completeValues(unsettable)),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -210,7 +214,7 @@ func newConfigSettingsCommand(app *App) *cobra.Command {
 		Short: "Show the installation settings and their values",
 		Long: "Installation settings are the operator's arrangement with the manager,\n" +
 			"as opposed to the parameters a release declares. They change nothing\n" +
-			"that is running.\n\n" +
+			"that is running, except `installation.domains`.\n\n" +
 			"Set one with `morzer config set update.check=true`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

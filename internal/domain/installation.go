@@ -2,7 +2,9 @@ package domain
 
 import (
 	"fmt"
+	"net"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -895,6 +897,64 @@ func (i Installation) PublicURL() string {
 		return d
 	}
 	return "https://" + d
+}
+
+// ValidateDomains checks a domain list as `config set installation.domains`
+// takes it (RFC 0042 decision 6): each entry a host name or an `https://` URL,
+// none empty, none twice. Not part of Validate, because `init` has always
+// accepted any string and an installation created that way must still load.
+func ValidateDomains(domains []string) error {
+	seen := make(map[string]bool, len(domains))
+	for _, d := range domains {
+		if err := validateDomain(d); err != nil {
+			return err
+		}
+		// Without case, as DNS compares them.
+		key := strings.ToLower(d)
+		if seen[key] {
+			return Usage("domain %q is listed twice", d)
+		}
+		seen[key] = true
+	}
+	return nil
+}
+
+func validateDomain(d string) error {
+	if d == "" {
+		return Usage("a domain in the list is empty").
+			WithHint("separate domains with single commas; " +
+				"`morzer config unset installation.domains` clears the list")
+	}
+	if !strings.Contains(d, "://") {
+		if !isHostName(d) {
+			return Usage("domain %q is not a host name", d).
+				WithHint("a port or a path needs the URL form, https://%s", d)
+		}
+		return nil
+	}
+	u, err := url.Parse(d)
+	if err != nil || u.Scheme != "https" || u.User != nil || !isHostName(u.Hostname()) {
+		return Usage("domain %q is not an https:// URL with a host name", d).
+			WithHint("give a bare host name, or https://<host>[:port][/path]")
+	}
+	return nil
+}
+
+var hostLabel = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+func isHostName(s string) bool {
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	for label := range strings.SplitSeq(s, ".") {
+		if !hostLabel.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 // RetentionReleases resolves the effective release retention: installation

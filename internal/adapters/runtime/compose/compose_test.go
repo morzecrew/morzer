@@ -163,13 +163,14 @@ func TestUpPassesItsOptionsThrough(t *testing.T) {
 
 	err := r.Up(context.Background(), cfg(), ports.UpOptions{
 		Services: []string{"web"}, Wait: true, WaitTimeout: 90_000_000_000, RemoveOrphans: true,
+		ForceRecreate: true,
 	})
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
 
 	line := strings.Join(runner.Calls()[0].Argv, " ")
-	for _, want := range []string{"up", "--detach", "--wait", "--remove-orphans", "web"} {
+	for _, want := range []string{"up", "--detach", "--wait", "--remove-orphans", "--force-recreate", "web"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the command line is missing %q: %s", want, line)
 		}

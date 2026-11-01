@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // A setting is an installation-level knob, as opposed to a release parameter.
@@ -44,8 +46,9 @@ type setting struct {
 	// because a setting may touch more than the field it names.
 	Apply func(context.Context, *Deps, *domain.Installation, string) error
 
-	// Clear returns the setting to its absent state, which is always the
-	// conservative one: nothing here defaults to "on".
+	// Clear returns the setting to its absent state, which is the
+	// conservative one for every setting but `release.require_signature`:
+	// nothing here defaults to "on", and that one is safe only when on.
 	Clear func(*domain.Installation)
 }
 
@@ -214,6 +217,70 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Policy.SkipBackupBeforeUpdate = false },
 	},
+	"release.require_signature": {
+		Description: "refuse any release not signed by a key `morzer release trust` lists",
+		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Policy.RequireSignature) },
+		// The rules that need a trusted key and keep `update.auto_apply`
+		// off without it cross into other values, so checkSignaturePolicy
+		// asks them of the whole command's result rather than here.
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Policy.RequireSignature = v
+			return nil
+		},
+		// Off, which is the less safe state, so an unset is the same
+		// downgrade `=false` is: refused under `update.auto_apply` and
+		// journalled.
+		Clear: func(i *domain.Installation) { i.Policy.RequireSignature = false },
+	},
+	"installation.domains": {
+		Description: "the public names the product is served under, comma-separated, the first canonical; " +
+			"a change renders the configuration and re-creates every running service",
+		Read: func(i domain.Installation) string { return strings.Join(i.Domains, ",") },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			domains := strings.Split(raw, ",")
+			for n := range domains {
+				domains[n] = strings.TrimSpace(domains[n])
+			}
+			if err := domain.ValidateDomains(domains); err != nil {
+				return err
+			}
+			i.Domains = domains
+			return nil
+		},
+		// Rendered as an installation created without a domain is.
+		Clear: func(i *domain.Installation) { i.Domains = nil },
+	},
+	"retention.releases": {
+		Description: "how many releases the store keeps beside the current, previous and staged ones; " +
+			"at least 1, and unset follows the release",
+		Read: func(i domain.Installation) string { return countOrEmpty(i.Policy.RetainReleases) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			n, err := retentionCount(raw)
+			if err != nil {
+				return err
+			}
+			i.Policy.RetainReleases = n
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.RetainReleases = 0 },
+	},
+	"retention.backups": {
+		Description: "how many of the newest backups retention keeps; at least 1, and unset follows the release",
+		Read:        func(i domain.Installation) string { return countOrEmpty(i.Policy.RetainBackups) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			n, err := retentionCount(raw)
+			if err != nil {
+				return err
+			}
+			i.Policy.RetainBackups = n
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.RetainBackups = 0 },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },
@@ -231,6 +298,52 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.Channel = "" },
 	},
+}
+
+// retentionCount reads a retention override. The release's own count is what
+// an absent one takes, and the manifest is not loaded to show it, so a value
+// is read back as recorded and empty when unset, as `backup.schedule` is.
+func retentionCount(raw string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 1 {
+		return 0, domain.Usage("%q is not a count of at least 1", raw).
+			WithHint("`config unset` returns to the count the release declares")
+	}
+	return n, nil
+}
+
+func countOrEmpty(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
+}
+
+// checkSignaturePolicy refuses what Installation.Validate would refuse at the
+// write, before the lock and with the command that makes it possible
+// (RFC 0042 decision 3).
+//
+// Asked of the installation the whole command produces, not inside one
+// setting's Apply: settings apply in name order, so `update.auto_apply=false
+// release.require_signature=false` would meet the signature first and be
+// refused for a state the same command ends.
+func checkSignaturePolicy(before, after domain.Installation) error {
+	if after.Policy.RequireSignature && len(after.Policy.SigningKeys) == 0 {
+		return domain.Usage("release.require_signature needs a trusted signing key, and this installation trusts none").
+			WithHint("trust the vendor's key first with `morzer release trust add <key>`")
+	}
+	if !after.Update.AutoApply || after.Policy.RequireSignature {
+		return nil
+	}
+	if before.Policy.RequireSignature {
+		return domain.Usage("release.require_signature cannot be turned off while update.auto_apply is on").
+			WithHint("turn update.auto_apply off first, or in the same command: " +
+				"`morzer config set update.auto_apply=false release.require_signature=false`")
+	}
+	return domain.Usage("update.auto_apply needs release.require_signature, " +
+		"because it hands the vendor unattended root on this machine").
+		WithHint("require a signature with `morzer config set release.require_signature=true`, " +
+			"after `morzer release trust add <key>` if no key is trusted")
 }
 
 // checkSchedule asks the supervisor whether it can run a schedule, before the
@@ -363,6 +476,11 @@ type SetSettingsOptions struct {
 //
 // It still takes the deployment lock: two writers of installation state at once
 // is how one of them loses their change silently.
+//
+// Two changes are the exception, and run as a journalled `config` operation
+// (RFC 0042 decisions 5 and 9). A domain change reaches the deployment, so it
+// renders and re-creates as a parameter change does. The signature requirement
+// turned off is a downgrade, and an incident review has to be able to find it.
 func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result, error) {
 	if len(opts.Set) == 0 && len(opts.Unset) == 0 {
 		return Result{}, domain.Usage("nothing to change")
@@ -409,8 +527,11 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	// no lock and so has nothing fresher to compare against. The real run
 	// recomputes the list under the lock.
 	sort.Strings(changed)
+	if err := checkSignaturePolicy(inst, next); err != nil {
+		return Result{}, err
+	}
 
-	if opts.DryRun {
+	if opts.DryRun && !journalled(inst, next) {
 		if len(changed) == 0 {
 			return Result{Summary: "no change: every value already matches"}, nil
 		}
@@ -427,6 +548,12 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	// the cost of the ordinary no-op case is one unit comparison.
 
 	opID := d.newOpID()
+	var (
+		prior  domain.Installation
+		plan   settingsPlan
+		result engine.Result
+		ran    bool
+	)
 	err = d.withLock(ctx, opID, domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
 		// Re-read under the lock and re-apply, so a concurrent writer's
 		// change to a *different* setting is not reverted by this one's
@@ -436,6 +563,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if err != nil {
 			return err
 		}
+		prior = fresh
 		// Recomputed against the reloaded state, and it is this answer
 		// that decides both the write and the summary. The pre-lock list
 		// was computed from a copy another operation may have changed
@@ -464,25 +592,169 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 			}
 		}
 		sort.Strings(changed)
+		if err := checkSignaturePolicy(prior, fresh); err != nil {
+			return err
+		}
 
-		if len(changed) > 0 {
+		switch {
+		case len(changed) > 0 && journalled(prior, fresh):
+			if plan, err = d.planSettings(ctx, prior, fresh); err != nil {
+				return err
+			}
+			ran = true
+			result, err = d.Engine.Run(ctx, engine.Operation{
+				ID:          opID,
+				Type:        domain.OpTypeConfig,
+				Description: "set " + strings.Join(changed, ", "),
+				Steps:       plan.steps,
+				Flags:       settingsFlags(prior, fresh),
+			}, d.engineOptions(opts.Options, fresh.ID, nil))
+			if err != nil {
+				return err
+			}
+		case opts.DryRun:
+		case len(changed) > 0:
 			if err := d.saveInstallation(ctx, fresh); err != nil {
 				return err
 			}
+		}
+		if opts.DryRun {
+			return nil
 		}
 		// After the state, not before: the units are derived from it,
 		// and a crash between the two leaves a timer that the next
 		// setting change reconciles rather than a state nothing polls.
 		return d.refreshUnits(ctx, fresh)
 	})
+	if ran {
+		d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, err)
+		if plan.render && !opts.DryRun {
+			attestConfig(ctx, d, result.Record, prior, plan.rel, result.State)
+		}
+	}
 	if err != nil {
-		return Result{}, err
+		return Result{Record: result.Record}, err
 	}
 
 	if len(changed) == 0 {
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
-	return Result{Summary: "set " + strings.Join(changed, ", ")}, nil
+	return Result{Record: result.Record, Summary: settingsSummary(changed, plan, opts.DryRun)}, nil
+}
+
+// journalled reports whether a change runs as an operation rather than a
+// write: see SetSettings.
+func journalled(before, after domain.Installation) bool {
+	return !slices.Equal(before.Domains, after.Domains) || signatureDropped(before, after)
+}
+
+func signatureDropped(before, after domain.Installation) bool {
+	return before.Policy.RequireSignature && !after.Policy.RequireSignature
+}
+
+// settingsFlags is the journal's record of a downgrade (RFC 0042 decision 5).
+func settingsFlags(before, after domain.Installation) map[string]string {
+	if !signatureDropped(before, after) {
+		return nil
+	}
+	return map[string]string{"release.require_signature": "false"}
+}
+
+// settingsPlan is what a journalled setting change runs, and what its summary
+// may claim.
+type settingsPlan struct {
+	steps []engine.Step
+
+	// domains is whether the domain list changed. render is whether a
+	// release is installed to render it for, rel that release.
+	domains bool
+	render  bool
+	rel     domain.Release
+
+	stopped  bool
+	services []string
+}
+
+// planSettings is RFC 0042 §5.2's three steps: record the installation, render
+// the configuration, re-create every running service. The last two only for a
+// domain change, and the last is left out when nothing runs to re-create: under
+// a stop, `start` runs `apply`, which starts every service with the new value.
+//
+// Forced, because no release declares which services read the domain, and a
+// plain `up` re-creates only those whose Compose definition changed. One that
+// reads the domain from a rendered file would keep the old value.
+func (d *Deps) planSettings(ctx context.Context, before, after domain.Installation) (settingsPlan, error) {
+	plan := settingsPlan{steps: []engine.Step{stepRecordSettings(d, before, after)}}
+	if plan.domains = !slices.Equal(before.Domains, after.Domains); !plan.domains {
+		return plan, nil
+	}
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return plan, err
+	}
+	if plan.rel, err = release.Load(current.Root); err != nil {
+		return plan, err
+	}
+	plan.render = true
+	plan.steps = append(plan.steps, stepRenderConfiguration(d, after, plan.rel, Options{}))
+	if plan.stopped = after.Stopped != nil; plan.stopped {
+		return plan, nil
+	}
+	if plan.services = d.runningServices(ctx, after, plan.rel); len(plan.services) > 0 {
+		plan.steps = append(plan.steps, stepRecreateServices(d, after, plan.rel, plan.services, true))
+	}
+	return plan, nil
+}
+
+// runningServices names each service with a running container, once however
+// many replicas it has. A runtime that cannot answer counts as nothing
+// running, as it does for `config set`: nothing is re-created.
+func (d *Deps) runningServices(ctx context.Context, inst domain.Installation, rel domain.Release) []string {
+	cfg, err := d.runtimeConfig(rel, inst, "")
+	if err != nil {
+		return nil
+	}
+	states, err := d.Runtime.Status(ctx, cfg)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, st := range states {
+		if st.Running() && !slices.Contains(out, st.Name) {
+			out = append(out, st.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// settingsSummary says what a change did, in the tense it happened in, and for
+// a domain change what it reached.
+func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
+	names := strings.Join(changed, ", ")
+	tense := func(done, planned string) string {
+		if dryRun {
+			return planned
+		}
+		return done
+	}
+	switch {
+	case !plan.domains:
+		return tense("set ", "would set ") + names
+	case !plan.render:
+		return tense("set ", "would set ") + names + "; no release is installed, so there is nothing to render"
+	case plan.stopped:
+		return tense("set ", "would set ") + names + tense(" and rendered", " and render") +
+			" the configuration; the product is stopped, so its services " +
+			tense("see", "would see") + " it on `morzer start`"
+	case len(plan.services) > 0:
+		return tense("set ", "would set ") + names + tense(", rendered", ", render") +
+			" the configuration and " + tense("re-created ", "re-create ") + strings.Join(plan.services, ", ")
+	default:
+		return tense("set ", "would set ") + names + tense(" and rendered", " and render") +
+			" the configuration; nothing is running, so it " + tense("takes", "would take") +
+			" effect on the next `morzer apply`"
+	}
 }
 
 // unitParams is which units this installation should have.
