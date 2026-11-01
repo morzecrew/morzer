@@ -174,3 +174,22 @@ proposal: ASSUMED — the unattended gate counts only the differing targets that
 ```
 
 **Drift count: 0.**
+
+Review found that §5.3's "beside the stopped check" put the gate ahead of a
+candidate that already failed to install. That candidate is not retried until
+the channel moves, so it replaces nothing, and the drift reason hid its failure
+and the `update --to` that retries it.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-01T08:12:00Z
+attempt: 1
+claim: the drift gate ahead of the failed-candidate check reports drift for a release the tick would not install anyway, and hides how to retry it
+evidence: internal/lifecycle/ops/channel.go:523
+action: decided
+proposal: ASSUMED — the tick reports a failed candidate before drift; drift holds every candidate the tick would install, as decision 4 has it.
+```
+
+**Drift count: 0.**

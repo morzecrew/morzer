@@ -221,6 +221,30 @@ func TestDriftHoldsAnUnattendedUpdate(t *testing.T) {
 	assert.False(t, strings.Contains(readFile(t, applicationTarget(h)), "log_level: debug"))
 }
 
+// A candidate that already failed to install is not retried, drift or not, so
+// its failure and the `update --to` that retries it are what the tick says.
+func TestAFailedCandidateIsReportedBeforeDrift(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, recoverableUpdate)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	ctx := context.Background()
+	handEdit(t, h, "log_level: debug")
+
+	_, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	require.True(t, candidate.IsStaged(), "the first tick staged nothing, so the test proves nothing")
+	candidate.Failed = "op_earlier ended failed"
+	require.NoError(t, h.Deps.State.SetUpdateCandidate(ctx, candidate))
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	assert.Contains(t, res.Skipped, "did not install (op_earlier ended failed)")
+	assert.Contains(t, res.Skipped, "update --to")
+}
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

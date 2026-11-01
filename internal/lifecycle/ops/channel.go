@@ -509,18 +509,19 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		}
 		return out, nil
 	}
-	// And beside it, while a configuration file differs from what the
-	// installed release renders (RFC 0044 decision 4): the update would
-	// replace a hand edit with nobody watching.
-	if held := d.heldForDrift(ctx, now); held != "" {
-		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
-		return out, nil
-	}
 
 	if candidate.Failed != "" {
 		out.Skipped = fmt.Sprintf("%s did not install (%s) and is not retried "+
 			"until the channel moves; `morzer update --to %s` tries again",
 			candidate.Version, candidate.Failed, candidate.Version)
+		return out, nil
+	}
+	// While a configuration file differs from what the installed release
+	// renders (RFC 0044 decision 4): the update would replace a hand edit
+	// with nobody watching. After the failed check, since a candidate that
+	// is not retried replaces nothing, and its reason says how to retry it.
+	if held := d.heldForDrift(ctx, now); held != "" {
+		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
 		return out, nil
 	}
 
