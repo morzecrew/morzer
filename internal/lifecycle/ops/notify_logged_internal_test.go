@@ -56,7 +56,8 @@ func TestAForwardedEventCarriesAnID(t *testing.T) {
 	if len(rec.got) != 3 {
 		t.Fatalf("delivered %d events, want 3", len(rec.got))
 	}
-	if !strings.HasPrefix(rec.got[0].ID, "evt_") || rec.got[0].ID == rec.got[1].ID {
+	if !strings.HasPrefix(rec.got[0].ID, "evt_") || !strings.HasPrefix(rec.got[1].ID, "evt_") ||
+		rec.got[0].ID == rec.got[1].ID {
 		t.Errorf("ids %q and %q: want two distinct evt_ ids", rec.got[0].ID, rec.got[1].ID)
 	}
 	if rec.got[2].ID != "evt_KEPT" {
