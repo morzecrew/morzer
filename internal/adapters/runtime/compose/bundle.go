@@ -69,7 +69,12 @@ func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, er
 			out.ServicesPartial = true
 		}
 		for _, inc := range included {
-			queue = append(queue, path.Join(path.Dir(name), inc))
+			next := path.Join(path.Dir(name), inc)
+			if next == ".." || strings.HasPrefix(next, "../") {
+				out.ServicesPartial = true
+				continue
+			}
+			queue = append(queue, next)
 		}
 		collectVariables(doc, variables)
 	}
@@ -80,7 +85,8 @@ func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, er
 
 // includes returns the bundle-relative paths an `include` names, in its short
 // and long spellings, and whether that is all of them: a remote or absolute
-// one, or a shape this does not know, is not followed.
+// one, one Compose would interpolate first, or a shape this does not know, is
+// not followed.
 func includes(v any) ([]string, bool) {
 	if v == nil {
 		return nil, true
@@ -93,7 +99,8 @@ func includes(v any) ([]string, bool) {
 	complete := true
 	add := func(p any) {
 		s, ok := p.(string)
-		if !ok || path.IsAbs(s) || strings.Contains(s, "://") || strings.HasPrefix(s, "git@") {
+		if !ok || path.IsAbs(s) || strings.Contains(s, "://") || strings.HasPrefix(s, "git@") ||
+			strings.Contains(s, "$") {
 			complete = false
 			return
 		}

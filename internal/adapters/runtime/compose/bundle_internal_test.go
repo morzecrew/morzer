@@ -63,11 +63,18 @@ func TestReadBundleFollowsAnIncludeInsideTheBundle(t *testing.T) {
 // leaves the services it would add unknown.
 func TestReadBundleSaysWhenAnIncludeIsOutOfReach(t *testing.T) {
 	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, "compose.yaml"),
-		[]byte("include:\n  - oci://registry.example/stack:1\nservices:\n  app:\n    image: x\n"), 0o600))
+	for _, inc := range []string{
+		"oci://registry.example/stack:1",
+		"/etc/stack.yaml",
+		"../../stack.yaml",
+		"${STACK_DIR}/stack.yaml",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, "compose.yaml"),
+			[]byte("include:\n  - "+inc+"\nservices:\n  app:\n    image: x\n"), 0o600))
 
-	got, err := (&Runtime{}).ReadBundle(root, []string{"compose.yaml"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"app"}, got.Services)
-	assert.True(t, got.ServicesPartial)
+		got, err := (&Runtime{}).ReadBundle(root, []string{"compose.yaml"})
+		require.NoError(t, err, inc)
+		assert.Equal(t, []string{"app"}, got.Services, inc)
+		assert.True(t, got.ServicesPartial, inc)
+	}
 }
