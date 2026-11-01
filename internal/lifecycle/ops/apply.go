@@ -138,6 +138,9 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, prior))
+		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun && !opts.Startup {
+			d.reconcileUnitsAfterConverge(ctx)
+		}
 		return err
 	})
 

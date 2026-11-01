@@ -173,6 +173,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
+		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {
+			d.reconcileUnitsAfterConverge(ctx)
+		}
 		return err
 	})
 
