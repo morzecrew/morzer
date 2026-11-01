@@ -358,6 +358,9 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	if opts.RemoveOrphans {
 		argv = append(argv, "--remove-orphans")
 	}
+	if opts.ForceRecreate {
+		argv = append(argv, "--force-recreate")
+	}
 	argv = append(argv, opts.Services...)
 
 	timeout := opts.WaitTimeout

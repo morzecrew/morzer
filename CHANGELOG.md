@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inside the same fifteen-second deadline. Each event carries an `id`, also sent
   as `Idempotency-Key`, so a receiver can drop a duplicate.
 
+- **`config set` changes the signature requirement, domains and retention
+  after `init`.** `release.require_signature=true` lets an installation made
+  without `--require-signature` turn on `update.auto_apply`.
+  `installation.domains` re-creates every running service; `retention.releases`
+  and `retention.backups` take counts.
+
 - **`update --dry-run` says what the update risks.** After the plan it says
   whether `morzer rollback` could return to the installed release afterwards,
   or a restore or a parameter the update drops would stop it, which images
