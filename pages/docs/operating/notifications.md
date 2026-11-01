@@ -130,8 +130,9 @@ An event a target did not accept, and could accept later, is kept in the
 which a fixed credential or URL gets past. Any other 4xx refuses the event
 itself, and it is not kept. The scheduled `doctor` sends the outbox, and so
 does `morzer notify flush`, oldest first; an entry goes once its target
-answers. Nothing sends it during an operation, so an operation never waits on a
-target that is down.
+answers. Nothing sends it during an operation, so an operation waits on a
+target that is down no longer than the first attempt and its retry, inside the
+fifteen seconds.
 
 ```sh
 morzer notify flush      # sent 3; kept 2 for a target that is still down
