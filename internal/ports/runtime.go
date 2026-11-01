@@ -188,6 +188,12 @@ type UpOptions struct {
 	// RemoveOrphans deletes containers belonging to the project but no
 	// longer declared -- normal after a release changes its service list.
 	RemoveOrphans bool
+
+	// ForceRecreate replaces the containers even when their definition is
+	// unchanged. A service that reads a value from a rendered file has an
+	// unchanged definition after the file changes, so a plain Up leaves it
+	// running the old value.
+	ForceRecreate bool
 }
 
 type DownOptions struct {

@@ -92,8 +92,9 @@ claims a service was re-created; it says what *would* happen.
 | The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
 | How many pre-update backups to keep | `config set retention.pre_update_backups=<n>` |
 | No pre-update backup on a dev-mode machine | `config set backup.before_update=false` |
-| Domains, whether a signature is required | Not yet changeable after `init` |
-| How many releases and ordinary backups to keep | The manifest's [`retention`](../reference/manifest.md#retention); no command overrides it yet |
+| The domains | `config set installation.domains=<a>,<b>`, which re-creates every running service |
+| Whether a signature is required | `config set release.require_signature=true`, after `release trust add` |
+| How many releases and ordinary backups to keep | `config set retention.releases=<n> retention.backups=<n>`; unset follows the manifest's [`retention`](../reference/manifest.md#retention) |
 | The service topology | The vendor's, in the release's Compose files |
 
 !!! danger "Parameters are not secrets"

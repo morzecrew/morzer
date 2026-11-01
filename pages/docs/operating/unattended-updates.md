@@ -82,6 +82,17 @@ signatures — at the moment you set it, not at the tick that would have acted o
 it. A machine that accepts the setting and then refuses to act every night is
 worse than one that refuses the setting: you would believe it was armed.
 
+An installation created without `--require-signature` requires one with two
+commands. Trust the vendor's key, then require it:
+
+```sh
+morzer release trust add RWQ...vendor-public-key...
+morzer config set release.require_signature=true
+```
+
+Turning the requirement off again is refused while `update.auto_apply` is on,
+and is recorded in `morzer history` when it happens.
+
 With `update.check` on, setting a channel installs a `<product>-update.timer`,
 and clearing either one removes the timer again: a channel with checking off is
 followed by nothing. `morzer status` shows the channel on its `following` line,
