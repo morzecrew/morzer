@@ -32,6 +32,10 @@ func TestARenderFailureSaysWhereAndWhatInTheTemplatesTerms(t *testing.T) {
 			`.Release.Version has no field UnmarshalTxt; did you mean MarshalText?`},
 		{"{{ required \"choose\\nthe port\" \"\" }}",
 			"1:3: required \"choose\\nthe port\" \"\": error calling required: choose\nthe port"},
+		{`{{ required "size >: 0" "" }}`,
+			`1:3: required "size >: 0" "": error calling required: size >: 0`},
+		{"{{ required `size >: 0` \"\" }}",
+			"1:3: required `size >: 0` \"\": error calling required: size >: 0"},
 		{`{{ upper .Domains }}`,
 			`1:9: .Domains: wrong type for value; expected string; got []string`},
 	}

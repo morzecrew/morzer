@@ -130,9 +130,13 @@ func ownerOf(goType string) (string, []string, bool) {
 	return "", nil, false
 }
 
+// actionPattern reads the action an execution error quotes a token at a time,
+// each quoted string whole, so a `>: ` inside one is not taken for its end.
+const actionPattern = `(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|` + "`[^`]*`" + `|[^"'` + "`])*?"
+
 var (
 	// (?s): a `required` message may hold a newline, and so may its cause.
-	execFailure = regexp.MustCompile(`(?s)^(\d+:\d+): executing "[^"]*" at <(.*?)>: (.*)$`)
+	execFailure = regexp.MustCompile(`(?s)^(\d+:\d+): executing "[^"]*" at <(` + actionPattern + `)>: (.*)$`)
 	noField     = regexp.MustCompile(`^can't evaluate field (\w+) in type (\S+)$`)
 	noKey       = regexp.MustCompile(`^map has no entry for key "(.*)"$`)
 	rootChain   = regexp.MustCompile(`^\$?((?:\.\w+)+)$`)
