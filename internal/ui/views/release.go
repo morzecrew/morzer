@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -303,9 +304,11 @@ func changeDetail(c ops.Change) string {
 
 // shown quotes a string the bundle chose when it holds anything a terminal acts
 // on rather than prints -- an escape sequence, a carriage return, a bidi
-// override -- so the reader sees what is there and the terminal does nothing.
+// override, a byte that is not UTF-8 -- so the reader sees what is there and the
+// terminal does nothing. A stray byte is checked apart because ranging over it
+// yields U+FFFD, which is printable.
 func shown(s string) string {
-	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+	if !utf8.ValidString(s) || strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
 		return strconv.Quote(s)
 	}
 	return s

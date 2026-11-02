@@ -19,3 +19,4 @@ demo 1.3.0 -> demo 1.4.0
     manifest.yaml           changed
     hooks/seed              added
     "hooks/\x1b]0;owned\a"  added
+    "hooks/\x9b2J"          added
