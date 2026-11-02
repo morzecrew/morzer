@@ -92,7 +92,9 @@ func (f *Feed) Newest(ctx context.Context) (ports.ManagerRelease, error) {
 }
 
 // newest is the highest version that is published, not a prerelease, and
-// parses as a version; a tag that does not is not a release of this project.
+// parses as a version with no build metadata; a tag that does not is not a
+// release of this project. Metadata would compare equal to the release it
+// decorates, leaving which URL wins to the list's order.
 func newest(list []release) (ports.ManagerRelease, error) {
 	var out ports.ManagerRelease
 	for _, r := range list {
@@ -100,7 +102,7 @@ func newest(list []release) (ports.ManagerRelease, error) {
 			continue
 		}
 		v, err := domain.ParseVersion(r.Tag)
-		if err != nil || v.Prerelease() != "" {
+		if err != nil || v.Prerelease() != "" || v.Metadata() != "" {
 			continue
 		}
 		if v.GreaterThan(out.Version) {

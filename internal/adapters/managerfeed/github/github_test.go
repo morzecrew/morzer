@@ -25,8 +25,8 @@ func serve(t *testing.T, status int, body string) *github.Feed {
 }
 
 // The newest is the highest published version, not the first listed: drafts,
-// prereleases and tags that are not versions are skipped, and a later patch to
-// an older line does not outrank the newer line.
+// prereleases, tags with build metadata and tags that are not versions are
+// skipped, and a later patch to an older line does not outrank the newer line.
 func TestTheNewestIsTheHighestPublishedVersion(t *testing.T) {
 	feed := serve(t, http.StatusOK, `[
 		{"tag_name":"v0.11.4","html_url":"https://example.test/v0.11.4"},
@@ -34,6 +34,7 @@ func TestTheNewestIsTheHighestPublishedVersion(t *testing.T) {
 		{"tag_name":"v0.15.0","html_url":"https://example.test/v0.15.0","prerelease":true},
 		{"tag_name":"v0.13.0-rc.2","html_url":"https://example.test/v0.13.0-rc.2"},
 		{"tag_name":"nightly","html_url":"https://example.test/nightly"},
+		{"tag_name":"v0.12.1+rebuild","html_url":"https://example.test/v0.12.1+rebuild"},
 		{"tag_name":"v0.12.1","html_url":"https://example.test/v0.12.1"},
 		{"tag_name":"v0.12.0","html_url":"https://example.test/v0.12.0"}
 	]`)
