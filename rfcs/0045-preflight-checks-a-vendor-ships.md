@@ -4,7 +4,9 @@
   `OPEN` rows as recommended, except that `start` warns as boot does
   (decision 4). **P1 built 2026-11-02** in #251; the entries its build and
   review wrote in [logs/vendor-preflight.md](../logs/vendor-preflight.md) are
-  decisions 19–24
+  decisions 19–24. The example bundle's check that §6 and §12 name waits for a
+  released manager to run it (decision 19), so the acceptance run does not
+  exercise the step yet
 - **Scope:** Checks a bundle declares and ships as executables, run by the
   manager beside its own preflight checks, and in `doctor`. That step runs
   before `apply`, `start` and `rollback` change anything. In `update` it runs
@@ -381,5 +383,5 @@ None. The author ruled §11's `OPEN` rows 2026-11-02.
 ## 12. Phasing
 
 **P1** is the whole design, one PR: the field, validation, the step, `doctor`,
-`show` and `diff`, the docs and the example bundle's check. It is ready to
-build. Nothing is demand-gated.
+`show` and `diff`, the docs and the example bundle's check. Nothing is
+demand-gated.
