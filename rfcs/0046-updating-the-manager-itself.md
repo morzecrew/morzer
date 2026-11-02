@@ -1,8 +1,9 @@
 # RFC 0046 — Updating the manager itself
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-02: §11's
-  `OPEN` rows as recommended, so RFC 0022 decision 9 is reopened for
-  `self-update`. **P1 is ready to build**; P2 follows it
+- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-11-02:
+  §11's `OPEN` rows as recommended, so RFC 0022 decision 9 is reopened for
+  `self-update`. **P1 built 2026-11-02** in #257; the entries its build and
+  review wrote in [logs/manager-version-check.md](../logs/manager-version-check.md) are decisions 16–22. P2 is next
 - **Scope:** How an operator learns that the `morzer` binary is out of date,
   and how it moves to a newer one. P1 is a check that compares the running
   manager with the newest published release, on request
@@ -393,10 +394,18 @@ ruling, so P2 is no longer conditional on decision 1.)*
 | 13 | `ASSUMED` | When the units on the machine name another binary path than the running one, `self-update` warns and names it, since replacing this copy leaves the units on the other. The how-to says to pass `install.sh` the directory the units name, for the same reason. |
 | 14 | `ASSUMED` | With `--from`, the target is the version in the name of this platform's archive in that directory's `SHA256SUMS`, and the release feed is not asked; `--to`, if given, must agree with it. |
 | 15 | `ASSUMED` | A command that started before the swap and runs on the old binary after it is not stopped: it reads state the new manager has not yet written, or refuses at exit 9 on state it has. The forward-only state rule makes the overlap a refusal, never a misreading. An installation being created during the swap is in the same position. |
+| 16 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* A running manager is still supported when it is on the newest release's minor line, at or past that line's first release, as SECURITY.md's table reads: 0.12.0 while 0.12.1 is the newest, and not 0.11.x or a build of a later line. A newer release on the same line still warns, per decision 3. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, supported; its review section records that the first build did not hold to it). |
+| 17 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* The check lists the repository's releases, one page of 100, and takes the highest version that is not a draft, not a prerelease and parses as a version, rather than asking `/releases/latest` as `install.sh` does, which answers with the stable release created last. Still one request per check, so §9's arithmetic holds. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, the feed). |
+| 18 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* `manager.check` is recorded as `update.manager_check` in the installation, omitted when false, so the update settings stay one object and `installation describe` carries it. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, the field). |
+| 19 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* **Refines decision 12.** A manager whose version is 0.0.0, with or without a prerelease part, is a dev build. `version --check` still asks the feed, names the newest release and says it has no version to compare; `manager.version` reports the same as information. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, the dev build). |
+| 20 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* `manager.version` warns that it cannot check when the feed does not answer, never reporting up to date. `version --check` exits 0 whether or not a newer release exists, and a feed it cannot reach or read is a validation error, exit 2. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, the unreachable feed). |
+| 21 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* A sandbox keeps `manager.check`, as it keeps `update.check`: the check reads a public feed and reaches nothing production owns. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:20, the sandbox). |
+| 22 | `ASSUMED` | *(2026-11-02, from the review; accepted 2026-11-03)* **Refines decision 15.** An older manager refuses state only when the newer one brought a newer installation schema and has since written it, because the refusal compares the schema version. §5.2, §5.4 and decision 15 describe that worst case, which is still the one to plan for; the upgrade page points at the changelog's upgrade notes for when the schema changes. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:40, the schema). |
 
 ## 12. Phasing
 
 - **P1** (§5.1, §5.2): `version --check`, the `manager.version` check and
   `manager.check`, and the upgrade page. One PR. It needs decisions 2 and 3.
+  *(2026-11-02: built in #257.)*
 - **P2** (§5.3): `self-update`, if decision 1 is ruled yes. One PR, after P1,
   whose release-feed client it reuses.
