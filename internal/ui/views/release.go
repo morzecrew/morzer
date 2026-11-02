@@ -5,7 +5,9 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -250,7 +252,7 @@ func pushedDoc(d *ui.Doc, p Pushed) *ui.Doc {
 // the end of an image reference is its digest. A file's checksums are left to
 // --json; its name is what a reader looks up.
 func releaseDiffDoc(d *ui.Doc, r ops.ReleaseDiff) *ui.Doc {
-	d.Title(r.From + " -> " + r.To)
+	d.Title(shown(r.From) + " -> " + shown(r.To))
 	if r.Same() {
 		d.Text(2, "%s", d.Theme().Dim("the same declarations and the same files"))
 		return d
@@ -277,7 +279,7 @@ func releaseDiffDoc(d *ui.Doc, r ops.ReleaseDiff) *ui.Doc {
 			if s.detail {
 				value = changeDetail(c)
 			}
-			fields = append(fields, ui.Field{Label: c.Name, Value: value})
+			fields = append(fields, ui.Field{Label: shown(c.Name), Value: value})
 		}
 		d.Heading(s.name)
 		d.Fields(4, fields)
@@ -291,10 +293,20 @@ func releaseDiffDoc(d *ui.Doc, r ops.ReleaseDiff) *ui.Doc {
 func changeDetail(c ops.Change) string {
 	switch {
 	case c.Kind == ops.ChangeChanged:
-		return "changed: " + c.From + " -> " + c.To
+		return "changed: " + shown(c.From) + " -> " + shown(c.To)
 	case c.From+c.To == "":
 		return string(c.Kind)
 	default:
-		return string(c.Kind) + ": " + c.From + c.To
+		return string(c.Kind) + ": " + shown(c.From+c.To)
 	}
+}
+
+// shown quotes a string the bundle chose when it holds anything a terminal acts
+// on rather than prints -- an escape sequence, a carriage return, a bidi
+// override -- so the reader sees what is there and the terminal does nothing.
+func shown(s string) string {
+	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return strconv.Quote(s)
+	}
+	return s
 }

@@ -150,16 +150,22 @@ func listFixtures() []fixture {
 						From: "registry.example/demo/app@sha256:4b1c0e5f8a2d", To: "registry.example/demo/app@sha256:9e7d3a6c1f04"},
 					{Name: "worker", Kind: ops.ChangeAdded, To: "registry.example/demo/worker@sha256:1a2b3c4d5e6f"},
 				},
-				Parameters:    []ops.Change{{Name: "http_port", Kind: ops.ChangeChanged, From: "port, default 18080", To: "port, default 8080"}},
+				Parameters: []ops.Change{
+					{Name: "banner", Kind: ops.ChangeAdded, To: "string, default \x1b[2Jhello"},
+					{Name: "http_port", Kind: ops.ChangeChanged, From: "port, default 18080", To: "port, default 8080"},
+				},
 				Secrets:       []ops.Change{{Name: "smtp_password", Kind: ops.ChangeRemoved}},
 				Compatibility: []ops.Change{{Name: "min_manager_version", Kind: ops.ChangeChanged, From: "0.8.0", To: "0.11.0"}},
 				Files: []ops.Change{
 					{Name: "manifest.yaml", Kind: ops.ChangeChanged, From: "sha256:aa", To: "sha256:bb"},
 					{Name: "hooks/seed", Kind: ops.ChangeAdded, To: "sha256:cc"},
+					// A name is the bundle's to choose, and a terminal acts
+					// on an escape sequence in it rather than printing it.
+					{Name: "hooks/\x1b]0;owned\a", Kind: ops.ChangeAdded, To: "sha256:dd"},
 				},
 			},
 			fields: []string{"demo 1.3.0 -> demo 1.4.0", "sha256:9e7d3a6c1f04", "worker", "port, default 8080",
-				"smtp_password", "removed", "0.11.0", "hooks/seed", "added"},
+				"smtp_password", "removed", "0.11.0", "hooks/seed", "added", `"hooks/\x1b]0;owned\a"`, `"string, default \x1b[2Jhello"`},
 		},
 		{
 			name:   "release-diff-same",

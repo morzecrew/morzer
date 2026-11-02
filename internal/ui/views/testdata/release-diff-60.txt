@@ -8,6 +8,7 @@ demo 1.3.0 -> demo 1.4.0
             registry.example/demo/worker@sha256:1a2b3c4d5e6f
 
   parameters
+    banner     added: "string, default \x1b[2Jhello"
     http_port  changed: port, default 18080 -> port, default
                8080
 
@@ -18,5 +19,6 @@ demo 1.3.0 -> demo 1.4.0
     min_manager_version  changed: 0.8.0 -> 0.11.0
 
   files
-    manifest.yaml  changed
-    hooks/seed     added
+    manifest.yaml           changed
+    hooks/seed              added
+    "hooks/\x1b]0;owned\a"  added
