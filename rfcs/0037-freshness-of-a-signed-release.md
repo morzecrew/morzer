@@ -1,8 +1,9 @@
 # RFC 0037 — Freshness of a signed release
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-01: §11's
-  `OPEN` rows as recommended. **P1 is ready to build**; P2 is gated on a vendor
-  asking
+- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-11-01:
+  §11's `OPEN` rows as recommended. **P1 built 2026-11-02** in #254; the
+  entries its build and review wrote in [logs/version-floor.md](../logs/version-floor.md)
+  are decisions 18–22. P2 is gated on a vendor asking
 - **Scope:** What stops a correctly signed but *stale* release from being
   installed, or from being the newest thing a machine ever learns of. Covers
   two threats SECURITY.md lists as one known gap: a rollback to an older signed
@@ -359,6 +360,11 @@ document signed with the same minisign key that signs their bundles:
 | 15 | `ASSUMED` | The installed floor is read from `current-release.json`, written atomically at activation, so no separate write can lag it. A channel mark is written before the candidate record, so a crash can leave a raised mark with no candidate, which the next poll repairs, and never a candidate without its mark. |
 | 16 | `ASSUMED` | An index is accepted only with a higher sequence, or the same sequence and byte-identical content. A vendor publishes any change under a higher sequence, and two different indexes under one sequence are refused as a publishing error. |
 | 17 | `ASSUMED` | The index is fetched and checked on every poll, before the unchanged-digest early return in `FollowChannel`, and its expiry is recorded in state; a freeze is a channel that never moves, so a check that runs only when it moves never sees one. |
+| 18 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* The channel marks are a file under the manager directory, written atomically by the lifecycle layer as the notification outbox is, rather than more methods on the state port. See [logs/version-floor.md](../logs/version-floor.md) (unlisted, attempt 1, 16:56, the marks file). |
+| 19 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* `update` refuses a release older than the one installed at exit 9, `incompatible`, as `upgrade_from` refuses: a release that cannot be installed over what is running. The channel's refusals keep exit 2, since they are a poll's outcome rather than an install. See [logs/version-floor.md](../logs/version-floor.md) (unlisted, attempt 1, 17:05, the exit code). |
+| 20 | `ASSUMED` | *(2026-11-02, from the build and its review; accepted 2026-11-02)* **Refines decision 4.** `--allow-older` beside `--check`, `--stage` or `--unattended` is a usage error, and staging never installs below a channel's mark. A resumed update keeps `--allow-older` only for the release the interrupted run was installing. See [logs/version-floor.md](../logs/version-floor.md) (unlisted, attempt 1, 17:05, the modes; and unlisted, attempt 2, 17:34, which narrows the resume). |
+| 21 | `ASSUMED` | *(2026-11-02, from the build and its review; accepted 2026-11-02)* **Refines decision 5.** An import replaces the marks with the export's, keyed again with credentials removed, and removes them when the export carries none. An export naming no channel, or a mark with no version, is refused before anything is touched. An export whose marks cannot be read is written without them, with a warning. See [logs/version-floor.md](../logs/version-floor.md) (unlisted, attempt 1, 17:05, the export; and unlisted, attempt 2, 17:34, which makes the import a replacement). |
+| 22 | `ASSUMED` | *(2026-11-02, from the build and its review; accepted 2026-11-02)* `update --allow-older` and `rollback`, when they install a release below the followed channel's mark, lower that mark to the release they installed, in one write. The poll looks again at a refusal recorded no later than its channel's mark, which happens only when the mark was lowered or replaced since, so a vendor's withdrawal does not leave the follower refusing the patches that follow. The installation is read under the lock, so the channel lowered is the one followed when the operation finishes; other channels' marks are left alone. See [logs/version-floor.md](../logs/version-floor.md) (unlisted, attempt 3, 18:02, which supersedes attempt 1 at 16:56 and attempt 2 at 17:34). |
 
 ## 12. Phasing
 
