@@ -72,6 +72,9 @@ func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
 	checks := d.doctorChecks(ctx)
 
 	report := runner.Run(ctx, checks)
+	if err := interrupted(ctx); err != nil {
+		return DoctorReport{}, err
+	}
 
 	out := DoctorReport{Results: report.Results, Worst: report.Worst}
 	if report.Worst == events.CheckFail {

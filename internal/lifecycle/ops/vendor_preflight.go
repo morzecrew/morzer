@@ -90,3 +90,12 @@ func (d *Deps) runVendorCheck(
 func shownOutput(s string) string {
 	return strings.Join(strings.Fields(release.StripTerminalControls(s)), " ")
 }
+
+// interrupted is the operator's cancellation, which a check that was cut off
+// reports as its own failure. A refusal would blame the vendor's check for it.
+func interrupted(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return domain.Interrupted("preflight checks were interrupted")
+	}
+	return nil
+}

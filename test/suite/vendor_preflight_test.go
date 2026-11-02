@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -257,4 +258,29 @@ func resultOf(t *testing.T, results []events.CheckResult, id string) events.Chec
 	}
 	t.Fatalf("no %s among %d results", id, len(results))
 	return events.CheckResult{}
+}
+
+// An operator's Ctrl-C during a check is an interruption, not the check
+// failing: a refusal would blame the vendor's check for what the operator did.
+func TestACancelledCheckIsAnInterruption(t *testing.T) {
+	h := newHarness(t)
+	withChecks(t, h.Release.Root, kernelChecks(true), "sleep 5")
+	var err error
+	h.Release, err = release.Load(h.Release.Root)
+	require.NoError(t, err)
+	h.install()
+	h.setHookEnv()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(300*time.Millisecond, cancel)
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	assert.NotContains(t, err.Error(), "preflight checks failed")
+
+	// doctor too: a cut-off run is not a report, and must not exit 0.
+	cancelled, stop := context.WithCancel(context.Background())
+	stop()
+	_, err = ops.Doctor(cancelled, h.Deps)
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
 }

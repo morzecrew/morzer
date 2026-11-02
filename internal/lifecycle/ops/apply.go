@@ -316,6 +316,9 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 			checks = append(checks, d.vendorChecks(rel, env, refuse)...)
 
 			report := preflight.NewRunner(d.Bus).Run(ctx, checks)
+			if err := interrupted(ctx); err != nil {
+				return err
+			}
 			return report.Err()
 		},
 	}
