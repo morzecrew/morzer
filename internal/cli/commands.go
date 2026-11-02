@@ -434,8 +434,12 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&allowOlder, "allow-older", false,
 		"install a release older than the one running, which is otherwise refused; recorded in the journal")
+	// Flags are parsed before a completion runs, so --allow-older already
+	// read here offers the older releases it would admit.
 	_ = cmd.RegisterFlagCompletionFunc("to", app.completeValues(releasesWhere(
-		func(v, installed domain.Version) bool { return v.GreaterThan(installed) })))
+		func(v, installed domain.Version) bool {
+			return v.GreaterThan(installed) || allowOlder && v.LessThan(installed)
+		})))
 	f.BoolVar(&check, "check", false,
 		"report whether a newer release exists, without installing anything")
 	f.BoolVar(&stage, "stage", false,

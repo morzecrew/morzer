@@ -84,6 +84,8 @@ func TestAnInstallationsOwnValuesComplete(t *testing.T) {
 		OutputContains("1.1.0\n", ":4").NoOutputContains("1.2.0", "1.3.0")
 	r.Run("__complete", "update", "--to", "").ExitCode(0).
 		OutputContains("1.3.0\n", ":4").NoOutputContains("1.1.0", "1.2.0")
+	r.Run("__complete", "update", "--allow-older", "--to", "").ExitCode(0).
+		OutputContains("1.1.0\n", "1.3.0\n", ":4").NoOutputContains("1.2.0")
 
 	r.Run("__complete", "config", "get", "").ExitCode(0).
 		OutputContains("http_port\tPort the application", "update.check\t", ":4")
