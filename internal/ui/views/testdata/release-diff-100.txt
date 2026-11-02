@@ -19,9 +19,9 @@ demo 1.3.0 -> demo 1.4.0
     seed  added
 
   preflight
-    max-map-count  changed: warns, 30s, hooks/preflight max-map-count: the kernel allows enough
-                   memory maps -> fatal, 30s, hooks/preflight max-map-count: the kernel allows
-                   enough memory maps
+    max-map-count  changed: warns, 30s, hooks/preflight max-map-count: "the kernel allows enough
+                   memory maps" -> fatal, 30s, hooks/preflight max-map-count: "the kernel allows
+                   enough memory maps"
 
   profiles
     external-db  removed

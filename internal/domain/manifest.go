@@ -798,6 +798,22 @@ func (c PreflightCheck) EffectiveTimeout() time.Duration {
 	return c.Timeout.Or(DefaultPreflightTimeout)
 }
 
+// CommandLine is the command as one line that keeps its argument boundaries:
+// an argument that is empty or holds a space, a quote, a colon or anything a
+// terminal acts on is quoted, so two commands that run differently never read
+// the same.
+func (c PreflightCheck) CommandLine() string {
+	args := make([]string, len(c.Command))
+	for i, arg := range c.Command {
+		args[i] = arg
+		if arg == "" || strings.ContainsAny(arg, " \t\"'\\:") ||
+			strings.IndexFunc(arg, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+			args[i] = strconv.Quote(arg)
+		}
+	}
+	return strings.Join(args, " ")
+}
+
 // PreflightNames returns the declared check names in the order they run.
 func (m *Manifest) PreflightNames() []string {
 	return slices.Sorted(maps.Keys(m.Preflight))

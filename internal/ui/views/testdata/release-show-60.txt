@@ -13,7 +13,7 @@ demo 1.4.0
   preflight
     db-host
       description  the external database host resolves
-      command      "hooks/preflight db\x1b[2J"
+      command      hooks/preflight "db host" "\x1b[2J"
       fatal        false
       timeout      30s
     max-map-count

@@ -83,7 +83,7 @@ func TestADiffNamesEveryChangeAndNothingElse(t *testing.T) {
 	}, diff.Compatibility)
 	assert.Equal(t, []Change{{Name: "seed", Kind: ChangeAdded}}, diff.Tasks)
 	assert.Equal(t, []Change{
-		{Name: "kernel", Kind: ChangeAdded, To: "warns, 30s, hooks/preflight: enough memory maps"},
+		{Name: "kernel", Kind: ChangeAdded, To: `warns, 30s, hooks/preflight: "enough memory maps"`},
 	}, diff.Preflight)
 	assert.Equal(t, []Change{{Name: "external-db", Kind: ChangeRemoved}}, diff.Profiles)
 
@@ -145,7 +145,7 @@ func rewrite(t *testing.T, path string, pairs ...string) {
 func TestADiffListsAChangeToAnyFieldOfACheck(t *testing.T) {
 	base := domain.PreflightCheck{Description: "enough memory maps", Command: []string{"hooks/preflight", "kernel"},
 		Remedy: "raise vm.max_map_count"}
-	assert.Equal(t, "warns, 30s, hooks/preflight kernel: enough memory maps; remedy: raise vm.max_map_count",
+	assert.Equal(t, `warns, 30s, hooks/preflight kernel: "enough memory maps", remedy "raise vm.max_map_count"`,
 		describePreflight(base))
 
 	for field, edit := range map[string]func(*domain.PreflightCheck){
@@ -162,6 +162,21 @@ func TestADiffListsAChangeToAnyFieldOfACheck(t *testing.T) {
 			map[string]domain.PreflightCheck{"kernel": changed}, describePreflight)
 		require.Len(t, got, 1, "a changed %s is not listed", field)
 		assert.Equal(t, ChangeChanged, got[0].Kind, field)
+	}
+
+	// Two declarations that differ must not describe the same: an argument
+	// holding a space, and a description that reads as a remedy.
+	for label, pair := range map[string][2]domain.PreflightCheck{
+		"argument boundaries": {
+			{Description: "x", Command: []string{"hooks/preflight", "db host"}},
+			{Description: "x", Command: []string{"hooks/preflight", "db", "host"}},
+		},
+		"description and remedy": {
+			{Description: `maps", remedy "raise it`, Command: []string{"hooks/preflight"}},
+			{Description: "maps", Command: []string{"hooks/preflight"}, Remedy: "raise it"},
+		},
+	} {
+		assert.NotEqual(t, describePreflight(pair[0]), describePreflight(pair[1]), label)
 	}
 
 	assert.False(t, ReleaseDiff{Preflight: []Change{{Name: "kernel", Kind: ChangeAdded}}}.Same(),

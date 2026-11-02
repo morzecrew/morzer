@@ -126,7 +126,7 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 			c := m.Preflight[name]
 			fields := []ui.Field{
 				{Label: "description", Value: c.Description},
-				{Label: "command", Value: shown(strings.Join(c.Command, " "))},
+				{Label: "command", Value: c.CommandLine()},
 				{Label: "fatal", Value: fmt.Sprintf("%t", c.Fatal)},
 				{Label: "timeout", Value: c.EffectiveTimeout().String()},
 			}

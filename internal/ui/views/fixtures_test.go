@@ -158,8 +158,8 @@ func listFixtures() []fixture {
 				Compatibility: []ops.Change{{Name: "min_manager_version", Kind: ops.ChangeChanged, From: "0.8.0", To: "0.11.0"}},
 				Tasks:         []ops.Change{{Name: "seed", Kind: ops.ChangeAdded}},
 				Preflight: []ops.Change{{Name: "max-map-count", Kind: ops.ChangeChanged,
-					From: "warns, 30s, hooks/preflight max-map-count: the kernel allows enough memory maps",
-					To:   "fatal, 30s, hooks/preflight max-map-count: the kernel allows enough memory maps"}},
+					From: `warns, 30s, hooks/preflight max-map-count: "the kernel allows enough memory maps"`,
+					To:   `fatal, 30s, hooks/preflight max-map-count: "the kernel allows enough memory maps"`}},
 				Profiles: []ops.Change{{Name: "external-db", Kind: ops.ChangeRemoved}},
 				Files: []ops.Change{
 					// In the byte order DiffReleases sorts by.
@@ -206,13 +206,13 @@ func listFixtures() []fixture {
 						},
 						"db-host": {
 							Description: "the external database host resolves",
-							Command:     []string{"hooks/preflight", "db\x1b[2J"},
+							Command:     []string{"hooks/preflight", "db host", "\x1b[2J"},
 						},
 					},
 				},
 			},
 			fields: []string{"preflight", "max-map-count", "the kernel allows enough memory maps", "fatal", "45s",
-				"persist it in /etc/sysctl.d", "db-host", "30s", `"hooks/preflight db\x1b[2J"`},
+				"persist it in /etc/sysctl.d", "db-host", "30s", `hooks/preflight "db host" "\x1b[2J"`},
 		},
 		{
 			name: "backups",

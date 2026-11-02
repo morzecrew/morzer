@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -131,16 +130,18 @@ func describeParameter(p domain.ParameterSpec) string {
 
 // describePreflight is the whole of a check's declaration, so a change to any
 // field is listed (RFC 0045 decision 14): whether it refuses, its timeout, its
-// command, its description and its remedy.
+// command, its description and its remedy. The command keeps its argument
+// boundaries and the two texts are quoted, so two declarations that differ
+// never describe the same.
 func describePreflight(c domain.PreflightCheck) string {
 	severity := "warns"
 	if c.Fatal {
 		severity = "fatal"
 	}
-	out := severity + ", " + c.EffectiveTimeout().String() + ", " + strings.Join(c.Command, " ") +
-		": " + c.Description
+	out := severity + ", " + c.EffectiveTimeout().String() + ", " + c.CommandLine() +
+		": " + strconv.Quote(c.Description)
 	if c.Remedy != "" {
-		out += "; remedy: " + c.Remedy
+		out += ", remedy " + strconv.Quote(c.Remedy)
 	}
 	return out
 }
