@@ -289,6 +289,11 @@ case. This is that story:
   - the new binary run before the swap, refused when it reports another
     version;
   - the swap leaving a process started before it on the old file;
+  - a command that took its lock after the swap on the old binary: it reads an
+    installation the new manager has not written, and refuses at exit 9 on one
+    it has;
+  - an outbox lock held by the scheduled `doctor` refusing the swap, as a held
+    deployment lock does;
   - the journal entry in every installation;
   - `--from` reading the three files offline.
 - The embedded key equals `morzer.pub`, asserted as `install.sh`'s copy is.
