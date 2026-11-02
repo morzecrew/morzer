@@ -5,4 +5,6 @@ morzer 0.11.0
   newest        0.12.0  https://github.com/morzecrew/morzer/releases/tag/v0.12.0
 
   0.11.0 is running and no longer supported; 0.12.0 is the newest release
-  upgrade with install.sh --version 0.12.0 --require-signature --dir /usr/local/bin
+  upgrade with
+    install.sh --version 0.12.0 --require-signature \
+      --dir /usr/local/bin

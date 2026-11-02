@@ -100,10 +100,11 @@ func TestCheckManagerComparesWithTheNewestRelease(t *testing.T) {
 			Upgrade: "install.sh --version 0.12.1 --require-signature --dir /usr/local/bin"}},
 		"a prerelease of the newest": {"0.12.0-rc.1", "0.12.0", ops.ManagerCheck{Outdated: true, Supported: false,
 			Upgrade: "install.sh --version 0.12.0 --require-signature --dir /usr/local/bin"}},
-		"the newest":            {"0.12.0", "0.12.0", ops.ManagerCheck{Supported: true}},
-		"newer than the newest": {"0.13.0-rc.1", "0.12.0", ops.ManagerCheck{Supported: true}},
-		"a dev build":           {"0.0.0", "0.12.0", ops.ManagerCheck{DevBuild: true}},
-		"a snapshot build":      {"0.0.0-snapshot", "0.12.0", ops.ManagerCheck{DevBuild: true}},
+		"the newest":               {"0.12.0", "0.12.0", ops.ManagerCheck{Supported: true}},
+		"ahead on the newest line": {"0.12.2", "0.12.1", ops.ManagerCheck{Supported: true}},
+		"ahead of the newest line": {"0.13.0-rc.1", "0.12.0", ops.ManagerCheck{Supported: false}},
+		"a dev build":              {"0.0.0", "0.12.0", ops.ManagerCheck{DevBuild: true}},
+		"a snapshot build":         {"0.0.0-snapshot", "0.12.0", ops.ManagerCheck{DevBuild: true}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -119,4 +120,27 @@ func TestCheckManagerComparesWithTheNewestRelease(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// The summary never calls a build the feed does not list the newest release,
+// and the upgrade command survives a directory a shell would split.
+func TestTheManagerCheckSaysWhereTheBuildStands(t *testing.T) {
+	check := func(running, newest, path string) ops.ManagerCheck {
+		t.Helper()
+		got, err := ops.CheckManager(context.Background(), &ops.Deps{
+			ManagerFeed:    &fakeManagerFeed{newest: newest},
+			ManagerVersion: domain.MustParseVersion(running),
+			ManagerPath:    path,
+		})
+		require.NoError(t, err)
+		return got
+	}
+
+	assert.Equal(t, "0.12.0 is the newest release", check("0.12.0", "0.12.0", "").Summary())
+	assert.Equal(t, "0.13.0-rc.1 is ahead of the newest release, 0.12.0",
+		check("0.13.0-rc.1", "0.12.0", "").Summary())
+	assert.Equal(t, "install.sh --version 0.12.0 --require-signature --dir '/opt/my tools'",
+		check("0.11.0", "0.12.0", "/opt/my tools/morzer").Upgrade)
+	assert.Equal(t, "install.sh --version 0.12.0 --require-signature",
+		check("0.11.0", "0.12.0", "").Upgrade, "no path, no --dir")
 }

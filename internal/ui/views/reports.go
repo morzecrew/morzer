@@ -106,7 +106,17 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 		d.Blank()
 		d.Text(2, "%s", c.Summary())
 		if c.Upgrade != "" {
-			d.Text(2, "upgrade with %s", c.Upgrade)
+			// Verbatim, broken only where a shell continuation can go:
+			// wrapped as prose, the command split inside an argument and
+			// no longer pasted as one.
+			d.Text(2, "upgrade with")
+			cmd, dir, found := strings.Cut(c.Upgrade, " --dir ")
+			if !found {
+				d.Verbatim("    " + cmd)
+			} else {
+				d.Verbatim("    " + cmd + ` \`)
+				d.Verbatim("      --dir " + dir)
+			}
 		}
 	}
 	return d

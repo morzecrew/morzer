@@ -208,11 +208,11 @@ func TestProfilesComeFromTheBundle(t *testing.T) {
 }
 
 func TestShellQuoteLeavesOrdinaryValuesAlone(t *testing.T) {
-	require.Equal(t, "demo", shellQuote("demo"))
-	require.Equal(t, "age1abcdef", shellQuote("age1abcdef"))
-	require.Equal(t, "./bundle", shellQuote("./bundle"))
+	require.Equal(t, "demo", domain.ShellQuote("demo"))
+	require.Equal(t, "age1abcdef", domain.ShellQuote("age1abcdef"))
+	require.Equal(t, "./bundle", domain.ShellQuote("./bundle"))
 
-	quoted := shellQuote("it's here")
+	quoted := domain.ShellQuote("it's here")
 	assert.True(t, strings.HasPrefix(quoted, "'"))
 	assert.Contains(t, quoted, `'\''`)
 }

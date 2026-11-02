@@ -29,7 +29,8 @@ type ManagerCheck struct {
 	Outdated bool `json:"outdated"`
 
 	// Supported is the running manager on the newest release's minor line,
-	// which is what SECURITY.md supports.
+	// at or past its first release, which is what SECURITY.md supports. A
+	// build ahead of that line is not a supported release.
 	Supported bool `json:"supported"`
 
 	// Upgrade is the command that moves this binary to the newest release,
@@ -62,11 +63,12 @@ func CheckManager(ctx context.Context, d *Deps) (ManagerCheck, error) {
 		return out, nil
 	}
 	out.Outdated = newest.Version.GreaterThan(running)
-	out.Supported = !running.LessThan(newest.Version.MinorLine())
+	line := newest.Version.MinorLine()
+	out.Supported = running.MinorLine().Equal(line) && !running.LessThan(line)
 	if out.Outdated {
 		out.Upgrade = "install.sh --version " + out.Newest + " --require-signature"
 		if d.ManagerPath != "" {
-			out.Upgrade += " --dir " + filepath.Dir(d.ManagerPath)
+			out.Upgrade += " --dir " + domain.ShellQuote(filepath.Dir(d.ManagerPath))
 		}
 	}
 	return out, nil
@@ -77,8 +79,10 @@ func (c ManagerCheck) Summary() string {
 	switch {
 	case c.DevBuild:
 		return fmt.Sprintf("a dev build, with no version to compare; %s is the newest release", c.Newest)
-	case !c.Outdated:
+	case c.Running == c.Newest:
 		return fmt.Sprintf("%s is the newest release", c.Running)
+	case !c.Outdated:
+		return fmt.Sprintf("%s is ahead of the newest release, %s", c.Running, c.Newest)
 	case c.Supported:
 		return fmt.Sprintf("%s is running and still supported; %s is the newest release", c.Running, c.Newest)
 	default:
