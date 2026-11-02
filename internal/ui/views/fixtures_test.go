@@ -141,6 +141,32 @@ func listFixtures() []fixture {
 			fields: []string{"1.5.0", "staged", "1.3.0", "current", "1.2.0", "previous"},
 		},
 		{
+			name: "release-diff",
+			value: ops.ReleaseDiff{
+				From: "demo 1.3.0",
+				To:   "demo 1.4.0",
+				Images: []ops.Change{
+					{Name: "app", Kind: ops.ChangeChanged,
+						From: "registry.example/demo/app@sha256:4b1c0e5f8a2d", To: "registry.example/demo/app@sha256:9e7d3a6c1f04"},
+					{Name: "worker", Kind: ops.ChangeAdded, To: "registry.example/demo/worker@sha256:1a2b3c4d5e6f"},
+				},
+				Parameters:    []ops.Change{{Name: "http_port", Kind: ops.ChangeChanged, From: "port, default 18080", To: "port, default 8080"}},
+				Secrets:       []ops.Change{{Name: "smtp_password", Kind: ops.ChangeRemoved}},
+				Compatibility: []ops.Change{{Name: "min_manager_version", Kind: ops.ChangeChanged, From: "0.8.0", To: "0.11.0"}},
+				Files: []ops.Change{
+					{Name: "manifest.yaml", Kind: ops.ChangeChanged, From: "sha256:aa", To: "sha256:bb"},
+					{Name: "hooks/seed", Kind: ops.ChangeAdded, To: "sha256:cc"},
+				},
+			},
+			fields: []string{"demo 1.3.0 -> demo 1.4.0", "sha256:9e7d3a6c1f04", "worker", "port, default 8080",
+				"smtp_password", "removed", "0.11.0", "hooks/seed", "added"},
+		},
+		{
+			name:   "release-diff-same",
+			value:  ops.ReleaseDiff{From: "demo 1.3.0", To: "demo 1.3.0"},
+			fields: []string{"the same declarations and the same files"},
+		},
+		{
 			name: "backups",
 			value: []ports.BackupRef{
 				{ID: "bkp_01KZP9ZZTKTQE1SS3JRZ", At: at, Size: 4_294_967_296},

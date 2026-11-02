@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/theme"
 )
@@ -44,6 +45,10 @@ func init() {
 	ui.Register(ui.View[Verified]{
 		Rich:  func(w io.Writer, t *theme.Theme, v Verified) { emit(w, verifiedDoc(doc(w, t), v)) },
 		Plain: func(w io.Writer, v Verified) { emit(w, verifiedDoc(plainDoc(w), v)) },
+	})
+	ui.Register(ui.View[ops.ReleaseDiff]{
+		Rich:  func(w io.Writer, t *theme.Theme, r ops.ReleaseDiff) { emit(w, releaseDiffDoc(doc(w, t), r)) },
+		Plain: func(w io.Writer, r ops.ReleaseDiff) { emit(w, releaseDiffDoc(plainDoc(w), r)) },
 	})
 }
 
@@ -237,4 +242,59 @@ func pushedDoc(d *ui.Doc, p Pushed) *ui.Doc {
 		d.Fields(2, fields)
 	}
 	return d
+}
+
+// releaseDiffDoc draws what changed between two releases: a section for each
+// kind of declaration and one for the files, each only when something in it
+// changed. Fields rather than a table, because a table cuts a cell to fit and
+// the end of an image reference is its digest. A file's checksums are left to
+// --json; its name is what a reader looks up.
+func releaseDiffDoc(d *ui.Doc, r ops.ReleaseDiff) *ui.Doc {
+	d.Title(r.From + " -> " + r.To)
+	if r.Same() {
+		d.Text(2, "%s", d.Theme().Dim("the same declarations and the same files"))
+		return d
+	}
+	for _, s := range []struct {
+		name   string
+		list   []ops.Change
+		detail bool
+	}{
+		{"images", r.Images, true},
+		{"parameters", r.Parameters, true},
+		{"secrets", r.Secrets, true},
+		{"compatibility", r.Compatibility, true},
+		{"tasks", r.Tasks, true},
+		{"profiles", r.Profiles, true},
+		{"files", r.Files, false},
+	} {
+		if len(s.list) == 0 {
+			continue
+		}
+		fields := make([]ui.Field, 0, len(s.list))
+		for _, c := range s.list {
+			value := string(c.Kind)
+			if s.detail {
+				value = changeDetail(c)
+			}
+			fields = append(fields, ui.Field{Label: c.Name, Value: value})
+		}
+		d.Heading(s.name)
+		d.Fields(4, fields)
+	}
+	return d
+}
+
+// changeDetail is the kind of a change and the declaration it added or
+// removed, or both sides of one it changed. A change compared by name alone
+// has no declaration to show.
+func changeDetail(c ops.Change) string {
+	switch {
+	case c.Kind == ops.ChangeChanged:
+		return "changed: " + c.From + " -> " + c.To
+	case c.From+c.To == "":
+		return string(c.Kind)
+	default:
+		return string(c.Kind) + ": " + c.From + c.To
+	}
 }

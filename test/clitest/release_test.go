@@ -473,6 +473,30 @@ func TestVerifyAndShowReadTheArchiveAnAuthorShips(t *testing.T) {
 	r.Run("release", "show", named).ExitCode(0).OutputContains("demo")
 }
 
+// TestDiffReadsADirectoryAnArchiveAndAnInstalledVersion: each argument is
+// resolved as `release show` resolves one, and a difference is a report rather
+// than a failure.
+func TestDiffReadsADirectoryAnArchiveAndAnInstalledVersion(t *testing.T) {
+	r := clitest.NewInstalled(t).FetchReleases("1.3.0")
+	next := r.BundleAt("1.4.0")
+	r.Run("release", "build", next).ExitCode(0)
+	archive := filepath.Join(t.TempDir(), "demo-1.4.0.tar.zst")
+	r.Run("release", "archive", next, "--output", archive).ExitCode(0)
+
+	for _, to := range []string{next, archive} {
+		r.Run("release", "diff", "1.3.0", to).ExitCode(0).
+			OutputContains("demo 1.3.0 -> demo 1.4.0", "files", "VERSION", "manifest.yaml").
+			NoOutputContains("SHA256SUMS", "images", "parameters")
+	}
+	r.Run("--json", "release", "diff", "1.3.0", archive).ExitCode(0).
+		FieldEquals("data.to", "demo 1.4.0").
+		FieldLen("data.files", 2)
+	r.Run("release", "diff", "1.3.0", "1.3.0").ExitCode(0).
+		OutputContains("the same declarations and the same files")
+	r.Run("release", "diff", "1.3.0", "9.9.9").Failed().
+		SaysAll("release 9.9.9 is not installed")
+}
+
 // TestRenderCheckIsOptIn.
 //
 // Decision 12 is that it stays opt-in permanently, so the default path must not

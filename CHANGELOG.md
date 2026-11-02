@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unpacked under the limits `init` applies, so an author can check the file a
   customer receives.
 
+- **`release diff` shows what changed between two releases.** It lists the
+  images, parameters, secrets, compatibility declarations, tasks, profiles and
+  files that were added, removed or changed. Each side is an installed version,
+  a bundle directory or an archive, and it exits 0 whatever differs.
+
 ### Changed
 
 - **`release verify` reads what each template names.** A template naming a
