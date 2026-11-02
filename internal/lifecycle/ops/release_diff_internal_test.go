@@ -33,6 +33,7 @@ func TestADiffNamesEveryChangeAndNothingElse(t *testing.T) {
 			"database_schema_max: 12", "database_schema_max: 13\n  database_schema_produces: 13",
 			`min_manager_version: "0.0.0"`, `min_manager_version: "0.8.0"`,
 			`upgrade_from: ">=1.0.0 <2.0.0"`, `upgrade_from: ">=1.1.0 <2.0.0"`,
+			"rollback_safe: true", "rollback_safe: false",
 		)
 		rewrite(t, filepath.Join(dir, "secrets.schema.yaml"),
 			"  - name: smtp_password", "  - name: api_token")
@@ -72,6 +73,7 @@ func TestADiffNamesEveryChangeAndNothingElse(t *testing.T) {
 		{Name: "database_schema_max", Kind: ChangeChanged, From: "12", To: "13"},
 		{Name: "database_schema_produces", Kind: ChangeAdded, To: "13"},
 		{Name: "min_manager_version", Kind: ChangeChanged, From: "0.0.0", To: "0.8.0"},
+		{Name: "rollback_safe", Kind: ChangeChanged, From: "true", To: "false"},
 		{Name: "upgrade_from", Kind: ChangeChanged, From: ">=1.0.0 <2.0.0", To: ">=1.1.0 <2.0.0"},
 	}, diff.Compatibility)
 	assert.Equal(t, []Change{{Name: "seed", Kind: ChangeAdded}}, diff.Tasks)

@@ -50,7 +50,7 @@ directory, or a `tar.zst` archive.
 | images | name, and the reference |
 | parameters | name, and the type and default; a changed description is not listed |
 | secrets | name, from the secret schema |
-| compatibility | `upgrade_from`, `min_manager_version` and the three `database_schema_*` fields |
+| compatibility | `upgrade_from`, `min_manager_version`, `rollback_safe` and the three `database_schema_*` fields |
 | tasks, profiles | name |
 | files | path, and the SHA-256 of the contents |
 

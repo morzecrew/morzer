@@ -65,3 +65,23 @@ proposal: ASSUMED — they may. The report names each side by product and versio
 ```
 
 **Drift count: 0.**
+
+## Corrected in review
+
+The ruling's compatibility list named the upgrade range, the schema and the
+minimum manager, and `rollback_safe` was left out with it, although the code's
+own comment said it compared what a rollback gates on.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T07:52:00Z
+attempt: 2
+claim: a release that stops being rollback-safe is a change the rollback gate acts on, and the diff did not list it
+evidence: internal/domain/version.go:430
+action: decided
+proposal: ASSUMED — `rollback_safe` is compared with the other compatibility declarations, and is always listed on both sides, since unset reads as false.
+```
+
+**Drift count: 0.**
