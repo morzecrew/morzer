@@ -110,3 +110,27 @@ evidence: internal/domain/sandbox_test.go:101-102
 action: decided
 proposal: ASSUMED — a sandbox keeps `manager.check`, as it keeps `update.check`: the check reads a public feed and reaches nothing production owns.
 ```
+
+Found in review, 2026-11-02.
+
+The first build did not hold to the first entry above: it called any running
+version at or above the newest line's first release supported, so a build of a
+later minor line, 0.13.0-rc.1 with 0.12.0 newest, read as supported. That entry
+stands as written. The check now requires the newest release's minor line, and
+a summary no longer calls a build the feed does not list "the newest release".
+
+§5.2 says that after the new manager writes, an older one refuses the state.
+The refusal is by schema version, and a manager release that keeps the schema
+leaves the state readable by the one before it.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T20:40:00Z
+attempt: 1
+claim: §5.2 says any write by the new manager makes the state unreadable to the older one, while the refusal compares only the installation schema version
+evidence: internal/domain/installation.go:1029
+action: decided
+proposal: ASSUMED — the upgrade page says going back is blocked only when the newer manager brought a newer installation schema and has since written the state, and points at the changelog's upgrade notes for when the schema changes. §5.2 and §5.4 describe the worst case, which is still the case to plan for.
+```

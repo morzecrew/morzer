@@ -28,12 +28,14 @@ morzer 0.11.0
   newest        0.12.0  https://github.com/morzecrew/morzer/releases/tag/v0.12.0
 
   0.11.0 is running and no longer supported; 0.12.0 is the newest release
-  upgrade with install.sh --version 0.12.0 --require-signature --dir /usr/local/bin
+  upgrade with
+    install.sh --version 0.12.0 --require-signature \
+      --dir /usr/local/bin
 ```
 
 It asks GitHub for the newest published release, skipping drafts and
 prereleases. Asking is the consent, so no setting gates it. It needs no
-installation. Under `--json` the answer is the `check` object, and `outdated`
+installation. Under `--json` the answer is `data.check`, and its `outdated`
 says whether to act on it.
 
 To have `doctor` ask as well, an installation has to consent, because the
@@ -78,15 +80,19 @@ the units would go on running the old one. `doctor`'s remedy and
   reconciles the units anyway.
 - **An operation already running finishes on the old binary.** Replacing the
   file does not touch a process that has it open.
-- **Every installation on the machine moves at once.** One binary serves them
-  all ([several installations](several-installations.md)).
-- **State moves forward only.** The new manager migrates an installation's
-  state the next time it writes it. From then on an older manager refuses that
-  state at exit 9, "written by a newer manager", rather than misreading it.
+- **Every installation whose units name this binary moves at once.** One
+  binary normally serves them all
+  ([several installations](several-installations.md)). An installation whose
+  units name another copy keeps running that copy until it is upgraded too.
+- **State moves forward only across a schema change.** When the new manager
+  brings a newer installation schema, it migrates an installation's state the
+  next time it writes it. From then on an older manager refuses that state at
+  exit 9, "written by a newer manager", rather than misreading it. The
+  changelog's upgrade notes say when the schema changes.
 
 ## Going back
 
 Going back means running the install script again with the older `--version`.
-That works only until the newer manager has written an installation's state.
-After that, the older one refuses the state, so read the release notes before
-upgrading rather than planning to undo it.
+If the newer manager changed the installation schema and has since written an
+installation's state, the older one refuses that state. Read the release notes
+before upgrading rather than planning to undo it.

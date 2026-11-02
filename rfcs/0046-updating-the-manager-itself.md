@@ -371,6 +371,9 @@ case. This is that story:
 
 The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design.
 
+*(2026-11-02: ruled. Every `OPEN` row went as recommended, and §11 records each
+ruling, so P2 is no longer conditional on decision 1.)*
+
 ## 11. Decisions
 
 | # | Grade | Decision |

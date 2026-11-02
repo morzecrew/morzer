@@ -148,6 +148,8 @@ single line to pin.
   update path exists for the *product*. Upgrading the manager is re-running the
   script with a new version. *What would change this:* nothing short of a
   demonstrated operational need with a story for the running-unit case.
+  *(2026-11-02: reopened by decision 19, which names RFC 0046 as that story.
+  This RFC's own scope, the script, is unchanged and stays complete.)*
 - **Distribution packages.** apt/rpm/brew/nix each need a maintainer and a trust
   story. They are welcome later and are not the bootstrap path.
 - **Windows or macOS.** The manager targets Linux hosts running Docker Compose;

@@ -767,7 +767,7 @@ morzer version --check
 `--check` also asks GitHub for the newest published manager, skipping drafts
 and prereleases. It says whether this one is still supported and, when it is
 outdated, prints the command that upgrades it. Asking is the consent, so no
-setting gates it. Under `--json` the answer is a `check` object with `running`,
+setting gates it. Under `--json` the answer is `data.check`, with `running`,
 `newest`, `url`, `dev_build`, `outdated`, `supported` and `upgrade`. It exits 0
 whether or not a newer manager exists. A feed it cannot reach or read is
 exit 2. See [upgrading the manager](../operating/upgrading-the-manager.md).
