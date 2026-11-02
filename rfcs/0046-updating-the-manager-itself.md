@@ -14,7 +14,9 @@
   updating the manager without a human, distribution packages and mirrors
   (still refused by 0022 decision 9), downgrading the manager (still a re-run
   of `install.sh`), and anything about a product's releases. One new
-  per-installation setting; no installation schema change.
+  per-installation setting, `manager.check`, stored beside `update.check`;
+  absent reads as false, and an older manager reads past it, so there is no
+  installation schema change.
 - **Related:** [0022](0022-bootstrapping-the-manager.md) (§4's non-goal and
   decision 9, which refuse `self-update`);
   [`install.sh`](../install.sh), [`.goreleaser.yaml`](../.goreleaser.yaml),
@@ -141,8 +143,14 @@ dev build reports that it has no version to compare.
 is true (decision 2). It warns when a newer release exists, naming both
 versions and whether the running one is still supported (decision 3), with the
 upgrade command as its remedy. When the setting is off, it reports "not
-checked" as information. The scheduled `doctor` notifies a warning like any
-other.
+checked" as information. The scheduled `doctor` reports the warning like any
+other check, and a configured target that takes warnings is notified of it.
+
+`manager.check` is stored in the installation's settings beside
+`update.check`, and absent reads as false. Installation state is decoded
+leniently, so an older manager reads past the field. It drops the field if it
+rewrites the installation, so after a downgrade the consent has to be given
+again. That is why no schema bump is needed.
 
 ```text
 manager
@@ -188,9 +196,13 @@ In order:
    (decision 5).
 2. **Fetch** the archive for this platform, `SHA256SUMS` and
    `SHA256SUMS.minisig` from the release, or read the three from `--from`.
-3. **Verify** the signature over `SHA256SUMS` with the key embedded in the
-   binary, then the archive against its own line. Both are required, and no
-   flag skips them (decision 6).
+3. **Verify** the signature over `SHA256SUMS`, then the archive against its own
+   line. The key is a copy of `morzer.pub` embedded in the binary at build
+   time, and a test asserts it is byte for byte the file at the repository's
+   root, as one already does for `install.sh`'s copy. It is passed to the
+   in-process minisign verifier as the only public key, with the signature
+   required. No flag, setting or environment variable changes the key or the
+   requirement (decision 6).
 4. **Unpack** the binary to a temporary file in the running binary's
    directory, so the final rename is atomic. Run it with `version --json`, and
    require it to report the version it was fetched as (decision 8).
@@ -198,7 +210,9 @@ In order:
    on the machine without waiting, and refuse if any is held, naming the
    installation and what holds it (decision 7). Under the locks, ask the
    binary now at the path for its version again, and refuse unless the target
-   is newer: another `self-update` may have finished in the meantime.
+   is newer, since another `self-update` may have finished since the command
+   started. A binary with no release version, a dev build, passes only if it is
+   still the file it was when the command started (decision 12).
 6. **Rename** the new binary over the running one. A process already running
    keeps the old file, and the next one any unit starts is the new manager.
 7. **Record** a `manager-update` entry in each installation's journal while
@@ -232,10 +246,14 @@ case. This is that story:
   boot `apply`, an update tick or a scheduled backup that fires during the swap
   meets a held lock. A tick exits 0, as it already does when an operator's
   operation holds it.
-- **The scheduled `doctor` writes only the notification outbox**, under the
-  outbox lock, which the swap holds too. A `status` or `doctor` running during
-  the swap otherwise reads and finishes on the old file, since the rename does
-  not touch an open executable.
+- **The scheduled `doctor` writes only the notification outbox.** The outbox
+  lock, which the swap holds too, keeps two senders from sending one entry. It
+  does not cover a failed delivery, which writes its entry without it. That
+  entry is a file of its own holding one event, decoded leniently, so one
+  written by the old binary during or after the swap is read by the new one as
+  across any upgrade. A `status` or `doctor` running during the swap otherwise
+  reads and finishes on the old file, since the rename does not touch an open
+  executable.
 - **A command that started before the swap can still run on the old binary
   after it.** One that was loading or fetching before it took its lock, or was
   waiting with `--wait`, takes the lock once the swap releases it. What it
@@ -328,9 +346,16 @@ case. This is that story:
   the reason there is no unattended path. `--to` pins a version, and the how-to
   says to read the release notes first.
 - **The release feed's rate limit.** Unauthenticated GitHub API requests are
-  limited per IP. A daily scheduled `doctor` is well inside it. A machine
-  behind a shared NAT that runs `version --check` in a loop may hit it, and
-  gets an error, not a wrong answer.
+  limited per IP, 60 an hour. A scheduled `doctor` makes one request per
+  consenting installation per run, so a machine with dozens of installations
+  stays inside it without a shared cache. A machine behind a shared NAT that
+  runs `version --check` in a loop may hit the limit, and gets an error, not a
+  wrong answer.
+- **`install.sh` and `self-update` at the same moment.** The script takes none
+  of these locks, and running both at once is not supported. Each replaces the
+  binary with one atomic rename, so the result is one whole binary, possibly
+  the older of the two; `morzer version` names it, and either command run again
+  settles it.
 - **A compromised release key.** The same key already decides what
   `install.sh` installs. `self-update` adds no new trust root, and the
   mitigation is the same as for `install.sh`: SECURITY.md says what to do when
@@ -352,13 +377,13 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 3 | `OPEN` | **What `doctor` warns about.** Recommended: any newer published release, naming whether the running one is still supported, since SECURITY.md supports only the newest. Alternative: warn only when the running release is no longer supported, and report a newer patch as information. |
 | 4 | `OPEN` | **Where releases come from.** Recommended: GitHub releases, as `install.sh` uses, plus `--from` with the three files for a machine without the internet; no configurable feed (0022 decision 9's "no mirrors"). Alternative: a configurable base URL. |
 | 5 | `OPEN` | **Going back.** Recommended: `self-update` refuses an older target, and moving back is a re-run of `install.sh` with the how-to's warning about forward-only state. Alternative: `--allow-older`, journalled, as RFC 0037 gives `update`. |
-| 6 | `LOCKED` | A self-update verifies `SHA256SUMS.minisig` with a key embedded in the binary, and the archive against its own line, every time; no flag skips either. Allowing an unverified binary to replace the manager would make this the weakest path onto a machine, and reversing it later could not recall what it let through. |
+| 6 | `LOCKED` | A self-update verifies `SHA256SUMS.minisig` with a copy of `morzer.pub` embedded in the binary, asserted equal to the repository's, as the only key and with the signature required, and the archive against its own line, every time; no flag, setting or environment variable changes the key or skips either check. Allowing an unverified binary to replace the manager would make this the weakest path onto a machine, and reversing it later could not recall what it let through. |
 | 7 | `ASSUMED` | The swap happens while this command holds every installation's deployment lock and notification-outbox lock, taken without waiting; a held lock refuses it and names what holds it. Under the locks, the version of the binary at the path is read again, and the swap is refused unless the target is newer. |
 | 8 | `ASSUMED` | The new binary is unpacked beside the running one and run with `version --json` before the swap, and must report the version it was fetched as. |
 | 9 | `ASSUMED` | It never escalates privileges: a directory it cannot write is a refusal that prints the `sudo` command, as `install.sh` does (0022 decision 7). |
 | 10 | `ASSUMED` | No unit and no timer runs `self-update`; it is an operator's command only. |
 | 11 | `ASSUMED` | Each installation's journal records a `manager-update` entry with the old and new versions, written while the locks are still held, so an incident review finds when the manager changed. A crash after the rename can leave some journals without it. |
-| 12 | `ASSUMED` | A dev build, whose version is not a release, never reports itself outdated, and refuses `self-update` unless `--to` names a version. |
+| 12 | `ASSUMED` | A dev build, whose version is not a release, never reports itself outdated, and refuses `self-update` unless `--to` names a version. Its re-check under the locks requires the binary at the path to be the file it was when the command started, since it has no version to compare. |
 | 13 | `ASSUMED` | When the units on the machine name another binary path than the running one, `self-update` warns and names it, since replacing this copy leaves the units on the other. The how-to says to pass `install.sh` the directory the units name, for the same reason. |
 | 14 | `ASSUMED` | With `--from`, the target is the version in the name of this platform's archive in that directory's `SHA256SUMS`, and the release feed is not asked; `--to`, if given, must agree with it. |
 | 15 | `ASSUMED` | A command that started before the swap and runs on the old binary after it is not stopped: it reads state the new manager has not yet written, or refuses at exit 9 on state it has. The forward-only state rule makes the overlap a refusal, never a misreading. An installation being created during the swap is in the same position. |
