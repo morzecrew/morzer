@@ -161,11 +161,12 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		bound = max(timeout-time.Since(started), drainGrace)
 	}
 	resultData, held := awaitResult(ctx, resultCh, readEnd, bound)
-	if held && runErr == nil {
-		runErr = domain.RuntimeError(context.DeadlineExceeded,
-			"hook %q exited, but a process it started still held fd 3 when its %s ran out",
-			command[0], timeout).
-			WithHint("a hook's background processes must close fd 3, or be waited for before it exits")
+	// A held channel outranks an exit that claims success or "nothing to
+	// do": the result never arrived. A hook that failed keeps its own
+	// failure, which is the more useful thing to quote.
+	var exitErr *exec.ExitError
+	if held && (runErr == nil || errors.As(runErr, &exitErr) && exitErr.ExitCode == ExitSkipped) {
+		runErr = heldResult(ctx, command[0], timeout)
 	}
 
 	outcome := Outcome{
@@ -206,6 +207,17 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 	}
 
 	return outcome, nil
+}
+
+// heldResult is the failure of a hook whose result channel was still held when
+// the wait for it ended: cancelled by the operator, or out of time.
+func heldResult(ctx context.Context, name string, timeout time.Duration) error {
+	if ctx.Err() != nil {
+		return domain.Interrupted("hook %q was cancelled while a process it started held fd 3", name)
+	}
+	return domain.RuntimeError(context.DeadlineExceeded,
+		"hook %q exited, but a process it started still held fd 3 when its %s ran out", name, timeout).
+		WithHint("a hook's background processes must close fd 3, or be waited for before it exits")
 }
 
 // drainGrace is the least time left to read fd 3 once a hook has exited.

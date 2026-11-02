@@ -477,21 +477,24 @@ sleep 300
 // too. The result channel stays open while anything holds its write end, and a
 // wait on it that nothing bounded lasted as long as that process did.
 func TestAProcessLeftHoldingTheResultChannelIsBoundedByTheTimeout(t *testing.T) {
-	rel := release(t)
-	cmd := hook(t, rel, "migrate", `#!/bin/sh
-sleep 5 >/dev/null 2>&1 &
-exit 0
-`)
+	// Exit 2 too: "nothing to do" from a hook whose result never arrived
+	// is a timeout, not a hook that did nothing.
+	for _, exit := range []string{"0", "2"} {
+		t.Run("exit "+exit, func(t *testing.T) {
+			rel := release(t)
+			cmd := hook(t, rel, "migrate", "#!/bin/sh\nsleep 5 >/dev/null 2>&1 &\nexit "+exit+"\n")
 
-	start := time.Now()
-	_, err := hooks.NewRunner(exec.New()).
-		Run(context.Background(), rel, cmd, env(), 300*time.Millisecond)
+			start := time.Now()
+			_, err := hooks.NewRunner(exec.New()).
+				Run(context.Background(), rel, cmd, env(), 300*time.Millisecond)
 
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("the wait for fd 3 outlived the timeout: %s", elapsed)
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("a result channel still held at the deadline is a timeout, got %v", err)
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("the wait for fd 3 outlived the timeout: %s", elapsed)
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("a result channel still held at the deadline is a timeout, got %v", err)
+			}
+		})
 	}
 }
 

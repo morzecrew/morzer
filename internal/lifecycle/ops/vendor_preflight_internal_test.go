@@ -54,6 +54,7 @@ func TestACheckRunMapsOntoAResult(t *testing.T) {
 		"fails saying nothing":        {"exit 1", 0, events.CheckFail, "exited with code 1"},
 		"times out, naming its limit": {"sleep 5", 200 * time.Millisecond, events.CheckFail, "did not finish within 200ms"},
 		"leaves a child on fd 3":      {"sleep 5 >/dev/null 2>&1 & exit 0", 200 * time.Millisecond, events.CheckFail, "did not finish within 200ms"},
+		"leaves a child, exiting 2":   {"sleep 5 >/dev/null 2>&1 & exit 2", 200 * time.Millisecond, events.CheckFail, "did not finish within 200ms"},
 		"tries to drive the terminal": {`printf '\033]0;owned\007\033[2Jmaps\rlow\n' >&2; exit 1`, 0, events.CheckFail, "mapslow"},
 		"reorders the line":           {`printf 'maps\342\200\256wol\342\201\246\n' >&2; exit 1`, 0, events.CheckFail, "mapswol"},
 		"writes garbage on fd 3":      {"printf 'not json' >&3", 0, events.CheckFail, "not a result object"},

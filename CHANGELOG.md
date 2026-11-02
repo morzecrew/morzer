@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A hook's background process cannot hold an operation past the timeout.**
   A hook that exited while a process it started still held fd 3 kept the
   operation waiting until that process ended. The wait now ends with the
-  hook's timeout, and the hook fails as timed out.
+  hook's timeout, and the hook fails as timed out, even if it exited 2.
 
 - **A hook that is a directory is refused when the bundle loads.** It passed
   `release verify` with its executable bit set and failed only when an
