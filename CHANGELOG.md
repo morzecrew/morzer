@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The 200-character bounds on task and input descriptions, and on runtime
   options, counted bytes, so a word of two-byte letters counted twice.
 
+- **A hook that is a directory is refused when the bundle loads.** It passed
+  `release verify` with its executable bit set and failed only when an
+  operation ran it.
+
 ## [0.11.0] - 2026-11-01
 
 An operator can now see what a machine did and what it is about to do: `morzer

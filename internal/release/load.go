@@ -569,6 +569,10 @@ func checkExecutable(rel domain.Release, relPath, field string, missing *[]strin
 	if err != nil {
 		return // already reported as missing
 	}
+	if !info.Mode().IsRegular() {
+		*missing = append(*missing, fmt.Sprintf("%s: %s is not a regular file", field, relPath))
+		return
+	}
 	if info.Mode().Perm()&0o111 == 0 {
 		*missing = append(*missing,
 			fmt.Sprintf("%s: %s is not executable (mode %04o)", field, relPath, info.Mode().Perm()))

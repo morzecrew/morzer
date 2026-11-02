@@ -185,7 +185,7 @@ func TestABundleIsRefusedForEveryWayItCanBeWrong(t *testing.T) {
 
 // withACheck is the example bundle declaring one preflight check, at the
 // manager version that runs them, whose executable mutate may then break.
-func withACheck(t *testing.T, mutate func(dir string)) string {
+func withACheck(t *testing.T, mutate func(t *testing.T, dir string)) string {
 	t.Helper()
 	return bundle(t, func(d string) {
 		edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
@@ -201,7 +201,7 @@ func withACheck(t *testing.T, mutate func(dir string)) string {
 			t.Fatal(err)
 		}
 		if mutate != nil {
-			mutate(d)
+			mutate(t, d)
 		}
 	})
 }
@@ -217,13 +217,22 @@ func TestLoadRefusesACheckThatCannotRun(t *testing.T) {
 		t.Errorf("the check was not read: %v", got)
 	}
 
-	for name, mutate := range map[string]func(string){
-		"missing": func(d string) {
+	for name, mutate := range map[string]func(*testing.T, string){
+		"missing": func(t *testing.T, d string) {
 			if err := os.Remove(filepath.Join(d, "hooks", "preflight")); err != nil {
 				t.Fatal(err)
 			}
 		},
-		"not executable": func(d string) {
+		"a directory": func(t *testing.T, d string) {
+			path := filepath.Join(d, "hooks", "preflight")
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"not executable": func(t *testing.T, d string) {
 			if err := os.Chmod(filepath.Join(d, "hooks", "preflight"), 0o644); err != nil {
 				t.Fatal(err)
 			}
