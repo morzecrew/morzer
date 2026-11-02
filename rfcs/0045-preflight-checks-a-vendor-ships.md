@@ -234,7 +234,7 @@ possibly every morning on a machine nobody is watching.
 | `apply --startup` (boot) | Warns. The release already ran on this machine. |
 | `start` | Warns, as boot does. `update` and `rollback` are refused while the product is stopped (RFC 0040 decision 3), so a refused `start` would leave no way back. |
 | `rollback` | Warns. Refusing would withhold the way back. |
-| `doctor` | Fails, exit 3, as a built-in failure does. |
+| `doctor` | Fails, exit 3, as a built-in failure does. A failing check that is not fatal is a warning there too, and `doctor` exits 0, as it does for `system.os`. |
 
 This is decision 4. The asymmetry is the point. Moving forward onto a
 machine the vendor says is wrong is refused. Restoring what already ran is not,
@@ -280,21 +280,24 @@ paying customer's product down (RFC 0024 §5).
 ## 6. Tests
 
 - **Manifest:** the name pattern, a missing description, a missing or
-  non-executable command and the `min_manager_version` floor each refuse; one
-  row each.
-- **The runner:** exit 0, 2, 1, a timeout and an unreadable fd 3 each map to the
-  row in §5.2. Fatal and non-fatal, and the demotion at boot and in rollback,
+  non-executable command, the `min_manager_version` floor and each timeout
+  ceiling refuse; one row each.
+- **The runner:** exit 0, 2, 1, a timeout, fd 3 left empty and fd 3 holding
+  bytes that are not a JSON object each map to the row in §5.2. The timeout row
+  uses a non-default timeout, which the message must name. Fatal and non-fatal, and the demotion at boot and in rollback,
   are a table over operation × fatal.
 - **Environment:** a check script records its environment. `PHASE` is
   `preflight`, `OPERATION_TYPE` is `doctor` in doctor, and `SECRETS_DIR`,
   `CONFIG_FILE` and `BACKUP_DIR` are absent.
 - **CLI (`test/clitest`):** `apply` refused by a fatal failing check exits 3
   and lists it beside a built-in blocker. A non-fatal one warns and the apply
-  succeeds. `doctor` shows the `vendor` group. `update` refused by the new
+  succeeds. `doctor` shows the `vendor` group, and exits 3 for a failing fatal
+  check and 0 for a failing non-fatal one. `update` refused by the new
   release's check leaves the current release running. Boot and `start` with a
   failing fatal check start the product and warn.
 - **Views:** `release show` and `release diff` fixtures with a check, goldens at
-  every width.
+  every width. The diff fixture changes each field of one check, so a field the
+  comparison skips shows up as a missing line.
 - **Acceptance:** the example bundle declares one non-fatal check, so the real
   Docker run exercises the step.
 
