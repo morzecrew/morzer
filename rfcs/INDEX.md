@@ -98,8 +98,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
 - **[0046 — Updating the manager itself](0046-updating-the-manager-itself.md).**
-  📝 Proposed, awaiting the author's rulings on its `OPEN` decisions, the
-  first of which reopens RFC 0022 decision 9.
+  📝 Ruled by the author 2026-11-02 as recommended, which reopens RFC 0022
+  decision 9 for `self-update`. P1, the version check, is being built.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and

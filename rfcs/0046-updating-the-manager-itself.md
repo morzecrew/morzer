@@ -1,8 +1,8 @@
 # RFC 0046 — Updating the manager itself
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11, the first of which reopens RFC 0022 decision 9; not
-  scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-02: §11's
+  `OPEN` rows as recommended, so RFC 0022 decision 9 is reopened for
+  `self-update`. **P1 is ready to build**; P2 follows it
 - **Scope:** How an operator learns that the `morzer` binary is out of date,
   and how it moves to a newer one. P1 is a check that compares the running
   manager with the newest published release, on request
@@ -375,11 +375,11 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Reopen RFC 0022 decision 9 and build `self-update` as P2?** Recommended yes, with §5.4's answer to the running-unit case: the swap waits for no operation, because it holds every installation's lock, and it trusts only the key `install.sh` already embeds, so it adds no trust root. Alternative: keep 0022's refusal and ship P1 alone, the check and the how-to. |
-| 2 | `OPEN` | **Consent for the unprompted check.** Recommended a new per-installation setting, `manager.check`, default off: the check contacts GitHub, a party other than the vendor whose registry `update.check` consents to. `version --check` and `self-update` are explicit and need neither. Alternative: `update.check` covers both, one consent for learning about updates. |
-| 3 | `OPEN` | **What `doctor` warns about.** Recommended: any newer published release, naming whether the running one is still supported, since SECURITY.md supports only the newest. Alternative: warn only when the running release is no longer supported, and report a newer patch as information. |
-| 4 | `OPEN` | **Where releases come from.** Recommended: GitHub releases, as `install.sh` uses, plus `--from` with the three files for a machine without the internet; no configurable feed (0022 decision 9's "no mirrors"). Alternative: a configurable base URL. |
-| 5 | `OPEN` | **Going back.** Recommended: `self-update` refuses an older target, and moving back is a re-run of `install.sh` with the how-to's warning about forward-only state. Alternative: `--allow-older`, journalled, as RFC 0037 gives `update`. |
+| 1 | `ASSUMED` | **Reopen RFC 0022 decision 9 and build `self-update` as P2?** Recommended yes, with §5.4's answer to the running-unit case: the swap waits for no operation, because it holds every installation's lock, and it trusts only the key `install.sh` already embeds, so it adds no trust root. Alternative: keep 0022's refusal and ship P1 alone, the check and the how-to. Was `OPEN`; ruled by the author 2026-11-02: as recommended, `self-update` is built as P2, and RFC 0022 gains a row naming this one. |
+| 2 | `ASSUMED` | **Consent for the unprompted check.** Recommended a new per-installation setting, `manager.check`, default off: the check contacts GitHub, a party other than the vendor whose registry `update.check` consents to. `version --check` and `self-update` are explicit and need neither. Alternative: `update.check` covers both, one consent for learning about updates. Was `OPEN`; ruled by the author 2026-11-02: as recommended, a separate `manager.check`, default off. |
+| 3 | `ASSUMED` | **What `doctor` warns about.** Recommended: any newer published release, naming whether the running one is still supported, since SECURITY.md supports only the newest. Alternative: warn only when the running release is no longer supported, and report a newer patch as information. Was `OPEN`; ruled by the author 2026-11-02: as recommended, any newer published release warns. |
+| 4 | `ASSUMED` | **Where releases come from.** Recommended: GitHub releases, as `install.sh` uses, plus `--from` with the three files for a machine without the internet; no configurable feed (0022 decision 9's "no mirrors"). Alternative: a configurable base URL. Was `OPEN`; ruled by the author 2026-11-02: as recommended, GitHub releases plus `--from`, and no configurable feed. |
+| 5 | `ASSUMED` | **Going back.** Recommended: `self-update` refuses an older target, and moving back is a re-run of `install.sh` with the how-to's warning about forward-only state. Alternative: `--allow-older`, journalled, as RFC 0037 gives `update`. Was `OPEN`; ruled by the author 2026-11-02: as recommended, `self-update` refuses an older target. |
 | 6 | `LOCKED` | A self-update verifies `SHA256SUMS.minisig` with a copy of `morzer.pub` embedded in the binary, asserted equal to the repository's, as the only key and with the signature required, and the archive against its own line, every time; no flag, setting or environment variable changes the key or skips either check. Allowing an unverified binary to replace the manager would make this the weakest path onto a machine, and reversing it later could not recall what it let through. |
 | 7 | `ASSUMED` | The swap happens while this command holds every installation's deployment lock and notification-outbox lock, taken without waiting; a held lock refuses it and names what holds it. Under the locks, the version of the binary at the path is read again, and the swap is refused unless the target is newer. |
 | 8 | `ASSUMED` | The new binary is unpacked beside the running one and run with `version --json` before the swap, and must report the version it was fetched as. |
