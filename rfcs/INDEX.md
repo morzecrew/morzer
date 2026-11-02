@@ -187,7 +187,7 @@ number in the filename in sync.
 | [0042](0042-settings-an-operator-changes-after-init.md) | Settings an operator changes after init | ✅ Complete | Changing on a running installation what `init` fixed and since only a repair (the domains) or a hand-edited state file could change: the signature requirement, the domains and the retention counts. |
 | [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | ✅ Complete | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
 | [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | ✅ Complete | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
-| [0045](0045-preflight-checks-a-vendor-ships.md) | Preflight checks a vendor ships | 📝 Draft | Checks a bundle ships as executables, run before an install or update changes anything and in `doctor`, through the hook ABI's reserved `preflight` phase. |
+| [0045](0045-preflight-checks-a-vendor-ships.md) | Preflight checks a vendor ships | 📝 Draft | Checks a bundle ships as executables, run with the manager's own preflight checks and in `doctor`, through the hook ABI's reserved `preflight` phase. |
 
 ## Status legend
 

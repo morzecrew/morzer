@@ -4,11 +4,13 @@
   `OPEN` rows as recommended, except that `start` warns as boot does
   (decision 4). P1 is ready to build
 - **Scope:** Checks a bundle declares and ships as executables, run by the
-  manager beside its own preflight checks: before `apply`, `start`, `update`
-  and `rollback` change anything, and in `doctor`. A failing check the vendor
-  marked fatal refuses `apply` and `update`, as a failing built-in check does;
-  any other failure is a warning. This makes the hook ABI's reserved `preflight`
-  phase live. It adds one manifest field and one `OPERATION_TYPE` value
+  manager beside its own preflight checks, and in `doctor`. That step runs
+  before `apply`, `start` and `rollback` change anything. In `update` it runs
+  before the running deployment changes but after the pre-update backup,
+  staging and image ingest, as the built-in checks do today. A failing check
+  the vendor marked fatal refuses `apply` and `update`, as a failing built-in
+  check does; any other failure is a warning. This makes the hook ABI's
+  reserved `preflight` phase live. It adds one manifest field and one `OPERATION_TYPE` value
   (`doctor`), and changes no installation schema. It does not make
   `pre-update` or `post-update` live, which stay reserved. It adds no
   declarative check language (kernel parameters, URLs, file contents) for the
@@ -126,7 +128,8 @@ Verified against `main` at 4d26d8d.
 **Goals**
 
 - A vendor can stop `apply` and `update` on a machine their product
-  cannot run on, before anything changes, with their own message and remedy.
+  cannot run on, before the running deployment changes, with their own message
+  and remedy.
 - An operator sees the vendor's checks in `doctor`, and so in the support
   bundle and the scheduled `doctor`'s notification, grouped apart from the
   manager's.
@@ -316,9 +319,9 @@ paying customer's product down (RFC 0024 §5).
 ## 9. Risks
 
 - **A buggy fatal check blocks the vendor's own customers.** It refuses every
-  `apply` of that release. Update is not blocked: the new
-  release's checks run, so the vendor's fix installs. Boot, `start` and
-  rollback never refuse. Whether an operator also gets an override is decision 7.
+  `apply` of that release. An update away from it is not blocked by it: an
+  update runs the new release's checks, so a release with the check fixed
+  installs once those pass. Boot, `start` and rollback never refuse. Whether an operator also gets an override is decision 7.
 - **A slow check slows every operation and every scheduled `doctor`.** It is
   bounded by its timeout, 30s by default. The step's timeout grows by the
   declared total and is never shared.
