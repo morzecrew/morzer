@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`morzer version --check` says whether a newer manager is published.** It
+  asks GitHub, skipping drafts and prereleases, says whether the running
+  manager is still supported, and prints the command that upgrades it. Asking
+  is the consent, so no setting gates it.
+
+- **`doctor` can warn that the manager is out of date.** An installation that
+  sets `manager.check=true` gets the `manager.version` check, and the scheduled
+  `doctor` notifies it. Off by default, because it contacts GitHub unprompted.
+
+- **A page on upgrading the manager**, including why `install.sh --dir` must
+  name the directory of the binary the units run.
+
 ### Security
 
 - **`update` refuses a release older than the one installed.** It only warned
