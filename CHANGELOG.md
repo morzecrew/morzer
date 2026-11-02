@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowed to look at was reported as neither a directory nor a version; it is
   now reported as unreadable, with the reason.
 
+- **A description in a non-Latin script is not refused at half its length.**
+  The 200-character bounds on task and input descriptions, and on runtime
+  options, counted bytes, so a word of two-byte letters counted twice.
+
 ## [0.11.0] - 2026-11-01
 
 An operator can now see what a machine did and what it is about to do: `morzer

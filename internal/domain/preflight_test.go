@@ -46,6 +46,9 @@ func TestAMalformedCheckIsRefusedByField(t *testing.T) {
 		"long describe":         {"db", with(func(c *PreflightCheck) { c.Description = strings.Repeat("x", 201) }), "preflight.db.description: must be at most 200"},
 		"escape in remedy":      {"db", with(func(c *PreflightCheck) { c.Remedy = "run \x1b]0;x\a" }), "preflight.db.remedy: must be one line"},
 		"long remedy":           {"db", with(func(c *PreflightCheck) { c.Remedy = strings.Repeat("x", 201) }), "preflight.db.remedy: must be at most 200"},
+		"blank description":     {"db", with(func(c *PreflightCheck) { c.Description = "   " }), "preflight.db.description: is required"},
+		"bidi in describe":      {"db", with(func(c *PreflightCheck) { c.Description = "safe \u202edeteled" }), "preflight.db.description: must be one line"},
+		"bidi in remedy":        {"db", with(func(c *PreflightCheck) { c.Remedy = "run \u2066x" }), "preflight.db.remedy: must be one line"},
 		"no command":            {"db", with(func(c *PreflightCheck) { c.Command = nil }), "preflight.db.command: is required"},
 		"absolute command":      {"db", with(func(c *PreflightCheck) { c.Command = []string{"/usr/bin/true"} }), "preflight.db.command[0]: must be relative"},
 		"escaping command":      {"db", with(func(c *PreflightCheck) { c.Command = []string{"../check"} }), "preflight.db.command[0]: must not escape"},
@@ -113,4 +116,17 @@ func TestChecksRunInNameOrder(t *testing.T) {
 		"mid":   {Description: "x", Command: []string{"hooks/check"}},
 	})
 	assert.Equal(t, []string{"alpha", "mid", "zeta"}, m.PreflightNames())
+}
+
+// The bound is in characters, as the reference says: a description in a script
+// whose letters take two bytes each is not refused at half the length.
+func TestTheDescriptionBoundCountsCharacters(t *testing.T) {
+	m := manifestWithChecks(map[string]PreflightCheck{
+		"db": {Description: strings.Repeat("é", 200), Command: []string{"hooks/check"}},
+	})
+	require.NoError(t, m.Validate())
+	m.Preflight["db"] = PreflightCheck{Description: strings.Repeat("é", 201), Command: []string{"hooks/check"}}
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be at most 200")
 }

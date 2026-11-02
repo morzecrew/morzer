@@ -53,6 +53,7 @@ func TestACheckRunMapsOntoAResult(t *testing.T) {
 		"fails quoting stdout":        {"echo out; exit 3", 0, events.CheckFail, "out"},
 		"fails saying nothing":        {"exit 1", 0, events.CheckFail, "exited with code 1"},
 		"times out, naming its limit": {"sleep 5", 200 * time.Millisecond, events.CheckFail, "did not finish within 200ms"},
+		"tries to drive the terminal": {`printf '\033]0;owned\007\033[2Jmaps\rlow\n' >&2; exit 1`, 0, events.CheckFail, "]0;owned"},
 		"writes garbage on fd 3":      {"printf 'not json' >&3", 0, events.CheckFail, "not a result object"},
 		"writes garbage and exits 2":  {"printf 'null' >&3; exit 2", 0, events.CheckFail, "not a result object"},
 	}
@@ -71,7 +72,11 @@ func TestACheckRunMapsOntoAResult(t *testing.T) {
 				assert.Equal(t, tc.message, got.Message)
 				return
 			}
-			assert.Contains(t, got.Message, tc.message)
+			if label == "tries to drive the terminal" {
+				assert.Equal(t, "mapslow", got.Message, "the check's output reached the terminal raw")
+			} else {
+				assert.Contains(t, got.Message, tc.message)
+			}
 			assert.Equal(t, remedy, got.Remedy, "a failure carries the vendor's remedy")
 		})
 	}

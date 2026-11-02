@@ -575,17 +575,18 @@ preflight:
 
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
-| `description` | string | ✅ | The line `doctor` prints for the check. One line of at most 200 characters, with no control characters. |
+| `description` | string | ✅ | The line `doctor` prints for the check. One line of at most 200 characters, with no control or formatting characters. |
 | `command` | list | ✅ | An executable in the bundle and its arguments, resolved against the release root as every hook is. A missing file, or one without the executable bit, is refused when the bundle loads. |
 | `fatal` | bool | | Whether a failure refuses `apply` and `update`. Default `false`, and a failure only warns. |
 | `timeout` | duration | | Time budget. Default `30s`, at most `2m`. |
-| `remedy` | string | | What the operator should do about a failure, shown with it. One line of at most 200 characters. |
+| `remedy` | string | | What the operator should do about a failure, shown with it. One line of at most 200 characters, with no control or formatting characters. |
 
 Names follow the rule for task names. The checks run in name order, after the
 manager's own, and all of a bundle's checks may take at most `5m` between them.
 A check is run under the [hook ABI](hooks.md#a-preflight-check): exit `0`
 passes, `2` means the check does not apply on this machine, and anything else
-fails, quoting what it wrote to the result descriptor, or else its stderr.
+fails, quoting what it wrote to the result descriptor, or else its stderr, with
+any escape sequence or control character removed.
 
 Where a check that is `fatal` refuses:
 

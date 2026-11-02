@@ -334,6 +334,14 @@ func preflightSchema(generated any) any {
 	fields, _ := check["properties"].(map[string]any)
 	atLeastOne(fields["command"], "minItems")
 	atLeastOne(fields["description"], "minLength")
+	// One line of at most 200 characters, as Validate holds them. The
+	// formatting characters it also refuses have no portable pattern.
+	for _, text := range []string{"description", "remedy"} {
+		if f, ok := fields[text].(map[string]any); ok {
+			f["maxLength"] = 200
+			f["pattern"] = `^[^\x00-\x1f\x7f-\x9f]*$`
+		}
+	}
 	check["required"] = []string{"description", "command"}
 	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
 	return mapping

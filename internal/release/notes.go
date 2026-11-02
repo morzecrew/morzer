@@ -72,13 +72,13 @@ func Notes(rel domain.Release) string {
 		return ""
 	}
 	if len(raw) > maxNotesBytes {
-		return stripTerminalControls(string(raw[:maxNotesBytes])) +
+		return StripTerminalControls(string(raw[:maxNotesBytes])) +
 			"\n\n_(release notes truncated at 256 KiB)_\n"
 	}
-	return stripTerminalControls(string(raw))
+	return StripTerminalControls(string(raw))
 }
 
-// stripTerminalControls removes what a terminal acts on rather than prints.
+// StripTerminalControls removes what a terminal acts on rather than prints.
 //
 // These bytes are the vendor's, and every path out of here ends somewhere that
 // interprets them: `update --check` and `update --stage` write them to stderr,
@@ -96,7 +96,7 @@ func Notes(rel domain.Release) string {
 // ones that matter are CR and backspace: both let a vendor overwrite a line the
 // operator has already read, which is how text that looked safe stops being what
 // is there. Newline and tab are the two a note legitimately contains.
-func stripTerminalControls(s string) string {
+func StripTerminalControls(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\t' {
 			return r

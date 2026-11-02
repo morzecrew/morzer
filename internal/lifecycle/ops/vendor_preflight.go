@@ -9,6 +9,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // vendorChecks are the checks the release ships (RFC 0045), each run as a
@@ -52,7 +53,9 @@ func (d *Deps) runVendorCheck(
 ) events.CheckResult {
 	timeout := spec.EffectiveTimeout()
 	outcome, err := d.Hooks.Run(ctx, rel, spec.Command, env, timeout)
-	message := strings.TrimSpace(outcome.Result.Message)
+	// Everything quoted here is the check's own output, which `doctor` and
+	// the step print to the operator's terminal.
+	message := shownOutput(outcome.Result.Message)
 	switch {
 	case err == nil && outcome.Skipped:
 		if message == "" {
@@ -68,10 +71,10 @@ func (d *Deps) runVendorCheck(
 		return preflight.Fail(spec.Remedy, "did not finish within %s", timeout)
 	case outcome.ExitCode > 0 && outcome.ExitCode != ports.HookExitSkipped:
 		if message == "" {
-			message = domain.LastLines(outcome.Stderr, 3)
+			message = shownOutput(domain.LastLines(outcome.Stderr, 3))
 		}
 		if message == "" {
-			message = domain.LastLines(outcome.Stdout, 3)
+			message = shownOutput(domain.LastLines(outcome.Stdout, 3))
 		}
 		if message == "" {
 			return preflight.Fail(spec.Remedy, "exited with code %d", outcome.ExitCode)
@@ -80,4 +83,10 @@ func (d *Deps) runVendorCheck(
 	default:
 		return preflight.Fail(spec.Remedy, "%s", domain.AsError(err).Message)
 	}
+}
+
+// shownOutput is a check's output as one line with nothing a terminal acts on:
+// escape sequences and control characters go, as they do from release notes.
+func shownOutput(s string) string {
+	return strings.Join(strings.Fields(release.StripTerminalControls(s)), " ")
 }

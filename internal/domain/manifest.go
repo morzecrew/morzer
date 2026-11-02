@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // APIVersion identifies the manifest schema. It is the first of the three
@@ -1108,7 +1109,7 @@ func ValidateSingleLine(raw string, max int) error {
 			return ValidationError(nil, "must be one line, with no control characters")
 		}
 	}
-	if len(raw) > max {
+	if utf8.RuneCountInString(raw) > max {
 		return ValidationError(nil, "must be at most %d characters", max)
 	}
 	return nil
@@ -1695,12 +1696,12 @@ func (v *validationErrors) checkPreflight(field, name string, c PreflightCheck) 
 	}
 	// Both are printed on the operator's terminal by `doctor`, from a bundle
 	// whose signature is optional.
-	if c.Description == "" {
+	if strings.TrimSpace(c.Description) == "" {
 		v.add(field+".description", "is required")
-	} else if err := ValidateSingleLine(c.Description, maxTaskDescriptionLen); err != nil {
+	} else if err := checkText(c.Description); err != nil {
 		v.add(field+".description", "%s", AsError(err).Message)
 	}
-	if err := ValidateSingleLine(c.Remedy, maxTaskDescriptionLen); err != nil {
+	if err := checkText(c.Remedy); err != nil {
 		v.add(field+".remedy", "%s", AsError(err).Message)
 	}
 	switch {
@@ -1709,6 +1710,19 @@ func (v *validationErrors) checkPreflight(field, name string, c PreflightCheck) 
 	case c.Timeout.Duration() > MaxPreflightTimeout:
 		v.add(field+".timeout", "must be at most %s", MaxPreflightTimeout)
 	}
+}
+
+// checkText holds a check's description and remedy to one printable line. A
+// bidi override is not a control character, and would let a bundle reorder the
+// line `doctor` prints.
+func checkText(raw string) error {
+	if err := ValidateSingleLine(raw, maxTaskDescriptionLen); err != nil {
+		return err
+	}
+	if strings.IndexFunc(raw, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return ValidationError(nil, "must be one line, with no control or formatting characters")
+	}
+	return nil
 }
 
 // checkTask validates one declared task.
