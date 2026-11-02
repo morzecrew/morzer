@@ -810,7 +810,7 @@ func (a *App) releaseRoot(ctx context.Context, args []string) (string, error) {
 				if errors.As(err, &pathErr) {
 					reason = pathErr.Err
 				}
-				return "", domain.ValidationError(err, "cannot read %s: %v", args[0], reason)
+				return "", domain.ValidationError(err, "cannot read %q: %v", args[0], reason)
 			}
 		}
 	}

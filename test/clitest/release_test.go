@@ -509,12 +509,16 @@ func TestABundleThatCannotBeReadSaysWhy(t *testing.T) {
 		t.Fatalf("cannot seal %s: %v", sealed, err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
-	bundle := filepath.Join(sealed, "bundle")
+	// The name carries an escape sequence, which the message quotes
+	// rather than hands to the terminal.
+	bundle := filepath.Join(sealed, "bundle\x1b[2J")
 
 	r.Run("release", "show", bundle).Failed().
-		SaysAll("cannot read", "permission denied").NoOutputContains("neither a directory nor a version")
+		SaysAll("cannot read", "permission denied", `bundle\x1b[2J"`).
+		NoOutputContains("neither a directory nor a version", "\x1b")
 	r.Run("release", "diff", bundle, r.Bundle).Failed().
-		SaysAll("cannot read", "permission denied").NoOutputContains("neither a directory nor a version")
+		SaysAll("cannot read", "permission denied", `bundle\x1b[2J"`).
+		NoOutputContains("neither a directory nor a version", "\x1b")
 }
 
 // TestRenderCheckIsOptIn.
