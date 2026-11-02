@@ -2788,9 +2788,12 @@ has somewhere to go. How many is the manifest's <code>retention.releases</code>,
 counts the releases holding <em>none</em> of those roles — the three marked ones are
 kept regardless.</p>
 <h2 id="release-show">release show<a class="headerlink" href="#release-show" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>show<span class="w"> </span><span class="o">[</span>version<span class="o">]</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>show<span class="w"> </span><span class="o">[</span>version<span class="w"> </span><span class="p">|</span><span class="w"> </span>bundle-dir<span class="w"> </span><span class="p">|</span><span class="w"> </span>archive<span class="o">]</span>
 </code></pre></div>
-<p>Shows a release manifest — the installed one when no version is given.</p>
+<p>Shows a release manifest — the installed one when no version is given. A path
+shows a bundle that is not installed: its directory, or the <code>tar.zst</code> archive
+<a href="#release-archive"><code>release archive</code></a> writes, whose path is then reported as the
+root.</p>
 <h2 id="release-new">release new<a class="headerlink" href="#release-new" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>new<span class="w"> </span>&lt;dir&gt;<span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--vendor<span class="w"> </span>VENDOR<span class="o">]</span>
 </code></pre></div>
@@ -2839,6 +2842,11 @@ same reason, and <code>verify</code> warns about them.</p>
 what each one names</strong>, checks the runtime files against the manifest, and
 checks its integrity, without installing anything. This is the command a bundle
 vendor runs in their own CI.</p>
+<p>The path is a bundle directory, or the <code>tar.zst</code> archive
+<a href="#release-archive"><code>release archive</code></a> writes — the file that actually reaches a
+customer. An archive is unpacked into a temporary directory under the limits
+<code>init</code> applies, checked exactly as its directory would be, <code>--signing-key</code> and
+<code>--digest</code> included, and removed afterwards.</p>
 <p>The template pass reads templates; it does not render them. It refuses a
 template that does not parse, and one that names a secret your schema does not
 declare, a parameter your manifest does not declare, or a field the render
