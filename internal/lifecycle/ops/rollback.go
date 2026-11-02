@@ -176,7 +176,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 		// Going back is deliberate, so the followed channel's history
 		// restarts at the release returned to; see lowerFollowedMark.
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {
-			d.lowerFollowedMarkOrWarn(ctx, inst, previous.Version)
+			d.lowerFollowedMarkOrWarn(ctx, previous.Version)
 		}
 		return err
 	})

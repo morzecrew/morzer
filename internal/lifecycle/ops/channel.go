@@ -204,7 +204,14 @@ func (d *Deps) stageUnderLock(
 		SeenAt:         domain.NewTime(d.now()),
 	}
 
-	rel, stageErr := d.stageCandidate(ctx, state.Pinned, result.Ref)
+	// Read before staging, and returned rather than recorded: a marks file
+	// this machine cannot read is not the channel refusing anything, and a
+	// recorded refusal would keep the release out after the file is fixed.
+	marks, err := d.channelMarks()
+	if err != nil {
+		return domain.Release{}, err
+	}
+	rel, stageErr := d.stageCandidate(ctx, state.Pinned, result.Ref, marks)
 	if stageErr != nil {
 		// A refusal is recorded, not merely returned. The tag will still
 		// point here on the next tick, and a poll that remembered only
@@ -330,7 +337,9 @@ func (d *Deps) retireStagedCandidate(ctx context.Context, record domain.ReleaseR
 // different bundle from the one the decision was made about -- a window that is
 // tolerable when a human typed a reference seconds ago, and not when a loop is
 // watching something built to change (RFC 0016 decision 22).
-func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref, channel string) (domain.Release, error) {
+func (d *Deps) stageCandidate(
+	ctx context.Context, pinned ports.Ref, channel string, marks domain.ChannelMarks,
+) (domain.Release, error) {
 	resolved, err := d.Source.Resolve(ctx, pinned)
 	if err != nil {
 		return domain.Release{}, err
@@ -370,10 +379,6 @@ func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref, channel str
 
 	// The channel's own history: it delivered something newer than this
 	// before, even if that release was never installed here.
-	marks, err := d.channelMarks()
-	if err != nil {
-		return domain.Release{}, err
-	}
 	if err := refuseBelowMark(marks, channel, resolved.Version); err != nil {
 		return domain.Release{}, err
 	}

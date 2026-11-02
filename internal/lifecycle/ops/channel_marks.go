@@ -9,7 +9,6 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
-	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -78,11 +77,18 @@ func (d *Deps) raiseChannelMark(channel string, v domain.Version) error {
 
 // lowerFollowedMarkOrWarn is lowerFollowedMark after an operation that has
 // already succeeded: failing it now would report a converged machine as
-// failed, so a mark left high is a warning, and the follower's refusal names
-// the way out.
-func (d *Deps) lowerFollowedMarkOrWarn(ctx context.Context, inst domain.Installation, v domain.Version) {
-	if err := d.lowerFollowedMark(inst, v); err != nil {
-		logging.FromContext(ctx).Warn("cannot lower the followed channel's mark", "error", err)
+// failed, so a mark left high is a warning the operator sees, and the
+// follower's refusal names the way out. The installation is read again here,
+// under the lock, because the channel it follows may have changed while the
+// operation waited for it.
+func (d *Deps) lowerFollowedMarkOrWarn(ctx context.Context, v domain.Version) {
+	inst, err := d.loadInstallation(ctx)
+	if err == nil {
+		err = d.lowerFollowedMark(ctx, inst, v)
+	}
+	if err != nil {
+		d.warnf("the followed channel's mark was not lowered to %s: %s; its follower may refuse "+
+			"releases below the old mark", v, domain.AsError(err).Message)
 	}
 }
 
@@ -92,7 +98,7 @@ func (d *Deps) lowerFollowedMarkOrWarn(ctx context.Context, inst domain.Installa
 // every later release below the old mark, which leaves a machine whose vendor
 // withdrew a release unable to follow its channel. Other channels' marks are
 // left alone. See logs/version-floor.md.
-func (d *Deps) lowerFollowedMark(inst domain.Installation, v domain.Version) error {
+func (d *Deps) lowerFollowedMark(ctx context.Context, inst domain.Installation, v domain.Version) error {
 	if inst.Update.Channel == "" {
 		return nil
 	}
@@ -106,5 +112,15 @@ func (d *Deps) lowerFollowedMark(inst domain.Installation, v domain.Version) err
 		return nil
 	}
 	marks[channel] = domain.ChannelMark{Version: v, At: domain.NewTime(d.now())}
-	return d.saveChannelMarks(marks)
+	if err := d.saveChannelMarks(marks); err != nil {
+		return err
+	}
+	// A refusal recorded against the old mark would otherwise stand: the
+	// poll skips a channel that has not moved, so the release the lower mark
+	// now admits would never be staged.
+	candidate, err := d.State.UpdateCandidate(ctx)
+	if err != nil || candidate.Refused == "" {
+		return err
+	}
+	return d.State.ClearUpdateCandidate(ctx)
 }

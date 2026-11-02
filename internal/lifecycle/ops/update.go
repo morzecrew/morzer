@@ -137,7 +137,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if prior != nil && prior.Flags["generate_secrets"] == "false" {
 			opts.NoGenerateSecrets = true
 		}
-		if prior != nil && prior.Flags["allow_older"] == "true" {
+		// Only for the release the interrupted run was installing: the
+		// operator crossed the floor for that one, not for whatever the
+		// resuming command names.
+		if prior != nil && prior.Flags["allow_older"] == "true" && prior.To.Equal(staged.Version()) {
 			opts.AllowOlder = true
 		}
 	}
@@ -187,7 +190,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {
 			d.reconcileUnitsAfterConverge(ctx)
 			if opts.AllowOlder {
-				d.lowerFollowedMarkOrWarn(ctx, inst, staged.Version())
+				d.lowerFollowedMarkOrWarn(ctx, staged.Version())
 			}
 		}
 		return err

@@ -206,7 +206,7 @@ morzer update --to 1.3.0
 | Flag | Meaning |
 | --- | --- |
 | `--to` | Install a version already in the release store, instead of a bundle path. |
-| `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it. Refused beside `--check`, `--stage` and `--unattended`. |
+| `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profile. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |

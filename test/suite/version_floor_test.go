@@ -124,7 +124,8 @@ func TestAChannelIsRefusedAReleaseOlderThanOneItDelivered(t *testing.T) {
 	assert.NotEmpty(t, candidate.Refused, "the refusal was not recorded, so every tick fetches again")
 
 	armAutoApply(t, h)
-	res, _ := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err, "a tick that finds the recorded refusal has nothing to report as a failure")
 	assert.False(t, res.Applied)
 	assert.Equal(t, "1.2.0", h.current())
 	assert.Equal(t, "1.3.0", h.marks()[h.channel()].Version.String())
@@ -221,11 +222,18 @@ func TestGoingBackOnPurposeLowersTheFollowedMark(t *testing.T) {
 			require.NoError(t, err)
 			setSchema(t, h, 12)
 
+			// The vendor withdrew 1.3.0: the channel serves 1.2.5, and the
+			// follower refuses it and records the refusal.
+			registry.republish(renumberedArchive(t, h, "1.2.5"))
+			_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+			require.Error(t, err)
+
 			require.NoError(t, goBack(ctx, h.Deps))
 			assert.Equal(t, "1.2.0", h.current())
 			assert.Equal(t, "1.2.0", h.marks()[h.channel()].Version.String(), "the mark stayed above")
 
-			registry.republish(renumberedArchive(t, h, "1.2.5"))
+			// The channel has not moved since: the recorded refusal must not
+			// keep the now admissible 1.2.5 out.
 			res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
 			require.NoError(t, err, "the follower refused the patch after going back")
 			assert.Equal(t, "1.2.5", res.Candidate.Version.String())
@@ -266,4 +274,108 @@ func TestAResumedUpdateKeepsAllowOlder(t *testing.T) {
 	})
 	require.NoError(t, err, "the resume refused the release the interrupted update was installing")
 	assert.Equal(t, "1.2.0", h.current())
+}
+
+// The override restored on --resume is for the release the interrupted run
+// was installing, not for any other the resuming command names.
+func TestAResumeKeepsAllowOlderOnlyForTheSameRelease(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.NoError(t, err)
+	setSchema(t, h, 12)
+	later := h.Deps.Now().Add(time.Minute)
+	h.Deps.Now = func() time.Time { return later }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			cancel()
+		}
+	}
+	// An older release than 1.3.0 in the store, other than the one the
+	// interrupted run was installing.
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.2.0", AllowOlder: true})
+	require.Error(t, err)
+	h.Runtime.OnCall = nil
+
+	other := filepath.Join(t.TempDir(), "bundle-1.1.0")
+	copyBundle(t, testBundlePath(t), other)
+	retargetManifest(t, other, h.Root)
+	for file, pair := range map[string][2]string{"manifest.yaml": {"version: 1.2.0", "version: 1.1.0"}, "VERSION": {"1.2.0", "1.1.0"}} {
+		path := filepath.Join(other, file)
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Contains(t, string(raw), pair[0])
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw), pair[0], pair[1], 1)), 0o644))
+	}
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: other, Options: ops.Options{Resume: true},
+	})
+	require.Error(t, err, "the resume crossed the floor for a release nobody allowed")
+	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err), "%v", err)
+}
+
+// A channel switched while the update waited for the lock is the one whose
+// mark the update lowers: the installation is read again under the lock.
+func TestGoingBackLowersTheChannelFollowedWhenItFinishes(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+	require.NoError(t, err)
+	setSchema(t, h, 12)
+
+	const stable, lts = "oci://registry.example/demo/bundle:stable", "oci://registry.example/demo/bundle:lts"
+	at := domain.NewTime(h.Deps.Now())
+	raw, err := json.Marshal(domain.ChannelMarks{
+		stable: {Version: domain.MustParseVersion("1.3.0"), At: at},
+		lts:    {Version: domain.MustParseVersion("1.3.0"), At: at},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(h.Paths.ChannelMarksFile(), raw, 0o640))
+	follow := func(channel string) {
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Update.Channel = channel
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	}
+	follow(stable)
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			follow(lts)
+		}
+	}
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{To: "1.2.0", AllowOlder: true})
+	require.NoError(t, err)
+	marks := h.marks()
+	assert.Equal(t, "1.2.0", marks[lts].Version.String(), "the channel followed at the end kept its mark")
+	assert.Equal(t, "1.3.0", marks[stable].Version.String(), "a channel no longer followed was lowered")
+}
+
+// A marks file this machine cannot read is not the channel's doing, so it is
+// not recorded as a refusal of what the channel serves: once it is readable,
+// the next poll stages the release.
+func TestAnUnreadableMarksFileIsNotRecordedAsARefusal(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, recoverableUpdate)
+	ctx := context.Background()
+	require.NoError(t, os.MkdirAll(filepath.Dir(h.Paths.ChannelMarksFile()), 0o755))
+	require.NoError(t, os.WriteFile(h.Paths.ChannelMarksFile(), []byte("{not json"), 0o640))
+
+	_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, candidate.Refused, "a local fault was recorded as the channel's refusal")
+
+	require.NoError(t, os.Remove(h.Paths.ChannelMarksFile()))
+	res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", res.Candidate.Version.String())
 }
