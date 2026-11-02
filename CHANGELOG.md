@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-02
+
+A bundle author can check more before a release reaches a customer. `release
+verify` refuses a template or Compose file that names something the manifest
+does not declare, `release build` refuses an unedited scaffold, and both
+`verify` and `show` read the archive a customer receives. `release diff` says
+what changed between two releases, and a template that fails to render names
+the line, the field and the likely fix. A release can ship preflight checks of
+its own, which run beside the manager's checks and in `doctor`.
+
+Installation state stays at schema 15, so a 0.11.0 manager still reads a
+machine 0.12.0 has run on. Authors and scripts may notice:
+
+- `release verify`, `build`, `pack`, `archive` and `push` refuse a template
+  naming an undeclared secret, parameter or field, and a Compose variable
+  `${<PRODUCT>_IMAGE_*}` or `${<PRODUCT>_PARAM_*}` nothing sets. A bundle that
+  passed 0.11.0 may not.
+
+- A bundle declaring `preflight:` needs
+  `compatibility.min_manager_version: "0.12.0"`, and an older manager refuses
+  it as needing a newer one. The hook ABI's `preflight` phase is now run, and
+  `OPERATION_TYPE` gains `doctor`.
+
+- A hook that exits while a process it started still holds fd 3 fails as timed
+  out once its timeout passes, instead of waiting for that process. A hook
+  that is a directory is refused when the bundle loads.
+
+- A template that fails to render at `apply` is reported in new words, giving
+  the line, the field and the release's template path.
+
+Under `--json`, `release show` gains `preflight` and `release diff` is new; no
+existing field changed meaning.
+
 ### Added
 
 - **`release verify` and `release show` take an archive.** Each accepts the
@@ -969,7 +1002,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.11.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/morzecrew/morzer/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/morzecrew/morzer/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/morzecrew/morzer/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/morzecrew/morzer/compare/v0.8.0...v0.9.0
