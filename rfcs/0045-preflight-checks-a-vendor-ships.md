@@ -1,8 +1,12 @@
 # RFC 0045 — Preflight checks a vendor ships
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-02: §11's
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-11-02: §11's
   `OPEN` rows as recommended, except that `start` warns as boot does
-  (decision 4). P1 is ready to build
+  (decision 4). **P1 built 2026-11-02** in #251; the entries its build and
+  review wrote in [logs/vendor-preflight.md](../logs/vendor-preflight.md) are
+  decisions 19–24. The example bundle's check that §6 and §12 name waits for a
+  released manager to run it (decision 19), so the acceptance run does not
+  exercise the step yet
 - **Scope:** Checks a bundle declares and ships as executables, run by the
   manager beside its own preflight checks, and in `doctor`. That step runs
   before `apply`, `start` and `rollback` change anything. In `update` it runs
@@ -369,9 +373,15 @@ None. The author ruled §11's `OPEN` rows 2026-11-02.
 | 16 | `LOCKED` | A preflight check must not change the machine. It is a public ABI promise, and `doctor` runs checks lock-free, possibly during an operation and on a schedule. Allowing a check to mutate later would mean taking the lock in `doctor` and running checks inside every operation's compensation story. |
 | 17 | `ASSUMED` | No check has special standing. A licence check is a vendor check, and gets what decision 4 gives any check. RFC 0024 §5's ruling against licence gating in the manager stands, and anything beyond this is the Phase 4 licensing RFC's. |
 | 18 | `ASSUMED` | *(2026-11-02, from the review.)* A check's `timeout` is at most 2m, and a bundle's checks declare at most 5m together. Load and `release verify` refuse a bundle past either ceiling. Checks run one after another, so without a ceiling a bundle could hold every operation and every scheduled `doctor` for as long as it liked. |
+| 19 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* The example bundle declares no check until a released manager runs them. A check needs the manager floor of decision 2, and a manager built without a stamped version reports 0.0.0, so every test that updates to the example bundle would be refused. The CLI and suite tests use a copy that declares checks, as they do for tasks, and the acceptance run does not exercise the step until then. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 1, 12:38, the example bundle). |
+| 20 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* **Refines decision 10.** `doctor` is a hook-environment value only, `ports.HookOperationDoctor`, never a `domain.OperationType`: those name what the journal records, and `doctor` takes no lock and journals nothing. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 1, 12:38, the `doctor` value). |
+| 21 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* **Refines decision 12.** A check's description and remedy are each one line of at most 200 characters, validated as a task's description is. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 1, 12:38, description and remedy). |
+| 22 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-02)* **Refines decision 10.** "Absent" means the manager does not set `SECRETS_DIR`, `CONFIG_FILE` or `BACKUP_DIR` for a check. A check inherits the manager's own environment, as every hook does. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 1, 12:51). |
+| 23 | `ASSUMED` | *(2026-11-02, from the review; accepted 2026-11-02)* **Refines decision 21.** What a check says, its fd 3 message and the output a failure quotes, is stripped of escape sequences and control characters, as release notes are, and joined onto one line; bidi controls are stripped too. A check's description and remedy are printable characters only, so a bidi override is refused at load. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 1, 13:40, what a check says; and unlisted, attempt 1, 16:03, the bidi controls). |
+| 24 | `ASSUMED` | *(2026-11-02, from the review; accepted 2026-11-02)* A preflight step or a `doctor` run the operator cancels ends as an interruption, exit 130, whatever its checks reported when they were cut off. A deadline is still a timeout. See [logs/vendor-preflight.md](../logs/vendor-preflight.md) (unlisted, attempt 2, 13:40:30, which reclassifies the attempt 1 entry at 13:40). |
 
 ## 12. Phasing
 
 **P1** is the whole design, one PR: the field, validation, the step, `doctor`,
-`show` and `diff`, the docs and the example bundle's check. It is ready to
-build. Nothing is demand-gated.
+`show` and `diff`, the docs and the example bundle's check. Nothing is
+demand-gated.
