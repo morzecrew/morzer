@@ -211,6 +211,8 @@ func TestShellQuoteLeavesOrdinaryValuesAlone(t *testing.T) {
 	require.Equal(t, "demo", domain.ShellQuote("demo"))
 	require.Equal(t, "age1abcdef", domain.ShellQuote("age1abcdef"))
 	require.Equal(t, "./bundle", domain.ShellQuote("./bundle"))
+	require.Equal(t, "'/opt/morzer!prod'", domain.ShellQuote("/opt/morzer!prod"),
+		"an interactive bash expands an unquoted ! from history")
 
 	quoted := domain.ShellQuote("it's here")
 	assert.True(t, strings.HasPrefix(quoted, "'"))
