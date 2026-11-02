@@ -11,8 +11,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -80,7 +82,10 @@ func (r *Renderer) Render(ctx context.Context, ref ports.TemplateRef, data ports
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, view); err != nil {
-		return nil, domain.ValidationError(err, "cannot render template %s", ref.Name).
+		// The message carries where and what, because it is all an
+		// operator is shown: the cause stays for the journal.
+		return nil, domain.ValidationError(err, "%s does not render: %s",
+			ref.Name, describe(ref.Name, err, view)).
 			WithHint("%s", renderHint(err))
 	}
 	return buf.Bytes(), nil
@@ -237,7 +242,8 @@ func funcs() template.FuncMap {
 			path, ok := secrets[name]
 			if !ok {
 				return "", fmt.Errorf(
-					"secret %q is not declared in the release secret schema", name)
+					"secret %q is not declared in the release secret schema%s",
+					name, didYouMean(name, slices.Collect(maps.Keys(secrets))))
 			}
 			return path, nil
 		},
