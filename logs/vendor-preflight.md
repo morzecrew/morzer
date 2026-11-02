@@ -186,3 +186,19 @@ evidence: internal/adapters/source/https/https.go:219
 action: decided
 proposal: ASSUMED — a preflight step or a `doctor` run the operator cancels ends as an interruption, exit 130, whatever its checks reported when they were cut off.
 ```
+
+Found in the review's second round: the stripping of a check's output removed
+escape sequences and control characters, and left the bidi controls, which are
+formatting characters rather than control characters.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T16:03:00Z
+attempt: 1
+claim: what a check says could still carry bidi controls, which let it reorder the line an operator reads, since the stripping release notes share removed only escape sequences and control characters
+evidence: internal/release/notes.go:109
+action: decided
+proposal: ASSUMED — the stripping a check's output and release notes share removes the bidi controls too. Other formatting characters stay, since joiners are part of how some scripts are written.
+```
