@@ -195,7 +195,7 @@ the 1 MiB bound on fd 3 are the ones every hook has.
 | Exit 2 | Passes as "not applicable here", with fd 3's `message` if any. The ABI's "nothing to do", read for a check. |
 | Any other exit | Fails. The message is what a failing hook is quoted with: fd 3's `message`, else the last lines of stderr, then stdout. |
 | Timeout | Fails, naming the declared timeout: "did not finish within 45s". |
-| fd 3 unreadable | Fails, as for any hook. |
+| fd 3 holds bytes that are not a JSON object, a truncated one included | Fails, as for any hook. Writing nothing is not an error. |
 
 A failure becomes a warning when the check is not fatal, or when the operation
 does not refuse on vendor checks (decision 4). The preflight step's timeout
@@ -208,8 +208,10 @@ The hook ABI's environment, with these differences:
 
 - `PHASE` is `preflight`.
 - `OPERATION_TYPE` is the operation running the step (`apply`, `start`,
-  `update`, `rollback`), or `doctor`. That last value is new to the ABI. A check
-  may want to skip a slow probe on the scheduled run.
+  `update`, `rollback`), or `doctor`. That last value is new to the ABI. It lets
+  a check tell a diagnosis from an operation about to change the machine, and
+  skip a slow probe in the first. A scheduled `doctor` and one an operator runs
+  are not told apart.
 - `RELEASE_VERSION` and `RELEASE_DIR` are the release being checked: the new
   one during `update`, the previous one during `rollback`, the installed one in
   `doctor`. `PREVIOUS_VERSION` is set as for any hook.
@@ -241,9 +243,11 @@ paying customer's product down (RFC 0024 §5).
 
 ### 5.5 Seen before it runs
 
-- `release show` lists each check with its description and fatal flag.
-- `release diff` gains a `preflight` section, compared by name like `tasks`.
-  A check that became fatal is a change.
+- `release show` lists each check with every field: description, command,
+  fatal flag, timeout and remedy.
+- `release diff` gains a `preflight` section, compared by name like `tasks`,
+  over the whole declaration. A change to any field is a change, so a check
+  that became fatal or got a longer timeout is listed.
 - The schema generator picks the field up. `schemas/selfhost-v1alpha1-manifest.json`
   gains `preflight` additively.
 
@@ -351,13 +355,13 @@ None. The author ruled §11's `OPEN` rows 2026-11-02.
 | 5 | `ASSUMED` | **`doctor`.** Recommended: `doctor` runs the installed release's checks, the scheduled run included, so a check failing after a kernel or network change is reported before the next operation needs it, and lands in the support bundle. Alternative: checks run only in operations, which never runs vendor code on a schedule. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
 | 6 | `ASSUMED` | **Secrets.** Recommended: none in P1. The step runs before secrets load, and `doctor` would have to render them to tmpfs on every scheduled run. A check that needs a credential is a smoke test's. Alternative: a check may declare `secrets: true` and runs after `load-secrets` with `SECRETS_DIR` set, while `doctor` skips it. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
 | 7 | `ASSUMED` | **An override.** Recommended: none in P1. The built-in checks have none, the new release's checks govern an update, and boot and rollback never refuse. Alternative: `--skip-check vendor.NAME`, repeatable, journalled with the names, and refused with `--unattended`. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
-| 8 | `ASSUMED` | Exit 0 passes; exit 2 passes as not applicable; anything else, a timeout or an unreadable fd 3 fails. The message is fd 3's `message`, or the quoted output a failing hook gets. The manifest's `remedy` accompanies a warning or failure. |
+| 8 | `ASSUMED` | Exit 0 passes; exit 2 passes as not applicable; anything else, a timeout, or fd 3 bytes that are not a JSON object fail. Writing nothing to fd 3 is not an error. The message is fd 3's `message`, or the quoted output a failing hook gets. The manifest's `remedy` accompanies a warning or failure. |
 | 9 | `ASSUMED` | `fatal` defaults to false, so a failure warns unless the vendor opted into refusal. This is `preflight.Check.Fatal` as the built-in checks already use it. |
 | 10 | `ASSUMED` | The environment is the hook ABI's with `PHASE` `preflight` and `OPERATION_TYPE` the running operation, or `doctor`, a new value. `SECRETS_DIR`, `CONFIG_FILE` and `BACKUP_DIR` are absent. `DRY_RUN` is `0`, and the release and parameters are those being checked. `doctor`'s command health check keeps saying `apply`; changing that is not this RFC's. |
 | 11 | `ASSUMED` | Checks run in the existing preflight step, after the built-in checks and in name order, so one report lists every blocker. The step's timeout grows by their declared total. In `update` that step is after the pre-update backup, as it is for built-in checks today. |
 | 12 | `ASSUMED` | The ID is `vendor.<name>`, in a new `vendor` category. The name follows `TaskNamePattern`, `description` is required, `remedy` is optional and static, and `timeout` defaults to 30s (decision 18 bounds it). |
 | 13 | `ASSUMED` | Load and `release verify` refuse a check whose command is missing or not executable, and a bundle declaring checks below the manager version that runs them. |
-| 14 | `ASSUMED` | `release show` lists the checks and `release diff` compares them by name; a change to `fatal`, `command` or `description` is a change. |
+| 14 | `ASSUMED` | `release show` lists every field of each check, and `release diff` compares them by name over the whole declaration; a change to any field is a change. |
 | 15 | `ASSUMED` | `pre-update` and `post-update` stay reserved; only `preflight` becomes live. |
 | 16 | `LOCKED` | A preflight check must not change the machine. It is a public ABI promise, and `doctor` runs checks lock-free, possibly during an operation and on a schedule. Allowing a check to mutate later would mean taking the lock in `doctor` and running checks inside every operation's compensation story. |
 | 17 | `ASSUMED` | No check has special standing. A licence check is a vendor check, and gets what decision 4 gives any check. RFC 0024 §5's ruling against licence gating in the manager stands, and anything beyond this is the Phase 4 licensing RFC's. |
