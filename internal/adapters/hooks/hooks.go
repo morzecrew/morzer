@@ -137,6 +137,7 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		resultCh <- data
 	}()
 
+	started := time.Now()
 	res, runErr := r.runner.Run(ctx, exec.Command{
 		Argv: argv,
 		// The working directory is the release root, so a hook can use
@@ -152,7 +153,21 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 
 	// Closing our copy of the write end is what lets the reader see EOF.
 	_ = writeEnd.Close()
-	resultData := <-resultCh
+	// What is left of the timeout, and never less than drainGrace, so a hook
+	// that exits on its deadline still has what it wrote read. No timeout,
+	// no bound.
+	var bound time.Duration
+	if timeout > 0 {
+		bound = max(timeout-time.Since(started), drainGrace)
+	}
+	resultData, held := awaitResult(ctx, resultCh, readEnd, bound)
+	// A held channel outranks an exit that claims success or "nothing to
+	// do": the result never arrived. A hook that failed keeps its own
+	// failure, which is the more useful thing to quote.
+	var exitErr *exec.ExitError
+	if held && (runErr == nil || errors.As(runErr, &exitErr) && exitErr.ExitCode == ExitSkipped) {
+		runErr = heldResult(ctx, command[0])
+	}
 
 	outcome := Outcome{
 		ExitCode: res.ExitCode,
@@ -192,6 +207,47 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 	}
 
 	return outcome, nil
+}
+
+// heldResult is the failure of a hook whose result channel was still held when
+// the wait for it ended: cancelled by the operator, or out of time. Only a
+// cancellation is an interruption; a deadline, the hook's or the operation's,
+// is a timeout, which the engine compensates.
+func heldResult(ctx context.Context, name string) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return domain.Interrupted("hook %q was cancelled while a process it started held fd 3", name)
+	}
+	return domain.RuntimeError(context.DeadlineExceeded,
+		"hook %q exited, but a process it started still held fd 3 when its time ran out", name).
+		WithHint("a hook's background processes must close fd 3, or be waited for before it exits")
+}
+
+// drainGrace is the least time left to read fd 3 once a hook has exited.
+const drainGrace = time.Second
+
+// awaitResult waits for the result channel to close, for at most bound, or
+// with no bound when it is 0. The channel stays open while anything holds its
+// write end, and a process the hook started in the background inherits it:
+// once the hook has exited, nothing else bounds that wait. held reports that
+// the time ran out, or the operation was cancelled, with the channel still
+// open; the result is then whatever the hook had written. The process is left
+// alone, since it may have left the hook's process group.
+func awaitResult(ctx context.Context, ch <-chan []byte, readEnd *os.File, bound time.Duration) (data []byte, held bool) {
+	var expired <-chan time.Time
+	if bound > 0 {
+		timer := time.NewTimer(bound)
+		defer timer.Stop()
+		expired = timer.C
+	}
+	select {
+	case data = <-ch:
+		return data, false
+	case <-ctx.Done():
+	case <-expired:
+	}
+	// Closing the read end ends the reader's ReadAll with what arrived.
+	_ = readEnd.Close()
+	return <-ch, true
 }
 
 // abiViolation is the refusal for a hook whose result channel cannot be read.

@@ -72,18 +72,20 @@ func Notes(rel domain.Release) string {
 		return ""
 	}
 	if len(raw) > maxNotesBytes {
-		return stripTerminalControls(string(raw[:maxNotesBytes])) +
+		return StripTerminalControls(string(raw[:maxNotesBytes])) +
 			"\n\n_(release notes truncated at 256 KiB)_\n"
 	}
-	return stripTerminalControls(string(raw))
+	return StripTerminalControls(string(raw))
 }
 
-// stripTerminalControls removes what a terminal acts on rather than prints.
+// StripTerminalControls removes what a terminal acts on rather than prints.
 //
-// These bytes are the vendor's, and every path out of here ends somewhere that
-// interprets them: `update --check` and `update --stage` write them to stderr,
-// and NotesSummary puts the first line into a notification body that leaves the
-// machine. A release note is prose, so nothing legitimate is lost -- and this
+// Every vendor-supplied text that reaches a terminal or a notifier passes
+// through here: release notes, and what a preflight check says. These bytes
+// are the vendor's, and every path out ends somewhere that interprets them:
+// `update --check` and `update --stage` write notes to stderr, NotesSummary
+// puts their first line into a notification body that leaves the machine, and
+// `doctor` prints a check's message. A release note is prose, so nothing legitimate is lost -- and this
 // project already withholds raw vendor output from notifiers for exactly this
 // reason (ops.forwardedKinds refuses KindStepOutput), which the notes path was
 // quietly bypassing.
@@ -95,13 +97,16 @@ func Notes(rel domain.Release) string {
 // then removes the bare C0 and C1 controls ansi.Strip leaves behind, where the
 // ones that matter are CR and backspace: both let a vendor overwrite a line the
 // operator has already read, which is how text that looked safe stops being what
-// is there. Newline and tab are the two a note legitimately contains.
-func stripTerminalControls(s string) string {
+// is there. Newline and tab are the two a note legitimately contains. The bidi
+// controls go too: they are formatting rather than control characters, and
+// they let a vendor reorder what the operator reads. Other formatting
+// characters stay, since joiners are part of how some scripts are written.
+func StripTerminalControls(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\t' {
 			return r
 		}
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
 			return -1
 		}
 		return r

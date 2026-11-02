@@ -183,6 +183,73 @@ func TestABundleIsRefusedForEveryWayItCanBeWrong(t *testing.T) {
 	}
 }
 
+// withACheck is the example bundle declaring one preflight check, at the
+// manager version that runs them, whose executable mutate may then break.
+func withACheck(t *testing.T, mutate func(t *testing.T, dir string)) string {
+	t.Helper()
+	return bundle(t, func(d string) {
+		edit(t, filepath.Join(d, "manifest.yaml"), func(s string) string {
+			out := strings.Replace(s, `min_manager_version: "0.0.0"`,
+				`min_manager_version: "`+domain.PreflightMinManagerVersion+`"`, 1)
+			if out == s {
+				t.Fatal("the example bundle no longer declares the manager version this rewrites")
+			}
+			return out + "\npreflight:\n  kernel:\n    description: the kernel is ready\n" +
+				"    command: [hooks/preflight, kernel]\n"
+		})
+		if err := os.WriteFile(filepath.Join(d, "hooks", "preflight"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if mutate != nil {
+			mutate(t, d)
+		}
+	})
+}
+
+// A check's executable is held to what a hook's is: present and executable,
+// refused at load rather than when an operation runs it (RFC 0045 §5.1).
+func TestLoadRefusesACheckThatCannotRun(t *testing.T) {
+	rel, err := release.Load(withACheck(t, nil))
+	if err != nil {
+		t.Fatalf("a bundle with a well-formed check was refused: %v", err)
+	}
+	if got := rel.Manifest.PreflightNames(); len(got) != 1 || got[0] != "kernel" {
+		t.Errorf("the check was not read: %v", got)
+	}
+
+	for name, mutate := range map[string]func(*testing.T, string){
+		"missing": func(t *testing.T, d string) {
+			if err := os.Remove(filepath.Join(d, "hooks", "preflight")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a directory": func(t *testing.T, d string) {
+			path := filepath.Join(d, "hooks", "preflight")
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"not executable": func(t *testing.T, d string) {
+			if err := os.Chmod(filepath.Join(d, "hooks", "preflight"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := release.Load(withACheck(t, mutate))
+			if err == nil {
+				t.Fatal("the bundle loaded with a check that cannot run")
+			}
+			if !strings.Contains(err.Error(), "preflight.kernel") {
+				t.Errorf("the error does not name the check: %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadRefusesSomethingThatIsNotADirectory(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "not-a-bundle")
 	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {

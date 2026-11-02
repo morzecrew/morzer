@@ -338,6 +338,10 @@ the secret state, service and health status, disk headroom, and the journal.
 
 Exits [3](exit-codes.md) when any check fails; warnings exit 0.
 
+A release's own [preflight checks](manifest.md#preflight) run last, under
+`vendor`, each as `vendor.<name>`. One its vendor declared fatal fails when it
+fails, and any other warns. Their messages and remedies are the vendor's words.
+
 `--unattended` is the [scheduled run](../operating/notifications.md#the-scheduled-doctor):
 it sends the notification outbox first, then notifies one `doctor.finished`
 naming the checks that warn or fail. A run where every check passes notifies

@@ -541,6 +541,12 @@ func checkReferencedFiles(rel domain.Release) error {
 			checkExecutable(rel, hc.Command[0], "health.checks."+hc.Name, &missing)
 		}
 	}
+	for _, name := range rel.Manifest.PreflightNames() {
+		if c := rel.Manifest.Preflight[name]; len(c.Command) > 0 {
+			check("preflight."+name+".command", c.Command[0])
+			checkExecutable(rel, c.Command[0], "preflight."+name, &missing)
+		}
+	}
 
 	if len(missing) > 0 {
 		return domain.ValidationError(domain.ErrNotFound,
@@ -562,6 +568,10 @@ func checkExecutable(rel domain.Release, relPath, field string, missing *[]strin
 	info, err := os.Stat(abs)
 	if err != nil {
 		return // already reported as missing
+	}
+	if !info.Mode().IsRegular() {
+		*missing = append(*missing, fmt.Sprintf("%s: %s is not a regular file", field, relPath))
+		return
 	}
 	if info.Mode().Perm()&0o111 == 0 {
 		*missing = append(*missing,

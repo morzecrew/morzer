@@ -262,14 +262,17 @@ func applySteps(d *Deps, inst domain.Installation, rel domain.Release, opts Opti
 	}
 }
 
-// stepPreflight runs the checks that must pass before anything mutates.
+// stepPreflight runs the checks that must pass before anything mutates: the
+// manager's, then the release's own (RFC 0045), in one report.
 func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
 	return engine.Step{
 		ID:          "preflight",
 		Description: "preflight checks",
 		Idempotent:  true,
 		OnFailure:   engine.Abort,
-		Timeout:     3 * time.Minute,
+		// The release's checks get their declared time on top, never a
+		// share of the manager's.
+		Timeout: 3*time.Minute + rel.Manifest.PreflightTotal(),
 		Execute: func(ctx context.Context, st *engine.State) error {
 			checks := []preflight.Check{
 				preflight.Architecture(rel.Manifest.Requirements),
@@ -305,7 +308,17 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 				checks = append(checks, preflight.Ports(required))
 			}
 
+			// Boot, `start` and `rollback` bring back a release that
+			// already ran, so a fatal check of the vendor's only warns
+			// there (RFC 0045 decision 4).
+			refuse := !opts.Startup && st.OpType != domain.OpTypeStart && st.OpType != domain.OpTypeRollback
+			env := d.preflightEnv(inst, rel, opts.PreviousVersion, st.OpID, st.OpType)
+			checks = append(checks, d.vendorChecks(rel, env, refuse)...)
+
 			report := preflight.NewRunner(d.Bus).Run(ctx, checks)
+			if err := interrupted(ctx); err != nil {
+				return err
+			}
 			return report.Err()
 		},
 	}

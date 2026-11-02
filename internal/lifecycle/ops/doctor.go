@@ -72,6 +72,9 @@ func Doctor(ctx context.Context, d *Deps) (DoctorReport, error) {
 	checks := d.doctorChecks(ctx)
 
 	report := runner.Run(ctx, checks)
+	if err := interrupted(ctx); err != nil {
+		return DoctorReport{}, err
+	}
 
 	out := DoctorReport{Results: report.Results, Worst: report.Worst}
 	if report.Worst == events.CheckFail {
@@ -233,6 +236,11 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 				checks = append(checks, d.checkBackupGrowth(inst, rel))
 			}
 		}
+		// Last of the installation's, so the vendor's group follows the
+		// manager's. Fatal as declared: a failing one fails doctor as a
+		// built-in failure does (RFC 0045 decision 4).
+		env := d.preflightEnv(inst, rel, domain.Version{}, "", ports.HookOperationDoctor)
+		checks = append(checks, d.vendorChecks(rel, env, true)...)
 	}
 
 	// Registered outside the release-loaded branch on purpose. CheckForUpdate

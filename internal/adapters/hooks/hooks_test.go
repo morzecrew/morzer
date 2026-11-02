@@ -2,6 +2,7 @@ package hooks_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -469,6 +470,50 @@ sleep 300
 	}
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Errorf("the timeout took %s to fire", elapsed)
+	}
+}
+
+// A hook that exits and leaves a process holding fd 3 is bounded by its timeout
+// too. The result channel stays open while anything holds its write end, and a
+// wait on it that nothing bounded lasted as long as that process did.
+func TestAProcessLeftHoldingTheResultChannelIsBoundedByTheTimeout(t *testing.T) {
+	// Exit 2 too: "nothing to do" from a hook whose result never arrived
+	// is a timeout, not a hook that did nothing.
+	for _, exit := range []string{"0", "2"} {
+		t.Run("exit "+exit, func(t *testing.T) {
+			rel := release(t)
+			cmd := hook(t, rel, "migrate", "#!/bin/sh\nsleep 5 >/dev/null 2>&1 &\nexit "+exit+"\n")
+
+			start := time.Now()
+			_, err := hooks.NewRunner(exec.New()).
+				Run(context.Background(), rel, cmd, env(), 300*time.Millisecond)
+
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("the wait for fd 3 outlived the timeout: %s", elapsed)
+			}
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("a result channel still held at the deadline is a timeout, got %v", err)
+			}
+		})
+	}
+}
+
+// The operation's own deadline ending the wait is a timeout too, not the
+// operator's cancellation: the engine compensates a timeout and stops on an
+// interruption, so the two must not be confused.
+func TestAnOperationDeadlineWhileFD3IsHeldIsATimeout(t *testing.T) {
+	rel := release(t)
+	cmd := hook(t, rel, "smoke-test", "#!/bin/sh\nsleep 5 >/dev/null 2>&1 &\nexit 0\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	_, err := hooks.NewRunner(exec.New()).Run(ctx, rel, cmd, env(), 10*time.Second)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("the operation's deadline was reported as %v, not a timeout", err)
+	}
+	if domain.ExitCode(err) == domain.ExitInterrupted {
+		t.Errorf("a deadline was reported as the operator's cancellation: %v", err)
 	}
 }
 

@@ -169,6 +169,8 @@ func TestNotesCannotDriveTheTerminalOrTheClipboard(t *testing.T) {
 		{"carriage return overwrite", "hidden\rkeep", "keep", ""},
 		{"backspace overwrite", "x\bkeep", "keep", ""},
 		{"bell", "\x07keep", "keep", ""},
+		{"bidi override", "keep\u202ekeep", "keepkeep", "\u202e"},
+		{"bidi isolate", "keep\u2066keep\u2069", "keepkeep", "\u2066"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rel := releaseAt(t, map[string]string{"RELEASE.md": tc.body})
@@ -177,7 +179,7 @@ func TestNotesCannotDriveTheTerminalOrTheClipboard(t *testing.T) {
 			got := release.Notes(rel)
 
 			if strings.ContainsFunc(got, func(r rune) bool {
-				return r != '\n' && r != '\t' && unicode.IsControl(r)
+				return (r != '\n' && r != '\t' && unicode.IsControl(r)) || unicode.Is(unicode.Bidi_Control, r)
 			}) {
 				t.Errorf("a control character survived into what reaches a terminal: %q", got)
 			}

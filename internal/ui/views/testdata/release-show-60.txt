@@ -1,0 +1,30 @@
+demo 1.4.0
+  Demo product
+
+  api version  selfhost/v1alpha1
+  digest       sha256:5f1c3a9e7b2d4c6a8e0f1b3d5c7a9e2f4b6d8c
+               0a1e3f5b7d9c2a4e6f8b0d1c3e
+  root         /var/lib/demo/releases/1.4.0
+  runtime      none declared
+
+  images
+    app  registry.example/demo/app@sha256:9e7d3a6c1f04
+
+  preflight
+    db-host
+      description  the external database host resolves
+      command      hooks/preflight "db host" "\x1b[2J"
+      fatal        false
+      timeout      30s
+    max-map-count
+      description  the kernel allows enough memory maps for
+                   the search index
+      command      hooks/preflight max-map-count
+      fatal        true
+      timeout      45s
+      remedy       run `sysctl -w vm.max_map_count=262144`
+                   and persist it in /etc/sysctl.d
+
+  compatibility
+    rollback safe  true
+    min manager    0.12.0

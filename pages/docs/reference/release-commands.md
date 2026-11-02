@@ -33,7 +33,8 @@ morzer release show [version | bundle-dir | archive]
 Shows a release manifest — the installed one when no version is given. A path
 shows a bundle that is not installed: its directory, or the `tar.zst` archive
 [`release archive`](#release-archive) writes, whose path is then reported as the
-root.
+root. Each [preflight check](manifest.md#preflight) the release ships is listed
+with every field it declares.
 
 ## release diff
 
@@ -52,6 +53,7 @@ directory, or a `tar.zst` archive.
 | secrets | name, from the secret schema |
 | compatibility | `upgrade_from`, `min_manager_version`, `rollback_safe` and the three `database_schema_*` fields |
 | tasks, profiles | name |
+| preflight | name, and the whole declaration: whether it is fatal, its timeout, command, description and remedy |
 | files | path, and the SHA-256 of the contents |
 
 Only what was added, removed or changed is listed, and a section with nothing in

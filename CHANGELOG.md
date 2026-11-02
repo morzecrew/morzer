@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files that were added, removed or changed. Each side is an installed version,
   a bundle directory or an archive, and it exits 0 whatever differs.
 
+- **A release can ship preflight checks of its own.** Each runs a bundle
+  executable beside the manager's checks, and in `doctor`. A failing fatal one
+  refuses `apply` and `update` and fails `doctor`, and only warns at boot, in
+  `start` and in `rollback`; any other warns. Bundles declaring checks need
+  manager 0.12.0.
+
 ### Changed
 
 - **A template that fails to render says where and what.** At `apply` the error
@@ -51,6 +57,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`release show` says why it cannot read a bundle path.** A path it was not
   allowed to look at was reported as neither a directory nor a version; it is
   now reported as unreadable, with the reason.
+
+- **A description in a non-Latin script is not refused at half its length.**
+  The 200-character bounds on task and input descriptions, and on runtime
+  options, counted bytes, so a word of two-byte letters counted twice.
+
+- **Release notes cannot reorder what the operator reads.** Bidi controls are
+  removed from them, as escape sequences already were, before `update --check`
+  prints them or a notification carries their first line.
+
+- **A hook's background process cannot hold an operation past the timeout.**
+  A hook that exited while a process it started still held fd 3 kept the
+  operation waiting until that process ended. The wait now ends with the
+  hook's timeout, and the hook fails as timed out, even if it exited 2.
+
+- **A hook that is a directory is refused when the bundle loads.** It passed
+  `release verify` with its executable bit set and failed only when an
+  operation ran it.
 
 ## [0.11.0] - 2026-11-01
 

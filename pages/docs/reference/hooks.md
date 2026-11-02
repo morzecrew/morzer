@@ -32,7 +32,7 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_PRODUCT` | The product name itself. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
-| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`. |
+| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
 | `<PRODUCT>_PHASE` | Where in the lifecycle this invocation sits — see below. |
 | `<PRODUCT>_RELEASE_VERSION` | Version of the release the hook belongs to. |
 | `<PRODUCT>_RELEASE_DIR` | Absolute path to the release root. Same as the working directory. |
@@ -95,14 +95,39 @@ variables, with `OPERATION_TYPE` and `PHASE` set to `task`. The arguments an
 operator appended follow the task's `command`; nothing else of theirs reaches
 the container.
 
+### A preflight check
+
+A [preflight check](manifest.md#preflight) runs on the host under this ABI, with
+`PHASE` set to `preflight`, before anything is rendered for the release it
+checks. So it gets the table above with these differences:
+
+- `OPERATION_TYPE` is the operation running the check, `apply`, `start`,
+  `update` or `rollback`, or `doctor`, which runs it with no operation and so no
+  `OPERATION_ID`.
+- `RELEASE_VERSION`, `RELEASE_DIR` and the parameters are the release being
+  checked: the new one during an `update`, the previous one during a
+  `rollback`.
+- `SECRETS_DIR`, `CONFIG_FILE` and `BACKUP_DIR` are absent. A check that needs a
+  secret belongs in the smoke test.
+- `DRY_RUN` is always `0`: no check runs in a plan.
+
+Exit `0` passes, and `2` says the check does not apply on this machine. Any
+other exit fails, and so does a timeout or a result descriptor holding something
+that is not a JSON object. The `message` on the result descriptor is what the
+operator reads; without one, a failure quotes the end of stderr, then stdout.
+
+A check must not change the machine: `doctor` runs it without the deployment
+lock.
+
 ### Phases
 
-`PHASE` is one of `migrate`, `smoke-test`, `backup`, `restore` or
-`health-check`, and `task` in a [task's container](#a-task), where no hook runs.
+`PHASE` is one of `migrate`, `smoke-test`, `backup`, `restore`, `health-check`
+or `preflight`, and `task` in a [task's container](#a-task), where no hook
+runs.
 
-`preflight`, `pre-update` and `post-update` are reserved. The ABI names them,
-but no release of the manager runs a hook in them, so a hook may branch on them
-and nothing reaches the branch.
+`pre-update` and `post-update` are reserved. The ABI names them, but no release
+of the manager runs a hook in them, so a hook may branch on them and nothing
+reaches the branch.
 
 The same executable may be invoked in more than one phase; branching on `PHASE`
 is how one hook serves several.

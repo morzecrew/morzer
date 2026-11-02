@@ -41,6 +41,12 @@ const (
 	PhaseTask HookPhase = "task"
 )
 
+// HookOperationDoctor is what OPERATION_TYPE says when `doctor` runs a preflight
+// check (RFC 0045 decision 10), so a check can tell a diagnosis from an
+// operation about to change the machine. Untyped, because it is not one of the
+// domain's operation types: `doctor` takes no lock and journals nothing.
+const HookOperationDoctor = "doctor"
+
 // HookEnv is everything a hook is told about the world it runs in.
 //
 // The field set is the stable part of the ABI: adding a variable is a minor

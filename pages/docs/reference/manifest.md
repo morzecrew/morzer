@@ -553,6 +553,62 @@ refused by `release verify`.
 **Inputs need `min_manager_version: "0.11.0"` or later**, for the same reason
 tasks need 0.8.0.
 
+## preflight
+
+A map of check name to an executable the bundle ships, which the manager runs
+beside its own preflight checks before an operation changes the deployment, and
+in `doctor`. It is for what `requirements` cannot state: a kernel setting the
+product needs, a host it must resolve, a driver.
+
+```yaml
+compatibility:
+  min_manager_version: "0.12.0"
+
+preflight:
+  max-map-count:
+    description: the kernel allows enough memory maps for the search index
+    command: [hooks/preflight, max-map-count]
+    fatal: true
+    timeout: 30s
+    remedy: run `sysctl -w vm.max_map_count=262144` and persist it in /etc/sysctl.d
+```
+
+| Field | Type | Required | Meaning |
+| --- | --- | :---: | --- |
+| `description` | string | ✅ | The line `doctor` prints for the check. One line of at most 200 characters, with no control or formatting characters. |
+| `command` | list | ✅ | An executable in the bundle and its arguments, resolved against the release root as every hook is. A missing file, or one without the executable bit, is refused when the bundle loads. |
+| `fatal` | bool | | Whether a failure refuses `apply` and `update`. Default `false`, and a failure only warns. |
+| `timeout` | duration | | Time budget. Default `30s`, at most `2m`. |
+| `remedy` | string | | What the operator should do about a failure, shown with it. One line of at most 200 characters, with no control or formatting characters. |
+
+Names follow the rule for task names. The checks run in name order, after the
+manager's own, and all of a bundle's checks may take at most `5m` between them.
+A check is run under the [hook ABI](hooks.md#a-preflight-check): exit `0`
+passes, `2` means the check does not apply on this machine, and anything else
+fails, quoting what it wrote to the result descriptor, or else its stderr, with
+any escape sequence or control character removed.
+
+Where a check that is `fatal` refuses:
+
+| Operation | A failing fatal check |
+| --- | --- |
+| `apply`, a first install | Refuses with [exit 3](exit-codes.md), listed with any of the manager's own blockers. Nothing has changed. |
+| `update` | Refuses with exit 3. The checks are the new release's, and the current release keeps running. They run where the manager's own checks do, after the pre-update backup and staging. |
+| boot, `start`, `rollback` | Warns. Each brings back a release that already ran on this machine, and a check that refused there could keep the product down with no way back. |
+| `doctor` | Fails, as any failing check does. One that is not fatal warns, and `doctor` exits 0. |
+
+`config set` and `restore` do not run preflight checks, the manager's or the
+vendor's, and neither does a plan (`--dry-run`).
+
+**A check must not change the machine.** `doctor` runs it without the
+deployment lock, possibly while an operation is running, and every morning on a
+machine with a [scheduled doctor](../operating/notifications.md#the-scheduled-doctor).
+
+**Checks need `min_manager_version: "0.12.0"` or later**, for the same reason
+tasks need 0.8.0: a manager older than 0.12.0 cannot read `preflight`. It has to
+refuse the bundle rather than skip the checks, since one that skipped them would
+install onto the machine they exist to refuse.
+
 ## backup
 
 What the manager may do about the project's named volumes, which it captures
