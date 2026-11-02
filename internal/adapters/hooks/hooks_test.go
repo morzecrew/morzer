@@ -498,6 +498,25 @@ func TestAProcessLeftHoldingTheResultChannelIsBoundedByTheTimeout(t *testing.T) 
 	}
 }
 
+// The operation's own deadline ending the wait is a timeout too, not the
+// operator's cancellation: the engine compensates a timeout and stops on an
+// interruption, so the two must not be confused.
+func TestAnOperationDeadlineWhileFD3IsHeldIsATimeout(t *testing.T) {
+	rel := release(t)
+	cmd := hook(t, rel, "smoke-test", "#!/bin/sh\nsleep 5 >/dev/null 2>&1 &\nexit 0\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	_, err := hooks.NewRunner(exec.New()).Run(ctx, rel, cmd, env(), 10*time.Second)
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("the operation's deadline was reported as %v, not a timeout", err)
+	}
+	if domain.ExitCode(err) == domain.ExitInterrupted {
+		t.Errorf("a deadline was reported as the operator's cancellation: %v", err)
+	}
+}
+
 // TestATimeoutReachesTheWholeProcessGroup: a hook that backgrounds work and
 // exits would otherwise leave the child running past the operation.
 func TestATimeoutReachesTheWholeProcessGroup(t *testing.T) {

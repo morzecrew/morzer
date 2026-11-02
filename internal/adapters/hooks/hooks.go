@@ -166,7 +166,7 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 	// failure, which is the more useful thing to quote.
 	var exitErr *exec.ExitError
 	if held && (runErr == nil || errors.As(runErr, &exitErr) && exitErr.ExitCode == ExitSkipped) {
-		runErr = heldResult(ctx, command[0], timeout)
+		runErr = heldResult(ctx, command[0])
 	}
 
 	outcome := Outcome{
@@ -210,13 +210,15 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 }
 
 // heldResult is the failure of a hook whose result channel was still held when
-// the wait for it ended: cancelled by the operator, or out of time.
-func heldResult(ctx context.Context, name string, timeout time.Duration) error {
-	if ctx.Err() != nil {
+// the wait for it ended: cancelled by the operator, or out of time. Only a
+// cancellation is an interruption; a deadline, the hook's or the operation's,
+// is a timeout, which the engine compensates.
+func heldResult(ctx context.Context, name string) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
 		return domain.Interrupted("hook %q was cancelled while a process it started held fd 3", name)
 	}
 	return domain.RuntimeError(context.DeadlineExceeded,
-		"hook %q exited, but a process it started still held fd 3 when its %s ran out", name, timeout).
+		"hook %q exited, but a process it started still held fd 3 when its time ran out", name).
 		WithHint("a hook's background processes must close fd 3, or be waited for before it exits")
 }
 
