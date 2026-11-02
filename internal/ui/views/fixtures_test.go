@@ -159,14 +159,16 @@ func listFixtures() []fixture {
 				Tasks:         []ops.Change{{Name: "seed", Kind: ops.ChangeAdded}},
 				Profiles:      []ops.Change{{Name: "external-db", Kind: ops.ChangeRemoved}},
 				Files: []ops.Change{
-					{Name: "manifest.yaml", Kind: ops.ChangeChanged, From: "sha256:aa", To: "sha256:bb"},
-					{Name: "hooks/seed", Kind: ops.ChangeAdded, To: "sha256:cc"},
+					// In the byte order DiffReleases sorts by.
+					//
 					// A name is the bundle's to choose, and a terminal acts
 					// on an escape sequence in it rather than printing it.
 					{Name: "hooks/\x1b]0;owned\a", Kind: ops.ChangeAdded, To: "sha256:dd"},
+					{Name: "hooks/seed", Kind: ops.ChangeAdded, To: "sha256:cc"},
 					// 0x9b alone is not UTF-8, and is CSI to a terminal
 					// reading 8-bit controls.
 					{Name: "hooks/\x9b2J", Kind: ops.ChangeAdded, To: "sha256:ee"},
+					{Name: "manifest.yaml", Kind: ops.ChangeChanged, From: "sha256:aa", To: "sha256:bb"},
 				},
 			},
 			fields: []string{"demo 1.3.0 -> demo 1.4.0", "sha256:9e7d3a6c1f04", "worker", "port, default 8080",
