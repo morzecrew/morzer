@@ -175,7 +175,8 @@ preflight:
   executable bit, as for operations.
 - `fatal` defaults to false. A check the vendor did not mark fatal can only
   warn (decision 9).
-- `timeout` defaults to 30s.
+- `timeout` defaults to 30s and may be at most 2m. A bundle's checks may
+  declare at most 5m between them (decision 18).
 - `remedy` is optional and static, and is shown with a warning or failure.
 - Checks run in name order, after the built-in checks.
 
@@ -193,7 +194,7 @@ the 1 MiB bound on fd 3 are the ones every hook has.
 | Exit 0 | Passes. The message is fd 3's `message`, or `passed`. |
 | Exit 2 | Passes as "not applicable here", with fd 3's `message` if any. The ABI's "nothing to do", read for a check. |
 | Any other exit | Fails. The message is what a failing hook is quoted with: fd 3's `message`, else the last lines of stderr, then stdout. |
-| Timeout | Fails: "did not finish within 30s". |
+| Timeout | Fails, naming the declared timeout: "did not finish within 45s". |
 | fd 3 unreadable | Fails, as for any hook. |
 
 A failure becomes a warning when the check is not fatal, or when the operation
@@ -322,9 +323,11 @@ paying customer's product down (RFC 0024 §5).
   `apply` of that release. An update away from it is not blocked by it: an
   update runs the new release's checks, so a release with the check fixed
   installs once those pass. Boot, `start` and rollback never refuse. Whether an operator also gets an override is decision 7.
-- **A slow check slows every operation and every scheduled `doctor`.** It is
-  bounded by its timeout, 30s by default. The step's timeout grows by the
-  declared total and is never shared.
+- **A slow check slows every operation and every scheduled `doctor`.** Checks
+  run one after another, each bounded by its timeout: 30s by default and 2m at
+  most, with 5m for all of a bundle's checks together. Validation refuses a
+  bundle past either ceiling, so no bundle can make an operation wait longer.
+  The step's timeout grows by the declared total and is never shared.
 - **A check that changes the machine.** The contract forbids it and nothing can
   enforce it. A command health check carries the same risk today, from `doctor`
   as well.
@@ -352,12 +355,13 @@ None. The author ruled §11's `OPEN` rows 2026-11-02.
 | 9 | `ASSUMED` | `fatal` defaults to false, so a failure warns unless the vendor opted into refusal. This is `preflight.Check.Fatal` as the built-in checks already use it. |
 | 10 | `ASSUMED` | The environment is the hook ABI's with `PHASE` `preflight` and `OPERATION_TYPE` the running operation, or `doctor`, a new value. `SECRETS_DIR`, `CONFIG_FILE` and `BACKUP_DIR` are absent. `DRY_RUN` is `0`, and the release and parameters are those being checked. `doctor`'s command health check keeps saying `apply`; changing that is not this RFC's. |
 | 11 | `ASSUMED` | Checks run in the existing preflight step, after the built-in checks and in name order, so one report lists every blocker. The step's timeout grows by their declared total. In `update` that step is after the pre-update backup, as it is for built-in checks today. |
-| 12 | `ASSUMED` | The ID is `vendor.<name>`, in a new `vendor` category. The name follows `TaskNamePattern`, `description` is required, `remedy` is optional and static, and `timeout` defaults to 30s. |
+| 12 | `ASSUMED` | The ID is `vendor.<name>`, in a new `vendor` category. The name follows `TaskNamePattern`, `description` is required, `remedy` is optional and static, and `timeout` defaults to 30s (decision 18 bounds it). |
 | 13 | `ASSUMED` | Load and `release verify` refuse a check whose command is missing or not executable, and a bundle declaring checks below the manager version that runs them. |
 | 14 | `ASSUMED` | `release show` lists the checks and `release diff` compares them by name; a change to `fatal`, `command` or `description` is a change. |
 | 15 | `ASSUMED` | `pre-update` and `post-update` stay reserved; only `preflight` becomes live. |
 | 16 | `LOCKED` | A preflight check must not change the machine. It is a public ABI promise, and `doctor` runs checks lock-free, possibly during an operation and on a schedule. Allowing a check to mutate later would mean taking the lock in `doctor` and running checks inside every operation's compensation story. |
 | 17 | `ASSUMED` | No check has special standing. A licence check is a vendor check, and gets what decision 4 gives any check. RFC 0024 §5's ruling against licence gating in the manager stands, and anything beyond this is the Phase 4 licensing RFC's. |
+| 18 | `ASSUMED` | *(2026-11-02, from the review.)* A check's `timeout` is at most 2m, and a bundle's checks declare at most 5m together. Load and `release verify` refuse a bundle past either ceiling. Checks run one after another, so without a ceiling a bundle could hold every operation and every scheduled `doctor` for as long as it liked. |
 
 ## 12. Phasing
 
