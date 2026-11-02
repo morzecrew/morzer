@@ -97,6 +97,9 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
+- **[0046 — Updating the manager itself](0046-updating-the-manager-itself.md).**
+  📝 Proposed, awaiting the author's rulings on its `OPEN` decisions, the
+  first of which reopens RFC 0022 decision 9.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -128,7 +131,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0046**. Before creating an RFC, glance at the table
+The next free number is **0047**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -184,6 +187,7 @@ number in the filename in sync.
 | [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md) | Notifications that survive a failed delivery, and a scheduled doctor | ✅ Complete | Keeping a notification its target did not accept, marking redeliveries, and a timer that runs `doctor` and notifies what it finds on a machine nobody watches. |
 | [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | ✅ Complete | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
 | [0045](0045-preflight-checks-a-vendor-ships.md) | Preflight checks a vendor ships | ✅ Complete | Checks a bundle ships as executables, run with the manager's own preflight checks and in `doctor`, through the hook ABI's reserved `preflight` phase. |
+| [0046](0046-updating-the-manager-itself.md) | Updating the manager itself | 📝 Draft | Telling an operator that the manager binary is out of date, and whether `morzer self-update`, which RFC 0022 refused, should replace it in place. |
 
 ## Status legend
 
