@@ -43,9 +43,9 @@ report, so an operator sees every blocker at once. `doctor` runs the installed
 release's checks too. Each check runs under the hook ABI with `PHASE`
 `preflight`. Exit 0 passes, exit 2 means the check does not apply here, and
 anything else fails. A failure is a warning unless the vendor declared the
-check fatal. A fatal one refuses `apply` and `update`, and is only reported at
-boot, in `start` and in `rollback`, so a product that already ran is never kept
-down by one.
+check fatal. A fatal one refuses `apply` and `update` and fails `doctor`, but
+only warns at boot, in `start` and in `rollback`, so a product that already ran
+is never kept down by one.
 
 ## 2. Motivation
 
