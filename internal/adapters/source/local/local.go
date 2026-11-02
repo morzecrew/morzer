@@ -97,26 +97,8 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 		return "", err
 	}
 
-	if atomicfs.IsTarZst(path) {
-		if err := atomicfs.ExtractTarZst(path, destDir, s.limits); err != nil {
-			return "", err
-		}
-		// Named for the archive, not for where it was just unpacked. A
-		// plan unpacks into a temporary directory and a real install
-		// into the release store, and neither is a path the operator
-		// chose or can act on -- this is the only read of the bundle a
-		// caller of Fetch does not make itself, so it has to carry the
-		// name too.
-		if _, err := release.LoadAs(destDir, path); err != nil {
-			// Extracted before it could be validated, so a refusal here
-			// is a refusal to a directory this call already filled.
-			// Neither caller cleans it up -- `fetchRelease` returns
-			// straight out on a Fetch error, and `stepStageRelease`'s
-			// compensation keys off the release in engine state, which
-			// a failed Fetch never put there -- and an unusable release
-			// left in the store is one `update --to` away from being
-			// installed by somebody who never saw this error.
-			_ = atomicfs.RemoveAll(destDir)
+	if IsArchive(path) {
+		if _, err := s.Unpack(path, destDir); err != nil {
 			return "", err
 		}
 		return ports.BundlePath(destDir), nil
@@ -134,6 +116,43 @@ func (s *Source) Fetch(ctx context.Context, ref ports.Ref, destDir string) (port
 		return "", err
 	}
 	return ports.BundlePath(destDir), nil
+}
+
+// IsArchive reports whether path is an archive this source unpacks: a regular
+// file with a tar.zst suffix. A directory whose name ends that way is a
+// directory, and is copied like one.
+func IsArchive(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && atomicfs.IsTarZst(path)
+}
+
+// Unpack extracts the archive at path into destDir under this source's limits
+// and returns the release it holds. It is Fetch's archive half, for a caller
+// that wants the release rather than where it landed, so the bundle is read
+// once.
+func (s *Source) Unpack(path, destDir string) (domain.Release, error) {
+	if err := atomicfs.ExtractTarZst(path, destDir, s.limits); err != nil {
+		return domain.Release{}, err
+	}
+	// Named for the archive, not for where it was just unpacked. A plan
+	// unpacks into a temporary directory and a real install into the
+	// release store, and neither is a path the operator chose or can act
+	// on -- this is the only read of the bundle a caller of Fetch does not
+	// make itself, so it has to carry the name too.
+	rel, err := release.LoadAs(destDir, path)
+	if err != nil {
+		// Extracted before it could be validated, so a refusal here is a
+		// refusal to a directory this call already filled. Neither caller
+		// of Fetch cleans it up -- `fetchRelease` returns straight out on
+		// a Fetch error, and `stepStageRelease`'s compensation keys off
+		// the release in engine state, which a failed Fetch never put
+		// there -- and an unusable release left in the store is one
+		// `update --to` away from being installed by somebody who never
+		// saw this error.
+		_ = atomicfs.RemoveAll(destDir)
+		return domain.Release{}, err
+	}
+	return rel, nil
 }
 
 // List enumerates versions under a directory of release directories.
@@ -192,7 +211,7 @@ func (s *Source) materialise(ref ports.Ref) (dir, source string, cleanup func(),
 	if err != nil {
 		return "", "", func() {}, err
 	}
-	if !atomicfs.IsTarZst(path) {
+	if !IsArchive(path) {
 		return path, "", func() {}, nil
 	}
 

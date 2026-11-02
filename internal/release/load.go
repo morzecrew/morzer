@@ -87,7 +87,8 @@ func loadFrom(dir, source string) (domain.Release, error) {
 	if !info.IsDir() {
 		return domain.Release{}, domain.ValidationError(nil,
 			"%s is not a directory", named(abs)).
-			WithHint("point at an unpacked bundle directory containing %s", ManifestFileName)
+			WithHint("a bundle is a directory containing %s, or a tar.zst archive of one, "+
+				"which `morzer release archive` writes", ManifestFileName)
 	}
 
 	manifestPath := filepath.Join(abs, ManifestFileName)
