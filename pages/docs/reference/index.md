@@ -77,6 +77,7 @@ here. The reference column points at the section that documents it; the
 | `morzer release` | Inspect and manage release bundles | [release-commands](release-commands.md#morzer-release) |
 | `morzer release list` | List installed releases, newest first | [release-commands](release-commands.md#release-list) |
 | `morzer release show` | Show a release manifest; the installed one when no version is given | [release-commands](release-commands.md#release-show) |
+| `morzer release diff` | Show what changed between two releases | [release-commands](release-commands.md#release-diff) |
 | `morzer release new` | Scaffold a bundle skeleton that already verifies | [release-commands](release-commands.md#release-new) |
 | `morzer release verify` | Validate a bundle's manifest and check its integrity | [release-commands](release-commands.md#release-verify) |
 | `morzer release pack` | Copy the images a manifest marks `from: bundle` into the bundle | [release-commands](release-commands.md#release-pack) |

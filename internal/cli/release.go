@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"slices"
@@ -43,14 +45,15 @@ func newReleaseCommand(app *App) *cobra.Command {
 	// three of them it answered about the placeholder layout -- "no releases
 	// are installed" -- and looked like a bare machine.
 	//
-	// `show` is both, which is why it is machine-scoped here and refuses
-	// inside releaseRoot instead: `release show ./bundle` inspects a
+	// `show` and `diff` are both, which is why they are machine-scoped here
+	// and refuse inside releaseRoot instead: `release show ./bundle` inspects a
 	// directory and needs no installation, while `release show` and `release
 	// show 1.4.0` read the store and do. A scope asked before the argument
 	// is parsed cannot tell those apart.
 	cmd.AddCommand(
 		installationScope(newReleaseListCommand(app)),
 		machineScope(newReleaseShowCommand(app)),
+		machineScope(newReleaseDiffCommand(app)),
 		machineScope(newReleaseNewCommand(app)),
 		machineScope(newReleaseVerifyCommand(app)),
 		machineScope(newReleasePackCommand(app)),
@@ -221,6 +224,49 @@ func newReleaseShowCommand(app *App) *cobra.Command {
 				Root:     rel.Root,
 				Digest:   rel.Digest,
 			})
+		},
+	}
+}
+
+func newReleaseDiffCommand(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "diff <from> <to>",
+		Short: "Show what changed between two releases",
+		Long: "Compares two releases: the images, parameters, secrets, compatibility\n" +
+			"declarations, tasks and profiles their manifests declare, and their\n" +
+			"files by checksum. Only what differs is listed; `--json` adds each\n" +
+			"changed file's checksums.\n\n" +
+			"Each release is a bundle directory, the tar.zst archive `release archive`\n" +
+			"writes, or an installed version.\n\n" +
+			"Exits 0 whether or not anything differs.",
+		Example: "  morzer release diff 1.3.0 ./demo-1.4.0.tar.zst\n" +
+			"  morzer release diff ./build/1.3.0 ./build/1.4.0\n" +
+			"  morzer release diff 1.3.0 1.4.0 --json | jq .data.parameters",
+		Args: cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			if len(args) >= 2 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			out, _ := app.completeValues(releasesWhere(anyRelease))(cmd, args, toComplete)
+			return out, cobra.ShellCompDirectiveDefault
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			from, cleanupFrom, err := app.loadRelease(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			defer cleanupFrom()
+			to, cleanupTo, err := app.loadRelease(cmd.Context(), args[1])
+			if err != nil {
+				return err
+			}
+			defer cleanupTo()
+
+			diff, err := ops.DiffReleases(from, to)
+			if err != nil {
+				return err
+			}
+			return app.render(diff)
 		},
 	}
 }
@@ -726,6 +772,20 @@ func openBundle(path string) (domain.Release, func(), error) {
 	return rel, cleanup, nil
 }
 
+// loadRelease reads a release from a bundle directory, an archive or the
+// installed versions, as `release show` resolves its argument.
+func (a *App) loadRelease(ctx context.Context, arg string) (domain.Release, func(), error) {
+	if isFile(arg) {
+		return openBundle(arg)
+	}
+	root, err := a.releaseRoot(ctx, []string{arg})
+	if err != nil {
+		return domain.Release{}, func() {}, err
+	}
+	rel, err := release.Load(root)
+	return rel, func() {}, err
+}
+
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
@@ -736,8 +796,22 @@ func (a *App) releaseRoot(ctx context.Context, args []string) (string, error) {
 	if len(args) == 1 {
 		// A path takes precedence over a version, so `release show
 		// ./bundle` works on a machine with no installation at all.
-		if info, err := os.Stat(args[0]); err == nil && info.IsDir() {
+		info, err := os.Stat(args[0])
+		if err == nil && info.IsDir() {
 			return args[0], nil
+		}
+		// A path that could not be looked at is reported as that, unless
+		// it reads as a version, which is then what it names.
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if _, verr := domain.ParseVersion(args[0]); verr != nil {
+				// The reason alone: a PathError repeats the path.
+				reason := err
+				var pathErr *fs.PathError
+				if errors.As(err, &pathErr) {
+					reason = pathErr.Err
+				}
+				return "", domain.ValidationError(err, "cannot read %q: %v", args[0], reason)
+			}
 		}
 	}
 

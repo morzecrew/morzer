@@ -1,0 +1,28 @@
+demo 1.3.0 -> demo 1.4.0
+
+  images
+    app     changed: registry.example/demo/app@sha256:4b1c0e5f8a2d ->
+            registry.example/demo/app@sha256:9e7d3a6c1f04
+    worker  added: registry.example/demo/worker@sha256:1a2b3c4d5e6f
+
+  parameters
+    banner     added: "string, default \x1b[2Jhello"
+    http_port  changed: port, default 18080 -> port, default 8080
+
+  secrets
+    smtp_password  removed
+
+  compatibility
+    min_manager_version  changed: 0.8.0 -> 0.11.0
+
+  tasks
+    seed  added
+
+  profiles
+    external-db  removed
+
+  files
+    "hooks/\x1b]0;owned\a"  added
+    hooks/seed              added
+    "hooks/\x9b2J"          added
+    manifest.yaml           changed

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unpacked under the limits `init` applies, so an author can check the file a
   customer receives.
 
+- **`release diff` shows what changed between two releases.** It lists the
+  images, parameters, secrets, compatibility declarations, tasks, profiles and
+  files that were added, removed or changed. Each side is an installed version,
+  a bundle directory or an archive, and it exits 0 whatever differs.
+
 ### Changed
 
 - **A template that fails to render says where and what.** At `apply` the error
@@ -42,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A bundle directory named like an archive is read as a directory.** `init`,
   `update` and `release fetch` tried to extract a directory whose name ends in
   `.tar.zst` or `.tzst`, and refused it.
+
+- **`release show` says why it cannot read a bundle path.** A path it was not
+  allowed to look at was reported as neither a directory nor a version; it is
+  now reported as unreadable, with the reason.
 
 ## [0.11.0] - 2026-11-01
 
