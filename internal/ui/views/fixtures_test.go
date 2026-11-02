@@ -156,6 +156,8 @@ func listFixtures() []fixture {
 				},
 				Secrets:       []ops.Change{{Name: "smtp_password", Kind: ops.ChangeRemoved}},
 				Compatibility: []ops.Change{{Name: "min_manager_version", Kind: ops.ChangeChanged, From: "0.8.0", To: "0.11.0"}},
+				Tasks:         []ops.Change{{Name: "seed", Kind: ops.ChangeAdded}},
+				Profiles:      []ops.Change{{Name: "external-db", Kind: ops.ChangeRemoved}},
 				Files: []ops.Change{
 					{Name: "manifest.yaml", Kind: ops.ChangeChanged, From: "sha256:aa", To: "sha256:bb"},
 					{Name: "hooks/seed", Kind: ops.ChangeAdded, To: "sha256:cc"},
@@ -168,7 +170,7 @@ func listFixtures() []fixture {
 				},
 			},
 			fields: []string{"demo 1.3.0 -> demo 1.4.0", "sha256:9e7d3a6c1f04", "worker", "port, default 8080",
-				"smtp_password", "removed", "0.11.0", "hooks/seed", "added", `"hooks/\x1b]0;owned\a"`, `"string, default \x1b[2Jhello"`, `"hooks/\x9b2J"`},
+				"smtp_password", "removed", "0.11.0", "hooks/seed", "added", `"hooks/\x1b]0;owned\a"`, `"string, default \x1b[2Jhello"`, `"hooks/\x9b2J"`, "seed", "external-db"},
 		},
 		{
 			name:   "release-diff-same",
