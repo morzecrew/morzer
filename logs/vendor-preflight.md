@@ -167,3 +167,22 @@ proposal: ASSUMED — a preflight step or a `doctor` run the operator cancels en
 
 The example bundle can declare a check once a released manager runs them, and
 the acceptance run exercises the step from then on.
+
+The two review entries above say 13:40; they were written before their commit
+at 13:24, so that time is late by a quarter of an hour.
+
+Corrected in review: the cancellation entry above is not a discovery. The
+codebase already reports an operator's cancellation as an interruption, and the
+RFC said nothing of it, so it could have been known before code.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T13:40:30Z
+attempt: 2
+claim: a cancelled preflight step reporting a failed check was knowable from the codebase's convention, which reports cancellation as domain.Interrupted, and the RFC was silent on it
+evidence: internal/adapters/source/https/https.go:219
+action: decided
+proposal: ASSUMED — a preflight step or a `doctor` run the operator cancels ends as an interruption, exit 130, whatever its checks reported when they were cut off.
+```
