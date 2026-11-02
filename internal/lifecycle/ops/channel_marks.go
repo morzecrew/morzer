@@ -144,14 +144,17 @@ func (d *Deps) lowerFollowedMark(inst domain.Installation, v domain.Version) err
 // after, because times are kept to the second: two polls in one second cost a
 // fetch, where the other way a lowering in the same second as the refusal
 // would be lost.
-func (d *Deps) refusalOutdated(candidate domain.UpdateCandidate) bool {
+//
+// A marks file that cannot be read is returned rather than read as "not
+// outdated", which would report a channel as unmoved over it.
+func (d *Deps) refusalOutdated(candidate domain.UpdateCandidate) (bool, error) {
 	if candidate.Refused == "" {
-		return false
+		return false, nil
 	}
 	marks, err := d.channelMarks()
 	if err != nil {
-		return false
+		return false, err
 	}
 	mark, ok := marks[candidate.SourceRef]
-	return ok && !mark.At.Before(candidate.SeenAt.Time)
+	return ok && !mark.At.Before(candidate.SeenAt.Time), nil
 }

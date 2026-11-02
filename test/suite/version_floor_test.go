@@ -425,3 +425,21 @@ func TestARefusalOlderThanItsChannelsMarkIsLookedAtAgain(t *testing.T) {
 		})
 	}
 }
+
+// A marks file that cannot be read is reported on the poll that needs it, and
+// not hidden behind a recorded refusal as an unmoved channel.
+func TestAnUnreadableMarksFileIsNotHiddenByARecordedRefusal(t *testing.T) {
+	h, registry, _, _ := followingHarnessWith(t, recoverableUpdate)
+	ctx := context.Background()
+	_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	h.tick(time.Hour)
+	registry.republish(renumberedArchive(t, h, "1.2.5"))
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+
+	require.NoError(t, os.WriteFile(h.Paths.ChannelMarksFile(), []byte("{not json"), 0o640))
+	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err, "the poll reported an unmoved channel over a marks file it could not read")
+	assert.Contains(t, err.Error(), "channel marks")
+}
