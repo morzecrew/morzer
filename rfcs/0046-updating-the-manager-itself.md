@@ -73,10 +73,10 @@ Verified against `main` at 4766a54 and later.
   It takes a version or resolves the newest through the GitHub releases API,
   downloads `morzer_<version>_linux_<arch>.tar.zst`, and matches it against
   its own line in `SHA256SUMS`. It checks `SHA256SUMS.minisig` against the key
-  it embeds, `6244CB37DB91DD52`, which is `morzer.pub` byte for byte and
-  asserted by `test/installer/install_test.go`. Without the `minisign` tool it
-  only warns, unless `--require-signature` is given (0022 decision 6). It never
-  runs `sudo` (decision 7).
+  it embeds, `6244CB37DB91DD52`, and `test/installer/install_test.go` checks
+  that the script carries each line of `morzer.pub`. Without the `minisign`
+  tool it only warns, unless `--require-signature` is given (0022 decision 6).
+  It never runs `sudo` (decision 7).
 - **The release pipeline signs the checksums, not each archive**
   ([`.goreleaser.yaml`](../.goreleaser.yaml) `signs`): one `SHA256SUMS.minisig`
   covers every archive.
@@ -316,7 +316,8 @@ case. This is that story:
     deployment lock does;
   - the journal entry in every installation;
   - `--from` reading the three files offline.
-- The embedded key equals `morzer.pub`, asserted as `install.sh`'s copy is.
+- The embedded key equals `morzer.pub` byte for byte, a stricter check than
+  the per-line one for `install.sh`'s copy.
 
 ## 7. Docs
 
