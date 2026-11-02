@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** and **0037** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023**, **0037** and **0045** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -99,7 +99,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
 - **[0045 — Preflight checks a vendor ships](0045-preflight-checks-a-vendor-ships.md).**
-  📝 Proposed, awaiting the author's rulings on its `OPEN` decisions.
+  📝 Proposed, and ruled by the author 2026-11-02 as recommended, except that
+  `start` only warns. P1 is ready to build.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and

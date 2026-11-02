@@ -1,13 +1,13 @@
 # RFC 0045 — Preflight checks a vendor ships
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11. Once ruled, P1 is the last item of the plan's
-  Phase 2
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-02: §11's
+  `OPEN` rows as recommended, except that `start` warns as boot does
+  (decision 4). P1 is ready to build
 - **Scope:** Checks a bundle declares and ships as executables, run by the
   manager beside its own preflight checks: before `apply`, `start`, `update`
   and `rollback` change anything, and in `doctor`. A failing check the vendor
-  marked fatal refuses the operation, as a failing built-in check does; any
-  other failure is a warning. This makes the hook ABI's reserved `preflight`
+  marked fatal refuses `apply` and `update`, as a failing built-in check does;
+  any other failure is a warning. This makes the hook ABI's reserved `preflight`
   phase live. It adds one manifest field and one `OPERATION_TYPE` value
   (`doctor`), and changes no installation schema. It does not make
   `pre-update` or `post-update` live, which stay reserved. It adds no
@@ -41,8 +41,8 @@ report, so an operator sees every blocker at once. `doctor` runs the installed
 release's checks too. Each check runs under the hook ABI with `PHASE`
 `preflight`. Exit 0 passes, exit 2 means the check does not apply here, and
 anything else fails. A failure is a warning unless the vendor declared the
-check fatal. A fatal one refuses `apply`, `start` and `update`, and is only
-reported at boot and in `rollback`, so a product that already ran is never kept
+check fatal. A fatal one refuses `apply` and `update`, and is only reported at
+boot, in `start` and in `rollback`, so a product that already ran is never kept
 down by one.
 
 ## 2. Motivation
@@ -125,7 +125,7 @@ Verified against `main` at 4d26d8d.
 
 **Goals**
 
-- A vendor can stop `apply`, `start` and `update` on a machine their product
+- A vendor can stop `apply` and `update` on a machine their product
   cannot run on, before anything changes, with their own message and remedy.
 - An operator sees the vendor's checks in `doctor`, and so in the support
   bundle and the scheduled `doctor`'s notification, grouped apart from the
@@ -223,13 +223,14 @@ possibly every morning on a machine nobody is watching.
 
 | Operation | A fatal check that fails |
 | --- | --- |
-| `apply`, a first install, `start` | Refuses, exit 3, listed with any built-in blockers. Nothing has changed. |
+| `apply`, a first install | Refuses, exit 3, listed with any built-in blockers. Nothing has changed. |
 | `update`, interactive or unattended | Refuses, exit 3. The current release keeps running. As with a built-in check, this is after the pre-update backup. Unattended, it is a failed install, so the candidate is marked (RFC 0016 decision 28). |
 | `apply --startup` (boot) | Warns. The release already ran on this machine. |
+| `start` | Warns, as boot does. `update` and `rollback` are refused while the product is stopped (RFC 0040 decision 3), so a refused `start` would leave no way back. |
 | `rollback` | Warns. Refusing would withhold the way back. |
 | `doctor` | Fails, exit 3, as a built-in failure does. |
 
-This is decision 4, `OPEN`. The asymmetry is the point. Moving forward onto a
+This is decision 4. The asymmetry is the point. Moving forward onto a
 machine the vendor says is wrong is refused. Restoring what already ran is not,
 because a check the vendor wrote, failing closed, must not be what keeps a
 paying customer's product down (RFC 0024 §5).
@@ -250,13 +251,13 @@ paying customer's product down (RFC 0024 §5).
   because the severity is decided at runtime, inside the script. `release show`
   and `release diff` could not say which checks refuse, the result schema grows
   a list the ABI then has to version, and one timeout covers every check. It is
-  decision 1, `OPEN`.
+  decision 1.
 - **A declarative language** (sysctl, file, URL, command-output analyzers).
   The manager would own every question a vendor might ask, and each new one
   would be a manager release. Whatever it could not express would come back as
   a script anyway. It reopens if vendors keep writing the same three scripts.
 - **`extensions."morzer.dev/preflight"`.** An older manager ignores it and
-  installs without running the checks. That is decision 2, `OPEN`. It is the
+  installs without running the checks. That is decision 2. It is the
   right shape only if a check is advice. A fatal check skipped by an older
   manager is an install onto the machine the vendor said to refuse.
 - **Vendor checks ahead of the pre-update backup.** A refused update would cost
@@ -282,8 +283,8 @@ paying customer's product down (RFC 0024 §5).
 - **CLI (`test/clitest`):** `apply` refused by a fatal failing check exits 3
   and lists it beside a built-in blocker. A non-fatal one warns and the apply
   succeeds. `doctor` shows the `vendor` group. `update` refused by the new
-  release's check leaves the current release running. Boot with a failing fatal
-  check starts the product and warns.
+  release's check leaves the current release running. Boot and `start` with a
+  failing fatal check start the product and warn.
 - **Views:** `release show` and `release diff` fixtures with a check, goldens at
   every width.
 - **Acceptance:** the example bundle declares one non-fatal check, so the real
@@ -315,9 +316,9 @@ paying customer's product down (RFC 0024 §5).
 ## 9. Risks
 
 - **A buggy fatal check blocks the vendor's own customers.** It refuses every
-  `apply` and `start` of that release. Update is not blocked: the new
-  release's checks run, so the vendor's fix installs. Boot and rollback never
-  refuse. Whether an operator also gets an override is decision 7.
+  `apply` of that release. Update is not blocked: the new
+  release's checks run, so the vendor's fix installs. Boot, `start` and
+  rollback never refuse. Whether an operator also gets an override is decision 7.
 - **A slow check slows every operation and every scheduled `doctor`.** It is
   bounded by its timeout, 30s by default. The step's timeout grows by the
   declared total and is never shared.
@@ -331,25 +332,25 @@ paying customer's product down (RFC 0024 §5).
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design.
+None. The author ruled §11's `OPEN` rows 2026-11-02.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **The shape.** Recommended: a `preflight:` map of named checks, each its own command, with `fatal`, `timeout`, `description` and `remedy` declared in the manifest. Severity is then visible in `release show` and `release diff`, each check has its own timeout, and the ABI's result schema is unchanged. Alternative: one `operations.preflight` hook reporting a list of results on fd 3, one process for the vendor, severity decided at runtime. |
-| 2 | `OPEN` | **Where it lives.** Recommended: top level, with `compatibility.min_manager_version` required at the release that ships it, as tasks did. An older manager then refuses the bundle and says to upgrade. Alternative: `extensions."morzer.dev/preflight"`, which an older manager ignores, so the release installs there without its checks. A vendor's fatal check would silently not run. |
+| 1 | `LOCKED` | **The shape.** Recommended: a `preflight:` map of named checks, each its own command, with `fatal`, `timeout`, `description` and `remedy` declared in the manifest. Severity is then visible in `release show` and `release diff`, each check has its own timeout, and the ABI's result schema is unchanged. Alternative: one `operations.preflight` hook reporting a list of results on fd 3, one process for the vendor, severity decided at runtime. Was `OPEN`; ruled by the author 2026-11-02: as recommended. Locks the manifest shape: changing it later breaks every bundle that declares checks. |
+| 2 | `LOCKED` | **Where it lives.** Recommended: top level, with `compatibility.min_manager_version` required at the release that ships it, as tasks did. An older manager then refuses the bundle and says to upgrade. Alternative: `extensions."morzer.dev/preflight"`, which an older manager ignores, so the release installs there without its checks. A vendor's fatal check would silently not run. Was `OPEN`; ruled by the author 2026-11-02: as recommended. Locks the placement for the same reason. |
 | 3 | `ASSUMED` | A check is a host executable from the bundle, run under the hook ABI. There is no `runtime-service` kind: the step runs before images are pulled and, on a first install, before the project exists. |
-| 4 | `OPEN` | **Where a fatal check refuses.** Recommended: `apply`, a first install, `start` and `update` (unattended included) refuse. Boot and `rollback` warn, because they restore what already ran, and `doctor` fails as for a built-in check. Alternative: every operation refuses, boot and rollback included, which keeps one rule and can keep a running product down over a vendor's check. |
-| 5 | `OPEN` | **`doctor`.** Recommended: `doctor` runs the installed release's checks, the scheduled run included, so a check failing after a kernel or network change is reported before the next operation needs it, and lands in the support bundle. Alternative: checks run only in operations, which never runs vendor code on a schedule. |
-| 6 | `OPEN` | **Secrets.** Recommended: none in P1. The step runs before secrets load, and `doctor` would have to render them to tmpfs on every scheduled run. A check that needs a credential is a smoke test's. Alternative: a check may declare `secrets: true` and runs after `load-secrets` with `SECRETS_DIR` set, while `doctor` skips it. |
-| 7 | `OPEN` | **An override.** Recommended: none in P1. The built-in checks have none, the new release's checks govern an update, and boot and rollback never refuse. Alternative: `--skip-check vendor.NAME`, repeatable, journalled with the names, and refused with `--unattended`. |
+| 4 | `LOCKED` | **Where a fatal check refuses.** Recommended: `apply`, a first install, `start` and `update` (unattended included) refuse. Boot and `rollback` warn, because they restore what already ran, and `doctor` fails as for a built-in check. Alternative: every operation refuses, boot and rollback included, which keeps one rule and can keep a running product down over a vendor's check. Was `OPEN`; ruled by the author 2026-11-02: as recommended, except that `start` warns as boot does. The review found that a refused `start` has no way around it: `update` and `rollback` are refused while stopped (RFC 0040 decision 3), boot leaves the product down, and decision 7 gives no override. |
+| 5 | `ASSUMED` | **`doctor`.** Recommended: `doctor` runs the installed release's checks, the scheduled run included, so a check failing after a kernel or network change is reported before the next operation needs it, and lands in the support bundle. Alternative: checks run only in operations, which never runs vendor code on a schedule. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
+| 6 | `ASSUMED` | **Secrets.** Recommended: none in P1. The step runs before secrets load, and `doctor` would have to render them to tmpfs on every scheduled run. A check that needs a credential is a smoke test's. Alternative: a check may declare `secrets: true` and runs after `load-secrets` with `SECRETS_DIR` set, while `doctor` skips it. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
+| 7 | `ASSUMED` | **An override.** Recommended: none in P1. The built-in checks have none, the new release's checks govern an update, and boot and rollback never refuse. Alternative: `--skip-check vendor.NAME`, repeatable, journalled with the names, and refused with `--unattended`. Was `OPEN`; ruled by the author 2026-11-02: as recommended. |
 | 8 | `ASSUMED` | Exit 0 passes; exit 2 passes as not applicable; anything else, a timeout or an unreadable fd 3 fails. The message is fd 3's `message`, or the quoted output a failing hook gets. The manifest's `remedy` accompanies a warning or failure. |
 | 9 | `ASSUMED` | `fatal` defaults to false, so a failure warns unless the vendor opted into refusal. This is `preflight.Check.Fatal` as the built-in checks already use it. |
 | 10 | `ASSUMED` | The environment is the hook ABI's with `PHASE` `preflight` and `OPERATION_TYPE` the running operation, or `doctor`, a new value. `SECRETS_DIR`, `CONFIG_FILE` and `BACKUP_DIR` are absent. `DRY_RUN` is `0`, and the release and parameters are those being checked. `doctor`'s command health check keeps saying `apply`; changing that is not this RFC's. |
 | 11 | `ASSUMED` | Checks run in the existing preflight step, after the built-in checks and in name order, so one report lists every blocker. The step's timeout grows by their declared total. In `update` that step is after the pre-update backup, as it is for built-in checks today. |
 | 12 | `ASSUMED` | The ID is `vendor.<name>`, in a new `vendor` category. The name follows `TaskNamePattern`, `description` is required, `remedy` is optional and static, and `timeout` defaults to 30s. |
-| 13 | `ASSUMED` | Load and `release verify` refuse a check whose command is missing or not executable, and a bundle declaring checks below the manager version that runs them (if decision 2 is ruled as recommended). |
+| 13 | `ASSUMED` | Load and `release verify` refuse a check whose command is missing or not executable, and a bundle declaring checks below the manager version that runs them. |
 | 14 | `ASSUMED` | `release show` lists the checks and `release diff` compares them by name; a change to `fatal`, `command` or `description` is a change. |
 | 15 | `ASSUMED` | `pre-update` and `post-update` stay reserved; only `preflight` becomes live. |
 | 16 | `LOCKED` | A preflight check must not change the machine. It is a public ABI promise, and `doctor` runs checks lock-free, possibly during an operation and on a schedule. Allowing a check to mutate later would mean taking the lock in `doctor` and running checks inside every operation's compensation story. |
@@ -358,5 +359,5 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 ## 12. Phasing
 
 **P1** is the whole design, one PR: the field, validation, the step, `doctor`,
-`show` and `diff`, the docs and the example bundle's check. It waits on the
-rulings above. Nothing is demand-gated.
+`show` and `diff`, the docs and the example bundle's check. It is ready to
+build. Nothing is demand-gated.
