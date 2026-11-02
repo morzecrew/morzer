@@ -69,6 +69,10 @@ What it never does: run `sudo` on its own initiative — if the prefix needs roo
 it prints the command to re-run and exits non-zero — install anything but
 `<dir>/morzer`, or leave a partial download behind.
 
+Running it again over an existing binary is how the manager is upgraded. Pass
+`--dir` the directory of the binary the units run — see
+[Upgrading the manager](../operating/upgrading-the-manager.md).
+
 ### Reading it first
 
 Piping a script into a shell means running what a server chose to send. The

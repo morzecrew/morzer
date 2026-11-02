@@ -323,7 +323,7 @@ func EquivalentCommand(opts ops.InitOptions) string {
 
 	add := func(flag, value string) {
 		if value != "" {
-			args = append(args, fmt.Sprintf("--%s %s", flag, shellQuote(value)))
+			args = append(args, fmt.Sprintf("--%s %s", flag, domain.ShellQuote(value)))
 		}
 	}
 
@@ -361,13 +361,4 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	}
 
 	return strings.Join(args, " \\\n    ")
-}
-
-// shellQuote quotes a value only when it needs it, so the common case stays
-// readable enough to copy.
-func shellQuote(s string) string {
-	if s != "" && !strings.ContainsAny(s, " \t\n\"'\\$`*?[]{}();&|<>#~") {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

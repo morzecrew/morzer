@@ -21,6 +21,10 @@ type Version struct {
 	Commit               string   `json:"commit"`
 	Built                string   `json:"built"`
 	SupportedAPIVersions []string `json:"supported_api_versions"`
+
+	// Check is what `--check` learned from the release feed, absent without
+	// it.
+	Check *ops.ManagerCheck `json:"check,omitempty"`
 }
 
 // KeyPair is a generated identity.
@@ -94,7 +98,27 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 	}
 	fields = append(fields, ui.Field{
 		Label: "manifest api", Value: strings.Join(v.SupportedAPIVersions, ", ")})
+	if c := v.Check; c != nil {
+		fields = append(fields, ui.Field{Label: "newest", Value: c.Newest + "  " + c.URL})
+	}
 	d.Fields(2, fields)
+	if c := v.Check; c != nil {
+		d.Blank()
+		d.Text(2, "%s", c.Summary())
+		if c.Upgrade != "" {
+			// Verbatim, broken only where a shell continuation can go:
+			// wrapped as prose, the command split inside an argument and
+			// no longer pasted as one.
+			d.Text(2, "upgrade with")
+			cmd, dir, found := strings.Cut(c.Upgrade, " --dir ")
+			if !found {
+				d.Verbatim("    " + cmd)
+			} else {
+				d.Verbatim("    " + cmd + ` \`)
+				d.Verbatim("      --dir " + dir)
+			}
+		}
+	}
 	return d
 }
 

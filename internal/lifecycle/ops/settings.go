@@ -66,6 +66,19 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.Check = false },
 	},
+	"manager.check": {
+		Description: "ask GitHub unprompted whether a newer manager is published, for `doctor`",
+		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Update.ManagerCheck) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Update.ManagerCheck = v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Update.ManagerCheck = false },
+	},
 	"update.auto_apply": {
 		Description: "install what the channel offers, when the release declares it is recoverable",
 		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Update.AutoApply) },

@@ -1,0 +1,13 @@
+morzer 0.11.0
+  commit        9ac42a3
+  built         2026-08-10T17:38:58Z
+  manifest api  selfhost/v1alpha1
+  newest        0.12.0
+                https://github.com/morzecrew/morzer/releases
+                /tag/v0.12.0
+
+  0.11.0 is running and no longer supported; 0.12.0 is the
+  newest release
+  upgrade with
+    install.sh --version 0.12.0 --require-signature \
+      --dir /usr/local/bin

@@ -148,6 +148,8 @@ single line to pin.
   update path exists for the *product*. Upgrading the manager is re-running the
   script with a new version. *What would change this:* nothing short of a
   demonstrated operational need with a story for the running-unit case.
+  *(2026-11-02: reopened by decision 19, which names RFC 0046 as that story.
+  This RFC's own scope, the script, is unchanged and stays complete.)*
 - **Distribution packages.** apt/rpm/brew/nix each need a maintainer and a trust
   story. They are welcome later and are not the bootstrap path.
 - **Windows or macOS.** The manager targets Linux hosts running Docker Compose;
@@ -549,6 +551,7 @@ running it.
 | 16 | Completions are installed by running `morzer completion install`, never by the script itself | Where a shell reads completions from belongs in one implementation, versioned with the binary and tested. A completion written to the wrong directory produces no error — just a Tab key that does nothing — so a drifting second copy would never announce itself. |
 | 17 | Completions default on for an interactive install, off otherwise; failure warns and never fails the install | Somebody at a terminal wants the tool to work; a Dockerfile does not want writes into a build's home directory. And the binary being installed is the thing that was asked for. |
 | 18 | **Refines decision 11** (2026-10-18): `install.sh` and `schemas/` are published at the root only by a docs release that moves `latest`, and the nightly job compares the site's `schemas/` with the newest release as it does `install.sh` | The step ran on every docs release, so a backport tag on an older line, 0.3.5 after 0.4.0, would replace the root's files with older ones. Re-publishing on every release guarded against mike dropping a root file; the root now follows the `latest` alias instead, and a dropped file is caught by the nightly job and fixed by re-running the newest tag's docs release. |
+| 19 | **Refines decision 9** (2026-11-02): `self-update` is reopened by [RFC 0046](0046-updating-the-manager-itself.md) decision 1, ruled by the author. Packages and mirrors stay refused | 0046 §5.4 is the running-unit story this decision asked for: the swap holds every installation's deployment lock, so no operation runs across it. Its only key is the one this script embeds, with the signature always required, so it adds no trust root. |
 
 ## 12. Phasing
 

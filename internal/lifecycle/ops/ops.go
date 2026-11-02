@@ -108,6 +108,10 @@ type Deps struct {
 
 	ManagerVersion domain.Version
 
+	// ManagerFeed says which manager releases are published. Nil in a build
+	// that asks nobody.
+	ManagerFeed ports.ManagerFeed
+
 	// Redactor receives secret values as they are loaded, so the log
 	// handler and the exec runner scrub them from that point on.
 	Redactor *logging.Redactor

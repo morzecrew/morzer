@@ -156,6 +156,9 @@ const (
 	// CategoryVendor holds the checks a release ships (RFC 0045), apart from
 	// the manager's own, because their messages and remedies are the vendor's.
 	CategoryVendor = "vendor"
+
+	// CategoryManager is about the manager binary itself (RFC 0046).
+	CategoryManager = "manager"
 )
 
 // Architecture checks that the release supports this CPU architecture.
