@@ -1,7 +1,7 @@
 ---
 title: release
 icon: lucide/package
-summary: The release command group — list, show, new, verify, pack, build, archive, fetch, prune
+summary: The release command group — list, show, diff, new, verify, pack, build, archive, fetch, prune
 ---
 
 # `morzer release`
@@ -34,6 +34,34 @@ Shows a release manifest — the installed one when no version is given. A path
 shows a bundle that is not installed: its directory, or the `tar.zst` archive
 [`release archive`](#release-archive) writes, whose path is then reported as the
 root.
+
+## release diff
+
+```sh
+morzer release diff <from> <to>
+```
+
+Shows what changed between two releases. Each argument is read as
+[`release show`](#release-show) reads one: a version installed here, a bundle
+directory, or a `tar.zst` archive.
+
+| Section | Compared by |
+|---|---|
+| images | name, and the reference |
+| parameters | name, and the type and default; a changed description is not listed |
+| secrets | name, from the secret schema |
+| compatibility | `upgrade_from`, `min_manager_version` and the three `database_schema_*` fields |
+| tasks, profiles | name |
+| files | path, and the SHA-256 of the contents |
+
+Only what was added, removed or changed is listed, and a section with nothing in
+it is left out. Files are compared by checksum and no text diff is shown; `--json`
+adds both checksums of a changed file. The checksum list and its signature are
+not compared, since they change whenever another file does. A file whose
+permissions changed and whose contents did not is not listed, though the bundle
+digest does change.
+
+Exits 0 whether or not anything differs.
 
 ## release new
 
