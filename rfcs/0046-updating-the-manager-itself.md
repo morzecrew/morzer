@@ -155,8 +155,11 @@ manager
 
 A page under `operating/`, "Upgrading the manager". It says:
 
-- run `install.sh --version <new> --require-signature` into the same
-  directory;
+- run `install.sh --version <new> --require-signature --dir <dir>`, where
+  `<dir>` is the directory of the binary the units name (`systemctl cat
+  <product>.service` shows it). Left to itself, the script picks
+  `/usr/local/bin` or `~/.local/bin`, and a manager installed anywhere else
+  would get a second copy while the units go on running the old one;
 - the units need nothing, since they name the path, which is unchanged, and the
   next `apply`, `start` or `update` reconciles them anyway;
 - an operation already running finishes on the old binary;
@@ -171,13 +174,18 @@ A page under `operating/`, "Upgrading the manager". It says:
 morzer self-update            # the newest published release
 morzer self-update --to 0.12.1
 morzer self-update --check    # what version --check says, and nothing else
-morzer self-update --from ./downloads   # archive, SHA256SUMS and .minisig, offline
+morzer self-update --from ./downloads   # archive, SHA256SUMS and .minisig, offline;
+                                        # the version is the archive's in SHA256SUMS
 ```
 
 In order:
 
-1. **Resolve the target**: the newest release, or `--to`. A target older than
-   the running manager is refused, and so is the same version (decision 5).
+1. **Resolve the target**: the newest release, or `--to`. With `--from`, the
+   target is the version in the name of this platform's archive in the
+   directory's `SHA256SUMS`, and the feed is not asked. A sums file names one
+   release, and `--to` must agree with it when both are given. A target older
+   than the running manager is refused, and so is the same version
+   (decision 5).
 2. **Fetch** the archive for this platform, `SHA256SUMS` and
    `SHA256SUMS.minisig` from the release, or read the three from `--from`.
 3. **Verify** the signature over `SHA256SUMS` with the key embedded in the
@@ -186,14 +194,18 @@ In order:
 4. **Unpack** the binary to a temporary file in the running binary's
    directory, so the final rename is atomic. Run it with `version --json`, and
    require it to report the version it was fetched as (decision 8).
-5. **Take every installation's deployment lock** on the machine without
-   waiting, and refuse if any is held, naming the installation and its
-   operation (decision 7).
+5. **Take every installation's deployment lock and notification-outbox lock**
+   on the machine without waiting, and refuse if any is held, naming the
+   installation and what holds it (decision 7). Under the locks, ask the
+   binary now at the path for its version again, and refuse unless the target
+   is newer: another `self-update` may have finished in the meantime.
 6. **Rename** the new binary over the running one. A process already running
    keeps the old file, and the next one any unit starts is the new manager.
-7. **Release the locks**, record a `manager-update` entry in each
-   installation's journal (decision 11), and print the old and new versions
-   with a link to the release notes.
+7. **Record** a `manager-update` entry in each installation's journal while
+   still holding the locks (decision 11), then **release** them, and print the
+   old and new versions with a link to the release notes. A crash between the
+   rename and the last entry leaves the new binary in place with the record
+   missing from some journals; `morzer version` still says what is installed.
 
 It refuses, before anything is fetched:
 
@@ -215,18 +227,35 @@ case. This is that story:
 
 - **No operation is in flight during the swap.** It holds every installation's
   deployment lock, and every command that changes an installation takes one,
-  whether an operator or a unit runs it. A boot `apply`, an update tick or a
-  scheduled backup that fires during the swap meets a held lock. A tick exits
-  0, as it already does when an operator's operation holds it.
-- **A read-only command running during the swap**, such as `status` or the
-  scheduled `doctor`, takes no lock and finishes on the old file. The rename
-  does not touch an open executable, and those commands write no state.
+  whether an operator or a unit runs it. The locks are taken without waiting,
+  so an operation that started first holds its lock and the swap is refused. A
+  boot `apply`, an update tick or a scheduled backup that fires during the swap
+  meets a held lock. A tick exits 0, as it already does when an operator's
+  operation holds it.
+- **The scheduled `doctor` writes only the notification outbox**, under the
+  outbox lock, which the swap holds too. A `status` or `doctor` running during
+  the swap otherwise reads and finishes on the old file, since the rename does
+  not touch an open executable.
+- **A command that started before the swap can still run on the old binary
+  after it.** One that was loading or fetching before it took its lock, or was
+  waiting with `--wait`, takes the lock once the swap releases it. What it
+  meets is decided by the forward-only state rule. If the new manager has not
+  written that installation yet, the old one reads and writes it as before, and
+  the new one migrates it on its next write. If it has, the old one refuses at
+  exit 9, "written by a newer manager". Nothing is misread, and the operator
+  runs the command again.
+- **An installation being created during the swap is not locked by it.**
+  `ListInstallations` finds an installation once its `installation.yaml`
+  exists. An `init` that has not written it yet finishes on the old binary, and
+  its state is migrated by the new manager on its next write, as after any
+  upgrade.
 - **The swap is one rename** in the same directory. A crash before it leaves
   the old binary and a temporary file, and a crash after it leaves the new one.
   There is no state between them a unit could observe.
-- **State moves on the new manager's terms.** The first command the new binary
-  runs that writes an installation's state migrates it forward, as after any
-  upgrade with `install.sh`.
+- **State moves forward only.** The first command the new binary runs that
+  writes an installation's state migrates it, as after any upgrade with
+  `install.sh`, and from then on the old binary refuses it rather than
+  misreading it.
 
 ### 5.5 Alternatives considered
 
@@ -319,13 +348,15 @@ The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design
 | 4 | `OPEN` | **Where releases come from.** Recommended: GitHub releases, as `install.sh` uses, plus `--from` with the three files for a machine without the internet; no configurable feed (0022 decision 9's "no mirrors"). Alternative: a configurable base URL. |
 | 5 | `OPEN` | **Going back.** Recommended: `self-update` refuses an older target, and moving back is a re-run of `install.sh` with the how-to's warning about forward-only state. Alternative: `--allow-older`, journalled, as RFC 0037 gives `update`. |
 | 6 | `LOCKED` | A self-update verifies `SHA256SUMS.minisig` with a key embedded in the binary, and the archive against its own line, every time; no flag skips either. Allowing an unverified binary to replace the manager would make this the weakest path onto a machine, and reversing it later could not recall what it let through. |
-| 7 | `ASSUMED` | The swap happens while this command holds every installation's deployment lock, taken without waiting; a held lock refuses it and names the operation. |
+| 7 | `ASSUMED` | The swap happens while this command holds every installation's deployment lock and notification-outbox lock, taken without waiting; a held lock refuses it and names what holds it. Under the locks, the version of the binary at the path is read again, and the swap is refused unless the target is newer. |
 | 8 | `ASSUMED` | The new binary is unpacked beside the running one and run with `version --json` before the swap, and must report the version it was fetched as. |
 | 9 | `ASSUMED` | It never escalates privileges: a directory it cannot write is a refusal that prints the `sudo` command, as `install.sh` does (0022 decision 7). |
 | 10 | `ASSUMED` | No unit and no timer runs `self-update`; it is an operator's command only. |
-| 11 | `ASSUMED` | Each installation's journal records a `manager-update` entry with the old and new versions, so an incident review finds when the manager changed. |
+| 11 | `ASSUMED` | Each installation's journal records a `manager-update` entry with the old and new versions, written while the locks are still held, so an incident review finds when the manager changed. A crash after the rename can leave some journals without it. |
 | 12 | `ASSUMED` | A dev build, whose version is not a release, never reports itself outdated, and refuses `self-update` unless `--to` names a version. |
-| 13 | `ASSUMED` | When the units on the machine name another binary path than the running one, `self-update` warns and names it, since replacing this copy leaves the units on the other. |
+| 13 | `ASSUMED` | When the units on the machine name another binary path than the running one, `self-update` warns and names it, since replacing this copy leaves the units on the other. The how-to says to pass `install.sh` the directory the units name, for the same reason. |
+| 14 | `ASSUMED` | With `--from`, the target is the version in the name of this platform's archive in that directory's `SHA256SUMS`, and the release feed is not asked; `--to`, if given, must agree with it. |
+| 15 | `ASSUMED` | A command that started before the swap and runs on the old binary after it is not stopped: it reads state the new manager has not yet written, or refuses at exit 9 on state it has. The forward-only state rule makes the overlap a refusal, never a misreading. An installation being created during the swap is in the same position. |
 
 ## 12. Phasing
 
