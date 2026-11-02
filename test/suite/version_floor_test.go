@@ -63,6 +63,13 @@ func (h *harness) channel() string {
 	return ports.RedactRefCredentials(inst.Update.Channel)
 }
 
+// tick moves the harness clock on, which is fixed otherwise: the follower
+// compares when a refusal was recorded with when its channel's mark was set.
+func (h *harness) tick(by time.Duration) {
+	now := h.Deps.Now().Add(by)
+	h.Deps.Now = func() time.Time { return now }
+}
+
 func (h *harness) current() string {
 	h.t.Helper()
 	current, err := h.Deps.State.CurrentRelease(context.Background())
@@ -115,6 +122,7 @@ func TestAChannelIsRefusedAReleaseOlderThanOneItDelivered(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.3.0", h.marks()[h.channel()].Version.String(), "a verified fetch raised no mark")
 
+	h.tick(time.Hour)
 	registry.republish(renumberedArchive(t, h, "1.2.5"))
 	_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
 	require.Error(t, err)
@@ -124,8 +132,11 @@ func TestAChannelIsRefusedAReleaseOlderThanOneItDelivered(t *testing.T) {
 	assert.NotEmpty(t, candidate.Refused, "the refusal was not recorded, so every tick fetches again")
 
 	armAutoApply(t, h)
+	h.tick(time.Hour)
+	fetched := registry.blobBytes.Load()
 	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
 	require.NoError(t, err, "a tick that finds the recorded refusal has nothing to report as a failure")
+	assert.Equal(t, fetched, registry.blobBytes.Load(), "the tick fetched a bundle it had already refused")
 	assert.False(t, res.Applied)
 	assert.Equal(t, "1.2.0", h.current())
 	assert.Equal(t, "1.3.0", h.marks()[h.channel()].Version.String())
@@ -224,10 +235,12 @@ func TestGoingBackOnPurposeLowersTheFollowedMark(t *testing.T) {
 
 			// The vendor withdrew 1.3.0: the channel serves 1.2.5, and the
 			// follower refuses it and records the refusal.
+			h.tick(time.Hour)
 			registry.republish(renumberedArchive(t, h, "1.2.5"))
 			_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
 			require.Error(t, err)
 
+			h.tick(time.Hour)
 			require.NoError(t, goBack(ctx, h.Deps))
 			assert.Equal(t, "1.2.0", h.current())
 			assert.Equal(t, "1.2.0", h.marks()[h.channel()].Version.String(), "the mark stayed above")
@@ -319,8 +332,9 @@ func TestAResumeKeepsAllowOlderOnlyForTheSameRelease(t *testing.T) {
 	assert.Equal(t, domain.ExitIncompatible, domain.ExitCode(err), "%v", err)
 }
 
-// A channel switched while the update waited for the lock is the one whose
-// mark the update lowers: the installation is read again under the lock.
+// A channel switched while the update runs is the one whose mark the update
+// lowers: the installation is read again when the operation finishes, under the
+// lock, which is also what covers a switch made while it waited for it.
 func TestGoingBackLowersTheChannelFollowedWhenItFinishes(t *testing.T) {
 	h := newHarness(t)
 	h.install()
@@ -378,4 +392,36 @@ func TestAnUnreadableMarksFileIsNotRecordedAsARefusal(t *testing.T) {
 	res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
 	require.NoError(t, err)
 	assert.Equal(t, "1.3.0", res.Candidate.Version.String())
+}
+
+// A crash after a lowered mark is written leaves a refusal recorded against the
+// old one; the poll looks again because the refusal predates the mark, so no
+// second write has to happen for the follower to resume.
+// Times are kept to the second, so a lowering in the same second as the
+// refusal counts as after it.
+func TestARefusalOlderThanItsChannelsMarkIsLookedAtAgain(t *testing.T) {
+	for name, later := range map[string]time.Duration{"an hour later": time.Hour, "in the same second": 0} {
+		t.Run(name, func(t *testing.T) {
+			h, registry, _, _ := followingHarnessWith(t, recoverableUpdate)
+			ctx := context.Background()
+			_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+			require.NoError(t, err)
+			h.tick(time.Hour)
+			registry.republish(renumberedArchive(t, h, "1.2.5"))
+			_, err = ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+			require.Error(t, err)
+
+			// What a lowering leaves on disk, and nothing else.
+			h.tick(later)
+			raw, err := json.Marshal(domain.ChannelMarks{h.channel(): {
+				Version: domain.MustParseVersion("1.2.0"), At: domain.NewTime(h.Deps.Now()),
+			}})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(h.Paths.ChannelMarksFile(), raw, 0o640))
+
+			res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+			require.NoError(t, err, "a refusal made against a mark since lowered kept the release out")
+			assert.Equal(t, "1.2.5", res.Candidate.Version.String())
+		})
+	}
 }

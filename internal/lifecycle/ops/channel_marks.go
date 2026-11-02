@@ -103,7 +103,7 @@ func (d *Deps) raiseChannelMark(channel string, v domain.Version) error {
 func (d *Deps) lowerFollowedMarkOrWarn(ctx context.Context, v domain.Version) {
 	inst, err := d.loadInstallation(ctx)
 	if err == nil {
-		err = d.lowerFollowedMark(ctx, inst, v)
+		err = d.lowerFollowedMark(inst, v)
 	}
 	if err != nil {
 		d.warnf("the followed channel's mark was not lowered to %s: %s; its follower may refuse "+
@@ -117,7 +117,7 @@ func (d *Deps) lowerFollowedMarkOrWarn(ctx context.Context, v domain.Version) {
 // every later release below the old mark, which leaves a machine whose vendor
 // withdrew a release unable to follow its channel. Other channels' marks are
 // left alone. See logs/version-floor.md.
-func (d *Deps) lowerFollowedMark(ctx context.Context, inst domain.Installation, v domain.Version) error {
+func (d *Deps) lowerFollowedMark(inst domain.Installation, v domain.Version) error {
 	if inst.Update.Channel == "" {
 		return nil
 	}
@@ -130,16 +130,28 @@ func (d *Deps) lowerFollowedMark(ctx context.Context, inst domain.Installation, 
 	if !ok || !v.LessThan(mark.Version) {
 		return nil
 	}
+	// One write, and the poll does the rest: a refusal recorded before this
+	// mark is looked at again (refusalOutdated), so no crash between two
+	// writes can leave the follower refusing what the lower mark admits.
 	marks[channel] = domain.ChannelMark{Version: v, At: domain.NewTime(d.now())}
-	if err := d.saveChannelMarks(marks); err != nil {
-		return err
+	return d.saveChannelMarks(marks)
+}
+
+// refusalOutdated reports whether a recorded refusal predates its channel's
+// mark, which happens only when the mark was lowered or replaced since. The
+// refusal was then made against a mark that no longer stands, and the poll
+// looks again instead of skipping the unmoved channel. Not before rather than
+// after, because times are kept to the second: two polls in one second cost a
+// fetch, where the other way a lowering in the same second as the refusal
+// would be lost.
+func (d *Deps) refusalOutdated(candidate domain.UpdateCandidate) bool {
+	if candidate.Refused == "" {
+		return false
 	}
-	// A refusal recorded against the old mark would otherwise stand: the
-	// poll skips a channel that has not moved, so the release the lower mark
-	// now admits would never be staged.
-	candidate, err := d.State.UpdateCandidate(ctx)
-	if err != nil || candidate.Refused == "" {
-		return err
+	marks, err := d.channelMarks()
+	if err != nil {
+		return false
 	}
-	return d.State.ClearUpdateCandidate(ctx)
+	mark, ok := marks[candidate.SourceRef]
+	return ok && !mark.At.Before(candidate.SeenAt.Time)
 }

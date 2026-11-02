@@ -260,8 +260,12 @@ func (d *Deps) lastSeenUpstream(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !candidate.IsZero() {
+	if !candidate.IsZero() && !d.refusalOutdated(candidate) {
 		return candidate.UpstreamDigest, nil
+	}
+	if !candidate.IsZero() {
+		// Unknown, so the channel is looked at again.
+		return "", nil
 	}
 
 	current, err := d.State.CurrentRelease(ctx)

@@ -146,3 +146,19 @@ evidence: internal/lifecycle/ops/update.go:143
 action: decided
 proposal: ASSUMED — a resumed update keeps `--allow-older` only for the release the interrupted run was installing; naming any other needs the flag again.
 ```
+
+Corrected in the review's second round: dropping the refusal was a second write
+after the lowered mark, and a crash between the two left the follower stuck as
+before.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T18:02:00Z
+attempt: 3
+claim: the attempt 2 entry's lowering wrote the mark and then dropped the refusal, so a crash between the two writes kept the now admissible release out while the channel did not move
+evidence: internal/lifecycle/ops/channel_marks.go:147-157
+action: decided
+proposal: ASSUMED — `update --allow-older` and `rollback`, when they install a release below the followed channel's mark, lower that mark to the release they installed, in one write. The poll looks again at a refusal recorded no later than its channel's mark, which happens only when the mark was lowered or replaced since. The installation is read under the lock, so the channel lowered is the one followed when the operation finishes. Other channels' marks are left alone.
+```
