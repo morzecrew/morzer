@@ -169,6 +169,8 @@ func TestNotesCannotDriveTheTerminalOrTheClipboard(t *testing.T) {
 		{"carriage return overwrite", "hidden\rkeep", "keep", ""},
 		{"backspace overwrite", "x\bkeep", "keep", ""},
 		{"bell", "\x07keep", "keep", ""},
+		{"bidi override", "keep\u202ekeep", "keepkeep", "\u202e"},
+		{"bidi isolate", "keep\u2066keep\u2069", "keepkeep", "\u2066"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rel := releaseAt(t, map[string]string{"RELEASE.md": tc.body})

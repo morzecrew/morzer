@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The 200-character bounds on task and input descriptions, and on runtime
   options, counted bytes, so a word of two-byte letters counted twice.
 
+- **Release notes cannot reorder what the operator reads.** Bidi controls are
+  removed from them, as escape sequences already were, before `update --check`
+  prints them or a notification carries their first line.
+
 - **A hook that is a directory is refused when the bundle loads.** It passed
   `release verify` with its executable bit set and failed only when an
   operation ran it.
