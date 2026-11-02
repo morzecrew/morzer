@@ -14,8 +14,9 @@ import (
 // nothing when none is near: within a third of the name's length, at least one
 // edit, ignoring case. A wrong suggestion costs more than none.
 //
-// Nothing longer than maxSuggestible is compared: no name that long is a typo
-// of a declared one, and the distance costs the product of the two lengths.
+// Nothing longer than maxSuggestible is compared, to bound the work: the
+// distance costs the product of the two lengths. A declared name may be longer,
+// and a typo of one is then offered nothing.
 func didYouMean(name string, candidates []string) string {
 	n := len([]rune(name))
 	if n > maxSuggestible {

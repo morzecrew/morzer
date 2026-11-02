@@ -61,6 +61,7 @@ func TestASuggestionIsOfferedOnlyWhenNear(t *testing.T) {
 		{"Zzzzzz", ""},
 		{"x", ""},
 		{strings.Repeat("Data", 20), ""},
+		{strings.Repeat("Data", 16)[:63] + "x", strings.Repeat("Data", 16)},
 		{strings.Repeat("Data", 16) + "xy", ""},
 	} {
 		got := didYouMean(tc.name, []string{"URL", "http_port", "Data",
