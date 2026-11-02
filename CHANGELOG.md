@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `update` and `release fetch` tried to extract a directory whose name ends in
   `.tar.zst` or `.tzst`, and refused it.
 
+- **`release show` says why it cannot read a bundle path.** A path it was not
+  allowed to look at was reported as neither a directory nor a version; it is
+  now reported as unreadable, with the reason.
+
 ## [0.11.0] - 2026-11-01
 
 An operator can now see what a machine did and what it is about to do: `morzer

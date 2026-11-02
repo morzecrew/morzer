@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"slices"
@@ -794,8 +796,22 @@ func (a *App) releaseRoot(ctx context.Context, args []string) (string, error) {
 	if len(args) == 1 {
 		// A path takes precedence over a version, so `release show
 		// ./bundle` works on a machine with no installation at all.
-		if info, err := os.Stat(args[0]); err == nil && info.IsDir() {
+		info, err := os.Stat(args[0])
+		if err == nil && info.IsDir() {
 			return args[0], nil
+		}
+		// A path that could not be looked at is reported as that, unless
+		// it reads as a version, which is then what it names.
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if _, verr := domain.ParseVersion(args[0]); verr != nil {
+				// The reason alone: a PathError repeats the path.
+				reason := err
+				var pathErr *fs.PathError
+				if errors.As(err, &pathErr) {
+					reason = pathErr.Err
+				}
+				return "", domain.ValidationError(err, "cannot read %s: %v", args[0], reason)
+			}
 		}
 	}
 

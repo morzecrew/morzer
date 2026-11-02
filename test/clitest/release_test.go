@@ -497,6 +497,26 @@ func TestDiffReadsADirectoryAnArchiveAndAnInstalledVersion(t *testing.T) {
 		SaysAll("release 9.9.9 is not installed")
 }
 
+// TestABundleThatCannotBeReadSaysWhy: a path the manager may not look at is
+// reported as that, not as a version nobody installed.
+func TestABundleThatCannotBeReadSaysWhy(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root traverses a 0000 directory, so this arrangement proves nothing")
+	}
+	r := clitest.NewInstalled(t)
+	sealed := t.TempDir()
+	if err := os.Chmod(sealed, 0o000); err != nil {
+		t.Fatalf("cannot seal %s: %v", sealed, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+	bundle := filepath.Join(sealed, "bundle")
+
+	r.Run("release", "show", bundle).Failed().
+		SaysAll("cannot read", "permission denied").NoOutputContains("neither a directory nor a version")
+	r.Run("release", "diff", bundle, r.Bundle).Failed().
+		SaysAll("cannot read", "permission denied").NoOutputContains("neither a directory nor a version")
+}
+
 // TestRenderCheckIsOptIn.
 //
 // Decision 12 is that it stays opt-in permanently, so the default path must not
