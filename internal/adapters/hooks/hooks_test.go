@@ -2,6 +2,7 @@ package hooks_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -469,6 +470,28 @@ sleep 300
 	}
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Errorf("the timeout took %s to fire", elapsed)
+	}
+}
+
+// A hook that exits and leaves a process holding fd 3 is bounded by its timeout
+// too. The result channel stays open while anything holds its write end, and a
+// wait on it that nothing bounded lasted as long as that process did.
+func TestAProcessLeftHoldingTheResultChannelIsBoundedByTheTimeout(t *testing.T) {
+	rel := release(t)
+	cmd := hook(t, rel, "migrate", `#!/bin/sh
+sleep 5 >/dev/null 2>&1 &
+exit 0
+`)
+
+	start := time.Now()
+	_, err := hooks.NewRunner(exec.New()).
+		Run(context.Background(), rel, cmd, env(), 300*time.Millisecond)
+
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("the wait for fd 3 outlived the timeout: %s", elapsed)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a result channel still held at the deadline is a timeout, got %v", err)
 	}
 }
 
