@@ -809,6 +809,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/upgrading-the-manager/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Upgrading the manager
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/taking-a-product-down/" class="md-nav__link">
         
   
@@ -2316,6 +2345,9 @@ environment variables than get that incantation right.</p>
 <p>What it never does: run <code>sudo</code> on its own initiative — if the prefix needs root
 it prints the command to re-run and exits non-zero — install anything but
 <code>&lt;dir&gt;/morzer</code>, or leave a partial download behind.</p>
+<p>Running it again over an existing binary is how the manager is upgraded. Pass
+<code>--dir</code> the directory of the binary the units run — see
+<a href="../../operating/upgrading-the-manager/">Upgrading the manager</a>.</p>
 <h3 id="reading-it-first">Reading it first<a class="headerlink" href="#reading-it-first" title="Permanent link">&para;</a></h3>
 <p>Piping a script into a shell means running what a server chose to send. The
 criticism is correct in general, and the answer here is that everything the

@@ -661,6 +661,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/upgrading-the-manager/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-up-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Upgrading the manager
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/taking-a-product-down/" class="md-nav__link">
         
   
@@ -3939,6 +3968,29 @@ nothing and says so. It exits 0 whatever the targets answered.</p>
 versions it can read.</p>
 <p>Under <code>--json</code> the supported API versions are a list, so a bundle author can
 check compatibility programmatically rather than by trial and error.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>version<span class="w"> </span>--check
+</code></pre></div>
+<p><code>--check</code> also asks GitHub for the newest published manager, skipping drafts
+and prereleases. It says whether this one is still supported and, when it is
+outdated, prints the command that upgrades it. Asking is the consent, so no
+setting gates it. Under <code>--json</code> the answer is <code>data.check</code>, with <code>running</code>,
+<code>newest</code>, <code>url</code>, <code>dev_build</code>, <code>outdated</code>, <code>supported</code> and <code>upgrade</code>. It exits 0
+whether or not a newer manager exists. A feed it cannot reach or read is
+exit 2. See <a href="../../operating/upgrading-the-manager/">upgrading the manager</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--check</code></td>
+<td>Compare this manager with the newest published release.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="completion-install">completion install<a class="headerlink" href="#completion-install" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w">            </span><span class="c1"># the shell $SHELL names</span>
 morzer<span class="w"> </span>completion<span class="w"> </span>install<span class="w"> </span>zsh
