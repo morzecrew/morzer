@@ -759,6 +759,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#never-older" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never older
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-it-fails" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2238,6 +2249,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#never-older" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Never older
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-it-fails" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2446,9 +2468,10 @@ move, so between the moment the manager reads it and the moment it downloads,
 the tag may point somewhere else — pinning to what was actually read closes
 that window.</p>
 <p>If the channel offers something unusable — a version older than the one
-installed, or a version already installed republished with different content —
-it is refused and the refusal is <em>recorded</em>, so the next tick does not download
-the same bundle again to reach the same answer. <code>status</code> reports it.</p>
+installed, a version older than one the channel already delivered, or a version
+already installed republished with different content — it is refused and the
+refusal is <em>recorded</em>, so the next tick does not download the same bundle again
+to reach the same answer. <code>status</code> reports it. See <a href="#never-older">never older</a>.</p>
 <h2 id="what-happens-in-order">What happens, in order<a class="headerlink" href="#what-happens-in-order" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart TD
     A[verify the bundle] --&gt; B[check compatibility]
@@ -2541,6 +2564,35 @@ name.</p>
 journal so an incident review can see it was made deliberately. A dev-mode
 machine can turn the backup off for every update with
 <code>morzer config set backup.before_update=false</code>; a production machine cannot.</p>
+<h2 id="never-older">Never older<a class="headerlink" href="#never-older" title="Permanent link">&para;</a></h2>
+<p>A signature proves who made a release, not that it is the newest one. Whoever
+controls what a machine is offered could offer an older signed release with a
+known flaw, so the manager refuses two things:</p>
+<ul>
+<li><strong>A release older than the one installed.</strong> <code>update</code> refuses it at <a href="../../reference/exit-codes/">exit
+  9</a>, whatever it came from: a registry, a channel,
+  the release store or a local path.</li>
+<li><strong>A release older than one its channel already delivered.</strong> For each channel
+  it follows, the machine remembers the newest release it fetched and verified
+  from it, in <code>/var/lib/&lt;product&gt;/manager/channel-marks.json</code>. A channel that
+  delivered 1.4.0 and now serves 1.3.0 is refused, even on a machine still
+  running 1.2.0 that never installed 1.4.0. Only a verified fetch counts:
+  <code>update --check</code> and a poll whose tag did not move change nothing, so a
+  registry advertising a version it never published cannot block real ones.
+  Each channel is judged by its own history, and an
+  <a href="../recovering-a-lost-machine/">export</a> carries it to a rebuilt machine.</li>
+</ul>
+<p>Going back on purpose is still possible:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>rollback<span class="w">                          </span><span class="c1"># the previous release</span>
+morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w"> </span><span class="m">1</span>.3.2<span class="w"> </span>--allow-older<span class="w">   </span><span class="c1"># an older release you name</span>
+</code></pre></div>
+<p><code>--allow-older</code> holds for that one install and is recorded in the journal; there
+is no setting that turns the refusal off. Both a rollback and an
+<code>--allow-older</code> install also lower the followed channel's memory to the release
+they installed, so after a vendor withdraws 1.4.0, the machine takes the 1.3.x
+patches the channel serves next instead of refusing them.</p>
+<p>What this does not catch is a channel that never moves: a machine that was never
+shown the newer release has nothing to compare with.</p>
 <h2 id="when-it-fails">When it fails<a class="headerlink" href="#when-it-fails" title="Permanent link">&para;</a></h2>
 <p>The release pointer goes back to what was running, and the previously-running
 release is what comes back up. The staged release and the backup both stay —

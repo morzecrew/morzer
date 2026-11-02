@@ -3235,6 +3235,10 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <td>Install a version already in the release store, instead of a bundle path.</td>
 </tr>
 <tr>
+<td><code>--allow-older</code></td>
+<td>Install a release older than the one running, which is otherwise refused. Recorded in the journal, and <code>--resume</code> keeps it for the same release. Refused beside <code>--check</code>, <code>--stage</code> and <code>--unattended</code>.</td>
+</tr>
+<tr>
 <td><code>--digest</code></td>
 <td>Expected bundle content digest. A mismatch refuses the update.</td>
 </tr>
@@ -3270,6 +3274,10 @@ declare. The step names them, and a plan names what it would generate; no value
 is printed or journaled. A secret both releases declare and nobody set is left
 unset, and <code>apply</code> and <code>rollback</code> generate nothing. See
 <a href="../../operating/updating/#what-happens-in-order">updating</a>.</p>
+<p>A release older than the one running is refused at <a href="../exit-codes/">exit 9</a>,
+whatever it came from, a local path included. <code>rollback</code> is how a machine goes
+back, and <code>--allow-older</code> installs an older release on purpose. See <a href="../../operating/updating/#never-older">never
+older</a>.</p>
 <p><code>--check</code> and <code>--stage</code> are alternatives, and both stop short of installing.
 See <a href="../../operating/updating/#following-a-channel">following a channel</a> for what
 staging leaves behind and what a poll costs.</p>
