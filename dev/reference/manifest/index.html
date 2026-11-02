@@ -1825,6 +1825,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        preflight
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2545,6 +2556,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#preflight" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        preflight
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -3666,6 +3688,106 @@ two ways:</p>
 refused by <code>release verify</code>.</p>
 <p><strong>Inputs need <code>min_manager_version: "0.11.0"</code> or later</strong>, for the same reason
 tasks need 0.8.0.</p>
+<h2 id="preflight">preflight<a class="headerlink" href="#preflight" title="Permanent link">&para;</a></h2>
+<p>A map of check name to an executable the bundle ships, which the manager runs
+beside its own preflight checks before an operation changes the deployment, and
+in <code>doctor</code>. It is for what <code>requirements</code> cannot state: a kernel setting the
+product needs, a host it must resolve, a driver.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.12.0"</span>
+
+<span class="nt">preflight</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max-map-count</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">the kernel allows enough memory maps for the search index</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">hooks/preflight</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">max-map-count</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">fatal</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
+<span class="w">    </span><span class="nt">remedy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">run `sysctl -w vm.max_map_count=262144` and persist it in /etc/sysctl.d</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th style="text-align: center;">Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>description</code></td>
+<td>string</td>
+<td style="text-align: center;">✅</td>
+<td>The line <code>doctor</code> prints for the check. One line of at most 200 characters, with no control or formatting characters.</td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>list</td>
+<td style="text-align: center;">✅</td>
+<td>An executable in the bundle and its arguments, resolved against the release root as every hook is. A missing file, or one without the executable bit, is refused when the bundle loads.</td>
+</tr>
+<tr>
+<td><code>fatal</code></td>
+<td>bool</td>
+<td style="text-align: center;"></td>
+<td>Whether a failure refuses <code>apply</code> and <code>update</code>. Default <code>false</code>, and a failure only warns.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>duration</td>
+<td style="text-align: center;"></td>
+<td>Time budget. Default <code>30s</code>, at most <code>2m</code>.</td>
+</tr>
+<tr>
+<td><code>remedy</code></td>
+<td>string</td>
+<td style="text-align: center;"></td>
+<td>What the operator should do about a failure, shown with it. One line of at most 200 characters, with no control or formatting characters.</td>
+</tr>
+</tbody>
+</table>
+<p>Names follow the rule for task names. The checks run in name order, after the
+manager's own, and all of a bundle's checks may take at most <code>5m</code> between them.
+A check is run under the <a href="../hooks/#a-preflight-check">hook <abbr title="Application Binary Interface">ABI</abbr></a>: exit <code>0</code>
+passes, <code>2</code> means the check does not apply on this machine, and anything else
+fails, quoting what it wrote to the result descriptor, or else its stderr, with
+any escape sequence or control character removed.</p>
+<p>Where a check that is <code>fatal</code> refuses:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>A failing fatal check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apply</code>, a first install</td>
+<td>Refuses with <a href="../exit-codes/">exit 3</a>, listed with any of the manager's own blockers. Nothing has changed.</td>
+</tr>
+<tr>
+<td><code>update</code></td>
+<td>Refuses with exit 3. The checks are the new release's, and the current release keeps running. They run where the manager's own checks do, after the pre-update backup and staging.</td>
+</tr>
+<tr>
+<td>boot, <code>start</code>, <code>rollback</code></td>
+<td>Warns. Each brings back a release that already ran on this machine, and a check that refused there could keep the product down with no way back.</td>
+</tr>
+<tr>
+<td><code>doctor</code></td>
+<td>Fails, as any failing check does. One that is not fatal warns, and <code>doctor</code> exits 0.</td>
+</tr>
+</tbody>
+</table>
+<p><code>config set</code> and <code>restore</code> do not run preflight checks, the manager's or the
+vendor's, and neither does a plan (<code>--dry-run</code>).</p>
+<p><strong>A check must not change the machine.</strong> <code>doctor</code> runs it without the
+deployment lock, possibly while an operation is running, and every morning on a
+machine with a <a href="../../operating/notifications/#the-scheduled-doctor">scheduled doctor</a>.</p>
+<p><strong>Checks need <code>min_manager_version: "0.12.0"</code> or later</strong>, for the same reason
+tasks need 0.8.0: a manager older than 0.12.0 cannot read <code>preflight</code>. It has to
+refuse the bundle rather than skip the checks, since one that skipped them would
+install onto the machine they exist to refuse.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>What the manager may do about the project's named volumes, which it captures
 itself rather than through the backup hook.</p>

@@ -1700,6 +1700,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-preflight-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A preflight check
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2171,6 +2182,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#a-preflight-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A preflight check
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phases" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2392,7 +2414,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_OPERATION_TYPE</code></td>
-<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it. A <a href="#a-task">task's container</a> sees <code>task</code>.</td>
+<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it. A <a href="#a-task">task's container</a> sees <code>task</code>, and a <a href="#a-preflight-check">preflight check</a> that <code>doctor</code> runs sees <code>doctor</code>.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PHASE</code></td>
@@ -2492,12 +2514,34 @@ users on the machine can read. None of them is a secret.</p>
 variables, with <code>OPERATION_TYPE</code> and <code>PHASE</code> set to <code>task</code>. The arguments an
 operator appended follow the task's <code>command</code>; nothing else of theirs reaches
 the container.</p>
+<h3 id="a-preflight-check">A preflight check<a class="headerlink" href="#a-preflight-check" title="Permanent link">&para;</a></h3>
+<p>A <a href="../manifest/#preflight">preflight check</a> runs on the host under this <abbr title="Application Binary Interface">ABI</abbr>, with
+<code>PHASE</code> set to <code>preflight</code>, before anything is rendered for the release it
+checks. So it gets the table above with these differences:</p>
+<ul>
+<li><code>OPERATION_TYPE</code> is the operation running the check, <code>apply</code>, <code>start</code>,
+  <code>update</code> or <code>rollback</code>, or <code>doctor</code>, which runs it with no operation and so no
+  <code>OPERATION_ID</code>.</li>
+<li><code>RELEASE_VERSION</code>, <code>RELEASE_DIR</code> and the parameters are the release being
+  checked: the new one during an <code>update</code>, the previous one during a
+  <code>rollback</code>.</li>
+<li><code>SECRETS_DIR</code>, <code>CONFIG_FILE</code> and <code>BACKUP_DIR</code> are absent. A check that needs a
+  secret belongs in the smoke test.</li>
+<li><code>DRY_RUN</code> is always <code>0</code>: no check runs in a plan.</li>
+</ul>
+<p>Exit <code>0</code> passes, and <code>2</code> says the check does not apply on this machine. Any
+other exit fails, and so does a timeout or a result descriptor holding something
+that is not a <abbr title="JavaScript Object Notation">JSON</abbr> object. The <code>message</code> on the result descriptor is what the
+operator reads; without one, a failure quotes the end of stderr, then stdout.</p>
+<p>A check must not change the machine: <code>doctor</code> runs it without the deployment
+lock.</p>
 <h3 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h3>
-<p><code>PHASE</code> is one of <code>migrate</code>, <code>smoke-test</code>, <code>backup</code>, <code>restore</code> or
-<code>health-check</code>, and <code>task</code> in a <a href="#a-task">task's container</a>, where no hook runs.</p>
-<p><code>preflight</code>, <code>pre-update</code> and <code>post-update</code> are reserved. The <abbr title="Application Binary Interface">ABI</abbr> names them,
-but no release of the manager runs a hook in them, so a hook may branch on them
-and nothing reaches the branch.</p>
+<p><code>PHASE</code> is one of <code>migrate</code>, <code>smoke-test</code>, <code>backup</code>, <code>restore</code>, <code>health-check</code>
+or <code>preflight</code>, and <code>task</code> in a <a href="#a-task">task's container</a>, where no hook
+runs.</p>
+<p><code>pre-update</code> and <code>post-update</code> are reserved. The <abbr title="Application Binary Interface">ABI</abbr> names them, but no release
+of the manager runs a hook in them, so a hook may branch on them and nothing
+reaches the branch.</p>
 <p>The same executable may be invoked in more than one phase; branching on <code>PHASE</code>
 is how one hook serves several.</p>
 <h2 id="what-is-in-backup_dir">What is in <code>BACKUP_DIR</code><a class="headerlink" href="#what-is-in-backup_dir" title="Permanent link">&para;</a></h2>

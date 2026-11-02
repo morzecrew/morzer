@@ -3396,6 +3396,9 @@ instead.</p>
 checks tool versions against what the release requires, the installation layout,
 the secret state, service and health status, disk headroom, and the journal.</p>
 <p>Exits <a href="../exit-codes/">3</a> when any check fails; warnings exit 0.</p>
+<p>A release's own <a href="../manifest/#preflight">preflight checks</a> run last, under
+<code>vendor</code>, each as <code>vendor.&lt;name&gt;</code>. One its vendor declared fatal fails when it
+fails, and any other warns. Their messages and remedies are the vendor's words.</p>
 <p><code>--unattended</code> is the <a href="../../operating/notifications/#the-scheduled-doctor">scheduled run</a>:
 it sends the notification outbox first, then notifies one <code>doctor.finished</code>
 naming the checks that warn or fail. A run where every check passes notifies

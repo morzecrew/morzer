@@ -2815,7 +2815,8 @@ kept regardless.</p>
 <p>Shows a release manifest — the installed one when no version is given. A path
 shows a bundle that is not installed: its directory, or the <code>tar.zst</code> archive
 <a href="#release-archive"><code>release archive</code></a> writes, whose path is then reported as the
-root.</p>
+root. Each <a href="../manifest/#preflight">preflight check</a> the release ships is listed
+with every field it declares.</p>
 <h2 id="release-diff">release diff<a class="headerlink" href="#release-diff" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>diff<span class="w"> </span>&lt;from&gt;<span class="w"> </span>&lt;to&gt;
 </code></pre></div>
@@ -2849,6 +2850,10 @@ directory, or a <code>tar.zst</code> archive.</p>
 <tr>
 <td>tasks, profiles</td>
 <td>name</td>
+</tr>
+<tr>
+<td>preflight</td>
+<td>name, and the whole declaration: whether it is fatal, its timeout, command, description and remedy</td>
 </tr>
 <tr>
 <td>files</td>
