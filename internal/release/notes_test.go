@@ -179,7 +179,7 @@ func TestNotesCannotDriveTheTerminalOrTheClipboard(t *testing.T) {
 			got := release.Notes(rel)
 
 			if strings.ContainsFunc(got, func(r rune) bool {
-				return r != '\n' && r != '\t' && unicode.IsControl(r)
+				return (r != '\n' && r != '\t' && unicode.IsControl(r)) || unicode.Is(unicode.Bidi_Control, r)
 			}) {
 				t.Errorf("a control character survived into what reaches a terminal: %q", got)
 			}
