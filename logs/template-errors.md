@@ -72,3 +72,21 @@ proposal: ASSUMED — candidates are the owner's exported fields and value metho
 ```
 
 **Drift count: 0.**
+
+The 23:40 entry gave the 64-character cutoff a reason it does not have. A
+parameter or secret name has no length limit, so a longer declared name can be
+misspelt too; the cutoff only bounds the work.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T00:40:00Z
+attempt: 3
+claim: the cutoff was justified as no long name being a typo, and a declared name may be longer than 64
+evidence: internal/adapters/render/gotemplate/suggest.go:43
+action: decided
+proposal: ASSUMED — a name longer than 64 characters is not compared, to bound the work, which costs the product of the two lengths; a typo of a longer declared name is offered nothing.
+```
+
+**Drift count: 0.**
