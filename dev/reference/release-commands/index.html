@@ -1474,6 +1474,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release diff
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-new" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2359,6 +2370,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-diff" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release diff
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-new" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2794,6 +2816,54 @@ kept regardless.</p>
 shows a bundle that is not installed: its directory, or the <code>tar.zst</code> archive
 <a href="#release-archive"><code>release archive</code></a> writes, whose path is then reported as the
 root.</p>
+<h2 id="release-diff">release diff<a class="headerlink" href="#release-diff" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>diff<span class="w"> </span>&lt;from&gt;<span class="w"> </span>&lt;to&gt;
+</code></pre></div>
+<p>Shows what changed between two releases. Each argument is read as
+<a href="#release-show"><code>release show</code></a> reads one: a version installed here, a bundle
+directory, or a <code>tar.zst</code> archive.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Compared by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>images</td>
+<td>name, and the reference</td>
+</tr>
+<tr>
+<td>parameters</td>
+<td>name, and the type and default; a changed description is not listed</td>
+</tr>
+<tr>
+<td>secrets</td>
+<td>name, from the secret schema</td>
+</tr>
+<tr>
+<td>compatibility</td>
+<td><code>upgrade_from</code>, <code>min_manager_version</code>, <code>rollback_safe</code> and the three <code>database_schema_*</code> fields</td>
+</tr>
+<tr>
+<td>tasks, profiles</td>
+<td>name</td>
+</tr>
+<tr>
+<td>files</td>
+<td>path, and the SHA-256 of the contents</td>
+</tr>
+</tbody>
+</table>
+<p>Only what was added, removed or changed is listed, and a section with nothing in
+it is left out. Files are compared by checksum and no text diff is shown; <code>--json</code>
+adds both checksums of a changed file. The checksum list and its signature are
+not compared, since they change whenever another file does. A file whose
+permissions changed and whose contents did not is not listed. Of its
+permissions, the bundle digest records only the owner's executable bit, so a
+hook that lost it changes the digest and is still not listed.</p>
+<p>Exits 0 whether or not anything differs.</p>
 <h2 id="release-new">release new<a class="headerlink" href="#release-new" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>new<span class="w"> </span>&lt;dir&gt;<span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--vendor<span class="w"> </span>VENDOR<span class="o">]</span>
 </code></pre></div>
