@@ -58,8 +58,9 @@ Only what was added, removed or changed is listed, and a section with nothing in
 it is left out. Files are compared by checksum and no text diff is shown; `--json`
 adds both checksums of a changed file. The checksum list and its signature are
 not compared, since they change whenever another file does. A file whose
-permissions changed and whose contents did not is not listed, though the bundle
-digest does change.
+permissions changed and whose contents did not is not listed. Of its
+permissions, the bundle digest records only the owner's executable bit, so a
+hook that lost it changes the digest and is still not listed.
 
 Exits 0 whether or not anything differs.
 
