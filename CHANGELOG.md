@@ -21,8 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A release can ship preflight checks of its own.** Each runs a bundle
   executable beside the manager's checks, and in `doctor`. A failing fatal one
-  refuses `apply` and `update`, and only warns at boot, in `start` and in
-  `rollback`; any other warns. A bundle declaring checks needs manager 0.12.0.
+  refuses `apply` and `update` and fails `doctor`, and only warns at boot, in
+  `start` and in `rollback`; any other warns. Bundles declaring checks need
+  manager 0.12.0.
 
 ### Changed
 

@@ -1042,6 +1042,12 @@ func (m *Manifest) ApplyDefaults() {
 			m.Tasks[name] = task
 		}
 	}
+	for name, check := range m.Preflight {
+		if check.Timeout == 0 {
+			check.Timeout = Duration(DefaultPreflightTimeout)
+			m.Preflight[name] = check
+		}
+	}
 	for i := range m.Health.Checks {
 		if m.Health.Checks[i].Timeout == 0 {
 			m.Health.Checks[i].Timeout = Duration(DefaultHealthTimeout)

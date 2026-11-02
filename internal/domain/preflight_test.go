@@ -25,6 +25,8 @@ func TestAWellFormedCheckValidatesAndTakesTheDefaultTimeout(t *testing.T) {
 	})
 	require.NoError(t, m.Validate())
 	assert.Equal(t, DefaultPreflightTimeout, m.Preflight["max-map-count"].EffectiveTimeout())
+	assert.Equal(t, Duration(DefaultPreflightTimeout), m.Preflight["max-map-count"].Timeout,
+		"the default is filled in, so `release show --json` states it")
 	assert.Equal(t, DefaultPreflightTimeout, m.PreflightTotal())
 }
 

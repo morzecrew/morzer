@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,8 +93,11 @@ func (h *harness) vendorResults() []events.CheckResult {
 
 func TestAFatalCheckRefusesApplyBeforeAnythingChanges(t *testing.T) {
 	h := preflightHarness(t, kernelChecks(true))
+	ctx := context.Background()
+	before, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
 
-	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err))
 	for _, want := range []string{
@@ -101,7 +105,14 @@ func TestAFatalCheckRefusesApplyBeforeAnythingChanges(t *testing.T) {
 	} {
 		assert.Contains(t, err.Error(), want)
 	}
-	assert.Zero(t, h.Runtime.UpCount, "a refused apply started services")
+	// Asking what is running is how preflight decides on the port check;
+	// anything else would be a change.
+	for _, call := range h.Runtime.Calls {
+		assert.Equal(t, "Status", call, "a refused apply asked the runtime for more than its status")
+	}
+	after, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "a refused apply changed the recorded release")
 }
 
 // One report lists every blocker, the manager's and the vendor's, so an
@@ -112,7 +123,11 @@ func TestAVendorBlockerIsListedBesideTheManagers(t *testing.T) {
 	path := filepath.Join(h.Release.Root, "manifest.yaml")
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
-	patched := strings.Replace(string(raw), "architectures: [amd64, arm64]", "architectures: [s390x]", 1)
+	other := "s390x"
+	if runtime.GOARCH == other {
+		other = "ppc64le"
+	}
+	patched := strings.Replace(string(raw), "architectures: [amd64, arm64]", "architectures: ["+other+"]", 1)
 	require.NotEqual(t, string(raw), patched, "the fixture no longer declares the architectures this rewrites")
 	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
 	h.Release, err = release.Load(h.Release.Root)

@@ -131,3 +131,39 @@ claim: the read-only contract is stated in the manifest and hook references, and
 evidence: pages/docs/reference/manifest.md:602-604
 action: decided
 ```
+
+Found in review, 2026-11-02.
+
+A check's output is printed on the operator's terminal by `doctor` and the
+preflight step, and it is the vendor's process's output, not manifest text that
+validation has seen.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-02T13:40:00Z
+attempt: 1
+claim: a check's fd 3 message and the stderr or stdout a failure quotes reach the terminal with whatever escape sequences the check wrote
+evidence: internal/lifecycle/ops/vendor_preflight.go:86-92
+action: decided
+proposal: ASSUMED — what a check says is stripped of escape sequences and control characters, as release notes are, and joined onto one line. Its description and remedy are printable characters only, so a bidi override is refused at load.
+```
+
+An operator's Ctrl-C while a check runs reached the report as that check
+failing, so a fatal check turned it into a refusal naming the vendor's check.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-02T13:40:00Z
+attempt: 1
+claim: a check cut off by the operator's cancellation was reported as a failed check, exit 3, instead of an interruption
+evidence: internal/lifecycle/ops/vendor_preflight.go:94-101
+action: decided
+proposal: ASSUMED — a preflight step or a `doctor` run the operator cancels ends as an interruption, exit 130, whatever its checks reported when they were cut off.
+```
+
+The example bundle can declare a check once a released manager runs them, and
+the acceptance run exercises the step from then on.
