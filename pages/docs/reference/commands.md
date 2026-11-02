@@ -206,6 +206,7 @@ morzer update --to 1.3.0
 | Flag | Meaning |
 | --- | --- |
 | `--to` | Install a version already in the release store, instead of a bundle path. |
+| `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profile. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
@@ -220,6 +221,11 @@ declare. The step names them, and a plan names what it would generate; no value
 is printed or journaled. A secret both releases declare and nobody set is left
 unset, and `apply` and `rollback` generate nothing. See
 [updating](../operating/updating.md#what-happens-in-order).
+
+A release older than the one running is refused at [exit 9](exit-codes.md),
+whatever it came from, a local path included. `rollback` is how a machine goes
+back, and `--allow-older` installs an older release on purpose. See [never
+older](../operating/updating.md#never-older).
 
 `--check` and `--stage` are alternatives, and both stop short of installing.
 See [following a channel](../operating/updating.md#following-a-channel) for what

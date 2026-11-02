@@ -34,6 +34,11 @@ type UpdateOptions struct {
 	// populated by `release fetch`, and an operator should not have to know
 	// the layout to install from it.
 	To string
+
+	// AllowOlder installs a release older than the one running, which is
+	// otherwise refused (RFC 0037 decision 4). Per run and journalled: going
+	// back past what a machine has seen is a decision made each time.
+	AllowOlder bool
 }
 
 // Update installs a new release over the current one.
@@ -132,6 +137,15 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if prior != nil && prior.Flags["generate_secrets"] == "false" {
 			opts.NoGenerateSecrets = true
 		}
+		// Only for the release the interrupted run was installing: the
+		// operator crossed the floor for that one, not for whatever the
+		// resuming command names.
+		if prior != nil && prior.Flags["allow_older"] == "true" && prior.To.Equal(staged.Version()) {
+			opts.AllowOlder = true
+		}
+	}
+	if err := refuseOlderThanInstalled(from, staged, opts.AllowOlder); err != nil {
+		return Result{}, err
 	}
 	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 		return Result{}, err
@@ -175,6 +189,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {
 			d.reconcileUnitsAfterConverge(ctx)
+			if opts.AllowOlder {
+				d.lowerFollowedMarkOrWarn(ctx, staged.Version())
+			}
 		}
 		return err
 	})
@@ -376,7 +393,24 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 		// update that could have generated it (RFC 0036 decision 5).
 		flags["generate_secrets"] = "false"
 	}
+	if opts.AllowOlder {
+		flags["allow_older"] = "true"
+	}
 	return flags
+}
+
+// refuseOlderThanInstalled is the installed floor (RFC 0037 §5.1): a release
+// older than the one running is refused, whatever it came from, a local path
+// included, unless the operator says otherwise. A rollback is not an update and
+// is never refused here.
+func refuseOlderThanInstalled(from domain.ReleaseRecord, staged domain.Release, allow bool) error {
+	if allow || from.IsZero() || !staged.Version().LessThan(from.Version) {
+		return nil
+	}
+	return domain.IncompatibleError(nil, "%s is older than the installed %s",
+		staged.Version(), from.Version).
+		WithHint("`morzer rollback` returns to the previous release; to install an older " +
+			"one on purpose, pass --allow-older, which is journalled")
 }
 
 // updateSummary says what happened, or what would. See applySummary: a plan

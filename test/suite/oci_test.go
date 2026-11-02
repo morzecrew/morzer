@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -40,6 +41,9 @@ import (
 // oras client's own verification is genuinely exercised rather than bypassed.
 type fakeRegistry struct {
 	t *testing.T
+
+	// mu guards the artifact, which republish replaces between requests.
+	mu sync.RWMutex
 
 	manifest    []byte
 	manifestDig string
@@ -73,7 +77,25 @@ func digestOf(b []byte) string {
 func newFakeRegistry(t *testing.T, archive []byte, mediaType string, extraLayers int) *httptest.Server {
 	t.Helper()
 
-	reg := &fakeRegistry{t: t, blob: archive, blobDig: digestOf(archive)}
+	reg := &fakeRegistry{t: t}
+	reg.publish(archive, mediaType, extraLayers)
+
+	srv := httptest.NewServer(reg)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// republish moves every tag to an artifact carrying another archive, as a
+// vendor pushing a different release under the same tag does.
+func (r *fakeRegistry) republish(archive []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.publish(archive, oci.MediaType, 0)
+}
+
+func (r *fakeRegistry) publish(archive []byte, mediaType string, extraLayers int) {
+	t := r.t
+	r.blob, r.blobDig = archive, digestOf(archive)
 
 	config := []byte(`{}`)
 	layers := []map[string]any{}
@@ -87,7 +109,7 @@ func newFakeRegistry(t *testing.T, archive []byte, mediaType string, extraLayers
 	}
 	layers = append(layers, map[string]any{
 		"mediaType": mediaType,
-		"digest":    reg.blobDig,
+		"digest":    r.blobDig,
 		"size":      len(archive),
 	})
 
@@ -104,15 +126,14 @@ func newFakeRegistry(t *testing.T, archive []byte, mediaType string, extraLayers
 	})
 	require.NoError(t, err)
 
-	reg.manifest = manifest
-	reg.manifestDig = digestOf(manifest)
-
-	srv := httptest.NewServer(reg)
-	t.Cleanup(srv.Close)
-	return srv
+	r.manifest = manifest
+	r.manifestDig = digestOf(manifest)
 }
 
 func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	switch {
 	// The version probe every distribution client makes first.
 	case req.URL.Path == "/v2/":

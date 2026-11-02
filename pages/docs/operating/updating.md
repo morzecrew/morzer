@@ -123,9 +123,10 @@ the tag may point somewhere else — pinning to what was actually read closes
 that window.
 
 If the channel offers something unusable — a version older than the one
-installed, or a version already installed republished with different content —
-it is refused and the refusal is *recorded*, so the next tick does not download
-the same bundle again to reach the same answer. `status` reports it.
+installed, a version older than one the channel already delivered, or a version
+already installed republished with different content — it is refused and the
+refusal is *recorded*, so the next tick does not download the same bundle again
+to reach the same answer. `status` reports it. See [never older](#never-older).
 
 ## What happens, in order
 
@@ -242,6 +243,41 @@ name.
 journal so an incident review can see it was made deliberately. A dev-mode
 machine can turn the backup off for every update with
 `morzer config set backup.before_update=false`; a production machine cannot.
+
+## Never older
+
+A signature proves who made a release, not that it is the newest one. Whoever
+controls what a machine is offered could offer an older signed release with a
+known flaw, so the manager refuses two things:
+
+- **A release older than the one installed.** `update` refuses it at [exit
+  9](../reference/exit-codes.md), whatever it came from: a registry, a channel,
+  the release store or a local path.
+- **A release older than one its channel already delivered.** For each channel
+  it follows, the machine remembers the newest release it fetched and verified
+  from it, in `/var/lib/<product>/manager/channel-marks.json`. A channel that
+  delivered 1.4.0 and now serves 1.3.0 is refused, even on a machine still
+  running 1.2.0 that never installed 1.4.0. Only a verified fetch counts:
+  `update --check` and a poll whose tag did not move change nothing, so a
+  registry advertising a version it never published cannot block real ones.
+  Each channel is judged by its own history, and an
+  [export](recovering-a-lost-machine.md) carries it to a rebuilt machine.
+
+Going back on purpose is still possible:
+
+```sh
+morzer rollback                          # the previous release
+morzer update --to 1.3.2 --allow-older   # an older release you name
+```
+
+`--allow-older` holds for that one install and is recorded in the journal; there
+is no setting that turns the refusal off. Both a rollback and an
+`--allow-older` install also lower the followed channel's memory to the release
+they installed, so after a vendor withdraws 1.4.0, the machine takes the 1.3.x
+patches the channel serves next instead of refusing them.
+
+What this does not catch is a channel that never moves: a machine that was never
+shown the newer release has nothing to compare with.
 
 ## When it fails
 

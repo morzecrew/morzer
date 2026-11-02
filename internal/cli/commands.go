@@ -268,6 +268,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 		digest     string
 		profile    string
 		to         string
+		allowOlder bool
 	)
 
 	cmd := &cobra.Command{
@@ -284,7 +285,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		Example: "  morzer update ./demo-1.3.0.tar.zst\n" +
 			"  morzer update oci://registry.example/demo/bundle:1.3.0 --digest sha256:…\n" +
 			"  morzer update --check\n" +
-			"  morzer update --to 1.2.0",
+			"  morzer update --to 1.2.0\n" +
+			"  morzer update --to 1.1.4 --allow-older",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.operationOptions()
@@ -299,6 +301,15 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// picking would tell them the machine did what they asked.
 			if err := oneUpdateMode(check, stage, unattended, to); err != nil {
 				return err
+			}
+			// Going back past what the machine has seen is an
+			// operator's decision for one install (RFC 0037 decision
+			// 4); a check or a stage installs nothing, and a tick has
+			// nobody to make it.
+			if allowOlder && (check || stage || unattended) {
+				return domain.Usage("--allow-older applies to an install").
+					WithHint("pass it with a bundle or --to; --check, --stage and " +
+						"--unattended never install an older release")
 			}
 
 			// Before everything else an update needs and a check does
@@ -401,6 +412,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 					Ref:          ref,
 					To:           to,
 					ExpectDigest: digest,
+					AllowOlder:   allowOlder,
 				})
 				return result, err
 			})
@@ -420,8 +432,14 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"expected bundle content digest; a mismatch refuses the update")
 	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
+	f.BoolVar(&allowOlder, "allow-older", false,
+		"install a release older than the one running, which is otherwise refused; recorded in the journal")
+	// Flags are parsed before a completion runs, so --allow-older already
+	// read here offers the older releases it would admit.
 	_ = cmd.RegisterFlagCompletionFunc("to", app.completeValues(releasesWhere(
-		func(v, installed domain.Version) bool { return v.GreaterThan(installed) })))
+		func(v, installed domain.Version) bool {
+			return v.GreaterThan(installed) || allowOlder && v.LessThan(installed)
+		})))
 	f.BoolVar(&check, "check", false,
 		"report whether a newer release exists, without installing anything")
 	f.BoolVar(&stage, "stage", false,
