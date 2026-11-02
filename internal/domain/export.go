@@ -44,7 +44,24 @@ type InstallationExport struct {
 	// version and digest are what let an operator fetch the same bundle
 	// again and know they got the same bytes.
 	Release ExportedRelease `yaml:"release" json:"release,omitempty"`
+
+	// ChannelMarks are the newest release each followed channel delivered
+	// (RFC 0037 decision 5): a rebuilt machine that forgot them could be
+	// offered an older release by a channel that already served a newer
+	// one. An older manager reads past the field.
+	ChannelMarks ChannelMarks `yaml:"channel_marks,omitempty" json:"channel_marks,omitempty"`
 }
+
+// ChannelMark is the newest release a channel delivered to this installation:
+// fetched, checksummed and signature-checked, never merely advertised.
+type ChannelMark struct {
+	Version Version `yaml:"version" json:"version"`
+	At      Time    `yaml:"at" json:"at"`
+}
+
+// ChannelMarks maps a channel, by its reference with credentials removed, to
+// its mark.
+type ChannelMarks map[string]ChannelMark
 
 // ExportedSecrets carries the encrypted state, never plaintext.
 type ExportedSecrets struct {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -152,7 +153,8 @@ func BuildExport(ctx context.Context, d *Deps) (domain.InstallationExport, error
 			State:      string(state),
 			Recipients: exportRecipients(recipients),
 		},
-		Release: currentExportedRelease(ctx, d),
+		Release:      currentExportedRelease(ctx, d),
+		ChannelMarks: exportedChannelMarks(ctx, d),
 	}
 
 	if err := export.Validate(); err != nil {
@@ -234,6 +236,18 @@ func currentExportedRelease(ctx context.Context, d *Deps) domain.ExportedRelease
 		Version: current.Version,
 		Digest:  current.Digest,
 	}
+}
+
+// exportedChannelMarks is what the channels delivered, or none when the record
+// cannot be read: an export is taken when a machine may be failing, and
+// refusing it over the marks would cost the recovery to keep a refusal.
+func exportedChannelMarks(ctx context.Context, d *Deps) domain.ChannelMarks {
+	marks, err := d.channelMarks()
+	if err != nil {
+		logging.FromContext(ctx).Warn("the export carries no channel marks", "error", err)
+		return nil
+	}
+	return marks
 }
 
 func hostname() string {
@@ -650,11 +664,20 @@ func stepWriteImportedInstallation(d *Deps, export domain.InstallationExport) en
 			}
 			st.Set(engine.KeyInstallation, inst)
 			st.Detail("id %s", inst.ID)
+			// What the channels already delivered, so the rebuilt
+			// machine is not offered an older release by one of them
+			// again (RFC 0037 decision 5).
+			if len(export.ChannelMarks) > 0 {
+				if err := d.saveChannelMarks(export.ChannelMarks); err != nil {
+					return err
+				}
+			}
 			return d.State.SaveInstallation(ctx, inst)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			_ = os.Remove(d.Paths.InstallationFile())
 			_ = os.Remove(d.Paths.InstallationState())
+			_ = os.Remove(d.Paths.ChannelMarksFile())
 			return nil
 		},
 	}

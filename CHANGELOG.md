@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`update` refuses a release older than the one installed.** It only warned
+  before, whatever the release came from, a local path included. `rollback`
+  goes back, and `update --allow-older` installs an older release on purpose,
+  recorded in the journal.
+
+- **A channel is refused a release older than one it already delivered.** Each
+  followed channel's newest verified release is remembered, and an export
+  carries it. A rollback or an `--allow-older` install lowers the followed
+  channel's memory to the release it installed.
+
 ## [0.12.0] - 2026-11-02
 
 A bundle author can check more before a release reaches a customer. `release

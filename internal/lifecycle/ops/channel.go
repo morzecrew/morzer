@@ -204,7 +204,7 @@ func (d *Deps) stageUnderLock(
 		SeenAt:         domain.NewTime(d.now()),
 	}
 
-	rel, stageErr := d.stageCandidate(ctx, state.Pinned)
+	rel, stageErr := d.stageCandidate(ctx, state.Pinned, result.Ref)
 	if stageErr != nil {
 		// A refusal is recorded, not merely returned. The tag will still
 		// point here on the next tick, and a poll that remembered only
@@ -216,6 +216,13 @@ func (d *Deps) stageUnderLock(
 		}
 		result.Candidate = candidate
 		return domain.Release{}, stageErr
+	}
+
+	// The mark first: a crash between the two writes leaves a raised mark
+	// and no candidate, which the next poll restages, and never a staged
+	// candidate whose channel forgot it delivered it (RFC 0037 decision 15).
+	if err := d.raiseChannelMark(result.Ref, rel.Version()); err != nil {
+		return domain.Release{}, err
 	}
 
 	candidate.Name = rel.Name()
@@ -323,7 +330,7 @@ func (d *Deps) retireStagedCandidate(ctx context.Context, record domain.ReleaseR
 // different bundle from the one the decision was made about -- a window that is
 // tolerable when a human typed a reference seconds ago, and not when a loop is
 // watching something built to change (RFC 0016 decision 22).
-func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref) (domain.Release, error) {
+func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref, channel string) (domain.Release, error) {
 	resolved, err := d.Source.Resolve(ctx, pinned)
 	if err != nil {
 		return domain.Release{}, err
@@ -359,6 +366,16 @@ func (d *Deps) stageCandidate(ctx context.Context, pinned ports.Ref) (domain.Rel
 			"the channel published %s again with different content", resolved.Version).
 			WithHint("a version is immutable; a vendor iterating should publish a " +
 				"prerelease (1.4.1-dev.7.gabc1234) rather than republishing one")
+	}
+
+	// The channel's own history: it delivered something newer than this
+	// before, even if that release was never installed here.
+	marks, err := d.channelMarks()
+	if err != nil {
+		return domain.Release{}, err
+	}
+	if err := refuseBelowMark(marks, channel, resolved.Version); err != nil {
+		return domain.Release{}, err
 	}
 
 	if resolved.Version.Prerelease() != "" {

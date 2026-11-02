@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,13 +230,21 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 	originMachineKey, err := origin.Secrets.IdentityPublicKey(ctx)
 	require.NoError(t, err)
 
+	// What a channel delivered, which a rebuilt machine must not forget
+	// (RFC 0037 decision 5).
+	const channel = "oci://registry.example/demo/bundle:stable"
+	marks := domain.ChannelMarks{channel: {Version: domain.MustParseVersion("1.4.0"), At: domain.NewTime(time.Now())}}
+	raw, err := json.Marshal(marks)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(origin.Deps.Paths.ChannelMarksFile(), raw, 0o640))
+
 	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
 	_, err = ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
 	require.NoError(t, err)
 
 	// The export leaves the machine, so what is in it matters more than
 	// what is in any other file this program writes.
-	raw, err := os.ReadFile(exportPath)
+	raw, err = os.ReadFile(exportPath)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), known,
 		"an export must never carry a plaintext secret; it is a file operators copy around")
@@ -259,6 +268,14 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 		IdentityFile: recoveryPath,
 	})
 	require.NoError(t, err, "import from an export plus the offline key must succeed")
+
+	t.Run("the channel marks survive", func(t *testing.T) {
+		raw, err := os.ReadFile(rebuilt.Deps.Paths.ChannelMarksFile())
+		require.NoError(t, err, "a rebuilt machine forgot what its channels delivered")
+		var got domain.ChannelMarks
+		require.NoError(t, json.Unmarshal(raw, &got))
+		assert.Equal(t, "1.4.0", got[channel].Version.String())
+	})
 
 	t.Run("the installation identity survives", func(t *testing.T) {
 		got, err := rebuilt.Deps.State.LoadInstallation(ctx)

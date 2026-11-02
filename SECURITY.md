@@ -179,10 +179,13 @@ is built. See [RFC 0028](rfcs/0028-the-machines-signing-identity.md).
 
 Stated here rather than discovered during an incident:
 
-- Nothing checks a signature's *freshness*. A correctly signed older release can
-  be presented in place of a newer one; only `compatibility.upgrade_from` and a
-  pinned `--digest` stand in the way.
-  [RFC 0037](rfcs/0037-freshness-of-a-signed-release.md) proposes closing it.
+- A signature's *freshness* is checked only against what the machine has seen.
+  `update` refuses a release older than the one installed, and a channel is
+  refused a release older than one it already delivered, but a channel that
+  never moves, or a machine never shown the newer release, goes unnoticed: a
+  correctly signed older release can still be the newest thing such a machine
+  knows of. [RFC 0037](rfcs/0037-freshness-of-a-signed-release.md)'s signed
+  channel index would close that, and is built when a vendor asks for it.
 - A signature is verified *after* the archive is extracted, because it travels
   inside the bundle. Extraction is confined and bounded, so what an unsigned
   hostile archive can do is refuse to extract — but the ordering is worth

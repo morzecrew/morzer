@@ -155,6 +155,14 @@ func (p Paths) UpdateCandidateFile() string {
 	return filepath.Join(p.ManagerDir(), "update-candidate.json")
 }
 
+// ChannelMarksFile records, per channel, the newest release this installation
+// fetched and verified from it (RFC 0037 §5.1). Unlike the candidate it is not
+// derived: deleting it forgets what a channel already delivered, so an export
+// carries it.
+func (p Paths) ChannelMarksFile() string {
+	return filepath.Join(p.ManagerDir(), "channel-marks.json")
+}
+
 func (p Paths) JournalFile() string { return filepath.Join(p.ManagerDir(), "operations.jsonl") }
 func (p Paths) LockDir() string     { return filepath.Join(p.ManagerDir(), "locks") }
 func (p Paths) LockFile(name string) string {
