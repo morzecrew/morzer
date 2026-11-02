@@ -369,7 +369,8 @@ document signed with the same minisign key that signs their bundles:
 ## 12. Phasing
 
 - **P1 — the installed floor and channel marks** (§5.1), if row 1 is ruled
-  yes. *(2026-11-02: row 1 was ruled yes, and P1 was built in #254.)* One PR: the channel-marks file, the refusal in `update`, staging and the tick, `--allow-older`, the
+  yes. One PR: the channel-marks file, the refusal in `update`, staging and the tick, `--allow-older`, the
   export field, docs, and the SECURITY.md entry rewritten to what remains.
+  *(2026-11-02: row 1 was ruled yes, and P1 was built in #254.)*
 - **P2 — the signed index** (§5.2), gated on a vendor asking (row 2). The
   verifier side, the `status`/`doctor` lines, and the vendor's publishing guide.
