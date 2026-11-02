@@ -148,9 +148,10 @@ other check, and a configured target that takes warnings is notified of it.
 
 `manager.check` is stored in the installation's settings beside
 `update.check`, and absent reads as false. Installation state is decoded
-leniently, so an older manager reads past the field. It drops the field if it
-rewrites the installation, so after a downgrade the consent has to be given
-again. That is why no schema bump is needed.
+leniently, so an older manager reads past the field. A downgrade alone keeps
+it, but the first time an older manager rewrites the installation the field is
+dropped, and the consent has to be given again. That is why no schema bump is
+needed.
 
 ```text
 manager
@@ -199,7 +200,8 @@ In order:
 3. **Verify** the signature over `SHA256SUMS`, then the archive against its own
    line. The key is a copy of `morzer.pub` embedded in the binary at build
    time, and a test asserts it is byte for byte the file at the repository's
-   root, as one already does for `install.sh`'s copy. It is passed to the
+   root. That is stricter than the test for `install.sh`'s copy, which checks
+   that the script carries each line of the file. It is passed to the
    in-process minisign verifier as the only public key, with the signature
    required. No flag, setting or environment variable changes the key or the
    requirement (decision 6).
