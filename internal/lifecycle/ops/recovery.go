@@ -666,11 +666,12 @@ func stepWriteImportedInstallation(d *Deps, export domain.InstallationExport) en
 			st.Detail("id %s", inst.ID)
 			// What the channels already delivered, so the rebuilt
 			// machine is not offered an older release by one of them
-			// again (RFC 0037 decision 5).
-			if len(export.ChannelMarks) > 0 {
-				if err := d.saveChannelMarks(export.ChannelMarks); err != nil {
-					return err
-				}
+			// again (RFC 0037 decision 5). Replaced, not merged: an
+			// import over another installation must not keep that
+			// one's history. Keyed again with credentials removed,
+			// whatever the export says.
+			if err := d.replaceChannelMarks(export.ChannelMarks); err != nil {
+				return err
 			}
 			return d.State.SaveInstallation(ctx, inst)
 		},

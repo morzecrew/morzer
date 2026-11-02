@@ -788,6 +788,21 @@ func TestExportValidationRefusesAnUnusableDocument(t *testing.T) {
 		require.Error(t, e.Validate())
 	})
 
+	// A mark guarding no channel, or a floor at zero that admits every
+	// release, is refused before anything on the target is touched.
+	for name, marks := range map[string]domain.ChannelMarks{
+		"a channel mark naming no channel": {" ": {Version: domain.MustParseVersion("1.4.0")}},
+		"a channel mark with no version":   {"oci://registry.example/demo/bundle:stable": {}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := base()
+			e.ChannelMarks = marks
+			err := e.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "channel_marks")
+		})
+	}
+
 	t.Run("only the exporting machine can decrypt", func(t *testing.T) {
 		// The failure mode this catches is an export taken on a machine
 		// created with --no-recovery-recipient: a file that looks like

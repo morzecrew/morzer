@@ -17,7 +17,9 @@ const KindInstallationExport = "installation-export"
 // which may be older or newer than the one that wrote it.
 //
 // What it deliberately does not contain is machine data. That is what `backup`
-// is for. Two artifacts describing the same deployment with different freshness
+// is for. The channel marks are not machine data in that sense: they are what
+// the installation's channels delivered, which it needs to refuse an older
+// release again (RFC 0037 decision 5). Two artifacts describing the same deployment with different freshness
 // would force an operator, mid-incident, to work out which one is current.
 type InstallationExport struct {
 	APIVersion APIVersion `yaml:"api_version" json:"api_version"`
@@ -165,6 +167,17 @@ func (e InstallationExport) Validate() error {
 	if recovery+other == 0 && len(e.Secrets.Recipients) > 0 {
 		v.add("secrets.recipients", "the only recipient is the exporting machine's own key, "+
 			"so nothing else can decrypt this export")
+	}
+
+	// An unnamed channel or an unset version would write a mark that guards
+	// nothing, or a floor at zero that admits every release.
+	for channel, mark := range e.ChannelMarks {
+		if strings.TrimSpace(channel) == "" {
+			v.add("channel_marks", "an entry names no channel")
+		}
+		if mark.Version.IsZero() {
+			v.add("channel_marks", "the entry for %q has no version", channel)
+		}
 	}
 
 	return v.err()

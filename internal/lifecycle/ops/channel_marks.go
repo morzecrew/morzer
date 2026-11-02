@@ -45,6 +45,25 @@ func (d *Deps) saveChannelMarks(marks domain.ChannelMarks) error {
 	return atomicfs.WriteFile(d.Paths.ChannelMarksFile(), append(data, '\n'), 0o640)
 }
 
+// replaceChannelMarks makes the marks exactly these, each keyed with its
+// credentials removed, and removes the file when there are none.
+func (d *Deps) replaceChannelMarks(from domain.ChannelMarks) error {
+	if len(from) == 0 {
+		if err := os.Remove(d.Paths.ChannelMarksFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return domain.InstallationError(err, "cannot remove %s", d.Paths.ChannelMarksFile())
+		}
+		return nil
+	}
+	marks := domain.ChannelMarks{}
+	for channel, mark := range from {
+		key := channelKey(channel)
+		if have, ok := marks[key]; !ok || have.Version.LessThan(mark.Version) {
+			marks[key] = mark
+		}
+	}
+	return d.saveChannelMarks(marks)
+}
+
 // channelKey names a channel as the marks do: by its reference with any
 // credentials removed (decision 13), so the file is never a copy of a password.
 func channelKey(ref string) string { return ports.RedactRefCredentials(ref) }
