@@ -36,6 +36,10 @@ func TestARenderFailureSaysWhereAndWhatInTheTemplatesTerms(t *testing.T) {
 			`1:3: required "size >: 0" "": error calling required: size >: 0`},
 		{"{{ required `size >: 0` \"\" }}",
 			"1:3: required `size >: 0` \"\": error calling required: size >: 0"},
+		{`{{ .Installation.ÜRL }}`,
+			`.Installation has no field ÜRL; did you mean URL?`},
+		{`{{ .Parameters.http_pört }}`,
+			`which the manifest does not declare; did you mean http_port?`},
 		{`{{ upper .Domains }}`,
 			`1:9: .Domains: wrong type for value; expected string; got []string`},
 	}

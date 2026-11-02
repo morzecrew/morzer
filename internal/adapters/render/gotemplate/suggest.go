@@ -134,12 +134,16 @@ func ownerOf(goType string) (string, []string, bool) {
 // each quoted string whole, so a `>: ` inside one is not taken for its end.
 const actionPattern = `(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|` + "`[^`]*`" + `|[^"'` + "`])*?"
 
+// identPattern is a template identifier as text/template lexes one: letters
+// and digits of any script, and underscores.
+const identPattern = `[\pL\p{Nd}_]+`
+
 var (
 	// (?s): a `required` message may hold a newline, and so may its cause.
 	execFailure = regexp.MustCompile(`(?s)^(\d+:\d+): executing "[^"]*" at <(` + actionPattern + `)>: (.*)$`)
-	noField     = regexp.MustCompile(`^can't evaluate field (\w+) in type (\S+)$`)
+	noField     = regexp.MustCompile(`^can't evaluate field (` + identPattern + `) in type (\S+)$`)
 	noKey       = regexp.MustCompile(`^map has no entry for key "(.*)"$`)
-	rootChain   = regexp.MustCompile(`^\$?((?:\.\w+)+)$`)
+	rootChain   = regexp.MustCompile(`^\$?((?:\.` + identPattern + `)+)$`)
 )
 
 // describe restates text/template's execution error in the template's terms:
