@@ -189,6 +189,9 @@
         "check": {
           "type": "boolean"
         },
+        "manager_check": {
+          "type": "boolean"
+        },
         "randomized_delay": {
           "description": "A duration, e.g. 30s or 10m.",
           "examples": [

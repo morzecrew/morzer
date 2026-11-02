@@ -304,6 +304,22 @@ func calloutFixtures() []fixture {
 			},
 			fields: []string{"1.4.0", "9ac42a3", "selfhost/v1alpha1"},
 		},
+		{
+			name: "version-check",
+			value: views.Version{
+				Version:              "0.11.0",
+				Commit:               "9ac42a3",
+				Built:                "2026-08-10T17:38:58Z",
+				SupportedAPIVersions: []string{"selfhost/v1alpha1"},
+				Check: &ops.ManagerCheck{
+					Running: "0.11.0", Newest: "0.12.0",
+					URL:      "https://github.com/morzecrew/morzer/releases/tag/v0.12.0",
+					Outdated: true,
+					Upgrade:  "install.sh --version 0.12.0 --require-signature --dir /usr/local/bin",
+				},
+			},
+			fields: []string{"0.12.0", "no longer supported", "--dir /usr/local/bin"},
+		},
 	}
 }
 

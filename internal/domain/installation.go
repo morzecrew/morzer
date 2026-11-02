@@ -445,6 +445,13 @@ type UpdateConfig struct {
 	// running it. See CheckAllowed.
 	Check bool `yaml:"check" json:"check,omitempty"`
 
+	// ManagerCheck enables the unprompted check for a newer *manager* --
+	// the `manager.version` doctor check -- and is the `manager.check`
+	// setting (RFC 0046 decision 2). Its own consent rather than Check's,
+	// because it asks GitHub, a party other than the vendor Check consents
+	// to. Absent means false, and an older manager reads past it.
+	ManagerCheck bool `yaml:"manager_check,omitempty" json:"manager_check,omitempty"`
+
 	// Channel is a mutable reference this deployment follows.
 	//
 	// A different operation from checking, not a spelling of it: a check

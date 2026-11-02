@@ -103,6 +103,15 @@ func (v Version) NextPatch() Version {
 	return Version{sv: &next}
 }
 
+// MinorLine is the first release of v's minor line, major.minor.0: the unit
+// SECURITY.md supports.
+func (v Version) MinorLine() Version {
+	if v.sv == nil {
+		return Version{}
+	}
+	return Version{sv: semver.New(v.sv.Major(), v.sv.Minor(), 0, "", "")}
+}
+
 // WithPrerelease returns v carrying the given prerelease identifiers.
 func (v Version) WithPrerelease(pre string) (Version, error) {
 	if v.sv == nil {

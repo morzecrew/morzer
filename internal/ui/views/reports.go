@@ -21,6 +21,10 @@ type Version struct {
 	Commit               string   `json:"commit"`
 	Built                string   `json:"built"`
 	SupportedAPIVersions []string `json:"supported_api_versions"`
+
+	// Check is what `--check` learned from the release feed, absent without
+	// it.
+	Check *ops.ManagerCheck `json:"check,omitempty"`
 }
 
 // KeyPair is a generated identity.
@@ -94,7 +98,17 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 	}
 	fields = append(fields, ui.Field{
 		Label: "manifest api", Value: strings.Join(v.SupportedAPIVersions, ", ")})
+	if c := v.Check; c != nil {
+		fields = append(fields, ui.Field{Label: "newest", Value: c.Newest + "  " + c.URL})
+	}
 	d.Fields(2, fields)
+	if c := v.Check; c != nil {
+		d.Blank()
+		d.Text(2, "%s", c.Summary())
+		if c.Upgrade != "" {
+			d.Text(2, "upgrade with %s", c.Upgrade)
+		}
+	}
 	return d
 }
 

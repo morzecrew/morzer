@@ -248,7 +248,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	// that parses -- so an installation whose release root is broken or
 	// temporarily unreachable should still be told a fixed version exists.
 	// Inside that branch, a broken release silently removed the check.
-	checks = append(checks, d.checkUpdateAvailable(inst))
+	checks = append(checks, d.checkUpdateAvailable(inst), d.checkManagerVersion(inst))
 	checks = append(checks, checkMode(inst))
 	if d.Runtime != nil {
 		checks = append(checks, d.checkDeclaredRuntime(inst))

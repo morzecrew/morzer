@@ -98,6 +98,8 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Update": keep("how this machine learns a release exists"),
 		"Update.Check": keep("whether to contact the vendor's registry unprompted -- " +
 			"a read, and testing an update is what a sandbox is for"),
+		"Update.ManagerCheck": keep("whether to ask GitHub unprompted for a newer manager -- " +
+			"a read of a public feed, reaching nothing production owns"),
 		"Update.Channel":         keep("a reference this machine follows; a read"),
 		"Update.AutoApply":       keep("installs what the channel offers, here"),
 		"Update.Schedule":        keep("when this machine's own timer ticks; it reaches nothing"),

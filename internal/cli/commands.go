@@ -1099,24 +1099,38 @@ func newRestoreCommand(app *App) *cobra.Command {
 }
 
 func newVersionCommand(app *App) *cobra.Command {
-	return &cobra.Command{
+	var check bool
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version, commit, and supported manifest API versions",
 		Long: "This binary's version and build, and the manifest API versions it can\n" +
 			"read. The last is the one worth checking against a bundle: a release\n" +
 			"declaring an API version not listed here needs a newer manager.\n\n" +
+			"With --check it also asks GitHub for the newest published manager,\n" +
+			"and says whether this one is still supported. Asking is the consent:\n" +
+			"no setting gates it.\n\n" +
 			"Needs no installation, which is deliberate -- it answers on a bare\n" +
 			"machine and on one whose installation will not load.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return app.render(views.Version{
+			v := views.Version{
 				Version:              app.Build.Version,
 				Commit:               app.Build.Commit,
 				Built:                app.Build.Date,
 				SupportedAPIVersions: apiVersionStrings(),
-			})
+			}
+			if check {
+				res, err := ops.CheckManager(cmd.Context(), app.Deps)
+				if err != nil {
+					return err
+				}
+				v.Check = &res
+			}
+			return app.render(v)
 		},
 	}
+	cmd.Flags().BoolVar(&check, "check", false, "ask GitHub for the newest published manager and compare it with this one")
+	return cmd
 }
 
 // parseComponents validates --component values, naming what is accepted rather

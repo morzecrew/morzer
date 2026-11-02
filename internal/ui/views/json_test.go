@@ -53,6 +53,25 @@ func TestVersionKeepsEveryKeyEvenWhenEmpty(t *testing.T) {
 	}
 }
 
+// `version --check --json` is what a script reads to decide whether to
+// upgrade, so its keys are a contract too (RFC 0046 §5.1).
+func TestVersionCheckKeepsItsPublishedKeys(t *testing.T) {
+	got := marshal(t, views.Version{Version: "0.11.0", Check: &ops.ManagerCheck{
+		Running: "0.11.0", Newest: "0.12.0", URL: "https://github.com/morzecrew/morzer/releases/tag/v0.12.0",
+		Outdated: true, Upgrade: "install.sh --version 0.12.0 --require-signature",
+	}})
+
+	require.Equal(t, map[string]any{
+		"running":   "0.11.0",
+		"newest":    "0.12.0",
+		"url":       "https://github.com/morzecrew/morzer/releases/tag/v0.12.0",
+		"dev_build": false,
+		"outdated":  true,
+		"supported": false,
+		"upgrade":   "install.sh --version 0.12.0 --require-signature",
+	}, got["check"])
+}
+
 func TestVerifiedKeepsItsPublishedKeys(t *testing.T) {
 	version, err := domain.ParseVersion("1.4.0")
 	require.NoError(t, err)

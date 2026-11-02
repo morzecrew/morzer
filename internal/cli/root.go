@@ -23,6 +23,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/backup/hookbackup"
 	"github.com/morzecrew/morzer/internal/adapters/health"
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
+	managerfeed "github.com/morzecrew/morzer/internal/adapters/managerfeed/github"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
@@ -1043,6 +1044,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Bus:            bus,
 		ManagerPath:    systemd.ManagerPath(),
 		ManagerVersion: parseBuildVersion(a.Build.Version),
+		ManagerFeed:    managerfeed.New(),
 		Redactor:       redactor,
 		TargetPrefix:   a.Flags.root,
 		// What the CLI found on the machine and whether the operator
