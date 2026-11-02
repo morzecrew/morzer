@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -24,13 +25,16 @@ type ReleaseDiff struct {
 	Secrets       []Change `json:"secrets,omitempty"`
 	Compatibility []Change `json:"compatibility,omitempty"`
 	Tasks         []Change `json:"tasks,omitempty"`
+	Preflight     []Change `json:"preflight,omitempty"`
 	Profiles      []Change `json:"profiles,omitempty"`
 	Files         []Change `json:"files,omitempty"`
 }
 
 // Same says whether the two releases declare the same and hold the same files.
 func (d ReleaseDiff) Same() bool {
-	for _, list := range [][]Change{d.Images, d.Parameters, d.Secrets, d.Compatibility, d.Tasks, d.Profiles, d.Files} {
+	for _, list := range [][]Change{
+		d.Images, d.Parameters, d.Secrets, d.Compatibility, d.Tasks, d.Preflight, d.Profiles, d.Files,
+	} {
 		if len(list) > 0 {
 			return false
 		}
@@ -86,6 +90,7 @@ func DiffReleases(from, to domain.Release) (ReleaseDiff, error) {
 		Secrets:       changes(fromSecrets, toSecrets, identity),
 		Compatibility: changes(compatibility(a.Compatibility), compatibility(b.Compatibility), identity),
 		Tasks:         changes(a.Tasks, b.Tasks, func(domain.TaskSpec) string { return "" }),
+		Preflight:     changes(a.Preflight, b.Preflight, describePreflight),
 		Profiles:      changes(nameSet(a.ProfileNames()), nameSet(b.ProfileNames()), identity),
 		Files:         changes(fromFiles, toFiles, identity),
 	}, nil
@@ -122,6 +127,22 @@ func describeParameter(p domain.ParameterSpec) string {
 		return string(p.Type) + ", no default"
 	}
 	return string(p.Type) + ", default " + p.Default
+}
+
+// describePreflight is the whole of a check's declaration, so a change to any
+// field is listed (RFC 0045 decision 14): whether it refuses, its timeout, its
+// command, its description and its remedy.
+func describePreflight(c domain.PreflightCheck) string {
+	severity := "warns"
+	if c.Fatal {
+		severity = "fatal"
+	}
+	out := severity + ", " + c.EffectiveTimeout().String() + ", " + strings.Join(c.Command, " ") +
+		": " + c.Description
+	if c.Remedy != "" {
+		out += "; remedy: " + c.Remedy
+	}
+	return out
 }
 
 // compatibility is the declarations an update and a rollback gate on, keyed by

@@ -238,6 +238,44 @@ func (r *Runner) BundleWithARequiredParameter() string {
 	return dir
 }
 
+// BundleWithAFailingCheck is the example bundle declaring one fatal preflight
+// check, kernel, whose script always fails (RFC 0045). The example bundle
+// itself declares none: a check needs a manager floor of 0.12.0, and a manager
+// built without a stamped version reports 0.0.0.
+func (r *Runner) BundleWithAFailingCheck() string {
+	r.t.Helper()
+
+	dir := filepath.Join(r.t.TempDir(), "check-bundle")
+	copyDir(r.t, r.Bundle, dir)
+
+	manifest := filepath.Join(dir, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	minimum := `min_manager_version: "` + domain.PreflightMinManagerVersion + `"`
+	rewritten := strings.Replace(string(data), `min_manager_version: "0.0.0"`, minimum, 1)
+	if !strings.Contains(rewritten, minimum) {
+		r.t.Fatalf("the example bundle no longer has the line this rewrites; update %s", manifest)
+	}
+	rewritten += `
+preflight:
+  kernel:
+    description: the kernel allows enough memory maps
+    command: [hooks/preflight]
+    fatal: true
+    remedy: raise vm.max_map_count to 262144
+`
+	if err := os.WriteFile(manifest, []byte(rewritten), 0o644); err != nil {
+		r.t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho \"vm.max_map_count is 65530\" >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "hooks", "preflight"), []byte(script), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	return dir
+}
+
 // BundleWithATask is the example bundle declaring one task, seed.
 func (r *Runner) BundleWithATask() string {
 	r.t.Helper()

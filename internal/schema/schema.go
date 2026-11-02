@@ -158,6 +158,7 @@ func manifestSchema() map[string]any {
 	props["images"] = imagesSchema(props["images"])
 	props["operations"] = operationsSchema(props["operations"])
 	props["tasks"] = tasksSchema(props["tasks"])
+	props["preflight"] = preflightSchema(props["preflight"])
 
 	// `runtime:` is still a field so the loader can refuse it by name
 	// (RFC 0023 decision 23), and a refused field is not one to offer. Kept
@@ -314,6 +315,26 @@ func tasksSchema(generated any) any {
 		inputs["propertyNames"] = map[string]any{"pattern": domain.TaskInputNamePattern}
 	}
 	task["required"] = []string{"service", "command"}
+	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
+	return mapping
+}
+
+// preflightSchema closes what Validate closes about a preflight check and
+// reflection cannot see: the name's shape and the two fields every check needs.
+// The timeout ceilings stay with Validate, since a duration is a string here.
+func preflightSchema(generated any) any {
+	mapping, ok := generated.(map[string]any)
+	if !ok {
+		panic(fmt.Sprintf("preflightSchema: %T is not a schema object", generated))
+	}
+	check, ok := mapping["additionalProperties"].(map[string]any)
+	if !ok {
+		panic("preflightSchema: a check is not a schema object")
+	}
+	fields, _ := check["properties"].(map[string]any)
+	atLeastOne(fields["command"], "minItems")
+	atLeastOne(fields["description"], "minLength")
+	check["required"] = []string{"description", "command"}
 	mapping["propertyNames"] = map[string]any{"pattern": domain.TaskNamePattern}
 	return mapping
 }

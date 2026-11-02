@@ -157,7 +157,10 @@ func listFixtures() []fixture {
 				Secrets:       []ops.Change{{Name: "smtp_password", Kind: ops.ChangeRemoved}},
 				Compatibility: []ops.Change{{Name: "min_manager_version", Kind: ops.ChangeChanged, From: "0.8.0", To: "0.11.0"}},
 				Tasks:         []ops.Change{{Name: "seed", Kind: ops.ChangeAdded}},
-				Profiles:      []ops.Change{{Name: "external-db", Kind: ops.ChangeRemoved}},
+				Preflight: []ops.Change{{Name: "max-map-count", Kind: ops.ChangeChanged,
+					From: "warns, 30s, hooks/preflight max-map-count: the kernel allows enough memory maps",
+					To:   "fatal, 30s, hooks/preflight max-map-count: the kernel allows enough memory maps"}},
+				Profiles: []ops.Change{{Name: "external-db", Kind: ops.ChangeRemoved}},
 				Files: []ops.Change{
 					// In the byte order DiffReleases sorts by.
 					//
@@ -172,12 +175,44 @@ func listFixtures() []fixture {
 				},
 			},
 			fields: []string{"demo 1.3.0 -> demo 1.4.0", "sha256:9e7d3a6c1f04", "worker", "port, default 8080",
-				"smtp_password", "removed", "0.11.0", "hooks/seed", "added", `"hooks/\x1b]0;owned\a"`, `"string, default \x1b[2Jhello"`, `"hooks/\x9b2J"`, "seed", "external-db"},
+				"smtp_password", "removed", "0.11.0", "hooks/seed", "added", `"hooks/\x1b]0;owned\a"`, `"string, default \x1b[2Jhello"`, `"hooks/\x9b2J"`, "seed", "external-db", "max-map-count", "fatal, 30s"},
 		},
 		{
 			name:   "release-diff-same",
 			value:  ops.ReleaseDiff{From: "demo 1.3.0", To: "demo 1.3.0"},
 			fields: []string{"the same declarations and the same files"},
+		},
+		{
+			// Every field of each check, and a command argument the
+			// terminal would act on, quoted.
+			name: "release-show",
+			value: views.Release{
+				Root:   "/var/lib/demo/releases/1.4.0",
+				Digest: "sha256:5f1c3a9e7b2d4c6a8e0f1b3d5c7a9e2f4b6d8c0a1e3f5b7d9c2a4e6f8b0d1c3e",
+				Manifest: domain.Manifest{
+					APIVersion: "selfhost/v1alpha1",
+					Metadata:   domain.Metadata{Name: "demo", Version: version("1.4.0"), Description: "Demo product"},
+					Images: map[string]domain.ImageSpec{
+						"app": {Ref: "registry.example/demo/app@sha256:9e7d3a6c1f04"},
+					},
+					Compatibility: domain.Compatibility{RollbackSafe: true, MinManagerVersion: version("0.12.0")},
+					Preflight: map[string]domain.PreflightCheck{
+						"max-map-count": {
+							Description: "the kernel allows enough memory maps for the search index",
+							Command:     []string{"hooks/preflight", "max-map-count"},
+							Fatal:       true,
+							Timeout:     domain.Duration(45 * time.Second),
+							Remedy:      "run `sysctl -w vm.max_map_count=262144` and persist it in /etc/sysctl.d",
+						},
+						"db-host": {
+							Description: "the external database host resolves",
+							Command:     []string{"hooks/preflight", "db\x1b[2J"},
+						},
+					},
+				},
+			},
+			fields: []string{"preflight", "max-map-count", "the kernel allows enough memory maps", "fatal", "45s",
+				"persist it in /etc/sysctl.d", "db-host", "30s", `"hooks/preflight db\x1b[2J"`},
 		},
 		{
 			name: "backups",

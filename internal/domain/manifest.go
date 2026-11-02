@@ -218,6 +218,10 @@ type Manifest struct {
 	// `release show --json`.
 	Tasks map[string]TaskSpec `yaml:"tasks" json:"tasks,omitempty"`
 
+	// Preflight are checks the release ships, run beside the manager's own
+	// before an operation changes the deployment, and in `doctor` (RFC 0045).
+	Preflight map[string]PreflightCheck `yaml:"preflight" json:"preflight,omitempty"`
+
 	// omitzero rather than omitempty: omitempty does not omit an empty
 	// struct, so every release -- including the ones written before this
 	// section existed -- grew a `"backup": {}` in `release show --json`,
@@ -753,6 +757,60 @@ var taskName = regexp.MustCompile(TaskNamePattern)
 // maxTaskDescriptionLen bounds a task's description, which `task list` prints
 // as one table cell.
 const maxTaskDescriptionLen = 200
+
+// PreflightCheck is one check a release ships: an executable in the bundle,
+// run under the hook ABI's `preflight` phase beside the manager's own checks
+// (RFC 0045). It must not change the machine: `doctor` runs it without the
+// lock (decision 16).
+type PreflightCheck struct {
+	Description string   `yaml:"description" json:"description"`
+	Command     []string `yaml:"command" json:"command"`
+
+	// Fatal lets a failure refuse `apply` and `update`. Otherwise a failure
+	// is a warning, which is all a check can be unless its vendor said more
+	// (decision 9).
+	Fatal bool `yaml:"fatal" json:"fatal,omitempty"`
+
+	Timeout Duration `yaml:"timeout" json:"timeout,omitempty"`
+
+	// Remedy is shown with a warning or a failure, in the vendor's words.
+	Remedy string `yaml:"remedy" json:"remedy,omitempty"`
+}
+
+// A check's timeout, and what all of a bundle's checks may take together
+// (decision 18). They run one after another before every operation and in
+// every scheduled `doctor`, so without a ceiling a bundle could hold either
+// for as long as it liked.
+const (
+	DefaultPreflightTimeout = 30 * time.Second
+	MaxPreflightTimeout     = 2 * time.Minute
+	MaxPreflightTotal       = 5 * time.Minute
+)
+
+// PreflightMinManagerVersion is the manager release that runs `preflight:`. A
+// bundle declaring checks declares it as its `compatibility.min_manager_version`,
+// so an older manager refuses it as too old rather than skipping the checks
+// (decision 2).
+const PreflightMinManagerVersion = "0.12.0"
+
+// EffectiveTimeout is the check's declared timeout, or the default.
+func (c PreflightCheck) EffectiveTimeout() time.Duration {
+	return c.Timeout.Or(DefaultPreflightTimeout)
+}
+
+// PreflightNames returns the declared check names in the order they run.
+func (m *Manifest) PreflightNames() []string {
+	return slices.Sorted(maps.Keys(m.Preflight))
+}
+
+// PreflightTotal is what the release's checks may take between them.
+func (m *Manifest) PreflightTotal() time.Duration {
+	var total time.Duration
+	for _, c := range m.Preflight {
+		total += c.EffectiveTimeout()
+	}
+	return total
+}
 
 // BackupSpec is what the release says about backing up storage the manager can
 // reach without a client for whatever wrote it.
@@ -1372,6 +1430,21 @@ func (m *Manifest) Validate() error {
 				"manager cannot read them", minimum)
 	}
 
+	// preflight
+	for _, name := range m.PreflightNames() {
+		v.checkPreflight("preflight."+name, name, m.Preflight[name])
+	}
+	if total := m.PreflightTotal(); total > MaxPreflightTotal {
+		v.add("preflight", "may take at most %s between its checks, and their timeouts add up to %s",
+			MaxPreflightTotal, total)
+	}
+	if minimum := MustParseVersion(PreflightMinManagerVersion); len(m.Preflight) > 0 &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares preflight checks and an "+
+				"older manager cannot read them", minimum)
+	}
+
 	// backup.volumes
 	//
 	// A misspelled consistency is refused here rather than defaulted. The
@@ -1590,6 +1663,35 @@ func (v *validationErrors) checkOperation(field string, op OperationSpec) {
 	}
 	if op.Timeout < 0 {
 		v.add(field+".timeout", "must be positive")
+	}
+}
+
+// checkPreflight validates one declared preflight check.
+func (v *validationErrors) checkPreflight(field, name string, c PreflightCheck) {
+	if !taskName.MatchString(name) {
+		v.add(field, "is not a valid check name; names are lowercase alphanumeric "+
+			"with dashes, 1-63 characters, starting with a letter")
+	}
+	if len(c.Command) == 0 {
+		v.add(field+".command", "is required")
+	} else {
+		v.checkRelPath(field+".command[0]", c.Command[0])
+	}
+	// Both are printed on the operator's terminal by `doctor`, from a bundle
+	// whose signature is optional.
+	if c.Description == "" {
+		v.add(field+".description", "is required")
+	} else if err := ValidateSingleLine(c.Description, maxTaskDescriptionLen); err != nil {
+		v.add(field+".description", "%s", AsError(err).Message)
+	}
+	if err := ValidateSingleLine(c.Remedy, maxTaskDescriptionLen); err != nil {
+		v.add(field+".remedy", "%s", AsError(err).Message)
+	}
+	switch {
+	case c.Timeout < 0:
+		v.add(field+".timeout", "must be positive")
+	case c.Timeout.Duration() > MaxPreflightTimeout:
+		v.add(field+".timeout", "must be at most %s", MaxPreflightTimeout)
 	}
 }
 

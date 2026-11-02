@@ -152,6 +152,10 @@ const (
 	// belong beside each other rather than scattered through the ones about
 	// this deployment's own storage and network.
 	CategoryMachine = "machine"
+
+	// CategoryVendor holds the checks a release ships (RFC 0045), apart from
+	// the manager's own, because their messages and remedies are the vendor's.
+	CategoryVendor = "vendor"
 )
 
 // Architecture checks that the release supports this CPU architecture.

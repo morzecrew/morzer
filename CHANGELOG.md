@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files that were added, removed or changed. Each side is an installed version,
   a bundle directory or an archive, and it exits 0 whatever differs.
 
+- **A release can ship preflight checks of its own.** Each runs a bundle
+  executable beside the manager's checks, and in `doctor`. A failing fatal one
+  refuses `apply` and `update`, and only warns at boot, in `start` and in
+  `rollback`; any other warns. A bundle declaring checks needs manager 0.12.0.
+
 ### Changed
 
 - **A template that fails to render says where and what.** At `apply` the error

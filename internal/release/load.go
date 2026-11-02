@@ -541,6 +541,12 @@ func checkReferencedFiles(rel domain.Release) error {
 			checkExecutable(rel, hc.Command[0], "health.checks."+hc.Name, &missing)
 		}
 	}
+	for _, name := range rel.Manifest.PreflightNames() {
+		if c := rel.Manifest.Preflight[name]; len(c.Command) > 0 {
+			check("preflight."+name+".command", c.Command[0])
+			checkExecutable(rel, c.Command[0], "preflight."+name, &missing)
+		}
+	}
 
 	if len(missing) > 0 {
 		return domain.ValidationError(domain.ErrNotFound,

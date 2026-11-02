@@ -120,6 +120,24 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		d.Text(4, "%s", strings.Join(profiles, ", "))
 	}
 
+	if names := m.PreflightNames(); len(names) > 0 {
+		d.Heading("preflight")
+		for _, name := range names {
+			c := m.Preflight[name]
+			fields := []ui.Field{
+				{Label: "description", Value: c.Description},
+				{Label: "command", Value: shown(strings.Join(c.Command, " "))},
+				{Label: "fatal", Value: fmt.Sprintf("%t", c.Fatal)},
+				{Label: "timeout", Value: c.EffectiveTimeout().String()},
+			}
+			if c.Remedy != "" {
+				fields = append(fields, ui.Field{Label: "remedy", Value: c.Remedy})
+			}
+			d.Text(4, "%s", name)
+			d.Fields(6, fields)
+		}
+	}
+
 	d.Heading("compatibility")
 	fields := []ui.Field{
 		{Label: "rollback safe", Value: fmt.Sprintf("%t", m.Compatibility.RollbackSafe)},
@@ -268,6 +286,7 @@ func releaseDiffDoc(d *ui.Doc, r ops.ReleaseDiff) *ui.Doc {
 		{"secrets", r.Secrets, true},
 		{"compatibility", r.Compatibility, true},
 		{"tasks", r.Tasks, true},
+		{"preflight", r.Preflight, true},
 		{"profiles", r.Profiles, true},
 		{"files", r.Files, false},
 	} {
