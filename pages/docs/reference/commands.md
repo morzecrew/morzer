@@ -67,7 +67,7 @@ error: this machine has 2 installations, so --product is required
 hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`; `morzer ls` lists them
 ```
 
-Commands that touch no installation are unaffected: `version`, `ls`, `doctor`,
+Commands that touch no installation are unaffected: `version`, `self-update`, `ls`, `doctor`,
 `init`, `installation import`, and the bundle-authoring half of `release` —
 `new`, `verify`, `pack`, `build` and `archive`.
 
@@ -95,6 +95,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`restore`](#restore) | Restore from a backup. |
 | [`notify`](#notify) | Manage where operation outcomes are reported. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
+| [`self-update`](#self-update) | Replace this manager with a newer published release. |
 | [`completion install`](#completion-install) | Put the shell completion script where your shell reads it. |
 | [`config`](parameters.md#changing-one-after-install) | Read and change the release parameters. |
 | [`secret`](secret-commands.md) | Manage the encrypted secret state. |
@@ -775,6 +776,77 @@ exit 2. See [upgrading the manager](../operating/upgrading-the-manager.md).
 | Flag | Meaning |
 | --- | --- |
 | `--check` | Compare this manager with the newest published release. |
+
+## self-update
+
+```sh
+morzer self-update                     # the newest published release
+morzer self-update --to 0.13.1
+morzer self-update --from ./downloads  # offline: the archive, SHA256SUMS and SHA256SUMS.minisig
+morzer self-update --check             # what version --check says, and nothing else
+```
+
+Replaces the binary this command ran from with a published release, in this
+order:
+
+1. It resolves the release: the newest published one, the one `--to` names, or
+   with `--from` the one whose archive for this platform that directory's
+   `SHA256SUMS` lists. With `--from` it asks nobody.
+2. It downloads that release's archive for this platform, `SHA256SUMS` and
+   `SHA256SUMS.minisig`, unless `--from` has them.
+3. It verifies the signature over `SHA256SUMS` against `morzer.pub`, the key
+   compiled into this binary, and the archive against its own line. No flag,
+   setting or environment variable changes the key or skips either check, and
+   no `minisign` tool is needed.
+4. It unpacks the new binary beside this one and runs it with
+   `version --json`. The binary has to report the release it was fetched as.
+5. It locks the binary's directory, so two `self-update` runs never race,
+   and takes every installation's deployment lock and notification-outbox
+   lock, all without waiting. A held lock refuses the update and names what
+   holds it.
+   Under the locks it asks the binary at the path for its version again, in
+   case another `self-update` finished first.
+6. It renames the new binary over this one. An operation already running
+   finishes on the old file, and the next one any unit starts is the new
+   manager.
+7. It records a `manager-update` operation, with the old and new versions, in
+   each installation's journal, then releases the locks.
+
+It only moves forward. A release older than this one, named with `--to` or
+carried by `--from`, is refused at exit 2. Moving back is a re-run of
+`install.sh` (see [upgrading the manager](../operating/upgrading-the-manager.md#going-back)).
+When nothing newer is published, or `--to` names the running release, nothing
+changes and it exits 0.
+
+It refuses:
+
+- a dev build, which has no version to compare, unless `--to` or `--from` names
+  the release;
+- a directory this user cannot write to. It prints the command to re-run with
+  `sudo` and never escalates itself;
+- a platform no release is published for: only `linux/amd64` and
+  `linux/arm64` are.
+
+When an installation's units run another copy of the manager, it warns and
+names that copy, since replacing this one leaves those units where they are. A
+directory under `/etc` it cannot read is not locked, and it warns about that
+too.
+
+`--dry-run` does everything up to the locks: it downloads, verifies, unpacks
+and runs the new binary, then reports what it would replace, and leaves the
+binary as it was.
+
+No unit or timer runs `self-update`. It is an operator's command.
+
+Under `--json`, `data` has `path`, `from`, `to`, `dev_build`, `updated`, `url`
+and `installations`, and `dry_run` and `warnings` when they are set. `updated`
+says whether the binary was replaced.
+
+| Flag | Meaning |
+| --- | --- |
+| `--to` | The release to install instead of the newest. |
+| `--from` | A directory holding the release's archive, `SHA256SUMS` and `SHA256SUMS.minisig`. |
+| `--check` | Only say whether a newer manager is published, as `version --check` does. |
 
 ## completion install
 

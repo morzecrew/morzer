@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/managerfeed/github"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 func serve(t *testing.T, status int, body string) *github.Feed {
@@ -21,7 +24,7 @@ func serve(t *testing.T, status int, body string) *github.Feed {
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	return github.At(srv.URL, srv.Client())
+	return github.At(srv.URL, srv.URL, srv.Client())
 }
 
 // The newest is the highest published version, not the first listed: drafts,
@@ -42,7 +45,8 @@ func TestTheNewestIsTheHighestPublishedVersion(t *testing.T) {
 	got, err := feed.Newest(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, "0.12.1", got.Version.String())
-	assert.Equal(t, "https://example.test/v0.12.1", got.URL)
+	assert.Equal(t, "https://github.com/morzecrew/morzer/releases/tag/v0.12.1", got.URL,
+		"the page is built from the tag, never taken from the feed")
 }
 
 // A feed that cannot answer is an error, never a release.
@@ -72,7 +76,41 @@ func TestAFeedThatCannotAnswerIsAnError(t *testing.T) {
 func TestAnUnreachableFeedIsAnError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	srv.Close()
-	_, err := github.At(srv.URL, srv.Client()).Newest(context.Background())
+	_, err := github.At(srv.URL, srv.URL, srv.Client()).Newest(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, "cannot reach the release feed")
+}
+
+// Download fetches the release's three files from under its tag, and a file
+// the release does not carry is an error that says to check the version.
+func TestDownloadFetchesTheReleasesThreeFiles(t *testing.T) {
+	v := domain.MustParseVersion("0.13.0")
+	files := map[string]string{
+		"/v0.13.0/" + ports.ManagerArchive(v): "archive",
+		"/v0.13.0/" + ports.SumsFileName:      "sums",
+		"/v0.13.0/" + ports.SignatureFileName: "signature",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := files[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	feed := github.At(srv.URL, srv.URL, srv.Client())
+
+	dir := t.TempDir()
+	require.NoError(t, feed.Download(context.Background(), v, dir))
+	for path, body := range files {
+		got, err := os.ReadFile(filepath.Join(dir, filepath.Base(path)))
+		require.NoError(t, err)
+		assert.Equal(t, body, string(got))
+	}
+
+	err := feed.Download(context.Background(), domain.MustParseVersion("0.9.9"), t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "404")
+	assert.Contains(t, domain.AsError(err).Hint, "check the version is published")
 }

@@ -12,6 +12,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -29,37 +32,112 @@ import (
 // drafts and prereleases is missed; page through if that ever happens.
 const Releases = "https://api.github.com/repos/morzecrew/morzer/releases?per_page=100"
 
-// DefaultTimeout bounds the one request.
+// Downloads is where a release's files are, under its tag, as `install.sh`
+// fetches them.
+const Downloads = "https://github.com/morzecrew/morzer/releases/download"
+
+// DefaultTimeout bounds asking for the list.
 const DefaultTimeout = 30 * time.Second
+
+// DownloadTimeout bounds fetching a release's three files, which on a slow
+// link takes longer than a list.
+const DownloadTimeout = 10 * time.Minute
 
 // maxBody bounds the response as it is read; a page of 100 releases with their
 // notes is well under it.
 const maxBody = 8 << 20
 
-// Feed reads the release list.
+// maxFile bounds one downloaded file. A release archive is a few tens of
+// megabytes.
+const maxFile = 256 << 20
+
+// Feed reads the release list and a release's files.
 type Feed struct {
-	url    string
-	client *http.Client
+	url       string
+	downloads string
+	client    *http.Client
 }
 
 // New reads the project's release list.
-func New() *Feed { return At(Releases, &http.Client{Timeout: DefaultTimeout}) }
+func New() *Feed { return At(Releases, Downloads, &http.Client{}) }
 
-// At reads a release list at another URL, which is what tests serve.
-func At(url string, client *http.Client) *Feed { return &Feed{url: url, client: client} }
+// At reads a release list and release files at other URLs, which is what
+// tests serve.
+func At(url, downloads string, client *http.Client) *Feed {
+	return &Feed{url: url, downloads: downloads, client: client}
+}
 
 type release struct {
 	Tag        string `json:"tag_name"`
-	URL        string `json:"html_url"`
 	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 }
 
+// Pages is where a release's page is, by tag. The page is built from a tag
+// that parsed as a version rather than taken from the feed, so no text the
+// feed chose reaches the operator's terminal.
+const Pages = "https://github.com/morzecrew/morzer/releases/tag/"
+
 // Newest implements ports.ManagerFeed.
 func (f *Feed) Newest(ctx context.Context) (ports.ManagerRelease, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.url, nil)
+	listCtx, cancel := context.WithTimeout(ctx, DefaultTimeout)
+	defer cancel()
+	body, err := f.get(listCtx, f.url, "the release feed")
 	if err != nil {
-		return ports.ManagerRelease{}, domain.Internal(err, "cannot build the release feed request")
+		return ports.ManagerRelease{}, err
+	}
+	defer func() { _ = body.Close() }()
+
+	var list []release
+	if err := json.NewDecoder(io.LimitReader(body, maxBody)).Decode(&list); err != nil {
+		return ports.ManagerRelease{}, domain.ValidationError(err, "the release feed answered with something that is not a release list")
+	}
+	return newest(list)
+}
+
+// Download implements ports.ManagerFeed.
+func (f *Feed) Download(ctx context.Context, v domain.Version, dir string) error {
+	ctx, cancel := context.WithTimeout(ctx, DownloadTimeout)
+	defer cancel()
+	for _, name := range []string{ports.ManagerArchive(v), ports.SumsFileName, ports.SignatureFileName} {
+		if err := f.download(ctx, f.downloads+"/v"+v.String()+"/"+name, filepath.Join(dir, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *Feed) download(ctx context.Context, url, dst string) error {
+	body, err := f.get(ctx, url, url)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = body.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // a name this adapter chose, in a directory its caller made
+	if err != nil {
+		return domain.Internal(err, "cannot write %s", dst)
+	}
+	n, err := io.Copy(out, io.LimitReader(body, maxFile+1))
+	if closeErr := out.Close(); err == nil {
+		err = closeErr
+	}
+	switch {
+	case err != nil && errors.Is(ctx.Err(), context.Canceled):
+		return domain.Interrupted("the download of %s was cancelled", url)
+	case err != nil:
+		return domain.ValidationError(err, "cannot download %s", url)
+	case n > maxFile:
+		return domain.ValidationError(nil, "%s is larger than any release file, %d bytes", url, maxFile)
+	}
+	return nil
+}
+
+// get asks for one URL, answering an error that names what was asked for.
+func (f *Feed) get(ctx context.Context, url, what string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, domain.Internal(err, "cannot build the request for %s", what)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	// GitHub refuses a request without one.
@@ -68,27 +146,24 @@ func (f *Feed) Newest(ctx context.Context) (ports.ManagerRelease, error) {
 	resp, err := f.client.Do(req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			return ports.ManagerRelease{}, domain.Interrupted("the release feed request was cancelled")
+			return nil, domain.Interrupted("the request for %s was cancelled", what)
 		}
-		return ports.ManagerRelease{}, domain.ValidationError(err, "cannot reach the release feed").
+		return nil, domain.ValidationError(err, "cannot reach %s", what).
 			WithHint("check the network; the releases are listed at https://github.com/morzecrew/morzer/releases")
 	}
-	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode != http.StatusOK {
-		e := domain.ValidationError(nil, "the release feed answered %s", resp.Status)
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			return ports.ManagerRelease{}, e.WithHint("GitHub allows 60 unauthenticated " +
+		_ = resp.Body.Close()
+		e := domain.ValidationError(nil, "%s answered %s", what, resp.Status)
+		switch resp.StatusCode {
+		case http.StatusForbidden, http.StatusTooManyRequests:
+			return nil, e.WithHint("GitHub allows 60 unauthenticated " +
 				"requests an hour from one address; try again later")
+		case http.StatusNotFound:
+			return nil, e.WithHint("check the version is published: https://github.com/morzecrew/morzer/releases")
 		}
-		return ports.ManagerRelease{}, e
+		return nil, e
 	}
-
-	var list []release
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&list); err != nil {
-		return ports.ManagerRelease{}, domain.ValidationError(err, "the release feed answered with something that is not a release list")
-	}
-	return newest(list)
+	return resp.Body, nil
 }
 
 // newest is the highest version that is published, not a prerelease, and
@@ -106,7 +181,9 @@ func newest(list []release) (ports.ManagerRelease, error) {
 			continue
 		}
 		if v.GreaterThan(out.Version) {
-			out = ports.ManagerRelease{Version: v, URL: r.URL}
+			// Trimmed as ParseVersion trims, so what is left is what
+			// parsed: a carriage return around a tag is not a version.
+			out = ports.ManagerRelease{Version: v, URL: Pages + strings.TrimSpace(r.Tag)}
 		}
 	}
 	if out.Version.IsZero() {

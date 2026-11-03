@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/theme"
@@ -80,6 +81,10 @@ func init() {
 		Rich:  func(w io.Writer, _ *theme.Theme, v Value) { fmt.Fprintln(w, v.Value) },
 		Plain: func(w io.Writer, v Value) { fmt.Fprintln(w, v.Value) },
 	})
+	ui.Register(ui.View[ops.ManagerUpdate]{
+		Rich:  func(w io.Writer, t *theme.Theme, u ops.ManagerUpdate) { emit(w, managerUpdateDoc(doc(w, t), u)) },
+		Plain: func(w io.Writer, u ops.ManagerUpdate) { emit(w, managerUpdateDoc(plainDoc(w), u)) },
+	})
 	ui.Register(ui.View[ops.SettingsReport]{
 		Rich:  func(w io.Writer, t *theme.Theme, r ops.SettingsReport) { emit(w, settingsDoc(doc(w, t), r)) },
 		Plain: func(w io.Writer, r ops.SettingsReport) { emit(w, settingsDoc(plainDoc(w), r)) },
@@ -120,6 +125,59 @@ func versionDoc(d *ui.Doc, v Version) *ui.Doc {
 		}
 	}
 	return d
+}
+
+// managerUpdateDoc says what `self-update` replaced, or why it replaced
+// nothing.
+func managerUpdateDoc(d *ui.Doc, u ops.ManagerUpdate) *ui.Doc {
+	t := d.Theme()
+	from := u.From
+	if u.DevBuild {
+		from = "dev build"
+	}
+	// A dry run that found something to install, which is the only kind
+	// that got as far as the locks it would take.
+	wouldUpdate := u.DryRun && (u.DevBuild || newer(u.To, u.From))
+	switch {
+	case u.Updated:
+		d.Title(fmt.Sprintf("morzer %s -> %s", from, u.To))
+	case wouldUpdate:
+		d.Title(fmt.Sprintf("would update morzer %s -> %s", from, u.To))
+	case u.From == u.To:
+		d.Title(fmt.Sprintf("nothing to install: morzer %s is running", u.From))
+	default:
+		d.Title(fmt.Sprintf("nothing to install: morzer %s is ahead of %s", u.From, u.To))
+	}
+
+	fields := []ui.Field{{Label: "path", Value: u.Path}, {Label: "notes", Value: u.URL}}
+	if u.Updated || wouldUpdate {
+		held := strings.Join(u.Installations, ", ")
+		if held == "" {
+			held = t.Dim("none on this machine")
+		}
+		label := "locked"
+		if !u.Updated {
+			label = "would lock"
+		}
+		fields = append(fields, ui.Field{Label: label, Value: held})
+	}
+	d.Fields(2, fields)
+	if len(u.Warnings) > 0 {
+		d.Blank()
+		rows := make([]ui.CheckRow, 0, len(u.Warnings))
+		for _, w := range u.Warnings {
+			rows = append(rows, ui.CheckRow{State: ui.CheckWarned, Description: w})
+		}
+		d.Checks(2, rows)
+	}
+	return d
+}
+
+// newer is a later than b, both versions as ops reports them.
+func newer(a, b string) bool {
+	va, errA := domain.ParseVersion(a)
+	vb, errB := domain.ParseVersion(b)
+	return errA == nil && errB == nil && va.GreaterThan(vb)
 }
 
 // keyPairDoc prints the public key, alone.

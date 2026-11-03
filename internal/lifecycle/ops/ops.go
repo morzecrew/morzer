@@ -60,6 +60,11 @@ type Deps struct {
 	// unreadable machine.
 	StateFor func(domain.Paths) ports.StateStore
 
+	// LockerFor opens the locks of another installation, for the one
+	// command that holds every installation's at once: `self-update`
+	// (RFC 0046 decision 7). Nil in a build that never does.
+	LockerFor func(domain.Paths) ports.Locker
+
 	Runtime ports.Runtime
 	Secrets ports.SecretStore
 	Backup  ports.BackupEngine
@@ -111,6 +116,10 @@ type Deps struct {
 	// ManagerFeed says which manager releases are published. Nil in a build
 	// that asks nobody.
 	ManagerFeed ports.ManagerFeed
+
+	// ManagerUnpacker decides whether a downloaded manager is one this
+	// project published. Nil in a build that never replaces itself.
+	ManagerUnpacker ports.ManagerUnpacker
 
 	// Redactor receives secret values as they are loaded, so the log
 	// handler and the exec runner scrub them from that point on.

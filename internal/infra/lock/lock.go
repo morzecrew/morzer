@@ -129,6 +129,26 @@ func tryFlock(path string) (*fileLock, bool, error) {
 	return &fileLock{f: f}, true, nil
 }
 
+// Directory takes an exclusive lock on a directory itself, without waiting,
+// for the lock that must leave no file behind: the manager binary's
+// directory, inside which `self-update` swaps the binary with a rename. A lock
+// on the binary would be on the inode the rename replaces; the directory's
+// survives it. A held lock is domain.ErrLocked.
+func Directory(dir string) (func() error, error) {
+	f, err := os.Open(dir) //nolint:gosec // the directory the caller names
+	if err != nil {
+		return nil, domain.Internal(err, "cannot open %s to lock it", dir)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, domain.Locked("%s is locked by another process", dir)
+		}
+		return nil, domain.Internal(err, "cannot lock %s", dir)
+	}
+	return (&fileLock{f: f}).Unlock, nil
+}
+
 // Unlock releases the lock and closes the descriptor.
 //
 // The explicit LOCK_UN before the close is not redundant in the way it looks:

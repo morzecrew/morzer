@@ -1,10 +1,16 @@
 package systemd
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -162,4 +168,33 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 			t.Fatalf("UpdateJitter %s took the update timer away", tc.jitter)
 		}
 	}
+}
+
+// The binaries the units run are read from every one of the product's units
+// that is installed, not only its service: an installation whose service unit
+// is gone still has timers running the manager, and units another copy left
+// behind run that copy. self-update warns about each.
+func TestUnitsManagerPathsReadsEveryInstalledUnit(t *testing.T) {
+	dir := t.TempDir()
+	s := New(nil, WithUnitDir(dir))
+	ctx := context.Background()
+
+	paths, err := s.UnitsManagerPaths(ctx, "demo")
+	require.NoError(t, err)
+	assert.Empty(t, paths, "a product with no units runs no binary")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, BackupServiceUnitName("demo")),
+		[]byte("[Service]\nExecStart=/opt/morzer/bin/morzer backup --unattended\n"), 0o600))
+	paths, err = s.UnitsManagerPaths(ctx, "demo")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/opt/morzer/bin/morzer"}, paths)
+
+	// A unit left by another copy of the manager is named too, once.
+	for _, name := range []string{UpdateServiceUnitName("demo"), DoctorServiceUnitName("demo")} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name),
+			[]byte("[Service]\nExecStart=/usr/local/bin/morzer update --unattended\n"), 0o600))
+	}
+	paths, err = s.UnitsManagerPaths(ctx, "demo")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/opt/morzer/bin/morzer", "/usr/local/bin/morzer"}, paths)
 }

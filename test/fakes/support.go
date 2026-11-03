@@ -529,15 +529,19 @@ type Supervisor struct {
 	// Present controls whether the host is reported as having a supervisor.
 	Present bool
 
+	// ManagerPaths maps a product to the binaries its units run.
+	ManagerPaths map[string][]string
+
 	Fail map[string]error
 }
 
 func NewSupervisor() *Supervisor {
 	return &Supervisor{
-		Installed: map[string][]byte{},
-		States:    map[string]ports.UnitState{},
-		Present:   true,
-		Fail:      map[string]error{},
+		Installed:    map[string][]byte{},
+		States:       map[string]ports.UnitState{},
+		Present:      true,
+		ManagerPaths: map[string][]string{},
+		Fail:         map[string]error{},
 	}
 }
 
@@ -742,4 +746,13 @@ func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]stri
 		}
 	}
 	return out, nil
+}
+
+func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.Fail["UnitsManagerPaths"]; err != nil {
+		return nil, err
+	}
+	return s.ManagerPaths[product], nil
 }

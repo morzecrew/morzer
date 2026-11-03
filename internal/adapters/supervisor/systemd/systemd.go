@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -247,6 +248,30 @@ func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]stri
 		case os.IsNotExist(err):
 		default:
 			return nil, domain.Internal(err, "cannot read unit %s", name)
+		}
+	}
+	return out, nil
+}
+
+// UnitsManagerPaths reads the binary from every one of the product's units
+// that is installed. One manager writes them all with the same path, but a
+// unit another copy left behind runs that copy.
+func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]string, error) {
+	var out []string
+	for _, name := range UnitNames(product) {
+		path := filepath.Join(s.unitDir, name)
+		data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, in its own directory
+		switch {
+		case os.IsNotExist(err):
+			continue
+		case err != nil:
+			return nil, domain.Internal(err, "cannot read unit %s", path)
+		}
+		for line := range strings.Lines(string(data)) {
+			exec, ok := strings.CutPrefix(line, "ExecStart=")
+			if fields := strings.Fields(exec); ok && len(fields) > 0 && !slices.Contains(out, fields[0]) {
+				out = append(out, fields[0])
+			}
 		}
 	}
 	return out, nil
