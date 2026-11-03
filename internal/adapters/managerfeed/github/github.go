@@ -118,6 +118,8 @@ func (f *Feed) download(ctx context.Context, url, dst string) error {
 		err = closeErr
 	}
 	switch {
+	case err != nil && errors.Is(ctx.Err(), context.Canceled):
+		return domain.Interrupted("the download of %s was cancelled", url)
 	case err != nil:
 		return domain.ValidationError(err, "cannot download %s", url)
 	case n > maxFile:

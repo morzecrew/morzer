@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -30,6 +31,9 @@ type SelfUpdateOptions struct {
 	// DryRun verifies and runs the new binary, then stops before any lock
 	// is taken and leaves the one at the path alone.
 	DryRun bool
+
+	// Timeout bounds the whole command, as --timeout does elsewhere.
+	Timeout time.Duration
 }
 
 // ManagerUpdate is what `self-update` did, or would have done.
@@ -69,6 +73,15 @@ type ManagerUpdate struct {
 // installation's deployment and outbox locks are held, so no operation is in
 // flight anywhere on the machine (decision 7).
 func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUpdate, error) {
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+	if runtime.GOOS != "linux" || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
+		return ManagerUpdate{}, domain.ValidationError(nil,
+			"no manager release is published for %s/%s, only linux/amd64 and linux/arm64", runtime.GOOS, runtime.GOARCH)
+	}
 	if d.ManagerUnpacker == nil {
 		return ManagerUpdate{}, domain.Internal(nil, "this build cannot replace itself")
 	}
@@ -138,6 +151,9 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 			return out, domain.Internal(err, "cannot make a directory to download into")
 		}
 		defer func() { _ = os.RemoveAll(work) }()
+		if d.ManagerFeed == nil {
+			return out, domain.Internal(nil, "this build has no release feed to download from")
+		}
 		if err := d.ManagerFeed.Download(ctx, target, work); err != nil {
 			return out, err
 		}
@@ -393,6 +409,9 @@ func canWriteIn(dir string) error {
 // itself (decision 9).
 func sudoSelfUpdate(path string, opts SelfUpdateOptions) string {
 	cmd := "sudo " + domain.ShellQuote(path) + " self-update"
+	if opts.DryRun {
+		cmd += " --dry-run"
+	}
 	if opts.To != "" {
 		cmd += " --to " + domain.ShellQuote(opts.To)
 	}

@@ -14,6 +14,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -121,6 +122,9 @@ func (u *Unpacker) Unpack(ctx context.Context, dir string, v domain.Version, dst
 	if err := copyFile(filepath.Join(dir, archive), private, 0o600); err != nil {
 		return err
 	}
+	if err := interrupted(ctx); err != nil {
+		return err
+	}
 	got, err := atomicfs.DigestFile(private)
 	if err != nil {
 		return err
@@ -130,6 +134,9 @@ func (u *Unpacker) Unpack(ctx context.Context, dir string, v domain.Version, dst
 			WithHint("do not install it; download the release again from https://github.com/morzecrew/morzer/releases")
 	}
 
+	if err := interrupted(ctx); err != nil {
+		return err
+	}
 	unpacked := filepath.Join(work, "unpacked")
 	if err := atomicfs.ExtractTarZst(private, unpacked, atomicfs.DefaultExtractLimits()); err != nil {
 		return err
@@ -216,6 +223,18 @@ func parseSums(data []byte) map[string]string {
 		out[strings.TrimPrefix(fields[1], "*")] = fields[0]
 	}
 	return out
+}
+
+// interrupted stops between the stages of unpacking once the command is
+// cancelled or out of time; each stage is bounded, the whole is not.
+func interrupted(ctx context.Context) error {
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		return domain.Interrupted("the self-update was cancelled")
+	case ctx.Err() != nil:
+		return domain.ValidationError(ctx.Err(), "the self-update ran out of time")
+	}
+	return nil
 }
 
 // lastLine is the key line of a `.pub` file, past its untrusted comment.

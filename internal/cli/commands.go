@@ -1164,7 +1164,7 @@ func newSelfUpdateCommand(app *App) *cobra.Command {
 				return app.renderVersion(cmd.Context(), true)
 			}
 			res, err := ops.SelfUpdate(cmd.Context(), app.Deps, ops.SelfUpdateOptions{
-				To: to, From: from, DryRun: app.Flags.dryRun,
+				To: to, From: from, DryRun: app.Flags.dryRun, Timeout: app.Flags.timeout,
 			})
 			if err != nil {
 				return err
