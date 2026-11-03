@@ -35,7 +35,7 @@ func managerScript(reports string) []byte {
 
 // publishManager writes what the release pipeline publishes for version: this
 // platform's archive holding a binary that reports `reports`, SHA256SUMS with
-// its line and another platform's, and sk's signature over that.
+// its line and one for an architecture nothing runs, and sk's signature over that.
 func publishManager(t *testing.T, sk gominisign.PrivateKey, version, reports string) string {
 	t.Helper()
 	dir, bin := t.TempDir(), t.TempDir()
@@ -45,7 +45,7 @@ func publishManager(t *testing.T, sk gominisign.PrivateKey, version, reports str
 	digest, err := atomicfs.DigestFile(filepath.Join(dir, archive))
 	require.NoError(t, err)
 	writeManagerSums(t, sk, dir, strings.TrimPrefix(digest, "sha256:")+"  "+archive+"\n"+
-		strings.Repeat("0", 64)+"  morzer_"+version+"_linux_s390x.tar.zst\n")
+		strings.Repeat("0", 64)+"  morzer_"+version+"_linux_nonesuch.tar.zst\n")
 	return dir
 }
 
@@ -204,7 +204,7 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			require.NoError(t, f.Close())
 		}, want: "does not match its line"},
 		"an archive with no line": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
-			writeManagerSums(t, s.sk, s.feed.dir, strings.Repeat("0", 64)+"  morzer_0.13.0_linux_s390x.tar.zst\n")
+			writeManagerSums(t, s.sk, s.feed.dir, strings.Repeat("0", 64)+"  morzer_0.13.0_linux_nonesuch.tar.zst\n")
 		}, want: "has no line for"},
 		"a binary that is not the release it was fetched as": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			s.feed.dir = publishManager(t, s.sk, "0.13.0", "0.13.1")
