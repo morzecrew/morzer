@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/infra/lock"
 	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -177,6 +179,19 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	if opts.DryRun {
 		return out, nil
 	}
+
+	// Two self-updates must not both pass the check below before either
+	// renames, and with no installation on the machine no other lock
+	// stands between them.
+	releaseDir, err := lock.Directory(dir)
+	if err != nil {
+		if errors.Is(err, domain.ErrLocked) {
+			return out, domain.Locked("another self-update is replacing %s", d.ManagerPath).
+				WithHint("wait for it to finish, then run `%s version`", d.ManagerPath)
+		}
+		return out, err
+	}
+	defer func() { _ = releaseDir() }()
 
 	opIDs := make(map[string]string, len(inv.Products))
 	for _, product := range inv.Products {

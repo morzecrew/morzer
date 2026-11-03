@@ -217,6 +217,11 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 		"a held deployment lock": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			holdLock(t, s, "deployment")
 		}, want: "while other is busy"},
+		"another self-update in the same directory": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
+			release, err := lock.Directory(s.binDir)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = release() })
+		}, want: "another self-update is replacing"},
 		"a held outbox lock": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			holdLock(t, s, "notify-outbox")
 		}, want: "while other is busy"},

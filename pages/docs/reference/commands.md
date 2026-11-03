@@ -800,8 +800,10 @@ order:
    no `minisign` tool is needed.
 4. It unpacks the new binary beside this one and runs it with
    `version --json`. The binary has to report the release it was fetched as.
-5. It takes every installation's deployment lock and notification-outbox lock
-   without waiting. A held lock refuses the update and names the installation.
+5. It locks the binary's directory, so two `self-update` runs never race,
+   and takes every installation's deployment lock and notification-outbox
+   lock, all without waiting. A held lock refuses the update and names what
+   holds it.
    Under the locks it asks the binary at the path for its version again, in
    case another `self-update` finished first.
 6. It renames the new binary over this one. An operation already running
