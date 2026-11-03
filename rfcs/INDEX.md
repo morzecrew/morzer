@@ -97,6 +97,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
+- **[0047 — Exporting status and doctor to Prometheus](0047-exporting-status-and-doctor-to-prometheus.md).**
+  📝 Proposed, awaiting the author's rulings on its `OPEN` decisions.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -128,7 +130,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0047**. Before creating an RFC, glance at the table
+The next free number is **0048**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -185,6 +187,7 @@ number in the filename in sync.
 | [0044](0044-configuration-drift-an-operator-can-see.md) | Configuration drift an operator can see | ✅ Complete | Showing on the machine which configuration files differ from what the installed release renders, and warning in `doctor` before an `apply` replaces a hand edit. |
 | [0045](0045-preflight-checks-a-vendor-ships.md) | Preflight checks a vendor ships | ✅ Complete | Checks a bundle ships as executables, run with the manager's own preflight checks and in `doctor`, through the hook ABI's reserved `preflight` phase. |
 | [0046](0046-updating-the-manager-itself.md) | Updating the manager itself | ✅ Complete | Telling an operator that the manager binary is out of date, and whether `morzer self-update`, which RFC 0022 refused, should replace it in place. |
+| [0047](0047-exporting-status-and-doctor-to-prometheus.md) | Exporting status and doctor to Prometheus | 📝 Draft | Exporting what `status` and `doctor` know as Prometheus metrics, through the node exporter's textfile directory, so a monitored machine can alert on an installation. |
 
 ## Status legend
 
