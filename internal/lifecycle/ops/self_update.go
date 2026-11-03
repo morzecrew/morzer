@@ -224,6 +224,9 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 				"%s is now %s, which another self-update installed since this one started", d.ManagerPath, now).
 				WithHint("run `%s version` to see what is installed now", d.ManagerPath)
 		}
+		// What the swap replaces, which another self-update may have
+		// moved on from the version this command started as.
+		running, out.From = now, now.String()
 	}
 
 	if err := os.Rename(staged, d.ManagerPath); err != nil {

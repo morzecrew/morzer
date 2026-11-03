@@ -88,6 +88,17 @@ func newSelfUpdateHost(t *testing.T, running string) *selfUpdateHost {
 	return &selfUpdateHost{host: m, sk: sk, feed: feed, binDir: filepath.Dir(resolved)}
 }
 
+// replacedWhileLocking puts another manager at the path as the locks are
+// taken, which is another self-update finishing first.
+func (s *selfUpdateHost) replacedWhileLocking(t *testing.T, reports string) {
+	t.Helper()
+	next := s.Deps.LockerFor
+	s.Deps.LockerFor = func(p domain.Paths) ports.Locker {
+		require.NoError(t, os.WriteFile(s.Deps.ManagerPath, managerScript(reports), 0o755)) //nolint:gosec // the stand-in binary
+		return next(p)
+	}
+}
+
 // reports is what the binary at the manager's path says it is.
 func (s *selfUpdateHost) reports(t *testing.T) string {
 	t.Helper()
@@ -170,15 +181,6 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = release() })
 	}
-	// replacedWhileLocking puts another manager at the path as the locks are
-	// taken, which is another self-update finishing first.
-	replacedWhileLocking := func(t *testing.T, s *selfUpdateHost, reports string) {
-		next := s.Deps.LockerFor
-		s.Deps.LockerFor = func(p domain.Paths) ports.Locker {
-			require.NoError(t, os.WriteFile(s.Deps.ManagerPath, managerScript(reports), 0o755)) //nolint:gosec // the stand-in binary
-			return next(p)
-		}
-	}
 
 	cases := map[string]struct {
 		running string
@@ -226,11 +228,11 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			holdLock(t, s, "notify-outbox")
 		}, want: "while other is busy"},
 		"a newer manager installed meanwhile": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
-			replacedWhileLocking(t, s, "0.13.0")
+			s.replacedWhileLocking(t, "0.13.0")
 		}, want: "another self-update installed", after: "0.13.0"},
 		"a dev build replaced meanwhile": {running: "0.0.0", setup: func(t *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
 			opts.To = "0.13.0"
-			replacedWhileLocking(t, s, "0.12.5")
+			s.replacedWhileLocking(t, "0.12.5")
 		}, want: "changed since this command started", after: "0.12.5"},
 	}
 	for name, tc := range cases {
@@ -262,6 +264,22 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			assert.Empty(t, s.managerUpdates(t, "demo"))
 		})
 	}
+}
+
+// A release installed by another self-update while this one waited is what
+// the swap replaced, and the journal says so rather than naming the version
+// this command started as.
+func TestSelfUpdateRecordsTheVersionItActuallyReplaced(t *testing.T) {
+	s := newSelfUpdateHost(t, "0.12.0")
+	s.replacedWhileLocking(t, "0.12.5")
+
+	res, err := ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "0.12.5", res.From)
+	assert.Equal(t, "0.13.0", s.reports(t))
+	recs := s.managerUpdates(t, "demo")
+	require.Len(t, recs, 1)
+	assert.Equal(t, "0.12.5", recs[0].From.String())
 }
 
 // A directory this user cannot write is refused with the command to run
