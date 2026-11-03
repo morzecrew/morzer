@@ -226,3 +226,23 @@ proposal: ASSUMED — the release page is built from the tag that parsed as a ve
 
 **Drift count: 0.**
 
+The release-page entry above cites the wrong row. Decision 17 decides which
+release the check selects, not where its page comes from, so the page is an
+unlisted decision. And the tag is feed input too; what keeps it off the
+terminal unchecked is that it must parse as a version first. This entry
+supersedes that one's row and wording.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-03T07:43:00Z
+attempt: 3
+claim: no row says where the release page shown to the operator comes from, and P1 printed the feed's own `html_url`
+evidence: internal/adapters/managerfeed/github/github.go:183-187
+action: decided
+proposal: ASSUMED — the release page is `https://github.com/morzecrew/morzer/releases/tag/<tag>`, built from the feed's tag only once that tag parsed as a version, and the feed's `html_url` is not read.
+```
+
+**Drift count: 0.**
+
