@@ -170,21 +170,31 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 	}
 }
 
-// The binary the units run is read from whichever of the product's units is
-// installed, not only its service: an installation whose service unit is gone
-// still has timers running the manager, and self-update warns about those.
-func TestUnitsManagerPathReadsAnyInstalledUnit(t *testing.T) {
+// The binaries the units run are read from every one of the product's units
+// that is installed, not only its service: an installation whose service unit
+// is gone still has timers running the manager, and units another copy left
+// behind run that copy. self-update warns about each.
+func TestUnitsManagerPathsReadsEveryInstalledUnit(t *testing.T) {
 	dir := t.TempDir()
 	s := New(nil, WithUnitDir(dir))
 	ctx := context.Background()
 
-	path, err := s.UnitsManagerPath(ctx, "demo")
+	paths, err := s.UnitsManagerPaths(ctx, "demo")
 	require.NoError(t, err)
-	assert.Empty(t, path, "a product with no units runs no binary")
+	assert.Empty(t, paths, "a product with no units runs no binary")
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, BackupServiceUnitName("demo")),
 		[]byte("[Service]\nExecStart=/opt/morzer/bin/morzer backup --unattended\n"), 0o600))
-	path, err = s.UnitsManagerPath(ctx, "demo")
+	paths, err = s.UnitsManagerPaths(ctx, "demo")
 	require.NoError(t, err)
-	assert.Equal(t, "/opt/morzer/bin/morzer", path)
+	assert.Equal(t, []string{"/opt/morzer/bin/morzer"}, paths)
+
+	// A unit left by another copy of the manager is named too, once.
+	for _, name := range []string{UpdateServiceUnitName("demo"), DoctorServiceUnitName("demo")} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name),
+			[]byte("[Service]\nExecStart=/usr/local/bin/morzer update --unattended\n"), 0o600))
+	}
+	paths, err = s.UnitsManagerPaths(ctx, "demo")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/opt/morzer/bin/morzer", "/usr/local/bin/morzer"}, paths)
 }

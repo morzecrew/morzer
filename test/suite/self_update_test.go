@@ -414,8 +414,8 @@ func TestSelfUpdateDryRunReplacesNothing(t *testing.T) {
 // told which (decision 13).
 func TestSelfUpdateNamesUnitsThatRunAnotherCopy(t *testing.T) {
 	s := newSelfUpdateHost(t, "0.12.0")
-	s.Supervisor.ManagerPaths["demo"] = s.Deps.ManagerPath
-	s.Supervisor.ManagerPaths["other"] = "/opt/elsewhere/morzer"
+	s.Supervisor.ManagerPaths["demo"] = []string{s.Deps.ManagerPath}
+	s.Supervisor.ManagerPaths["other"] = []string{s.Deps.ManagerPath, "/opt/elsewhere/morzer"}
 
 	res, err := ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{})
 	require.NoError(t, err)

@@ -67,10 +67,10 @@ type Supervisor interface {
 	// be root.
 	InstalledUnits(ctx context.Context, product string) ([]string, error)
 
-	// UnitsManagerPath is the manager binary a product's installed units
-	// run, or "" when it has none installed. A self-update that replaces
-	// another copy leaves them on this one (RFC 0046 decision 13).
-	UnitsManagerPath(ctx context.Context, product string) (string, error)
+	// UnitsManagerPaths is every manager binary a product's installed units
+	// run, each once, and none when it has no unit installed. A self-update
+	// that replaces another copy leaves them on theirs (RFC 0046 decision 13).
+	UnitsManagerPaths(ctx context.Context, product string) ([]string, error)
 }
 
 // EnableScope says which of the units in an InstallUnits call may be enabled

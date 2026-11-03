@@ -349,23 +349,22 @@ func (d *Deps) unitsElsewhere(ctx context.Context, products []string) []string {
 	}
 	var out []string
 	for _, product := range products {
-		path, err := d.Supervisor.UnitsManagerPath(ctx, product)
+		paths, err := d.Supervisor.UnitsManagerPaths(ctx, product)
 		if err != nil {
 			out = append(out, fmt.Sprintf("cannot read which binary %s's units run: %s",
 				product, domain.AsError(err).Message))
 			continue
 		}
-		if path == "" {
-			continue
-		}
-		// The running binary's path is resolved, and a unit may name a
-		// link to it.
-		if resolved, err := filepath.EvalSymlinks(path); err == nil {
-			path = resolved
-		}
-		if path != d.ManagerPath {
-			out = append(out, fmt.Sprintf("%s's units run %s, not %s, and stay on it; "+
-				"update that copy with `%s self-update`", product, path, d.ManagerPath, path))
+		for _, path := range paths {
+			// The running binary's path is resolved, and a unit may
+			// name a link to it.
+			if resolved, err := filepath.EvalSymlinks(path); err == nil {
+				path = resolved
+			}
+			if path != d.ManagerPath {
+				out = append(out, fmt.Sprintf("%s's units run %s, not %s, and stay on it; "+
+					"update that copy with `%s self-update`", product, path, d.ManagerPath, path))
+			}
 		}
 	}
 	return out
