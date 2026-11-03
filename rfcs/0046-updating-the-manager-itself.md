@@ -198,7 +198,8 @@ In order:
    directory's `SHA256SUMS`, and the feed is not asked. A sums file names one
    release, and `--to` must agree with it when both are given. A target older
    than the running manager is refused, and so is the same version
-   (decision 5).
+   (decision 5). *(2026-11-03: the same version is not swapped, and exits 0;
+   only an older target the operator named is refused. See decision 23.)*
 2. **Fetch** the archive for this platform, `SHA256SUMS` and
    `SHA256SUMS.minisig` from the release, or read the three from `--from`.
 3. **Verify** the signature over `SHA256SUMS`, then the archive against its own
@@ -219,6 +220,11 @@ In order:
    is newer, since another `self-update` may have finished since the command
    started. A binary with no release version, a dev build, passes only if it is
    still the file it was when the command started (decision 12).
+   *(2026-11-03: before the installations' locks it takes a lock on the
+   binary's directory, held through the rename and the journal entries, so
+   two runs exclude each other with no installation on the machine; see
+   decision 28. A directory it cannot read is not locked, decision 25, and
+   the version recorded as replaced is the one read here, decision 29.)*
 6. **Rename** the new binary over the running one. A process already running
    keeps the old file, and the next one any unit starts is the new manager.
 7. **Record** a `manager-update` entry in each installation's journal while
@@ -230,9 +236,11 @@ In order:
 It refuses, before anything is fetched:
 
 - a running binary that is a dev build with no version, unless `--to` names
-  one (decision 12);
+  one (decision 12); *(2026-11-03: or `--from` carries one; see decision 26.)*
 - a directory this user cannot write to. It prints the command to re-run with
   `sudo` and never escalates itself, as `install.sh` does (decision 9).
+  *(2026-11-03: checked once the target is found newer, still before anything
+  is downloaded; see decision 27.)*
 
 When the units on this machine name a different path from the running binary,
 it warns and names that path, since replacing this copy leaves them on the
@@ -309,7 +317,9 @@ case. This is that story:
   binary embeds in place of the release key:
   - refused: a bad signature, a different key, a checksum mismatch, an archive
     with no line, a downgrade, the same version, a dev build without `--to`, an
-    unwritable directory, a held lock;
+    unwritable directory, a held lock; *(2026-11-03: the same version is not
+    swapped and exits 0, decision 23, and a dev build may name its release
+    with `--from` too, decision 26.)*
   - the new binary run before the swap, refused when it reports another
     version;
   - the swap leaving a process started before it on the old file;
