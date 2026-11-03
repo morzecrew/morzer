@@ -11,9 +11,10 @@
   `doctor` write its check results there too. Not covered: an HTTP endpoint
   (nothing here listens), pushing anywhere, per-container resource usage
   (cAdvisor and the node exporter already measure that), and logs. The new
-  setting is stored in the installation, absent reads as off, and an older
-  manager reads past it, so there is no installation schema change. The metric
-  names and labels become a published contract.
+  setting is stored in the installation at schema 16: an older manager
+  rewriting the state would drop it and the timer with it, so the number moves
+  for the write path, as it did for `policy.backup_schedule` and the doctor
+  settings. The metric names and labels become a published contract.
 - **Related:** [0043](0043-notifications-that-survive-a-failed-delivery-and-a-scheduled-doctor.md)
   (the scheduled `doctor` and its timer);
   [0026](0026-fleet-as-a-read-model.md) (the fleet row,
@@ -34,12 +35,14 @@ An operator who runs Prometheus has no way to alert on a morzer installation
 except by wrapping `doctor`'s exit code in a script. This RFC proposes the
 textfile route that the node exporter already offers to batch jobs and cron
 scripts. With `metrics.textfile` set, a timer runs `morzer metrics` every
-minute and writes `morzer-<product>.prom` into that directory. The file
+minute and writes `morzer-status-<product>.prom` into that directory. The file
 carries the release, the services and their health, the stop, the operations
 that need a human, the last outcome of each kind of operation, the last
 backup and a staged update. The scheduled `doctor` writes
-`morzer-<product>-doctor.prom` with one series per check. Nothing listens and
-nothing leaves the machine. Every label value is either the manager's own
+`morzer-doctor-<product>.prom` with one series per check. Nothing listens, and
+the export sends nothing off the machine; the doctor timer it installs runs the
+network checks the installation has consented to, as it does for a notify
+target. Every label value is either the manager's own
 vocabulary or a name the manifest validated.
 
 ## 2. Motivation
@@ -113,8 +116,8 @@ Verified against `main` at dc302be.
 ### 5.1 The command and the file
 
 ```sh
-morzer metrics                     # the status metrics, Prometheus text, on stdout
-morzer metrics --textfile          # write them to metrics.textfile, atomically
+morzer metrics                                   # the status metrics, Prometheus text, on stdout
+morzer metrics --textfile /var/lib/node-exporter # write them into that directory, atomically
 morzer config set metrics.textfile=/var/lib/prometheus/node-exporter
 ```
 
@@ -124,7 +127,10 @@ text exposition format, version 0.0.4, with `# HELP` and `# TYPE` for each
 family. It writes no state and takes no lock. It is an `installationScope`
 command, so `--product` chooses among several installations.
 
-`--textfile` writes the same text to `<metrics.textfile>/morzer-<product>.prom`.
+`--textfile <dir>` writes the same text to `<dir>/morzer-status-<product>.prom`.
+The role comes before the product so that no two products' files share a name:
+with the product first, `foo`'s doctor file and the status file of a product
+named `foo-doctor` would both be `morzer-foo-doctor.prom`.
 It creates a temporary file in that directory under a name that does not end
 in `.prom`, so the collector skips it, with mode 0644 so the node exporter's
 user can read it, and renames it into place. A crash leaves the previous file,
@@ -139,14 +145,19 @@ means no timer and no file.
 
 With `metrics.textfile` set, the unit set gains `<product>-metrics.service`
 and `<product>-metrics.timer`. The service runs
-`morzer metrics --textfile --plain --log-format json`, and the timer fires
-every minute (`OnCalendar=*:*:00`). The pair is reconciled like every other
+`morzer metrics --textfile <dir> --plain --log-format json`, with the directory
+the setting named when the unit was written, and the timer fires every minute
+(`OnCalendar=*:*:00`). The unit carries the directory so that a run whose
+state will not load still knows where to say so. The pair is reconciled like every other
 timer: installed by `config set metrics.textfile=…`, removed by
-`config unset`, and repaired by `init --repair`.
+`config unset`, and repaired by `init --repair`. Changing or unsetting the
+setting removes both files from the directory it named before, and
+`installation remove` removes them too, so a scrape never reads a file nothing
+writes any more.
 
 A run that cannot write the file fails, which the journal records, and leaves
 the last file in place. The node exporter's own
-`node_textfile_mtime_seconds{file="morzer-<product>.prom"}` then stops
+`node_textfile_mtime_seconds{file="morzer-status-<product>.prom"}` then stops
 advancing, and that is the staleness signal to alert on. `doctor` warns, as
 `metrics.textfile`, when the directory is missing or not writable, or when the
 file is older than ten minutes while the timer is installed.
@@ -154,11 +165,15 @@ file is older than ten minutes while the timer is installed.
 ### 5.3 The doctor file
 
 While `metrics.textfile` is set, the scheduled `doctor` also writes
-`morzer-<product>-doctor.prom`, the same way. The doctor timer is installed
+`morzer-doctor-<product>.prom`, the same way. The doctor timer is installed
 when the installation has a notify target **or** `metrics.textfile` is set, and
 `doctor.scheduled=false` still turns it off. Its schedule stays
 `doctor.schedule`, daily by default. An operator who wants checks more often
 sets that, and knows which checks contact the network.
+
+It takes the directory from the setting, since `doctor` reads the state
+anyway. A state that does not load leaves the doctor file as it was, and the
+status file's `morzer_up 0` says why.
 
 Only the scheduled run writes the file. An operator's `doctor` at a terminal
 may run as a user who cannot write the directory, or with flags that narrow
@@ -171,7 +186,7 @@ vocabulary (operation types, check ids and categories, `mode`) or is a name the
 manifest validated (services and health checks).
 
 ```text
-# morzer-<product>.prom, every minute
+# morzer-status-<product>.prom, every minute
 morzer_up{product}                                   1 when the installation's state was read
 morzer_release_info{product,version,mode}            1; version is the installed release
 morzer_manager_info{product,version}                 1
@@ -186,16 +201,19 @@ morzer_last_operation_success{product,type}          1/0 for that same operation
 morzer_last_backup_timestamp_seconds{product}        the newest backup
 morzer_update_staged{product}                        1 while a release waits for approval
 
-# morzer-<product>-doctor.prom, each scheduled doctor run
+# morzer-doctor-<product>.prom, each scheduled doctor run
 morzer_doctor_check{product,check,category}          0 ok, 1 warn, 2 fail
 morzer_doctor_last_run_timestamp_seconds{product}
 ```
 
-A runtime that does not answer is `morzer_runtime_up 0`, with no service and no
+An installation with no backup yet, or no finished operation of a type, has no
+series for it, never a timestamp of zero that a rule would read as 1970. A
+runtime that does not answer is `morzer_runtime_up 0`, with no service and no
 health series, never a set of zeros. RFC 0026 learned that lesson about the
 fleet row: a count of zero and "could not look" have to be told apart. A state
-that does not load writes `morzer_up 0` and nothing else, so the file still
-replaces the last good one rather than leaving it to read as current.
+that does not load writes `morzer_up 0` and nothing else, into the directory
+the unit names, so the file still replaces the last good one rather than
+leaving it to read as current.
 
 The example rules on the reference page are the alerts these exist for: a
 service not running for five minutes, a health check failing, a backup older
@@ -231,6 +249,10 @@ and the file itself going stale.
   escaping. The output is checked with the Prometheus text parser from
   `github.com/prometheus/common/expfmt` as a test-only dependency, so a
   malformed file fails a test and not a scrape.
+- Two products, `foo` and `foo-doctor`, in one directory write four
+  distinct files.
+- A state that does not load writes `morzer_up 0` into the directory the flag
+  names. Unsetting or changing the setting removes both files.
 - `--textfile`: the write is atomic, no file ending `.prom` exists before the
   rename, the mode is 0644, an unwritable directory fails and leaves the
   previous file, and a symlink placed at the final name is replaced, not
@@ -291,19 +313,23 @@ ruling.)*
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `ASSUMED` | **The surface.** Recommended: a command, `morzer metrics`, printing the Prometheus text format, and a per-installation setting, `metrics.textfile`, naming the node exporter's textfile directory, which a timer writes `morzer-<product>.prom` into. Nothing listens. Alternative: an HTTP exporter, `morzer metrics serve`, with its own unit and port (§5.5). Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 1 | `ASSUMED` | **The surface.** Recommended: a command, `morzer metrics`, printing the Prometheus text format, and a per-installation setting, `metrics.textfile`, naming the node exporter's textfile directory, which a timer writes `morzer-status-<product>.prom` into. Nothing listens. Alternative: an HTTP exporter, `morzer metrics serve`, with its own unit and port (§5.5). Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 2 | `ASSUMED` | **The cadence and cost of the status file.** Recommended: a new `<product>-metrics.timer` every minute, running what `status` runs: state, the runtime, one round of health probes, and no `doctor`. Alternative: write the file only from the timers and operations that already run, with no new timer, so it can be a day old. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
-| 3 | `ASSUMED` | **Exporting `doctor`.** Recommended: the scheduled `doctor` writes `morzer-<product>-doctor.prom`, and its timer is installed while `metrics.textfile` is set as well as while a notify target is, still at `doctor.schedule`. Alternative: leave `doctor` out, and export status only. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 3 | `ASSUMED` | **Exporting `doctor`.** Recommended: the scheduled `doctor` writes `morzer-doctor-<product>.prom`, and its timer is installed while `metrics.textfile` is set as well as while a notify target is, still at `doctor.schedule`. Alternative: leave `doctor` out, and export status only. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 4 | `ASSUMED` | **How a check's state is encoded.** Recommended: one series per check, `morzer_doctor_check{check,category}`, valued 0 ok, 1 warn, 2 fail, so "anything failing" is `== 2`. Alternative: the Prometheus enum convention, one series per check and state, valued 1 for the current state. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 5 | `ASSUMED` | **The identifying labels.** Recommended: `product` on every series and no installation id, since a product is unique on its machine and the instance label says which machine. Alternative: `installation_id` as well, which survives a product being re-initialised but adds a label no rule needs. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
-| 6 | `ASSUMED` | Off by default. It needs no consent, because nothing leaves the machine; whoever scrapes the node exporter already reads the host. A sandbox exports too, with `mode="sandbox"` on `morzer_release_info`. |
+| 6 | `ASSUMED` | Off by default. It needs no consent, because the export sends nothing off the machine; whoever scrapes the node exporter already reads the host. The doctor timer it installs (decision 3) runs only the network checks the installation has already consented to, `update.check` and `manager.check`. A sandbox exports too, with `mode="sandbox"` on `morzer_release_info`. |
 | 7 | `ASSUMED` | No free text is exported: no check messages or remedies, no hostnames, no parameter values, no URLs. Label values are the manager's own vocabulary, check ids and categories, or service and health-check names the manifest validated. Every label value is escaped per the text format all the same. |
 | 8 | `ASSUMED` | The file is written to a temporary name not ending in `.prom`, created exclusively in the same directory with mode 0644, and renamed into place. A failed write leaves the previous file, and the node exporter's `node_textfile_mtime_seconds` is the staleness signal; morzer exports no timestamp of its own for the status file. |
-| 9 | `ASSUMED` | A runtime that does not answer is `morzer_runtime_up 0` with no service or health series. A state that does not load writes `morzer_up 0` alone. Neither is a set of zeros. |
+| 9 | `ASSUMED` | A runtime that does not answer is `morzer_runtime_up 0` with no service or health series. A state that does not load writes `morzer_up 0` alone, into the directory the unit carries, since the setting is in the state that did not load. An installation with no backup, or no finished operation of a type, has no series for it. None of these is a zero. |
 | 10 | `ASSUMED` | `metrics.textfile` must be an absolute path to an existing directory; the manager does not create it. `doctor` checks it as `metrics.textfile`: missing or unwritable, or the file older than ten minutes while the timer is installed, warns. |
 | 11 | `ASSUMED` | Only the scheduled `doctor` writes the doctor file; an operator's `doctor` does not. |
 | 12 | `ASSUMED` | The renderer is written here, without a Prometheus client library; the text parser from `prometheus/common` checks its output in tests only. |
 | 13 | `ASSUMED` | The metric names and labels in §5.4 are a contract. A rename adds the new name and keeps the old one for a minor release, marked deprecated in its `# HELP`. |
+| 14 | `ASSUMED` | The files are `morzer-status-<product>.prom` and `morzer-doctor-<product>.prom`, role first, so no product's file can carry another product's name. |
+| 15 | `ASSUMED` | The metrics unit runs `morzer metrics --textfile <dir>` with the directory written into it, and the command takes the directory from that flag rather than from the state. |
+| 16 | `ASSUMED` | Changing or unsetting `metrics.textfile` removes both files from the directory it named before; `installation remove` removes them as well. |
+| 17 | `ASSUMED` | `metrics.textfile` moves the installation schema to 16 for the write path, as 7, 8 and 15 did: an older manager rewriting the state would drop the field and remove its timer, and the bump makes it refuse the state instead. |
 
 ## 12. Phasing
 
