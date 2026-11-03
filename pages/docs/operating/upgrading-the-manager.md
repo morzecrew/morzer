@@ -51,17 +51,45 @@ Without the setting, the check reports "not checked" and asks nobody.
 
 ## Upgrading
 
-Run the install script again over the binary the units run.
+Read the release notes of the version you are moving to, then run the binary
+the units run:
 
-1. Find that binary. Every unit names it by path:
+```sh
+sudo morzer self-update
+```
+
+```text
+morzer 0.12.0 -> 0.13.0
+  path    /usr/local/bin/morzer
+  notes   https://github.com/morzecrew/morzer/releases/tag/v0.13.0
+  locked  demo, wiki
+```
+
+It downloads the newest release, checks its signature against the key compiled
+into this binary, runs the new binary once, and swaps it in while it holds every
+installation's lock. An operation in progress anywhere on the machine refuses
+it; run it again once that finishes. `--to 0.13.1` pins a version, and
+`--dry-run` does everything but the swap. On a machine without the internet,
+download the release's archive for that machine's architecture (on amd64,
+`morzer_${VERSION}_linux_amd64.tar.zst`), `SHA256SUMS` and
+`SHA256SUMS.minisig` into one directory elsewhere, carry them over, and run
+`morzer self-update --from <directory>`. The
+[command reference](../reference/commands.md#self-update) has the refusals.
+
+It replaces the binary it was run as. When an installation's units run another
+copy, it says so and leaves them on it, so run the copy the units name.
+
+### With the install script
+
+The install script is the other way, and the only one for going back.
+
+1. Find the binary the units run. Every unit names it by path:
 
     ```sh
     systemctl cat <product>.service | grep ExecStart
     ```
 
-2. Read the release notes of the version you are moving to.
-
-3. Install it into that binary's directory:
+2. Install the release into that binary's directory:
 
     ```sh
     curl -fsSL https://morzecrew.github.io/morzer/install.sh \
@@ -92,7 +120,8 @@ the units would go on running the old one. `doctor`'s remedy and
 
 ## Going back
 
-Going back means running the install script again with the older `--version`.
+`self-update` refuses an older release. Going back means running the install
+script again with the older `--version`.
 If the newer manager changed the installation schema and has since written an
 installation's state, the older one refuses that state. Read the release notes
 before upgrading rather than planning to undo it.

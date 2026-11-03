@@ -252,6 +252,27 @@ func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]stri
 	return out, nil
 }
 
+// UnitsManagerPath reads the binary from the product's service unit, the one
+// every other unit's ExecStart names too.
+func (s *Supervisor) UnitsManagerPath(ctx context.Context, product string) (string, error) {
+	path := filepath.Join(s.unitDir, ServiceUnitName(product))
+	data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, in its own directory
+	switch {
+	case os.IsNotExist(err):
+		return "", nil
+	case err != nil:
+		return "", domain.Internal(err, "cannot read unit %s", path)
+	}
+	for line := range strings.Lines(string(data)) {
+		if exec, ok := strings.CutPrefix(line, "ExecStart="); ok {
+			if fields := strings.Fields(exec); len(fields) > 0 {
+				return fields[0], nil
+			}
+		}
+	}
+	return "", nil
+}
+
 func (s *Supervisor) Enable(ctx context.Context, unit string) error {
 	return s.run(ctx, "enable", unit)
 }

@@ -49,6 +49,13 @@ minisign -Vm SHA256SUMS -p morzer.pub
 sha256sum -c SHA256SUMS
 ```
 
+`morzer self-update` makes both checks itself, in-process, against a copy of
+`morzer.pub` compiled into the binary: the signature over `SHA256SUMS`, then the
+downloaded archive against its own line. It needs no `minisign` tool, and no
+flag, setting or environment variable changes the key or skips a check. So the
+key that verified your first install is the one every later self-update
+trusts.
+
 **Keep your own copy of the key.** Published here, it is only as trustworthy as
 this repository: anyone who could replace a release artifact could replace the
 key beside it. What it does give you is continuity — a release signed by a

@@ -1,0 +1,7 @@
+morzer 0.12.0 -> 0.13.0
+  path    /usr/local/bin/morzer
+  notes   https://github.com/morzecrew/morzer/releases/tag/v0.13.0
+  locked  demo, wiki
+
+  ! wiki's units run /opt/morzer/bin/morzer, not /usr/local/bin/morzer, and stay
+    on it; update that copy with `/opt/morzer/bin/morzer self-update`

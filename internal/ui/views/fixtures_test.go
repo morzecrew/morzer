@@ -320,6 +320,17 @@ func calloutFixtures() []fixture {
 			},
 			fields: []string{"0.12.0", "no longer supported", "--dir /usr/local/bin"},
 		},
+		{
+			name: "self-update",
+			value: ops.ManagerUpdate{
+				Path: "/usr/local/bin/morzer", From: "0.12.0", To: "0.13.0", Updated: true,
+				URL:           "https://github.com/morzecrew/morzer/releases/tag/v0.13.0",
+				Installations: []string{"demo", "wiki"},
+				Warnings: []string{"wiki's units run /opt/morzer/bin/morzer, not /usr/local/bin/morzer, " +
+					"and stay on it; update that copy with `/opt/morzer/bin/morzer self-update`"},
+			},
+			fields: []string{"0.12.0 -> 0.13.0", "/usr/local/bin/morzer", "demo, wiki", "/opt/morzer/bin/morzer"},
+		},
 	}
 }
 

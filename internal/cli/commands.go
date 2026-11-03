@@ -1113,23 +1113,68 @@ func newVersionCommand(app *App) *cobra.Command {
 			"machine and on one whose installation will not load.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			v := views.Version{
-				Version:              app.Build.Version,
-				Commit:               app.Build.Commit,
-				Built:                app.Build.Date,
-				SupportedAPIVersions: apiVersionStrings(),
-			}
-			if check {
-				res, err := ops.CheckManager(cmd.Context(), app.Deps)
-				if err != nil {
-					return err
-				}
-				v.Check = &res
-			}
-			return app.render(v)
+			return app.renderVersion(cmd.Context(), check)
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "ask GitHub for the newest published manager and compare it with this one")
+	return cmd
+}
+
+// renderVersion is `version`, and with check what `--check` adds; `self-update
+// --check` says the same and nothing else.
+func (a *App) renderVersion(ctx context.Context, check bool) error {
+	v := views.Version{
+		Version:              a.Build.Version,
+		Commit:               a.Build.Commit,
+		Built:                a.Build.Date,
+		SupportedAPIVersions: apiVersionStrings(),
+	}
+	if check {
+		res, err := ops.CheckManager(ctx, a.Deps)
+		if err != nil {
+			return err
+		}
+		v.Check = &res
+	}
+	return a.render(v)
+}
+
+func newSelfUpdateCommand(app *App) *cobra.Command {
+	var (
+		check    bool
+		to, from string
+	)
+	cmd := &cobra.Command{
+		Use:   "self-update",
+		Short: "Replace this manager with a newer published release",
+		Long: "Downloads the newest published manager, or the release --to names,\n" +
+			"verifies its signed checksums against the key this binary carries, runs\n" +
+			"it, and puts it in place of this binary while it holds every\n" +
+			"installation's lock. No flag or setting skips the signature.\n\n" +
+			"It only moves forward: an older release is refused, and moving back is a\n" +
+			"re-run of install.sh. With --from it reads a release's archive,\n" +
+			"SHA256SUMS and SHA256SUMS.minisig from a directory and asks nobody.\n" +
+			"--dry-run does everything but take the locks and replace the binary.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if check {
+				if to != "" || from != "" {
+					return domain.Usage("--check compares this manager with the newest release, and takes neither --to nor --from")
+				}
+				return app.renderVersion(cmd.Context(), true)
+			}
+			res, err := ops.SelfUpdate(cmd.Context(), app.Deps, ops.SelfUpdateOptions{
+				To: to, From: from, DryRun: app.Flags.dryRun,
+			})
+			if err != nil {
+				return err
+			}
+			return app.render(res)
+		},
+	}
+	cmd.Flags().StringVar(&to, "to", "", "the release to install instead of the newest")
+	cmd.Flags().StringVar(&from, "from", "", "a directory holding the release's archive, SHA256SUMS and SHA256SUMS.minisig")
+	cmd.Flags().BoolVar(&check, "check", false, "only say whether a newer manager is published, as version --check does")
 	return cmd
 }
 

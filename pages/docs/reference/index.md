@@ -104,4 +104,5 @@ here. The reference column points at the section that documents it; the
 | `morzer fleet publish` | Write this installation's row to the targets it already uses | [fleet](fleet.md#the-fleet-view) |
 | `morzer fleet ls` (also `list`) | Read every installation's row off a target | [fleet](fleet.md#the-fleet-view) |
 | `morzer version` | Print version, commit, and supported manifest API versions | [commands](commands.md#version) |
+| `morzer self-update` | Replace this manager with a newer published release | [commands](commands.md#self-update) |
 | `morzer completion install` | Write the completion script where this shell will read it | [commands](commands.md#completion-install) |

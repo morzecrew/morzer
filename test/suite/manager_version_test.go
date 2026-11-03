@@ -2,6 +2,8 @@ package suite
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +16,12 @@ import (
 )
 
 // fakeManagerFeed serves one newest release, or an error, and counts the asks.
+// Download copies a release's files from dir.
 type fakeManagerFeed struct {
 	newest string
 	err    error
 	asked  int
+	dir    string
 }
 
 func (f *fakeManagerFeed) Newest(context.Context) (ports.ManagerRelease, error) {
@@ -29,6 +33,22 @@ func (f *fakeManagerFeed) Newest(context.Context) (ports.ManagerRelease, error) 
 		Version: domain.MustParseVersion(f.newest),
 		URL:     "https://github.com/morzecrew/morzer/releases/tag/v" + f.newest,
 	}, nil
+}
+
+func (f *fakeManagerFeed) Download(_ context.Context, v domain.Version, dir string) error {
+	if f.err != nil {
+		return f.err
+	}
+	for _, name := range []string{ports.ManagerArchive(v), ports.SumsFileName, ports.SignatureFileName} {
+		data, err := os.ReadFile(filepath.Join(f.dir, name))
+		if err != nil {
+			return domain.ValidationError(err, "the release has no %s", name)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // `manager.version` asks nobody until the installation consents with

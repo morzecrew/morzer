@@ -72,6 +72,26 @@ func TestVersionCheckKeepsItsPublishedKeys(t *testing.T) {
 	}, got["check"])
 }
 
+// `self-update --json` reports what replaced what, and a script deciding
+// whether to restart anything reads `updated` (RFC 0046 §5.3).
+func TestSelfUpdateKeepsItsPublishedKeys(t *testing.T) {
+	got := marshal(t, ops.ManagerUpdate{
+		Path: "/usr/local/bin/morzer", From: "0.12.0", To: "0.13.0", Updated: true,
+		URL:           "https://github.com/morzecrew/morzer/releases/tag/v0.13.0",
+		Installations: []string{"demo"},
+	})
+
+	require.Equal(t, map[string]any{
+		"path":          "/usr/local/bin/morzer",
+		"from":          "0.12.0",
+		"to":            "0.13.0",
+		"dev_build":     false,
+		"updated":       true,
+		"url":           "https://github.com/morzecrew/morzer/releases/tag/v0.13.0",
+		"installations": []any{"demo"},
+	}, got)
+}
+
 func TestVerifiedKeepsItsPublishedKeys(t *testing.T) {
 	version, err := domain.ParseVersion("1.4.0")
 	require.NoError(t, err)

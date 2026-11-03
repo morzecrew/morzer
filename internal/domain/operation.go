@@ -53,6 +53,12 @@ const (
 	// suspected compromise needs to see when the key changed, and why
 	// signatures before that point now verify as a predecessor's.
 	OpTypeRotateSigningKey OperationType = "rotate-signing-key"
+
+	// OpTypeManagerUpdate is `self-update` replacing the manager binary
+	// (RFC 0046 decision 11). Written into every installation's journal,
+	// though it changes none of them, because when the program that runs
+	// an installation changed is what an incident review asks first.
+	OpTypeManagerUpdate OperationType = "manager-update"
 )
 
 // OperationStatus is the lifecycle of one operation.

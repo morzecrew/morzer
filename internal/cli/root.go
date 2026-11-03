@@ -24,6 +24,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/health"
 	"github.com/morzecrew/morzer/internal/adapters/hooks"
 	managerfeed "github.com/morzecrew/morzer/internal/adapters/managerfeed/github"
+	"github.com/morzecrew/morzer/internal/adapters/managerfeed/signed"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
@@ -667,6 +668,7 @@ func newRootCommand(app *App) *cobra.Command {
 		// for the other.
 		grouped(groupMachine, perCommandScope(newFleetCommand(app))),
 		grouped(groupMachine, machineScope(newVersionCommand(app))),
+		grouped(groupMachine, machineScope(newSelfUpdateCommand(app))),
 	)
 
 	// `completion install` hangs off the command cobra generates, which
@@ -1017,10 +1019,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// on the machine, so the set is not known here -- but the
 		// adapter still is, which is the whole rule this file keeps.
 		StateFor: func(p domain.Paths) ports.StateStore { return state.New(p) },
-		Runtime:  runtime,
-		Secrets:  secrets,
-		Source:   sources,
-		Targets:  targets,
+		// And their locks, for the one command that holds all of them.
+		LockerFor: func(p domain.Paths) ports.Locker { return lock.New(p.LockDir()) },
+		Runtime:   runtime,
+		Secrets:   secrets,
+		Source:    sources,
+		Targets:   targets,
 		// The same registry again, seen through the half of it that
 		// holds things which are not backups. One object, two fields,
 		// because a build that pushes backups and not attestations is a
@@ -1045,8 +1049,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		ManagerPath:    systemd.ManagerPath(),
 		ManagerVersion: parseBuildVersion(a.Build.Version),
 		ManagerFeed:    managerfeed.New(),
-		Redactor:       redactor,
-		TargetPrefix:   a.Flags.root,
+		// The only key a self-update trusts is the one compiled in.
+		ManagerUnpacker: signed.New(runner),
+		Redactor:        redactor,
+		TargetPrefix:    a.Flags.root,
 		// What the CLI found on the machine and whether the operator
 		// named one, so a lookup that comes back empty can say which of
 		// several situations it is in.

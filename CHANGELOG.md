@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A page on upgrading the manager**, including why `install.sh --dir` must
   name the directory of the binary the units run.
 
+- **`morzer self-update` replaces the manager with a newer release.** It
+  checks the release's signature against the key compiled into the binary,
+  which nothing can skip, and swaps the binary only while it holds every
+  installation's lock. `--to` pins a release, `--from` reads one offline, and
+  an older one is refused.
+
 ### Security
 
 - **`update` refuses a release older than the one installed.** It only warned
