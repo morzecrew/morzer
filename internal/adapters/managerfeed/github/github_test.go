@@ -45,7 +45,8 @@ func TestTheNewestIsTheHighestPublishedVersion(t *testing.T) {
 	got, err := feed.Newest(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, "0.12.1", got.Version.String())
-	assert.Equal(t, "https://example.test/v0.12.1", got.URL)
+	assert.Equal(t, "https://github.com/morzecrew/morzer/releases/tag/v0.12.1", got.URL,
+		"the page is built from the tag, never taken from the feed")
 }
 
 // A feed that cannot answer is an error, never a release.

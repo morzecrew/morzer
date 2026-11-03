@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -68,10 +69,14 @@ func At(url, downloads string, client *http.Client) *Feed {
 
 type release struct {
 	Tag        string `json:"tag_name"`
-	URL        string `json:"html_url"`
 	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 }
+
+// Pages is where a release's page is, by tag. The page is built from a tag
+// that parsed as a version rather than taken from the feed, so no text the
+// feed chose reaches the operator's terminal.
+const Pages = "https://github.com/morzecrew/morzer/releases/tag/"
 
 // Newest implements ports.ManagerFeed.
 func (f *Feed) Newest(ctx context.Context) (ports.ManagerRelease, error) {
@@ -176,7 +181,9 @@ func newest(list []release) (ports.ManagerRelease, error) {
 			continue
 		}
 		if v.GreaterThan(out.Version) {
-			out = ports.ManagerRelease{Version: v, URL: r.URL}
+			// Trimmed as ParseVersion trims, so what is left is what
+			// parsed: a carriage return around a tag is not a version.
+			out = ports.ManagerRelease{Version: v, URL: Pages + strings.TrimSpace(r.Tag)}
 		}
 	}
 	if out.Version.IsZero() {

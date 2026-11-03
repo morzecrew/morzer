@@ -19,7 +19,7 @@ func TestTheBinaryKeepsItsModeUnderAnyUmask(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "morzer")
 	require.NoError(t, os.WriteFile(src, []byte("#!/bin/sh\n"), 0o600))
 	dst := filepath.Join(t.TempDir(), "staged")
-	require.NoError(t, copyFile(src, dst, 0o755))
+	require.NoError(t, copyFile(src, dst, 0o755, maxArchive))
 
 	info, err := os.Stat(dst)
 	require.NoError(t, err)

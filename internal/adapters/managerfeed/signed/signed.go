@@ -30,13 +30,24 @@ import (
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
-// ReleaseKey is `morzer.pub`, the key the release pipeline signs with.
-//
 //go:embed morzer.pub
-var ReleaseKey []byte
+var releaseKey string
+
+// ReleaseKey is `morzer.pub`, the key the release pipeline signs with. A
+// string, and unexported behind this, so nothing in the program can change
+// the key a self-update trusts.
+func ReleaseKey() string { return releaseKey }
 
 // versionTimeout bounds asking a binary its version, which reads no state.
 const versionTimeout = 30 * time.Second
+
+// Bounds on what a `--from` directory can hand this package, which reads it
+// before anything in it is verified. A release's SHA256SUMS is a few lines and
+// its archive a few tens of megabytes.
+const (
+	maxSums    = 1 << 20
+	maxArchive = 256 << 20
+)
 
 // Unpacker verifies manager releases against one key.
 type Unpacker struct {
@@ -45,7 +56,7 @@ type Unpacker struct {
 }
 
 // New verifies against ReleaseKey.
-func New(runner exec.Runner) *Unpacker { return ForKey(string(ReleaseKey), runner) }
+func New(runner exec.Runner) *Unpacker { return ForKey(releaseKey, runner) }
 
 // ForKey verifies against another key, which is what tests sign with. Nothing
 // outside tests calls it: decision 6 is that a self-update trusts the one key
@@ -72,7 +83,9 @@ func (u *Unpacker) Target(dir string) (domain.Version, error) {
 		if middle, ok = strings.CutSuffix(middle, suffix); !ok {
 			continue
 		}
-		if v, err := domain.ParseVersion(middle); err == nil && ports.ManagerArchive(v) == name {
+		// Build metadata compares equal to the release it decorates, so a
+		// name carrying it does not say which release it is.
+		if v, err := domain.ParseVersion(middle); err == nil && v.Metadata() == "" && ports.ManagerArchive(v) == name {
 			found = append(found, v)
 		}
 	}
@@ -119,7 +132,7 @@ func (u *Unpacker) Unpack(ctx context.Context, dir string, v domain.Version, dst
 	// Copied before it is checked, for the same reason: what is unpacked is
 	// the copy that was checked, not whatever is in dir by then.
 	private := filepath.Join(work, archive)
-	if err := copyFile(filepath.Join(dir, archive), private, 0o600); err != nil {
+	if err := copyFile(filepath.Join(dir, archive), private, 0o600, maxArchive); err != nil {
 		return err
 	}
 	if err := interrupted(ctx); err != nil {
@@ -145,7 +158,7 @@ func (u *Unpacker) Unpack(ctx context.Context, dir string, v domain.Version, dst
 	if _, err := os.Stat(binary); err != nil {
 		return domain.ValidationError(err, "the archive does not contain a morzer binary")
 	}
-	return copyFile(binary, dst, 0o755)
+	return copyFile(binary, dst, 0o755, maxArchive)
 }
 
 // verifiedSums reads SumsFileName and checks SignatureFileName over it with
@@ -162,9 +175,9 @@ func (u *Unpacker) verifiedSums(dir string) ([]byte, error) {
 			WithHint("a release carries %s beside %s; a self-update never installs without it",
 				ports.SignatureFileName, ports.SumsFileName)
 	}
-	signed, err := os.ReadFile(filepath.Join(dir, ports.SumsFileName)) //nolint:gosec // the release directory this command was given
+	signed, err := readBounded(filepath.Join(dir, ports.SumsFileName), maxSums)
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read %s", filepath.Join(dir, ports.SumsFileName))
+		return nil, err
 	}
 	if ok, err := key.Verify(signed, sig); !ok || err != nil {
 		return nil, domain.ValidationError(domain.ErrValidation,
@@ -203,12 +216,28 @@ func (u *Unpacker) Version(ctx context.Context, path string) (domain.Version, er
 // sums reads dir's SumsFileName, unverified, which is enough to name a
 // version that Unpack then verifies.
 func sums(dir string) (map[string]string, error) {
-	path := filepath.Join(dir, ports.SumsFileName)
-	data, err := os.ReadFile(path) //nolint:gosec // the release directory this command was given
+	data, err := readBounded(filepath.Join(dir, ports.SumsFileName), maxSums)
+	if err != nil {
+		return nil, err
+	}
+	return parseSums(data), nil
+}
+
+// readBounded reads a file no larger than limit.
+func readBounded(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // the release directory this command was given
 	if err != nil {
 		return nil, domain.ValidationError(err, "cannot read %s", path)
 	}
-	return parseSums(data), nil
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	switch {
+	case err != nil:
+		return nil, domain.ValidationError(err, "cannot read %s", path)
+	case int64(len(data)) > limit:
+		return nil, domain.ValidationError(nil, "%s is larger than any release's, %d bytes", path, limit)
+	}
+	return data, nil
 }
 
 // parseSums reads `sha256sum` output as name to digest.
@@ -243,8 +272,9 @@ func lastLine(s string) string {
 	return lines[len(lines)-1]
 }
 
-// copyFile writes src to dst, which must not exist, and syncs it.
-func copyFile(src, dst string, mode os.FileMode) error {
+// copyFile writes src, no larger than limit, to dst, which must not exist,
+// and syncs it.
+func copyFile(src, dst string, mode os.FileMode, limit int64) error {
 	in, err := os.Open(src) //nolint:gosec // a release file this command was given, or one this package unpacked
 	if err != nil {
 		return domain.ValidationError(err, "cannot read %s", src)
@@ -260,9 +290,14 @@ func copyFile(src, dst string, mode os.FileMode) error {
 		_ = out.Close()
 		return domain.Internal(err, "cannot set the mode of %s", dst)
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	n, err := io.Copy(out, io.LimitReader(in, limit+1))
+	if err != nil {
 		_ = out.Close()
 		return domain.Internal(err, "cannot write %s", dst)
+	}
+	if n > limit {
+		_ = out.Close()
+		return domain.ValidationError(nil, "%s is larger than any release file, %d bytes", src, limit)
 	}
 	if err := out.Sync(); err != nil {
 		_ = out.Close()

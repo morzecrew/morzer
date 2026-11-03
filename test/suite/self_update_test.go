@@ -224,6 +224,15 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = release() })
 		}, want: "another self-update is replacing"},
+		"an archive whose version carries build metadata": {setup: func(t *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
+			opts.From = publishManager(t, s.sk, "0.13.0+rebuild", "0.13.0")
+		}, want: "names no morzer archive"},
+		"a SHA256SUMS larger than any release's": {setup: func(t *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
+			sums, err := os.ReadFile(filepath.Join(s.feed.dir, ports.SumsFileName))
+			require.NoError(t, err)
+			writeManagerSums(t, s.sk, s.feed.dir, string(sums)+strings.Repeat("#\n", 1<<19+1))
+			opts.From = s.feed.dir
+		}, want: "larger than"},
 		"a build with no feed": {setup: func(_ *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
 			s.Deps.ManagerFeed = nil
 			opts.To = "0.13.0"
@@ -420,5 +429,5 @@ func TestSelfUpdateNamesUnitsThatRunAnotherCopy(t *testing.T) {
 func TestTheEmbeddedReleaseKeyIsTheRepositorys(t *testing.T) {
 	want, err := os.ReadFile("../../morzer.pub")
 	require.NoError(t, err)
-	assert.Equal(t, string(want), string(signed.ReleaseKey))
+	assert.Equal(t, string(want), signed.ReleaseKey())
 }
