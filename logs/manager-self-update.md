@@ -158,3 +158,71 @@ Rule: when a check and a use read the same file, read it once, or the check
 covers a file nobody used.
 
 **Drift count: 0.**
+
+## From #259's review, 2026-11-03
+
+The class of the decision 9 entry above was wrong. Ordering the refusal
+before the feed's answer has a consequence anybody reading §5.3 could have
+seen, so the spec was silent, not the build surprised. The entry stays as
+written; this one supersedes its class.
+
+```divergence
+decision: 9
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-03T07:22:00Z
+attempt: 2
+claim: the unwritable-directory refusal ordered before the feed's answer tells an operator on a current machine to use sudo for nothing, which §5.3 could have settled
+evidence: internal/lifecycle/ops/self_update.go:130-145
+action: departed
+proposal: ASSUMED — as attempt 1 proposed: the directory is checked once the target is resolved and newer, before anything is downloaded.
+```
+
+Decision 7's locks are every installation's. With none on the machine there
+is no lock at all, and two `self-update` runs could both pass the re-check
+before either renamed, the older one last.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-03T07:22:00Z
+attempt: 2
+claim: the installations' locks are the only exclusion between two self-updates, and a machine with no installation has none
+evidence: internal/lifecycle/ops/self_update.go:205-214
+action: decided
+proposal: ASSUMED — `self-update` also takes a non-waiting flock on the binary's directory before the installations' locks and holds it through the rename and the journal entries. The directory's inode survives the rename, which a lock on the binary would not, and it leaves no file behind.
+```
+
+Decision 11 records "the old and new versions". Another `self-update` can
+install a release between this one's start and its locks.
+
+```divergence
+decision: 11
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-03T07:22:00Z
+attempt: 2
+claim: the old version could be read at the start or under the locks, and only the second is what the swap replaced
+evidence: internal/lifecycle/ops/self_update.go:240-249
+action: departed
+proposal: ASSUMED — the version the journal and the report name as replaced is the one read under the locks.
+```
+
+P1's check printed the feed's own `html_url`. That is text the feed chose,
+written to the operator's terminal.
+
+```divergence
+decision: 17
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-03T07:22:00Z
+attempt: 2
+claim: a release page taken from the feed is free text on the terminal, where a tag that parsed as a version is not
+evidence: internal/adapters/managerfeed/github/github.go:183-187
+action: departed
+proposal: ASSUMED — the release page is built from the tag that parsed as a version, as `https://github.com/morzecrew/morzer/releases/tag/<tag>`, never taken from the feed.
+```
+
+**Drift count: 0.**
+
