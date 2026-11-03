@@ -411,6 +411,9 @@ func sudoSelfUpdate(path string, opts SelfUpdateOptions) string {
 	if opts.DryRun {
 		cmd += " --dry-run"
 	}
+	if opts.Timeout > 0 {
+		cmd += " --timeout " + opts.Timeout.String()
+	}
 	if opts.To != "" {
 		cmd += " --to " + domain.ShellQuote(opts.To)
 	}

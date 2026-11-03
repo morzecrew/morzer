@@ -45,8 +45,9 @@ const versionTimeout = 30 * time.Second
 // before anything in it is verified. A release's SHA256SUMS is a few lines and
 // its archive a few tens of megabytes.
 const (
-	maxSums    = 1 << 20
-	maxArchive = 256 << 20
+	maxSums      = 1 << 20
+	maxSignature = 64 << 10
+	maxArchive   = 256 << 20
 )
 
 // Unpacker verifies manager releases against one key.
@@ -169,13 +170,19 @@ func (u *Unpacker) verifiedSums(dir string) ([]byte, error) {
 		return nil, domain.Internal(err, "the release key this binary carries does not parse")
 	}
 	sigPath := filepath.Join(dir, ports.SignatureFileName)
-	sig, err := gominisign.NewSignatureFromFile(sigPath)
+	encoded, err := readBounded(sigPath, "the signature at "+sigPath, maxSignature)
+	if err != nil {
+		return nil, domain.AsError(err).WithHint("a release carries %s beside %s; a self-update never installs without it",
+			ports.SignatureFileName, ports.SumsFileName)
+	}
+	sig, err := gominisign.DecodeSignature(string(encoded))
 	if err != nil {
 		return nil, domain.ValidationError(err, "cannot read the signature at %s", sigPath).
 			WithHint("a release carries %s beside %s; a self-update never installs without it",
 				ports.SignatureFileName, ports.SumsFileName)
 	}
-	signed, err := readBounded(filepath.Join(dir, ports.SumsFileName), maxSums)
+	sumsPath := filepath.Join(dir, ports.SumsFileName)
+	signed, err := readBounded(sumsPath, sumsPath, maxSums)
 	if err != nil {
 		return nil, err
 	}
@@ -216,26 +223,27 @@ func (u *Unpacker) Version(ctx context.Context, path string) (domain.Version, er
 // sums reads dir's SumsFileName, unverified, which is enough to name a
 // version that Unpack then verifies.
 func sums(dir string) (map[string]string, error) {
-	data, err := readBounded(filepath.Join(dir, ports.SumsFileName), maxSums)
+	path := filepath.Join(dir, ports.SumsFileName)
+	data, err := readBounded(path, path, maxSums)
 	if err != nil {
 		return nil, err
 	}
 	return parseSums(data), nil
 }
 
-// readBounded reads a file no larger than limit.
-func readBounded(path string, limit int64) ([]byte, error) {
+// readBounded reads a file no larger than limit; what names it in an error.
+func readBounded(path, what string, limit int64) ([]byte, error) {
 	f, err := os.Open(path) //nolint:gosec // the release directory this command was given
 	if err != nil {
-		return nil, domain.ValidationError(err, "cannot read %s", path)
+		return nil, domain.ValidationError(err, "cannot read %s", what)
 	}
 	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	switch {
 	case err != nil:
-		return nil, domain.ValidationError(err, "cannot read %s", path)
+		return nil, domain.ValidationError(err, "cannot read %s", what)
 	case int64(len(data)) > limit:
-		return nil, domain.ValidationError(nil, "%s is larger than any release's, %d bytes", path, limit)
+		return nil, domain.ValidationError(nil, "%s is larger than any release's, %d bytes", what, limit)
 	}
 	return data, nil
 }
@@ -257,11 +265,14 @@ func parseSums(data []byte) map[string]string {
 // interrupted stops between the stages of unpacking once the command is
 // cancelled or out of time; each stage is bounded, the whole is not.
 func interrupted(ctx context.Context) error {
+	// Read once: a cancellation landing between two reads would be
+	// reported as running out of time.
+	err := ctx.Err()
 	switch {
-	case errors.Is(ctx.Err(), context.Canceled):
+	case errors.Is(err, context.Canceled):
 		return domain.Interrupted("the self-update was cancelled")
-	case ctx.Err() != nil:
-		return domain.ValidationError(ctx.Err(), "the self-update ran out of time")
+	case err != nil:
+		return domain.ValidationError(err, "the self-update ran out of time")
 	}
 	return nil
 }

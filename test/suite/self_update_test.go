@@ -233,6 +233,15 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			writeManagerSums(t, s.sk, s.feed.dir, string(sums)+strings.Repeat("#\n", 1<<19+1))
 			opts.From = s.feed.dir
 		}, want: "larger than"},
+		"a signature file larger than any release's": {setup: func(t *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
+			sig := filepath.Join(s.feed.dir, ports.SignatureFileName)
+			f, err := os.OpenFile(sig, os.O_APPEND|os.O_WRONLY, 0)
+			require.NoError(t, err)
+			_, err = f.WriteString(strings.Repeat("x", 1<<20))
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			opts.From = s.feed.dir
+		}, want: "larger than"},
 		"a build with no feed": {setup: func(_ *testing.T, s *selfUpdateHost, opts *ops.SelfUpdateOptions) {
 			s.Deps.ManagerFeed = nil
 			opts.To = "0.13.0"
@@ -341,10 +350,11 @@ func TestSelfUpdateNeverEscalates(t *testing.T) {
 	assert.Contains(t, e.Hint, "sudo "+s.Deps.ManagerPath+" self-update --to 0.13.0")
 	assert.Equal(t, "0.12.0", s.reports(t))
 
-	// Following the hint for a dry run must not perform the swap.
-	_, err = ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{DryRun: true})
+	// Following the hint for a dry run must not perform the swap, and it
+	// keeps the deadline it was given.
+	_, err = ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{DryRun: true, Timeout: 90 * time.Second})
 	require.Error(t, err)
-	assert.Contains(t, domain.AsError(err).Hint, "self-update --dry-run")
+	assert.Contains(t, domain.AsError(err).Hint, "self-update --dry-run --timeout 1m30s")
 }
 
 // Nothing newer is not a failure, and nothing is replaced.
