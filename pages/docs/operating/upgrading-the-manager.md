@@ -51,11 +51,13 @@ Without the setting, the check reports "not checked" and asks nobody.
 
 ## Upgrading
 
-Read the release notes of the version you are moving to, then run the binary
-the units run:
+Read the release notes of the version you are moving to. Then run the binary
+the units run, by its path: `sudo` searches its own `PATH`, which can find a
+different `morzer`. Every unit names it:
 
 ```sh
-sudo morzer self-update
+systemctl cat <product>.service | grep ExecStart
+sudo /usr/local/bin/morzer self-update
 ```
 
 ```text
@@ -69,7 +71,8 @@ It downloads the newest release, checks its signature against the key compiled
 into this binary, runs the new binary once, and swaps it in while it holds every
 installation's lock. An operation in progress anywhere on the machine refuses
 it; run it again once that finishes. `--to 0.13.1` pins a version, and
-`--dry-run` does everything but the swap. On a machine without the internet,
+`--dry-run` downloads, verifies and runs the new binary, then stops before it
+takes any lock or replaces anything. On a machine without the internet,
 download the release's archive for that machine's architecture (on amd64,
 `morzer_${VERSION}_linux_amd64.tar.zst`), `SHA256SUMS` and
 `SHA256SUMS.minisig` into one directory elsewhere, carry them over, and run
