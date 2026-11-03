@@ -1,10 +1,16 @@
 package systemd
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -162,4 +168,23 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 			t.Fatalf("UpdateJitter %s took the update timer away", tc.jitter)
 		}
 	}
+}
+
+// The binary the units run is read from whichever of the product's units is
+// installed, not only its service: an installation whose service unit is gone
+// still has timers running the manager, and self-update warns about those.
+func TestUnitsManagerPathReadsAnyInstalledUnit(t *testing.T) {
+	dir := t.TempDir()
+	s := New(nil, WithUnitDir(dir))
+	ctx := context.Background()
+
+	path, err := s.UnitsManagerPath(ctx, "demo")
+	require.NoError(t, err)
+	assert.Empty(t, path, "a product with no units runs no binary")
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, BackupServiceUnitName("demo")),
+		[]byte("[Service]\nExecStart=/opt/morzer/bin/morzer backup --unattended\n"), 0o600))
+	path, err = s.UnitsManagerPath(ctx, "demo")
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/morzer/bin/morzer", path)
 }
