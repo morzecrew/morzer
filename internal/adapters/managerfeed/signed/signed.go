@@ -235,6 +235,12 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	if err != nil {
 		return domain.Internal(err, "cannot write %s", dst)
 	}
+	// The umask applied to the mode above; a root shell's 077 would leave a
+	// manager nobody else can run.
+	if err := out.Chmod(mode); err != nil {
+		_ = out.Close()
+		return domain.Internal(err, "cannot set the mode of %s", dst)
+	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
 		return domain.Internal(err, "cannot write %s", dst)
