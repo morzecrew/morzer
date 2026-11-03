@@ -748,6 +748,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Upgrading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-the-install-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        With the install script
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2063,6 +2080,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Upgrading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#with-the-install-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        With the install script
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2191,18 +2225,40 @@ scheduled <code>doctor</code> would otherwise contact GitHub unprompted:</p>
 published, and the scheduled run notifies any target that takes warnings.
 Without the setting, the check reports "not checked" and asks nobody.</p>
 <h2 id="upgrading">Upgrading<a class="headerlink" href="#upgrading" title="Permanent link">&para;</a></h2>
-<p>Run the install script again over the binary the units run.</p>
+<p>Read the release notes of the version you are moving to. Then run the binary
+the units run, by its path: <code>sudo</code> searches its own <code>PATH</code>, which can find a
+different <code>morzer</code>. Every unit names it:</p>
+<div class="highlight"><pre><span></span><code>systemctl<span class="w"> </span>cat<span class="w"> </span>&lt;product&gt;.service<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>ExecStart
+sudo<span class="w"> </span>/usr/local/bin/morzer<span class="w"> </span>self-update
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>morzer 0.12.0 -&gt; 0.13.0
+  path    /usr/local/bin/morzer
+  notes   https://github.com/morzecrew/morzer/releases/tag/v0.13.0
+  locked  demo, wiki
+</code></pre></div>
+<p>It downloads the newest release, checks its signature against the key compiled
+into this binary, runs the new binary once, and swaps it in while it holds every
+installation's lock. An operation in progress anywhere on the machine refuses
+it; run it again once that finishes. <code>--to 0.13.1</code> pins a version, and
+<code>--dry-run</code> downloads, verifies and runs the new binary, then stops before it
+takes any lock or replaces anything. On a machine without the internet,
+download the release's archive for that machine's architecture (on amd64,
+<code>morzer_${VERSION}_linux_amd64.tar.zst</code>), <code>SHA256SUMS</code> and
+<code>SHA256SUMS.minisig</code> into one directory elsewhere, carry them over, and run
+<code>morzer self-update --from &lt;directory&gt;</code>. The
+<a href="../../reference/commands/#self-update">command reference</a> has the refusals.</p>
+<p>It replaces the binary it was run as. When an installation's units run another
+copy, it says so and leaves them on it, so run the copy the units name.</p>
+<h3 id="with-the-install-script">With the install script<a class="headerlink" href="#with-the-install-script" title="Permanent link">&para;</a></h3>
+<p>The install script is the other way, and the only one for going back.</p>
 <ol>
 <li>
-<p>Find that binary. Every unit names it by path:</p>
+<p>Find the binary the units run. Every unit names it by path:</p>
 <div class="highlight"><pre><span></span><code>systemctl<span class="w"> </span>cat<span class="w"> </span>&lt;product&gt;.service<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>ExecStart
 </code></pre></div>
 </li>
 <li>
-<p>Read the release notes of the version you are moving to.</p>
-</li>
-<li>
-<p>Install it into that binary's directory:</p>
+<p>Install the release into that binary's directory:</p>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.12.0<span class="w"> </span>--require-signature<span class="w"> </span>--dir<span class="w"> </span>/usr/local/bin
 </code></pre></div>
@@ -2230,7 +2286,8 @@ the units would go on running the old one. <code>doctor</code>'s remedy and
   changelog's upgrade notes say when the schema changes.</li>
 </ul>
 <h2 id="going-back">Going back<a class="headerlink" href="#going-back" title="Permanent link">&para;</a></h2>
-<p>Going back means running the install script again with the older <code>--version</code>.
+<p><code>self-update</code> refuses an older release. Going back means running the install
+script again with the older <code>--version</code>.
 If the newer manager changed the installation schema and has since written an
 installation's state, the older one refuses that state. Read the release notes
 before upgrading rather than planning to undo it.</p>

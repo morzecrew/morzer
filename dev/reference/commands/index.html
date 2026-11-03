@@ -1771,6 +1771,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#self-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        self-update
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#completion-install" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2782,6 +2793,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#self-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        self-update
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#completion-install" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3003,7 +3025,7 @@ given no selector is refused, and the refusal names what it found:</p>
 <span class="go">error: this machine has 2 installations, so --product is required</span>
 <span class="go">hint:  demo, other — pass `--product demo`, or `--config /etc/demo/installation.yaml`; `morzer ls` lists them</span>
 </code></pre></div>
-<p>Commands that touch no installation are unaffected: <code>version</code>, <code>ls</code>, <code>doctor</code>,
+<p>Commands that touch no installation are unaffected: <code>version</code>, <code>self-update</code>, <code>ls</code>, <code>doctor</code>,
 <code>init</code>, <code>installation import</code>, and the bundle-authoring half of <code>release</code> —
 <code>new</code>, <code>verify</code>, <code>pack</code>, <code>build</code> and <code>archive</code>.</p>
 <p><a href="../../operating/several-installations/">Several installations</a> is the whole
@@ -3084,6 +3106,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#version"><code>version</code></a></td>
 <td>Print version, commit, and supported manifest API versions.</td>
+</tr>
+<tr>
+<td><a href="#self-update"><code>self-update</code></a></td>
+<td>Replace this manager with a newer published release.</td>
 </tr>
 <tr>
 <td><a href="#completion-install"><code>completion install</code></a></td>
@@ -3988,6 +4014,85 @@ exit 2. See <a href="../../operating/upgrading-the-manager/">upgrading the manag
 <tr>
 <td><code>--check</code></td>
 <td>Compare this manager with the newest published release.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="self-update">self-update<a class="headerlink" href="#self-update" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>self-update<span class="w">                     </span><span class="c1"># the newest published release</span>
+morzer<span class="w"> </span>self-update<span class="w"> </span>--to<span class="w"> </span><span class="m">0</span>.13.1
+morzer<span class="w"> </span>self-update<span class="w"> </span>--from<span class="w"> </span>./downloads<span class="w">  </span><span class="c1"># offline: the archive, SHA256SUMS and SHA256SUMS.minisig</span>
+morzer<span class="w"> </span>self-update<span class="w"> </span>--check<span class="w">             </span><span class="c1"># what version --check says, and nothing else</span>
+</code></pre></div>
+<p>Replaces the binary this command ran from with a published release, in this
+order:</p>
+<ol>
+<li>It resolves the release: the newest published one, the one <code>--to</code> names, or
+   with <code>--from</code> the one whose archive for this platform that directory's
+   <code>SHA256SUMS</code> lists. With <code>--from</code> it asks nobody.</li>
+<li>It downloads that release's archive for this platform, <code>SHA256SUMS</code> and
+   <code>SHA256SUMS.minisig</code>, unless <code>--from</code> has them.</li>
+<li>It verifies the signature over <code>SHA256SUMS</code> against <code>morzer.pub</code>, the key
+   compiled into this binary, and the archive against its own line. No flag,
+   setting or environment variable changes the key or skips either check, and
+   no <code>minisign</code> tool is needed.</li>
+<li>It unpacks the new binary beside this one and runs it with
+   <code>version --json</code>. The binary has to report the release it was fetched as.</li>
+<li>It locks the binary's directory, so two <code>self-update</code> runs never race,
+   and takes every installation's deployment lock and notification-outbox
+   lock, all without waiting. A held lock refuses the update and names what
+   holds it.
+   Under the locks it asks the binary at the path for its version again, in
+   case another <code>self-update</code> finished first.</li>
+<li>It renames the new binary over this one. An operation already running
+   finishes on the old file, and the next one any unit starts is the new
+   manager.</li>
+<li>It records a <code>manager-update</code> operation, with the old and new versions, in
+   each installation's journal, then releases the locks.</li>
+</ol>
+<p>It only moves forward. A release older than this one, named with <code>--to</code> or
+carried by <code>--from</code>, is refused at exit 2. Moving back is a re-run of
+<code>install.sh</code> (see <a href="../../operating/upgrading-the-manager/#going-back">upgrading the manager</a>).
+When nothing newer is published, or <code>--to</code> names the running release, nothing
+changes and it exits 0.</p>
+<p>It refuses:</p>
+<ul>
+<li>a dev build, which has no version to compare, unless <code>--to</code> or <code>--from</code> names
+  the release;</li>
+<li>a directory this user cannot write to. It prints the command to re-run with
+  <code>sudo</code> and never escalates itself;</li>
+<li>a platform no release is published for: only <code>linux/amd64</code> and
+  <code>linux/arm64</code> are.</li>
+</ul>
+<p>When an installation's units run another copy of the manager, it warns and
+names that copy, since replacing this one leaves those units where they are. A
+directory under <code>/etc</code> it cannot read is not locked, and it warns about that
+too.</p>
+<p><code>--dry-run</code> does everything up to the locks: it downloads, verifies, unpacks
+and runs the new binary, then reports what it would replace, and leaves the
+binary as it was.</p>
+<p>No unit or timer runs <code>self-update</code>. It is an operator's command.</p>
+<p>Under <code>--json</code>, <code>data</code> has <code>path</code>, <code>from</code>, <code>to</code>, <code>dev_build</code>, <code>updated</code>, <code>url</code>
+and <code>installations</code>, and <code>dry_run</code> and <code>warnings</code> when they are set. <code>updated</code>
+says whether the binary was replaced.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to</code></td>
+<td>The release to install instead of the newest.</td>
+</tr>
+<tr>
+<td><code>--from</code></td>
+<td>A directory holding the release's archive, <code>SHA256SUMS</code> and <code>SHA256SUMS.minisig</code>.</td>
+</tr>
+<tr>
+<td><code>--check</code></td>
+<td>Only say whether a newer manager is published, as <code>version --check</code> does.</td>
 </tr>
 </tbody>
 </table>
