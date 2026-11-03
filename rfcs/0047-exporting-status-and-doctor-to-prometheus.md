@@ -1,7 +1,7 @@
 # RFC 0047 — Exporting status and doctor to Prometheus
 
-- **Status:** 📝 Draft — proposed, **awaiting the author's rulings** on the
-  `OPEN` decisions in §11; not scheduled
+- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-03: §11's
+  `OPEN` rows as recommended. P1 is ready to build
 - **Scope:** How a machine that already runs Prometheus's node exporter learns
   what `morzer status` and `morzer doctor` know, without anybody running them.
   It adds a command, `morzer metrics`, that prints an installation's state in
@@ -284,15 +284,18 @@ and the file itself going stale.
 
 The `OPEN` rows in §11 are the author's to rule. Nothing else blocks the design.
 
+*(2026-11-03: ruled. Every `OPEN` row went as recommended, and §11 records each
+ruling.)*
+
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **The surface.** Recommended: a command, `morzer metrics`, printing the Prometheus text format, and a per-installation setting, `metrics.textfile`, naming the node exporter's textfile directory, which a timer writes `morzer-<product>.prom` into. Nothing listens. Alternative: an HTTP exporter, `morzer metrics serve`, with its own unit and port (§5.5). |
-| 2 | `OPEN` | **The cadence and cost of the status file.** Recommended: a new `<product>-metrics.timer` every minute, running what `status` runs: state, the runtime, one round of health probes, and no `doctor`. Alternative: write the file only from the timers and operations that already run, with no new timer, so it can be a day old. |
-| 3 | `OPEN` | **Exporting `doctor`.** Recommended: the scheduled `doctor` writes `morzer-<product>-doctor.prom`, and its timer is installed while `metrics.textfile` is set as well as while a notify target is, still at `doctor.schedule`. Alternative: leave `doctor` out, and export status only. |
-| 4 | `OPEN` | **How a check's state is encoded.** Recommended: one series per check, `morzer_doctor_check{check,category}`, valued 0 ok, 1 warn, 2 fail, so "anything failing" is `== 2`. Alternative: the Prometheus enum convention, one series per check and state, valued 1 for the current state. |
-| 5 | `OPEN` | **The identifying labels.** Recommended: `product` on every series and no installation id, since a product is unique on its machine and the instance label says which machine. Alternative: `installation_id` as well, which survives a product being re-initialised but adds a label no rule needs. |
+| 1 | `ASSUMED` | **The surface.** Recommended: a command, `morzer metrics`, printing the Prometheus text format, and a per-installation setting, `metrics.textfile`, naming the node exporter's textfile directory, which a timer writes `morzer-<product>.prom` into. Nothing listens. Alternative: an HTTP exporter, `morzer metrics serve`, with its own unit and port (§5.5). Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 2 | `ASSUMED` | **The cadence and cost of the status file.** Recommended: a new `<product>-metrics.timer` every minute, running what `status` runs: state, the runtime, one round of health probes, and no `doctor`. Alternative: write the file only from the timers and operations that already run, with no new timer, so it can be a day old. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 3 | `ASSUMED` | **Exporting `doctor`.** Recommended: the scheduled `doctor` writes `morzer-<product>-doctor.prom`, and its timer is installed while `metrics.textfile` is set as well as while a notify target is, still at `doctor.schedule`. Alternative: leave `doctor` out, and export status only. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 4 | `ASSUMED` | **How a check's state is encoded.** Recommended: one series per check, `morzer_doctor_check{check,category}`, valued 0 ok, 1 warn, 2 fail, so "anything failing" is `== 2`. Alternative: the Prometheus enum convention, one series per check and state, valued 1 for the current state. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 5 | `ASSUMED` | **The identifying labels.** Recommended: `product` on every series and no installation id, since a product is unique on its machine and the instance label says which machine. Alternative: `installation_id` as well, which survives a product being re-initialised but adds a label no rule needs. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 6 | `ASSUMED` | Off by default. It needs no consent, because nothing leaves the machine; whoever scrapes the node exporter already reads the host. A sandbox exports too, with `mode="sandbox"` on `morzer_release_info`. |
 | 7 | `ASSUMED` | No free text is exported: no check messages or remedies, no hostnames, no parameter values, no URLs. Label values are the manager's own vocabulary, check ids and categories, or service and health-check names the manifest validated. Every label value is escaped per the text format all the same. |
 | 8 | `ASSUMED` | The file is written to a temporary name not ending in `.prom`, created exclusively in the same directory with mode 0644, and renamed into place. A failed write leaves the previous file, and the node exporter's `node_textfile_mtime_seconds` is the staleness signal; morzer exports no timestamp of its own for the status file. |
