@@ -1,9 +1,11 @@
 # RFC 0046 — Updating the manager itself
 
-- **Status:** 🚧 In progress — proposed, and ruled by the author 2026-11-02:
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-11-02:
   §11's `OPEN` rows as recommended, so RFC 0022 decision 9 is reopened for
   `self-update`. **P1 built 2026-11-02** in #257; the entries its build and
-  review wrote in [logs/manager-version-check.md](../logs/manager-version-check.md) are decisions 16–22. P2 is next
+  review wrote in [logs/manager-version-check.md](../logs/manager-version-check.md) are decisions 16–22.
+  **P2 built 2026-11-03** in #259; the entries its build and review wrote in
+  [logs/manager-self-update.md](../logs/manager-self-update.md) are decisions 23–30
 - **Scope:** How an operator learns that the `morzer` binary is out of date,
   and how it moves to a newer one. P1 is a check that compares the running
   manager with the newest published release, on request
@@ -313,7 +315,8 @@ case. This is that story:
   - the swap leaving a process started before it on the old file;
   - a command that took its lock after the swap on the old binary: it reads an
     installation the new manager has not written, and refuses at exit 9 on one
-    it has;
+    it has; *(2026-11-03: not added in #259. That refusal is the existing
+    newer-schema rule, which decision 22 narrowed and the suite already pins.)*
   - an outbox lock held by the scheduled `doctor` refusing the swap, as a held
     deployment lock does;
   - the journal entry in every installation;
@@ -402,6 +405,14 @@ ruling, so P2 is no longer conditional on decision 1.)*
 | 20 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* `manager.version` warns that it cannot check when the feed does not answer, never reporting up to date. `version --check` exits 0 whether or not a newer release exists, and a feed it cannot reach or read is a validation error, exit 2. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:10, the unreachable feed). |
 | 21 | `ASSUMED` | *(2026-11-02, from the build; accepted 2026-11-03)* A sandbox keeps `manager.check`, as it keeps `update.check`: the check reads a public feed and reaches nothing production owns. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:20, the sandbox). |
 | 22 | `ASSUMED` | *(2026-11-02, from the review; accepted 2026-11-03)* **Refines decision 15.** An older manager refuses state only when the newer one brought a newer installation schema and has since written it, because the refusal compares the schema version. §5.2, §5.4 and decision 15 describe that worst case, which is still the one to plan for; the upgrade page points at the changelog's upgrade notes for when the schema changes. See [logs/manager-version-check.md](../logs/manager-version-check.md) (unlisted, attempt 1, 20:40, the schema). |
+| 23 | `ASSUMED` | *(2026-11-03, from the build; accepted 2026-11-03)* A target that is not newer is never swapped. Without `--to` or `--from`, finding nothing newer published is reported as such and exits 0, and so is a target equal to the running version. A target older than the running version, named with `--to` or carried by `--from`, is refused at exit 2 (decision 5). See [logs/manager-self-update.md](../logs/manager-self-update.md) (unlisted, attempt 1, 06:33, nothing newer). |
+| 24 | `ASSUMED` | *(2026-11-03, from the build; accepted 2026-11-03)* With `--dry-run`, `self-update` resolves, downloads, verifies, unpacks and runs the new binary. Then it stops before taking any lock, reports what it would replace, and removes the staged binary. See [logs/manager-self-update.md](../logs/manager-self-update.md) (unlisted, attempt 1, 06:33, the dry run). |
+| 25 | `ASSUMED` | *(2026-11-03, from the build; accepted 2026-11-03)* **Refines decision 7.** `self-update` locks every installation discovery finds. It does not lock a directory under `/etc` it cannot read, and it names each such directory in a warning, as `ls` lists them without counting them. See [logs/manager-self-update.md](../logs/manager-self-update.md) (decision 7, attempt 1, 06:33). |
+| 26 | `ASSUMED` | *(2026-11-03, from the build; accepted 2026-11-03)* **Refines decision 12.** A dev build refuses `self-update` unless `--to` or `--from` names the release. See [logs/manager-self-update.md](../logs/manager-self-update.md) (decision 12, attempt 1, 06:37). |
+| 27 | `ASSUMED` | *(2026-11-03, from the build; accepted 2026-11-03)* **Refines decision 9.** The directory is checked once the target is resolved and found newer, and before anything is downloaded, so finding nothing newer is never a refusal that says to re-run with `sudo`. See [logs/manager-self-update.md](../logs/manager-self-update.md) (decision 9, attempt 2, 07:22, which corrects the class of attempt 1's entry). |
+| 28 | `ASSUMED` | *(2026-11-03, from the review; accepted 2026-11-03)* `self-update` also takes a non-waiting flock on the binary's directory before the installations' locks, and holds it through the rename and the journal entries. That way two runs exclude each other on a machine with no installation. The directory's inode survives the rename, and the lock leaves no file behind. See [logs/manager-self-update.md](../logs/manager-self-update.md) (unlisted, attempt 2, 07:22, the directory lock). |
+| 29 | `ASSUMED` | *(2026-11-03, from the review; accepted 2026-11-03)* **Refines decision 11.** The version the journal and the report name as replaced is the one read under the locks, since another `self-update` may have moved it on since this one started. See [logs/manager-self-update.md](../logs/manager-self-update.md) (decision 11, attempt 2, 07:22). |
+| 30 | `ASSUMED` | *(2026-11-03, from the review; accepted 2026-11-03)* The release page that `version --check` and `self-update` show is `https://github.com/morzecrew/morzer/releases/tag/<tag>`. It is built from the feed's tag only once that tag parses as a version, and the feed's `html_url` is not read. See [logs/manager-self-update.md](../logs/manager-self-update.md) (unlisted, attempt 3, 07:43, which supersedes attempt 2's entry citing decision 17). |
 
 ## 12. Phasing
 
@@ -410,4 +421,4 @@ ruling, so P2 is no longer conditional on decision 1.)*
   *(2026-11-02: built in #257.)*
 - **P2** (§5.3): `self-update`, if decision 1 is ruled yes. One PR, after P1,
   whose release-feed client it reuses. *(2026-11-02: decision 1 was ruled yes,
-  so P2 is next.)*
+  so P2 is next.)* *(2026-11-03: built in #259.)*
