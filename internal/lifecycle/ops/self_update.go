@@ -95,6 +95,18 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	}
 	dir := filepath.Dir(d.ManagerPath)
 
+	// A dev build has no version to ask the file for again under the
+	// locks, so it is held to being the same file (decision 12): read
+	// before anything else, so nothing that finished meanwhile is taken
+	// for where it started.
+	var startDigest string
+	if out.DevBuild {
+		var err error
+		if startDigest, err = atomicfs.DigestFile(d.ManagerPath); err != nil {
+			return out, err
+		}
+	}
+
 	target, err := d.selfUpdateTarget(ctx, opts, &out)
 	if err != nil {
 		return out, err
@@ -117,15 +129,6 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	if err := canWriteIn(dir); err != nil {
 		return out, domain.ValidationError(err, "%s is not writable by this user", dir).
 			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, opts))
-	}
-
-	// A dev build has no version to ask the file for again under the
-	// locks, so it is held to being the same file (decision 12).
-	var startDigest string
-	if out.DevBuild {
-		if startDigest, err = atomicfs.DigestFile(d.ManagerPath); err != nil {
-			return out, err
-		}
 	}
 
 	src := opts.From

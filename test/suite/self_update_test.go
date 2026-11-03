@@ -282,6 +282,34 @@ func TestSelfUpdateRecordsTheVersionItActuallyReplaced(t *testing.T) {
 	assert.Equal(t, "0.12.5", recs[0].From.String())
 }
 
+// replacingUnpacker puts another manager at the path while the release is
+// being resolved, which is another self-update finishing before this one has
+// looked at anything.
+type replacingUnpacker struct {
+	ports.ManagerUnpacker
+	path, reports string
+}
+
+func (u replacingUnpacker) Target(dir string) (domain.Version, error) {
+	if err := os.WriteFile(u.path, managerScript(u.reports), 0o755); err != nil { //nolint:gosec // the stand-in binary
+		return domain.Version{}, err
+	}
+	return u.ManagerUnpacker.Target(dir)
+}
+
+// A dev build is held to the file it was before any of the command's work,
+// so a binary replaced while the release was resolved is not blessed as the
+// one this command started from (decision 12).
+func TestADevBuildIsTheFileItWasBeforeAnything(t *testing.T) {
+	s := newSelfUpdateHost(t, "0.0.0")
+	s.Deps.ManagerUnpacker = replacingUnpacker{s.Deps.ManagerUnpacker, s.Deps.ManagerPath, "0.12.5"}
+
+	_, err := ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{From: s.feed.dir})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "changed since this command started")
+	assert.Equal(t, "0.12.5", s.reports(t))
+}
+
 // A directory this user cannot write is refused with the command to run
 // instead, and nothing is escalated (decision 9).
 func TestSelfUpdateNeverEscalates(t *testing.T) {
