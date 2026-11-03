@@ -40,9 +40,10 @@ carries the release, the services and their health, the stop, the operations
 that need a human, the last outcome of each kind of operation, the last
 backup and a staged update. The scheduled `doctor` writes
 `morzer-doctor-<product>.prom` with one series per check. Nothing listens, and
-the export sends nothing off the machine; the doctor timer it installs runs the
-network checks the installation has consented to, as it does for a notify
-target. Every label value is either the manager's own
+the export sends nothing off the machine. The doctor timer it installs
+contacts what every `doctor` run contacts: the release's image registry
+(`network.registry`, a manifest inspect), its health endpoints, and with
+consent the vendor's channel and GitHub. Every label value is either the manager's own
 vocabulary or a name the manifest validated.
 
 ## 2. Motivation
@@ -157,8 +158,10 @@ writes any more.
 
 A run that cannot write the file fails, which the journal records, and leaves
 the last file in place. The node exporter's own
-`node_textfile_mtime_seconds{file="morzer-status-<product>.prom"}` then stops
-advancing, and that is the staleness signal to alert on. `doctor` warns, as
+`node_textfile_mtime_seconds` for the file then stops advancing, and that is
+the staleness signal to alert on. Its `file` label is the file's name in older
+node exporter releases and its full path in newer ones, so the example rule
+matches it with `file=~"(.*/)?morzer-status-<product>.prom"`. `doctor` warns, as
 `metrics.textfile`, when the directory is missing or not writable, or when the
 file is older than ten minutes while the timer is installed.
 
@@ -167,9 +170,12 @@ file is older than ten minutes while the timer is installed.
 While `metrics.textfile` is set, the scheduled `doctor` also writes
 `morzer-doctor-<product>.prom`, the same way. The doctor timer is installed
 when the installation has a notify target **or** `metrics.textfile` is set, and
-`doctor.scheduled=false` still turns it off. Its schedule stays
+`doctor.scheduled=false` still turns it off, and turning it off, or unsetting
+`metrics.textfile`, removes the doctor file, so a frozen result never reads as
+a current one. Its schedule stays
 `doctor.schedule`, daily by default. An operator who wants checks more often
-sets that, and knows which checks contact the network.
+sets that. On a machine with no notify target, setting `metrics.textfile` is
+what starts the daily `doctor`, and with it the contact the summary lists.
 
 It takes the directory from the setting, since `doctor` reads the state
 anyway. A state that does not load leaves the doctor file as it was, and the
@@ -208,8 +214,11 @@ morzer_doctor_last_run_timestamp_seconds{product}
 
 An installation with no backup yet, or no finished operation of a type, has no
 series for it, never a timestamp of zero that a rule would read as 1970. A
-runtime that does not answer is `morzer_runtime_up 0`, with no service and no
-health series, never a set of zeros. RFC 0026 learned that lesson about the
+runtime that does not answer, or whose configuration for this release cannot
+be built, is `morzer_runtime_up 0`, with no service and no health series, never
+a set of zeros. When nothing is installed, or nothing has been applied yet,
+`status` does not ask the runtime, and `morzer_runtime_up` is absent with the
+rest of the runtime's series, since there is nothing for them to describe. RFC 0026 learned that lesson about the
 fleet row: a count of zero and "could not look" have to be told apart. A state
 that does not load writes `morzer_up 0` and nothing else, into the directory
 the unit names, so the file still replaces the last good one rather than
@@ -259,7 +268,7 @@ and the file itself going stale.
   written through.
 - The unit set: the metrics pair exists exactly while `metrics.textfile` is
   set, and the doctor pair exists with a notify target or the setting, and
-  never with `doctor.scheduled=false`.
+  never with `doctor.scheduled=false`, which removes the doctor file.
 - The scheduled `doctor` writes the doctor file, and an operator's `doctor`
   does not.
 - `doctor`'s `metrics.textfile` check: unset, healthy, a missing directory and
@@ -316,12 +325,12 @@ ruling.)*
 | 1 | `ASSUMED` | **The surface.** Recommended: a command, `morzer metrics`, printing the Prometheus text format, and a per-installation setting, `metrics.textfile`, naming the node exporter's textfile directory, which a timer writes `morzer-status-<product>.prom` into. Nothing listens. Alternative: an HTTP exporter, `morzer metrics serve`, with its own unit and port (§5.5). Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 2 | `ASSUMED` | **The cadence and cost of the status file.** Recommended: a new `<product>-metrics.timer` every minute, running what `status` runs: state, the runtime, one round of health probes, and no `doctor`. Alternative: write the file only from the timers and operations that already run, with no new timer, so it can be a day old. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 3 | `ASSUMED` | **Exporting `doctor`.** Recommended: the scheduled `doctor` writes `morzer-doctor-<product>.prom`, and its timer is installed while `metrics.textfile` is set as well as while a notify target is, still at `doctor.schedule`. Alternative: leave `doctor` out, and export status only. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
-| 4 | `ASSUMED` | **How a check's state is encoded.** Recommended: one series per check, `morzer_doctor_check{check,category}`, valued 0 ok, 1 warn, 2 fail, so "anything failing" is `== 2`. Alternative: the Prometheus enum convention, one series per check and state, valued 1 for the current state. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
+| 4 | `ASSUMED` | **How a check's state is encoded.** Recommended: one series per check, `morzer_doctor_check{product,check,category}`, valued 0 ok, 1 warn, 2 fail, so "anything failing" is `== 2`. Alternative: the Prometheus enum convention, one series per check and state, valued 1 for the current state. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
 | 5 | `ASSUMED` | **The identifying labels.** Recommended: `product` on every series and no installation id, since a product is unique on its machine and the instance label says which machine. Alternative: `installation_id` as well, which survives a product being re-initialised but adds a label no rule needs. Was `OPEN`; ruled by the author 2026-11-03: as recommended. |
-| 6 | `ASSUMED` | Off by default. It needs no consent, because the export sends nothing off the machine; whoever scrapes the node exporter already reads the host. The doctor timer it installs (decision 3) runs only the network checks the installation has already consented to, `update.check` and `manager.check`. A sandbox exports too, with `mode="sandbox"` on `morzer_release_info`. |
+| 6 | `ASSUMED` | Off by default. It needs no consent, because the export sends nothing off the machine; whoever scrapes the node exporter already reads the host. The doctor timer it installs (decision 3) contacts what any `doctor` run contacts: the release's image registry and health endpoints, and with consent the vendor's channel and GitHub. A sandbox exports too, with `mode="sandbox"` on `morzer_release_info`. |
 | 7 | `ASSUMED` | No free text is exported: no check messages or remedies, no hostnames, no parameter values, no URLs. Label values are the manager's own vocabulary, check ids and categories, or service and health-check names the manifest validated. Every label value is escaped per the text format all the same. |
 | 8 | `ASSUMED` | The file is written to a temporary name not ending in `.prom`, created exclusively in the same directory with mode 0644, and renamed into place. A failed write leaves the previous file, and the node exporter's `node_textfile_mtime_seconds` is the staleness signal; morzer exports no timestamp of its own for the status file. |
-| 9 | `ASSUMED` | A runtime that does not answer is `morzer_runtime_up 0` with no service or health series. A state that does not load writes `morzer_up 0` alone, into the directory the unit carries, since the setting is in the state that did not load. An installation with no backup, or no finished operation of a type, has no series for it. None of these is a zero. |
+| 9 | `ASSUMED` | A runtime that does not answer, or whose configuration cannot be built, is `morzer_runtime_up 0` with no service or health series; with nothing installed or nothing applied yet, the runtime is not asked and its series, `morzer_runtime_up` included, are absent. A state that does not load writes `morzer_up 0` alone, into the directory the unit carries, since the setting is in the state that did not load. An installation with no backup, or no finished operation of a type, has no series for it. None of these is a zero. |
 | 10 | `ASSUMED` | `metrics.textfile` must be an absolute path to an existing directory; the manager does not create it. `doctor` checks it as `metrics.textfile`: missing or unwritable, or the file older than ten minutes while the timer is installed, warns. |
 | 11 | `ASSUMED` | Only the scheduled `doctor` writes the doctor file; an operator's `doctor` does not. |
 | 12 | `ASSUMED` | The renderer is written here, without a Prometheus client library; the text parser from `prometheus/common` checks its output in tests only. |
@@ -330,6 +339,7 @@ ruling.)*
 | 15 | `ASSUMED` | The metrics unit runs `morzer metrics --textfile <dir>` with the directory written into it, and the command takes the directory from that flag rather than from the state. |
 | 16 | `ASSUMED` | Changing or unsetting `metrics.textfile` removes both files from the directory it named before; `installation remove` removes them as well. |
 | 17 | `ASSUMED` | `metrics.textfile` moves the installation schema to 16 for the write path, as 7, 8 and 15 did: an older manager rewriting the state would drop the field and remove its timer, and the bump makes it refuse the state instead. |
+| 18 | `ASSUMED` | Turning the doctor timer off with `doctor.scheduled=false` removes the doctor file, as unsetting `metrics.textfile` does. |
 
 ## 12. Phasing
 
