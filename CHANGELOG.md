@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`config set` re-creates a service that reads the value only from a
+  rendered file.** Its Compose definition does not change, so a plain `up`
+  kept the container on the old file while the summary said it was
+  re-created. It is now re-created forced, as a domain change already was.
+
 - **A task no longer leaves its finished dependencies behind.** A task whose
   service waits on one-shot jobs behind a profile left each of them exited,
   and `status` drew them as failures. Once they exit 0 they are removed with

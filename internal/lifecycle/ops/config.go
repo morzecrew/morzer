@@ -357,7 +357,7 @@ func configSteps(
 	// declared services needs a full `apply`, which the summary says out
 	// loud rather than guessing at.
 	if services := affectedServices(rel, changed); len(services) > 0 && running {
-		steps = append(steps, stepRecreateServices(d, updated, rel, services, false))
+		steps = append(steps, stepRecreateServices(d, updated, rel, services))
 	}
 	return steps
 }
@@ -400,10 +400,11 @@ func stepRecordParameters(d *Deps, previous, updated domain.Installation) engine
 // it as part of the container's definition, so the container has to be
 // replaced.
 //
-// force replaces a container whose definition did not change, for a value a
-// service reads from a rendered file rather than from its definition.
+// Forced, because a value can also reach a service only through a rendered
+// file bind-mounted into it: the definition does not change, and a plain `up`
+// leaves the container running with the old contents (#239).
 func stepRecreateServices(
-	d *Deps, inst domain.Installation, rel domain.Release, services []string, force bool,
+	d *Deps, inst domain.Installation, rel domain.Release, services []string,
 ) engine.Step {
 	return engine.Step{
 		ID:          "recreate-services",
@@ -412,7 +413,7 @@ func stepRecreateServices(
 		OnFailure:   engine.Compensate,
 		Timeout:     10 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			return d.recreate(ctx, inst, rel, services, force)
+			return d.recreate(ctx, inst, rel, services)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			// The previous step has already restored the old
@@ -422,20 +423,20 @@ func stepRecreateServices(
 			if err != nil {
 				return err
 			}
-			return d.recreate(ctx, prior, rel, services, force)
+			return d.recreate(ctx, prior, rel, services)
 		},
 	}
 }
 
 func (d *Deps) recreate(
-	ctx context.Context, inst domain.Installation, rel domain.Release, services []string, force bool,
+	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
 ) error {
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
 		return err
 	}
 	return d.Runtime.Up(ctx, cfg, ports.UpOptions{
-		Services: services, Wait: true, WaitTimeout: 5 * time.Minute, ForceRecreate: force,
+		Services: services, Wait: true, WaitTimeout: 5 * time.Minute, ForceRecreate: true,
 	})
 }
 
