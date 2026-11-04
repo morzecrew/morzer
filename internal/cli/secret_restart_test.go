@@ -180,7 +180,8 @@ func TestASecretNoServiceDeclaresIsStillRendered(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new", string(got), "the rendered file kept the old value")
 	assert.Contains(t, told.String(), "No service declares report_token")
-	assert.Contains(t, told.String(), "morzer apply")
+	assert.Contains(t, told.String(), "until it restarts")
+	assert.NotContains(t, told.String(), "morzer apply", "a template holds the path, so apply changes nothing")
 
 	// A name the release does not declare is stored and never rendered, so
 	// nothing may claim a file holds it.

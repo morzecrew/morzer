@@ -503,11 +503,14 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 			}
 		}
 		if len(written) > 0 {
+			// Not "the next apply": a template holds the secret's path,
+			// so no configuration file changes, and a container that
+			// mounts the file holds the replaced one until it restarts.
 			a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
-				fmt.Sprintf("No service declares %s, so none was restarted. Its rendered file has the new value.",
-					strings.Join(written, ", ")),
-				"A configuration file that uses it changes on the next `morzer apply`, and anything " +
-					"else reading the file sees the new value the next time it reads it.",
+				fmt.Sprintf("No service declares %s, so none was restarted. Its file under %s has the new value.",
+					strings.Join(written, ", "), a.Deps.Paths.SecretsRenderDir()),
+				"Whatever opens the file reads the new value. A container that mounts the file " +
+					"keeps reading the old one until it restarts.",
 			}})
 		}
 		return nil, nil

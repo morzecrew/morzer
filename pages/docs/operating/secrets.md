@@ -49,8 +49,9 @@ Generates a new value of the shape the release declares, and restarts **only**
 the services that declare a dependency on it. That declaration is why the
 manifest has a `services:` list per secret, and the difference between a
 two-second blip and a full outage. A secret no service declares is still
-rendered to its file, and the command says that a configuration file using it
-changes on the next `morzer apply`.
+rendered to its file, and nothing is restarted. Whatever opens the file reads
+the new value; a container that mounts the file keeps the old one until it
+restarts.
 
 `doctor` tells you when something is due:
 
