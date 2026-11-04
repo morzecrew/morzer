@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -161,12 +162,31 @@ func TestASecretNoServiceDeclaresIsStillRendered(t *testing.T) {
 	store, ok := app.Deps.Secrets.(*fakes.SecretStore)
 	require.True(t, ok)
 	store.Seed(map[string]string{
-		"db_password": "a-stored-password", "session_key": "a-stored-session-key", "report_token": "new",
+		"db_password": "a-stored-password", "session_key": "a-stored-session-key", "report_token": "old",
 	})
+	_, err = app.restartDependents(ctx, []string{"report_token"})
+	require.NoError(t, err)
+	rendered := filepath.Join(app.Deps.Paths.SecretsRenderDir(), "report_token")
+	require.FileExists(t, rendered)
 
+	var told bytes.Buffer
+	app.Stream.Err = &told
+	require.NoError(t, store.Set(ctx, "report_token", domain.NewSecret("new")))
 	restarted, err := app.restartDependents(ctx, []string{"report_token"})
 	require.NoError(t, err)
 	assert.Empty(t, restarted)
 	assert.NotContains(t, rt.Calls, "Restart")
-	assert.DirExists(t, app.Deps.Paths.SecretsRenderDir(), "a secret no service declares was not rendered")
+	got, err := os.ReadFile(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(got), "the rendered file kept the old value")
+	assert.Contains(t, told.String(), "No service declares report_token")
+	assert.Contains(t, told.String(), "morzer apply")
+
+	// A name the release does not declare is stored and never rendered, so
+	// nothing may claim a file holds it.
+	told.Reset()
+	require.NoError(t, store.Set(ctx, "not_declared", domain.NewSecret("v")))
+	_, err = app.restartDependents(ctx, []string{"not_declared"})
+	require.NoError(t, err)
+	assert.NotContains(t, told.String(), "rendered file", "a file that does not exist was said to hold the value")
 }

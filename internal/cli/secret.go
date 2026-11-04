@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -486,17 +487,29 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	// services would come back holding the old value. Rendered whether or
 	// not a service declares the secret: a template or a container may read
 	// the file without the release saying so (#238).
-	if _, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema); err != nil {
+	files, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema)
+	if err != nil {
 		return nil, err
 	}
 
 	if len(services) == 0 {
-		a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
-			fmt.Sprintf("No service declares %s, so none was restarted. Its rendered file has the new value.",
-				strings.Join(names, ", ")),
-			"A configuration file that uses it changes on the next `morzer apply`, and anything " +
-				"else reading the file sees the new value the next time it reads it.",
-		}})
+		// Only the names a file was rendered for: one the release does not
+		// declare is stored and never rendered, and one `secret edit`
+		// removed has had its file pruned.
+		var written []string
+		for _, f := range files {
+			if slices.Contains(names, f.Name) {
+				written = append(written, f.Name)
+			}
+		}
+		if len(written) > 0 {
+			a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
+				fmt.Sprintf("No service declares %s, so none was restarted. Its rendered file has the new value.",
+					strings.Join(written, ", ")),
+				"A configuration file that uses it changes on the next `morzer apply`, and anything " +
+					"else reading the file sees the new value the next time it reads it.",
+			}})
+		}
 		return nil, nil
 	}
 
