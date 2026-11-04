@@ -2976,6 +2976,7 @@ reason naming a field that no longer exists.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--dry-run<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--purge<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
+morzer<span class="w"> </span>installation<span class="w"> </span>remove<span class="w"> </span>--force<span class="w"> </span>--backup<span class="w"> </span>--purge<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 </code></pre></div>
 <p>Takes one installation off this machine, and touches nothing whose path is not
 derived from its product name, so another installation on the same host is
@@ -3000,6 +3001,10 @@ step, and plannable with <code>--dry-run</code>.</p>
 <tr>
 <td><code>--purge</code></td>
 <td>Also remove the data and what unlocks it — see below.</td>
+</tr>
+<tr>
+<td><code>--backup</code></td>
+<td>Take the backup <a href="../commands/#backup"><code>morzer backup</code></a> takes first, verified and pushed to every configured target, under the removal's lock. If it fails, or a configured target does not receive it, nothing is removed; with no target it stays on this machine. With <code>--purge</code> it needs a backup target outside the installation's directories and a recipient other than the machine key, such as a recovery key, since <code>--purge</code> removes the local backups and the machine key.</td>
 </tr>
 </tbody>
 </table>
@@ -3111,10 +3116,11 @@ so that removal is journaled and files no statement.</p>
 <code>--product</code> removes nothing.</p>
 <div class="admonition tip">
 <p class="admonition-title">Take a backup first</p>
-<p>The command takes no backup of its own. <code>morzer backup</code> before
-<code>installation remove --purge</code> keeps a copy on your targets, and
-<code>installation import --from-backup</code> with your recovery key brings it back
-on any machine.</p>
+<p><code>--backup</code> takes one as the removal's first step, under the same lock, so
+no timer runs between the backup and the removal, and a backup that fails
+stops the removal. With <code>--purge</code> the copy on your targets is the one that
+survives, and <code>installation import --from-backup</code> with your recovery key
+brings it back on any machine. The removal's journal names the backup.</p>
 </div>
 <h2 id="rotating-the-signing-key">Rotating the signing key<a class="headerlink" href="#rotating-the-signing-key" title="Permanent link">&para;</a></h2>
 <h3 id="installation-rotate-signing-key">installation rotate-signing-key<a class="headerlink" href="#installation-rotate-signing-key" title="Permanent link">&para;</a></h3>
