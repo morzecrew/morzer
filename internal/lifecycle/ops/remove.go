@@ -31,6 +31,12 @@ type RemoveOptions struct {
 	// installation is not removed without it, as it is not restored without
 	// it: a typed id cannot be answered by reflex.
 	ConfirmedInstallationID string
+
+	// Backup takes the backup `morzer backup` takes, verified and pushed to
+	// every target, as the removal's first steps under its lock (RFC 0034
+	// decision 11). A backup that fails stops the removal before anything
+	// is removed.
+	Backup bool
 }
 
 // RemoveReport is what a removal did, or would do.
@@ -51,6 +57,9 @@ type RemoveReport struct {
 	// Journal is where the installation's journal is now. Empty on a plan,
 	// and when it could not be renamed.
 	Journal string `json:"journal,omitempty"`
+
+	// Backup is the backup `--backup` took first, empty without it.
+	Backup string `json:"backup,omitempty"`
 
 	Images ImagesPrune `json:"images"`
 }
@@ -117,6 +126,11 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 	if currentErr == nil {
 		rel, relErr = d.resolveCurrentRelease(ctx, current)
 	}
+	if opts.Backup {
+		if err := d.refuseRemovalBackup(exists, inst, current, relErr, opts); err != nil {
+			return Result{}, err
+		}
+	}
 	// Deployed unless nothing says a release was ever installed: no record
 	// and no `current` link. A recorded release whose directory is gone was
 	// running, and "not found" from it must not read as "never applied".
@@ -135,7 +149,7 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 		ID:          opID,
 		Type:        domain.OpTypeRemove,
 		Description: "remove " + d.Paths.Product,
-		Steps:       removeSteps(d, inst, deployed, rel, relErr, opts.Purge),
+		Steps:       append(removalBackupSteps(d, inst, rel, opts), removeSteps(d, inst, deployed, rel, relErr, opts.Purge)...),
 		Flags:       removeFlags(opts),
 	}
 
@@ -211,6 +225,9 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 		if images, err := engine.GetTyped[ImagesPrune](result.State, keyRemovedImages); err == nil {
 			report.Images = images
 		}
+		if ref, err := engine.GetTyped[ports.BackupRef](result.State, engine.KeyBackupRef); err == nil && !ref.IsZero() {
+			report.Backup = ref.ID
+		}
 	}
 	report.Kept = d.keptAfterRemoval(opts.Purge, opts.DryRun, report.Journal)
 
@@ -229,7 +246,52 @@ func removeFlags(opts RemoveOptions) map[string]string {
 		// about: whether the data went with the installation.
 		flags["purge"] = "true"
 	}
+	if opts.Backup {
+		flags["backup"] = "true"
+	}
 	return flags
+}
+
+// refuseRemovalBackup is every reason `--backup` cannot keep its promise,
+// before the lock, so a refusal removes nothing and journals nothing.
+func (d *Deps) refuseRemovalBackup(
+	exists bool, inst domain.Installation, current domain.ReleaseRecord, relErr error, opts RemoveOptions,
+) error {
+	without := "remove it without --backup"
+	switch {
+	case !exists:
+		return domain.Usage("there is no installation record, so there is nothing to back up").
+			WithHint("%s", without)
+	case relErr != nil || current.IsZero():
+		return domain.Usage("no current release resolves, so there is nothing to back up").
+			WithHint("%s, or repair the release first", without)
+	case d.Backup == nil:
+		return domain.BackupError(domain.ErrUnsupported, "no backup engine is configured").
+			WithHint("%s", without)
+	case opts.Purge && !inst.Backup.HasTargets():
+		// --purge removes the local backups, and with no target the one
+		// taken first would be among them.
+		return domain.Usage("--backup with --purge needs a backup target: --purge removes the backups on this machine").
+			WithHint("add one with `morzer backup target add`, or drop --purge to keep the backup here")
+	}
+	return nil
+}
+
+// removalBackupSteps are `morzer backup`'s own create, verify and push, first
+// in the removal (RFC 0034 decision 11). No retention: the removal keeps or
+// purges every local backup anyway.
+func removalBackupSteps(d *Deps, inst domain.Installation, rel domain.Release, opts RemoveOptions) []engine.Step {
+	if !opts.Backup {
+		return nil
+	}
+	steps := []engine.Step{
+		stepCreateBackup(d, inst, rel, BackupOptions{Reason: "pre-remove", Components: ports.AllComponents}),
+		stepVerifyBackup(d),
+	}
+	if inst.Backup.HasTargets() {
+		steps = append(steps, stepPushBackup(d, inst))
+	}
+	return steps
 }
 
 func removeSummary(product string, opts RemoveOptions) string {

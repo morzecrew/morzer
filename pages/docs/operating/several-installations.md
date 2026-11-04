@@ -267,7 +267,8 @@ release of *any* installation names, the same rule `release prune` follows. A
 glob typed by hand, such as `/etc/systemd/system/demo*`, also matches
 `demo-admin`'s units.
 
-By default the data, and the keys that read it, stay on the machine. See
+By default the data, and the keys that read it, stay on the machine.
+`--backup` takes a backup first and removes nothing if it fails. See
 [`installation remove`](../reference/installation-commands.md#installation-remove)
 for what goes and what stays.
 

@@ -93,7 +93,8 @@ the record of the machine ends without saying why.
 
 - **Taking a final backup or export.** `morzer backup` and
   `installation export` exist, and the docs give the sequence. A flag here
-  would be a second way to configure a backup.
+  would be a second way to configure a backup. *(2026-11-04: reopened by the
+  author for the backup alone; see decision 11.)*
 - **Anything on a backup target.** Remote backups and attestations are never
   touched, `--purge` included. They are the record that outlives the machine.
 - **The fleet roster.** A machine that publishes to a roster leaves its last
@@ -254,7 +255,8 @@ several. With no `installation.json`:
 ## 8. Out of scope
 
 - **A `--backup` or `--export` flag.** The docs give
-  `morzer backup && morzer installation remove …`.
+  `morzer backup && morzer installation remove …`. *(2026-11-04: `--backup`
+  is built; see decision 11. `--export` stays out.)*
 - **Removing a fleet roster row,** or anything on a target.
 - **Removing a manager binary or its completion files.** They belong to the
   host, not to an installation.
@@ -289,6 +291,7 @@ differently on any of them.
 | 8 | `ASSUMED` | The journal is renamed to `operations-removed-<operation-id>.jsonl`, so a later `init` inherits no unfinished or attention record. |
 | 9 | `ASSUMED` | With no installation record, `--product` names the product. `stop-services` is skipped, and nothing is attested or notified (§5.5). |
 | 10 | `ASSUMED` | When the current release cannot be read, the project is taken down by name alone, from an empty project directory. When no release was ever recorded, nothing is taken down (§5.3). |
+| 11 | `ASSUMED` | *(2026-11-04, ruled by the author)* **Reopens §4's non-goal and §8's exclusion, for the backup alone.** `installation remove --backup` takes the backup `morzer backup` takes, verified and pushed to every configured target, as the first steps of the removal and under its lock. A backup that fails, or does not reach a target, stops the removal before anything is removed. The documented `morzer backup && morzer installation remove …` leaves a window a timer can run in, and a script whose backup failed part way still reaches `--purge`. The flag configures nothing new, since the backup is the installation's own. `--export` stays out. |
 
 ## 12. Phasing
 

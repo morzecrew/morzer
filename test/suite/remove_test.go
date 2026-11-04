@@ -420,3 +420,91 @@ func TestAProjectNamedByNothingIsAssumedOutLoud(t *testing.T) {
 	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
 	assert.True(t, warned)
 }
+
+// `--backup` takes `morzer backup`'s backup first, under the removal's lock,
+// and the removal goes on only once it is taken and verified (RFC 0034
+// decision 11).
+func TestARemovalWithBackupTakesItFirst(t *testing.T) {
+	h, inst := removable(t)
+	before, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+
+	res, report := removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID, Backup: true})
+	require.NotEmpty(t, report.Backup, "the report does not name the backup it took")
+	assert.Equal(t, "create-backup", res.Record.Steps[0].ID, "the backup was not the first step")
+	assert.Equal(t, "verify-backup", res.Record.Steps[1].ID)
+	assert.Equal(t, "true", res.Record.Flags["backup"])
+
+	after, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, after, len(before)+1)
+	assert.Equal(t, report.Backup, after[0].ID)
+}
+
+// A backup that fails stops the removal before anything is removed.
+func TestARemovalWhoseBackupFailsRemovesNothing(t *testing.T) {
+	for _, method := range []string{"Create", "Verify"} {
+		t.Run(method, func(t *testing.T) {
+			h, inst := removable(t)
+			h.Backup.Fail[method] = domain.BackupError(nil, "disk full")
+
+			_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+				Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+			})
+			require.Error(t, err)
+			exists, err := h.Deps.State.InstallationExists(context.Background())
+			require.NoError(t, err)
+			assert.True(t, exists, "the installation was forgotten after its backup failed")
+			assert.NotEmpty(t, h.Supervisor.Installed, "the units were removed after the backup failed")
+		})
+	}
+}
+
+// What `--backup` could not keep is refused before anything runs: purging the
+// only copy of the backup it takes, and a machine with no installation to back
+// up.
+func TestARemovalRefusesABackupItCouldNotKeep(t *testing.T) {
+	h, inst := removable(t)
+	require.False(t, inst.Backup.HasTargets(), "the harness has a target, so this proves nothing")
+
+	_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true, Purge: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "needs a backup target")
+	assert.NotEmpty(t, h.Supervisor.Installed, "a refused removal removed the units")
+	exists, err := h.Deps.State.InstallationExists(context.Background())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	h.Deps.Backup = nil
+	_, err = ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "no backup engine")
+}
+
+// With a target, the backup reaches it before anything is removed, so even
+// `--purge` leaves a copy off the machine.
+func TestARemovalWithBackupPushesItBeforePurging(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	h.Backup.Root = t.TempDir()
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets, h.Deps.Objects = registry, registry
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+
+	res, report := removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID, Backup: true, Purge: true})
+	assert.Equal(t, "push-backup", res.Record.Steps[2].ID)
+	entries, err := os.ReadDir(offsite)
+	require.NoError(t, err)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.Contains(t, names, report.Backup, "the backup never left the machine before the purge")
+}
