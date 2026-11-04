@@ -39,9 +39,8 @@ watching, and this is the one case it misses.
 
 This RFC proposes that the plan names such a file, and that the update keeps
 a copy under the installation's data directory and says where. An unattended
-update holds, as it does for drift. Whether an attended update keeps a copy
-or refuses is §11's first open question. Whether the tick holds or keeps a
-copy too is the second.
+update holds, as it does for drift. The author ruled §11's decisions 3 and 4
+as recommended: an attended update keeps a copy, and the tick holds.
 
 ## 2. Motivation
 
@@ -115,9 +114,16 @@ An identical file counts for nothing, since nothing in it is lost. A file
 that exists and cannot be read is listed apart, as `config diff` lists one.
 The render step already refuses to replace it (`apply.go:600-604`).
 
-One function computes the list. Its inputs are the installation, the installed
-release (or none), and the release about to be installed. The plan, the render
-step and the tick each call it, so none of them can disagree about a file.
+"The installed release" is the one recorded as current, but only once an
+`apply`, `update`, `rollback` or `restore` has succeeded on the machine.
+`init --release` records a release before anything renders it, so until then
+no release is installed for this purpose, and the first `apply` treats every
+target as new. Paths are compared after `filepath.Clean`.
+
+One function computes the list. Its inputs are the installation, the profile
+the render uses, the installed release (or none), and the release about to be
+installed. The plan, the render step and the tick each call it, so none of
+them can disagree about a file.
 
 ### 5.2 What `--dry-run` shows
 
@@ -162,6 +168,10 @@ tick on, the product reads the vendor's file instead of the operator's, and
 nobody is there to notice. RFC 0044 decision 4 ruled the same way for an
 edited file.
 
+A file at such a path that cannot be read holds the tick too. The update would
+refuse at the render, and a candidate that failed is not retried until the
+channel moves, so letting the tick try it would cost the release.
+
 ### 5.5 Alternatives considered
 
 - **Refuse an attended update until the file is moved.** This is safe, but
@@ -181,9 +191,11 @@ edited file.
   the plan names it, and nothing changes on disk.
 - The attended update: the copy holds the old bytes at the documented path,
   mode 0600, and the summary names it. An identical file is not copied. A
-  failed update still restores the file through the compensator, and leaves
-  no copy behind.
-- A first install over an existing file: the same.
+  failed update that puts the file back through the compensator removes its
+  copy. One that cannot put it back, or that failed past its point of no
+  return, keeps the copy, since it may be the only one.
+- A first install over an existing file: the same. So is `init --release`
+  followed by the first `apply`.
 - The tick: a candidate adding such a target is held with the reason, and
   installs once the file is moved or matches.
 - Sabotage: dropping the installed-release filter makes every changed target
@@ -225,8 +237,8 @@ edited file.
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `ASSUMED` | A file counts when the release about to be installed declares a target at its path, the installed release does not (or none is installed), something exists there, and its bytes differ from the render. An identical file is not counted. An unreadable one is listed apart, and the render step's existing refusal applies to it. |
-| 2 | `ASSUMED` | One function computes the list, from the installation, the installed release and the release about to be installed. The plan, the render step and the tick all call it. |
+| 1 | `ASSUMED` | A file counts when the release about to be installed declares a target at its path, the installed release does not (or none is installed), something exists there, and its bytes differ from the render. A release recorded but never converged, as `init --release` leaves one, is not installed for this purpose. An identical file is not counted. An unreadable one is listed apart, the render step's existing refusal applies to it, and it holds the tick. |
+| 2 | `ASSUMED` | One function computes the list, from the installation, the profile the render uses, the installed release and the release about to be installed. The plan, the render step and the tick all call it. |
 | 3 | `ASSUMED` | **What an attended `update` or `apply` does with a counted file.** Recommended: copy it to `<VarDir>/replaced/<operation id>/<target path>`, mode 0600, before replacing it, and name the copy in the summary. Nothing is lost, and nothing new is asked of the operator. Alternative: refuse before any step, naming the files, until they are moved or `--replace-existing` is passed. Was `OPEN`; ruled by the author 2026-11-04: as recommended. |
 | 4 | `ASSUMED` | **Whether a counted file holds an unattended update.** Recommended: yes, as drift does (RFC 0044 decision 4), with a reason that names the files. The copy keeps the bytes, not the behaviour, and nobody is watching the product switch to the vendor's file. Alternative: no; the tick keeps a copy as an attended update does, and the notify target reports it. Was `OPEN`; ruled by the author 2026-11-04: as recommended. |
 | 5 | `ASSUMED` | The copy lives under the installation's data directory, not beside the file. A `conf.d/*` include would load a copy kept beside it. The journal records the target, the copy and the original mode. |
