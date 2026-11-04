@@ -483,17 +483,20 @@ outcome of each kind of operation, the last backup and a staged update. It reads
 and changes nothing. Every series carries a `product` label, and no label
 carries free text.
 
-With `--textfile <dir>` it writes `morzer-status-<product>.prom` into that
-directory instead, atomically and with mode 0644. That is what the metrics timer
-runs every minute once [`metrics.textfile`](parameters.md#changing-one-after-install)
-is set. A state that will not load is reported as `morzer_up 0` and exits 0,
+`--textfile <dir>` is what the metrics timer runs every minute once
+[`metrics.textfile`](parameters.md#changing-one-after-install) is set: it writes
+`morzer-status-<product>.prom` into that directory, atomically and with mode
+0644. The directory travels in the unit so that a state that will not load can
+still be reported. A run whose directory is no longer the setting's, from a unit
+or a run older than a change, removes its file there instead. To write
+somewhere else, print and redirect. A state that will not load is reported as `morzer_up 0` and exits 0,
 since that is the answer; a directory it cannot write is an error. See
 [monitoring with Prometheus](../operating/monitoring-with-prometheus.md) for
 the metrics and example alerts.
 
 | Flag | Meaning |
 | --- | --- |
-| `--textfile` | Write into this directory instead of printing. |
+| `--textfile` | Write into this directory, which must be `metrics.textfile`'s, instead of printing. |
 
 ## exec
 

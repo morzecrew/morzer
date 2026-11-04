@@ -283,7 +283,7 @@ func newMetricsCommand(app *App) *cobra.Command {
 			return app.render(report)
 		},
 	}
-	cmd.Flags().StringVar(&textfile, "textfile", "", "write the metrics into this directory instead of printing them")
+	cmd.Flags().StringVar(&textfile, "textfile", "", "write the metrics into this directory, which must be metrics.textfile's, instead of printing them")
 	return cmd
 }
 

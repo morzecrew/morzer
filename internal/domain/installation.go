@@ -821,7 +821,8 @@ type Policy struct {
 
 // ValidateMetricsTextfile refuses a directory that could not be written into a
 // unit as one argument: it must be absolute and clean, and hold no whitespace,
-// quote, backslash or `%`, which systemd reads as a specifier. Whether it
+// quote or backslash, no `%`, which systemd reads as a specifier, and no `$`,
+// which it expands as a variable. Whether it
 // exists is the setting's question, at the moment it is set.
 func ValidateMetricsTextfile(raw string) error {
 	if raw == "" {
@@ -832,11 +833,11 @@ func ValidateMetricsTextfile(raw string) error {
 			WithHint("name the node exporter's textfile directory, such as /var/lib/prometheus/node-exporter")
 	}
 	if strings.ContainsFunc(raw, func(r rune) bool {
-		return unicode.IsSpace(r) || unicode.IsControl(r) || strings.ContainsRune("\"'\\%", r)
+		return unicode.IsSpace(r) || unicode.IsControl(r) || strings.ContainsRune("\"'\\%$", r)
 	}) {
 		return ValidationError(nil, "the metrics directory %q holds a character a systemd unit cannot carry", raw).
 			WithHint("it is written into the metrics unit's command line; choose a path without " +
-				"whitespace, quotes, backslashes or %%")
+				"whitespace, quotes, backslashes, %% or $")
 	}
 	return nil
 }

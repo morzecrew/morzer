@@ -294,8 +294,13 @@ func stepRemoveMetricsFiles(inst domain.Installation) engine.Step {
 		Timeout:     time.Minute,
 		Check: func(ctx context.Context, st *engine.State) (bool, error) {
 			for _, p := range paths {
-				if _, err := os.Lstat(p); err == nil {
+				switch _, err := os.Lstat(p); {
+				case err == nil:
 					return false, nil
+				case !errors.Is(err, fs.ErrNotExist):
+					// A directory that cannot be searched is not
+					// proof the file is gone.
+					return false, domain.Internal(err, "cannot inspect %s", p)
 				}
 			}
 			return true, nil

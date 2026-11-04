@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"maps"
 	"os"
 	"slices"
@@ -207,13 +208,24 @@ var settings = map[string]setting{
 		Read:        func(i domain.Installation) string { return i.Policy.MetricsTextfile },
 		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
 			dir := strings.TrimSpace(raw)
+			if dir == "" {
+				return domain.Usage("metrics.textfile needs a directory").
+					WithHint("to stop exporting, run `morzer config unset metrics.textfile`")
+			}
 			if err := domain.ValidateMetricsTextfile(dir); err != nil {
 				return err
 			}
 			// Not created: the node exporter decides where it reads, and
 			// a directory nothing reads is a quiet failure (decision 10).
-			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-				return domain.ValidationError(err, "%s is not a directory", dir).
+			info, err := os.Stat(dir)
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+				return domain.ValidationError(err, "%s does not exist", dir).
+					WithHint("name the directory the node exporter's --collector.textfile.directory reads")
+			case err != nil:
+				return domain.ValidationError(err, "cannot read %s", dir)
+			case !info.IsDir():
+				return domain.ValidationError(nil, "%s is not a directory", dir).
 					WithHint("name the directory the node exporter's --collector.textfile.directory reads")
 			}
 			i.Policy.MetricsTextfile = dir

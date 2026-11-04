@@ -66,6 +66,16 @@ func Metrics(ctx context.Context, d *Deps, opts MetricsOptions) (MetricsReport, 
 		return out, nil
 	}
 	path := filepath.Join(opts.Textfile, MetricsFileName(metricsRoleStatus, d.Paths.Product))
+	// Read again just before the write: a unit left from before the setting
+	// changed, or a run under way when it did, retires its file rather than
+	// writing it back where nothing will update it (decision 16, attempt 2).
+	// A state that does not load cannot say, and writes `morzer_up 0`.
+	if inst, err := d.loadInstallation(ctx); err == nil && inst.Policy.MetricsTextfile != filepath.Clean(opts.Textfile) {
+		logging.FromContext(ctx).Info("this directory is no longer the metrics export's; removing what was written there",
+			"directory", opts.Textfile)
+		removeMetricsFiles(ctx, opts.Textfile, d.Paths.Product, metricsRoleStatus)
+		return out, nil
+	}
 	if err := writeMetricsFile(path, text); err != nil {
 		return out, err
 	}
@@ -246,16 +256,28 @@ func (d *Deps) checkMetricsTextfile(inst domain.Installation) preflight.Check {
 			if dir == "" {
 				return preflight.OK("not exporting metrics")
 			}
-			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			info, err := os.Stat(dir)
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
 				return preflight.Warn("create it, or stop exporting with `morzer config unset metrics.textfile`",
 					"the metrics directory %s is missing", dir)
+			case err != nil:
+				return preflight.Warn("", "cannot read the metrics directory %s: %s", dir, err)
+			case !info.IsDir():
+				return preflight.Warn("name a directory with `morzer config set metrics.textfile=<dir>`",
+					"the metrics directory %s is not a directory", dir)
 			}
-			if err := unix.Access(dir, unix.W_OK); err != nil {
-				return preflight.Warn("let the user the units run as write it",
-					"the metrics directory %s is not writable", dir)
+			// Asked only as root: access(2) answers for this user, and
+			// the units write as root. Otherwise a directory the timer
+			// cannot write shows as a stale file below.
+			if os.Geteuid() == 0 {
+				if err := unix.Access(dir, unix.W_OK); err != nil {
+					return preflight.Warn("make it writable by the user the units run as",
+						"the metrics directory %s is not writable", dir)
+				}
 			}
 			path := filepath.Join(dir, MetricsFileName(metricsRoleStatus, inst.Product))
-			info, err := os.Stat(path)
+			info, err = os.Stat(path)
 			if err != nil {
 				return preflight.Warn(fmt.Sprintf("check the timer: `systemctl status %s-metrics.timer`", inst.Product),
 					"nothing has written %s", path)

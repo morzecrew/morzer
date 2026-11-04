@@ -144,13 +144,15 @@ func TestTheMetricsFileIsWrittenAtomically(t *testing.T) {
 	h := appliedHarness(t)
 	ctx := context.Background()
 	dir := t.TempDir()
+	_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{"metrics.textfile": dir}})
+	require.NoError(t, err)
 
 	elsewhere := filepath.Join(t.TempDir(), "victim")
 	require.NoError(t, os.WriteFile(elsewhere, []byte("keep\n"), 0o600))
 	require.NoError(t, os.Symlink(elsewhere, filepath.Join(dir, "morzer-status-demo.prom")))
 
 	old := syscall.Umask(0o077)
-	_, err := ops.Metrics(ctx, h.Deps, ops.MetricsOptions{Textfile: dir})
+	_, err = ops.Metrics(ctx, h.Deps, ops.MetricsOptions{Textfile: dir})
 	syscall.Umask(old)
 	require.NoError(t, err)
 
@@ -251,10 +253,46 @@ func TestTheMetricsSettingRefusesWhatAUnitCannotCarry(t *testing.T) {
 		filepath.Join(t.TempDir(), "missing"),
 		t.TempDir() + "/with space",
 		t.TempDir() + "/100%",
+		t.TempDir() + "/a$b",
+		t.TempDir() + "/${X}",
 	} {
+		// Created, so a refusal is the path's shape and not its absence.
+		if !strings.HasSuffix(dir, "missing") {
+			_ = os.MkdirAll(dir, 0o755)
+		}
 		_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{"metrics.textfile": dir}})
 		assert.Error(t, err, dir)
 	}
+
+	// An empty value is not a directory, and the way to stop is named.
+	_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{"metrics.textfile": ""}})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "config unset metrics.textfile")
+}
+
+// A run whose directory is no longer the setting's, an old unit's or one under
+// way when the setting changed, removes its file rather than writing it back
+// (decision 16, attempt 2).
+func TestAnOldRunRetiresWhatItWrote(t *testing.T) {
+	h := appliedHarness(t)
+	ctx := context.Background()
+	oldDir, newDir := t.TempDir(), t.TempDir()
+	_, err := ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{"metrics.textfile": oldDir}})
+	require.NoError(t, err)
+	_, err = ops.Metrics(ctx, h.Deps, ops.MetricsOptions{Textfile: oldDir})
+	require.NoError(t, err)
+
+	_, err = ops.SetSettings(ctx, h.Deps, ops.SetSettingsOptions{Set: map[string]string{"metrics.textfile": newDir}})
+	require.NoError(t, err)
+	_, err = ops.Metrics(ctx, h.Deps, ops.MetricsOptions{Textfile: oldDir})
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(oldDir, "morzer-status-demo.prom"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "an old run wrote into the retired directory")
+
+	_, err = ops.Metrics(ctx, h.Deps, ops.MetricsOptions{Textfile: newDir})
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join(newDir, "morzer-status-demo.prom"))
+	assert.NoError(t, err)
 }
 
 // Only the scheduled run writes the doctor file, one series per check valued
@@ -335,6 +373,14 @@ func TestRemovingTheInstallationRemovesItsMetricsFiles(t *testing.T) {
 	require.NoError(t, err)
 	for _, name := range []string{"morzer-status-demo.prom", "morzer-doctor-demo.prom", "node.prom"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x 1\n"), 0o644)) //nolint:gosec // a collector reads it
+	}
+
+	// A directory that cannot be searched is not proof the files are gone.
+	if os.Geteuid() != 0 {
+		require.NoError(t, os.Chmod(dir, 0o000))
+		_, err = ops.Remove(ctx, h.Deps, ops.RemoveOptions{ConfirmedInstallationID: inst.ID, Options: ops.Options{Force: true}})
+		require.NoError(t, os.Chmod(dir, 0o755)) //nolint:gosec // restored for the rest of the test
+		require.Error(t, err, "a removal that could not look reported the files gone")
 	}
 
 	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
