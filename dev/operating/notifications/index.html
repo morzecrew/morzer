@@ -18,7 +18,7 @@
         <link rel="prev" href="../installing-offline/">
       
       
-        <link rel="next" href="../looking-inside/">
+        <link rel="next" href="../monitoring-with-prometheus/">
       
       
         
@@ -995,6 +995,35 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring-with-prometheus/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Monitoring with Prometheus
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2356,7 +2385,8 @@ leaves out the operation holding the deployment lock while it runs.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>doctor.schedule<span class="o">=</span><span class="s1">'Mon..Fri *-*-* 07:00:00'</span><span class="w">   </span><span class="c1"># when it runs</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>doctor.scheduled<span class="o">=</span><span class="nb">false</span><span class="w">                      </span><span class="c1"># no timer at all</span>
 </code></pre></div>
-<p>The timer exists while a target does, and goes when the last one is removed.</p>
+<p>The timer exists while a target does, and goes when the last one is removed,
+unless a <a href="../monitoring-with-prometheus/">metrics export</a> keeps it.</p>
 <h2 id="delivery">Delivery<a class="headerlink" href="#delivery" title="Permanent link">&para;</a></h2>
 <p>Each target gets five seconds per attempt, and fifteen seconds cover the whole
 fan-out. A target that did not answer, or answered 408, 429 or a 5xx, is tried
@@ -2451,13 +2481,13 @@ be reached or answers an error is a <code>notifier failed</code> warning naming 
         
         
           
-          <a href="../looking-inside/" class="md-footer__link md-footer__link--next" aria-label="Next: Looking inside">
+          <a href="../monitoring-with-prometheus/" class="md-footer__link md-footer__link--next" aria-label="Next: Monitoring with Prometheus">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Looking inside
+                Monitoring with Prometheus
               </div>
             </div>
             <div class="md-footer__button md-icon">

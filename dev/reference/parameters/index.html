@@ -864,6 +864,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/monitoring-with-prometheus/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Monitoring with Prometheus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/looking-inside/" class="md-nav__link">
         
   
@@ -2587,7 +2616,11 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 </tr>
 <tr>
 <td><code>doctor.scheduled</code></td>
-<td>Whether <code>doctor</code> runs on a timer and notifies what it finds. Absent means it does, while a notify target is configured; with none there is no timer.</td>
+<td>Whether <code>doctor</code> runs on a timer. Absent means it does, while a notify target or a metrics export is configured; with neither there is no timer.</td>
+</tr>
+<tr>
+<td><code>metrics.textfile</code></td>
+<td>The node exporter's textfile directory, which a timer writes this installation's metrics into every minute. An absolute path to an existing directory, with no whitespace, quotes, backslashes or <code>%</code>. Absent means no export. See <a href="../../operating/monitoring-with-prometheus/">monitoring with Prometheus</a>.</td>
 </tr>
 <tr>
 <td><code>backup.before_update</code></td>

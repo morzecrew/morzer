@@ -864,6 +864,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/monitoring-with-prometheus/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Monitoring with Prometheus
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/looking-inside/" class="md-nav__link">
         
   
@@ -1592,6 +1621,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         stats
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        metrics
       </span>
     </span>
   </a>
@@ -2621,6 +2661,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        metrics
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#exec" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3082,6 +3133,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <tr>
 <td><a href="#stats"><code>stats</code></a></td>
 <td>Show CPU, memory and I/O per container.</td>
+</tr>
+<tr>
+<td><a href="#metrics"><code>metrics</code></a></td>
+<td>Print this installation's state as Prometheus metrics.</td>
 </tr>
 <tr>
 <td><a href="#exec"><code>exec</code></a></td>
@@ -3639,6 +3694,39 @@ of samples is a time series worth keeping; a redrawn status table is not.</p>
 <p>A runtime that cannot report statistics refuses by name with
 <a href="../exit-codes/">exit 7</a> rather than returning an empty table, which would be
 indistinguishable from an idle deployment.</p>
+<h2 id="metrics">metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>metrics
+morzer<span class="w"> </span>metrics<span class="w"> </span>--textfile<span class="w"> </span>/var/lib/prometheus/node-exporter
+</code></pre></div>
+<p>Prints what <code>status</code> knows in the Prometheus text format: the release, the
+services and their health, the stop, the operations that need a human, the last
+outcome of each kind of operation, the last backup and a staged update. It reads
+and changes nothing. Every series carries a <code>product</code> label, and no label
+carries free text.</p>
+<p><code>--textfile &lt;dir&gt;</code> is what the metrics timer runs every minute once
+<a href="../parameters/#changing-one-after-install"><code>metrics.textfile</code></a> is set: it writes
+<code>morzer-status-&lt;product&gt;.prom</code> into that directory, atomically and with mode
+0644. The directory travels in the unit so that a state that will not load can
+still be reported. A run whose directory is no longer the setting's, from a unit
+or a run older than a change, removes its file there instead. To write
+somewhere else, print and redirect. A state that will not load is reported as <code>morzer_up 0</code> and exits 0,
+since that is the answer; a directory it cannot write is an error. See
+<a href="../../operating/monitoring-with-prometheus/">monitoring with Prometheus</a> for
+the metrics and example alerts.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--textfile</code></td>
+<td>Write into this directory, which must be <code>metrics.textfile</code>'s, instead of printing.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="exec">exec<a class="headerlink" href="#exec" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;service&gt;<span class="w"> </span>--<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>args...<span class="o">]</span>
 </code></pre></div>
@@ -3955,7 +4043,8 @@ shows them, naming a URL kept in a secret by its secret.
 <code>morzer notify target remove &lt;url|name&gt;</code> stops reporting to one, and deletes
 what the outbox held for it. The first target added installs the
 <a href="../../operating/notifications/#the-scheduled-doctor">doctor timer</a> unless
-<code>doctor.scheduled</code> is off, and removing the last removes it.</p>
+<code>doctor.scheduled</code> is off, and removing the last removes it, unless a
+<a href="../../operating/monitoring-with-prometheus/">metrics export</a> keeps it.</p>
 <table>
 <thead>
 <tr>
