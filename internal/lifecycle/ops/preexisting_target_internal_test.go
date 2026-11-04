@@ -34,6 +34,7 @@ func TestAResumeCarriesTheCopiesItsRunKept(t *testing.T) {
 	}}
 	flags := carryReplaced(map[string]string{"ref": "b"}, prior)
 	assert.NotContains(t, flags, "skip_backup")
+	assert.NotPanics(t, func() { carryReplaced(nil, prior) }, "a plain apply has no flags of its own")
 	assert.Contains(t, replacedNote(flags), "/var/lib/demo/replaced/op_0/etc/x.conf")
 }
 

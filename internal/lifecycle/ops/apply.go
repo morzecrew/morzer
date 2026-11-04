@@ -1480,6 +1480,10 @@ func carryReplaced(flags map[string]string, prior *domain.OperationRecord) map[s
 	}
 	for key, value := range prior.Flags {
 		if strings.HasPrefix(key, replacedFlag) {
+			if flags == nil {
+				// applyFlags has none to give for a plain apply.
+				flags = map[string]string{}
+			}
 			flags[key] = value
 		}
 	}
