@@ -122,6 +122,11 @@ func statusServices(d *ui.Doc, s ops.Status) {
 		// own word for it and is shown unchanged, because "exited (137)"
 		// is the thing worth reading.
 		state := svc.State
+		if state == "exited" {
+			// The runtime's state word says nothing about how; the code
+			// tells a finished job from a killed service.
+			state = fmt.Sprintf("exited (%d)", svc.ExitCode)
+		}
 		if svc.Health != ports.HealthNone && svc.Health != "" {
 			state += ", " + string(svc.Health)
 		}

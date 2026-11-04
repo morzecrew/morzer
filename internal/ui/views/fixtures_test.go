@@ -66,7 +66,7 @@ func statusFixtures() []fixture {
 		Following:       &ops.Following{Channel: "oci://registry.example/demo/bundle:main"},
 		Services: []ports.ServiceState{
 			{Name: "app", State: "running", Health: ports.HealthHealthy},
-			{Name: "background-worker", State: "exited (137)"},
+			{Name: "background-worker", State: "exited", ExitCode: 137},
 		},
 		Health: []ports.HealthResult{
 			{Name: "http", OK: false, Message: "connection refused after 3 attempts"},
