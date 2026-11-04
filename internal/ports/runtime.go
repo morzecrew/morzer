@@ -210,8 +210,9 @@ type RunOptions struct {
 	Env     map[string]string
 	Timeout time.Duration
 
-	// Remove deletes the container after it exits. Off when the caller
-	// wants to inspect a failed job.
+	// Remove deletes the container after it exits, and the containers of
+	// on-demand dependencies it started that completed successfully. Off
+	// when the caller wants to inspect a failed job.
 	Remove bool
 
 	// Mounts are host files put into the container, for a task's inputs
