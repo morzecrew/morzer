@@ -1,8 +1,8 @@
 # RFC 0048 — A configuration target that lands on an existing file
 
 - **Status:** 📝 Draft — proposed 2026-11-05, from
-  [#237](https://github.com/morzecrew/morzer/issues/237). §11's `OPEN` rows
-  are for the author to rule.
+  [#237](https://github.com/morzecrew/morzer/issues/237), and ruled by the
+  author 2026-11-05: §11's `OPEN` rows as recommended.
 - **Scope:** What happens to a file that is already at a path the release
   about to be installed renders for the first time. That covers a release
   that adds a configuration target, and a first install onto a machine that
@@ -227,10 +227,10 @@ edited file.
 | --- | --- | --- |
 | 1 | `ASSUMED` | A file counts when the release about to be installed declares a target at its path, the installed release does not (or none is installed), something exists there, and its bytes differ from the render. An identical file is not counted. An unreadable one is listed apart, and the render step's existing refusal applies to it. |
 | 2 | `ASSUMED` | One function computes the list, from the installation, the installed release and the release about to be installed. The plan, the render step and the tick all call it. |
-| 3 | `OPEN` | **What an attended `update` or `apply` does with a counted file.** Recommended: copy it to `<VarDir>/replaced/<operation id>/<target path>`, mode 0600, before replacing it, and name the copy in the summary. Nothing is lost, and nothing new is asked of the operator. Alternative: refuse before any step, naming the files, until they are moved or `--replace-existing` is passed. |
-| 4 | `OPEN` | **Whether a counted file holds an unattended update.** Recommended: yes, as drift does (RFC 0044 decision 4), with a reason that names the files. The copy keeps the bytes, not the behaviour, and nobody is watching the product switch to the vendor's file. Alternative: no; the tick keeps a copy as an attended update does, and the notify target reports it. |
+| 3 | `ASSUMED` | **What an attended `update` or `apply` does with a counted file.** Recommended: copy it to `<VarDir>/replaced/<operation id>/<target path>`, mode 0600, before replacing it, and name the copy in the summary. Nothing is lost, and nothing new is asked of the operator. Alternative: refuse before any step, naming the files, until they are moved or `--replace-existing` is passed. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 4 | `ASSUMED` | **Whether a counted file holds an unattended update.** Recommended: yes, as drift does (RFC 0044 decision 4), with a reason that names the files. The copy keeps the bytes, not the behaviour, and nobody is watching the product switch to the vendor's file. Alternative: no; the tick keeps a copy as an attended update does, and the notify target reports it. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 5 | `ASSUMED` | The copy lives under the installation's data directory, not beside the file. A `conf.d/*` include would load a copy kept beside it. The journal records the target, the copy and the original mode. |
-| 6 | `OPEN` | **What `rollback` does with a copy.** Recommended: nothing; its summary names the copy when the release it returns to does not declare the target. Rollback cannot tell whether the operator has since changed the file, and the wider gap (§8) needs its own design. Alternative: rollback puts the copy back when the release it returns to does not declare the target. |
+| 6 | `ASSUMED` | **What `rollback` does with a copy.** Recommended: nothing; its summary names the copy when the release it returns to does not declare the target. Rollback cannot tell whether the operator has since changed the file, and the wider gap (§8) needs its own design. Alternative: rollback puts the copy back when the release it returns to does not declare the target. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 7 | `ASSUMED` | The plan names each counted file on its own line, ahead of the scrubbed diff, saying which release does not render it. |
 | 8 | `ASSUMED` | `config diff` and `config.drift` are unchanged. They compare against the installed release, and between updates no other release exists to compare with. |
 
