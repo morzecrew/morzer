@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`installation remove --backup` backs up before it removes.** The backup
   `morzer backup` takes runs first, under the removal's lock, and a backup
   that fails or does not reach a target stops the removal. With `--purge` it
-  needs a backup target.
+  needs a target outside the installation and a recovery key.
 
 ### Fixed
 

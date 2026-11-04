@@ -337,7 +337,7 @@ step, and plannable with `--dry-run`.
 | `--force` | Required. Removal is destructive on every machine. |
 | `--confirm` | The installation id, typed out. Required on a production installation, as it is for [`restore`](commands.md#restore). A dev installation needs `--force` alone, and a typed id that names another installation is refused on either. |
 | `--purge` | Also remove the data and what unlocks it — see below. |
-| `--backup` | Take the backup [`morzer backup`](commands.md#backup) takes first, verified and pushed to every target, under the removal's lock. If it fails or does not reach a target, nothing is removed. With `--purge` it needs a backup target, since `--purge` removes the backups on this machine. |
+| `--backup` | Take the backup [`morzer backup`](commands.md#backup) takes first, verified and pushed to every configured target, under the removal's lock. If it fails, or a configured target does not receive it, nothing is removed; with no target it stays on this machine. With `--purge` it needs a backup target outside the installation's directories and a recipient other than the machine key, such as a recovery key, since `--purge` removes the local backups and the machine key. |
 
 A plan is confirmed like the removal itself, because `--dry-run` refuses
 whatever the operation would refuse. Pass it the same flags.

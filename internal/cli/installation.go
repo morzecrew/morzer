@@ -140,9 +140,10 @@ func newInstallationRemoveCommand(app *App) *cobra.Command {
 			"the machine key. --purge removes those too. Nothing on a backup target\n" +
 			"is removed either way; the removal's own attestation is pushed there.\n\n" +
 			"--backup takes the backup `morzer backup` takes first, verified and\n" +
-			"pushed to every target, under the removal's lock; if it fails, nothing\n" +
-			"is removed. With --purge it needs a backup target, since --purge\n" +
-			"removes the backups on this machine.\n\n" +
+			"pushed to every configured target, under the removal's lock; if it\n" +
+			"fails, nothing is removed. With --purge it needs a backup target\n" +
+			"outside the installation and a recipient other than the machine key,\n" +
+			"since --purge removes the local backups and the machine key.\n\n" +
 			"Destructive: requires --force, and on a production installation\n" +
 			"--confirm <installation-id> as well. A machine left by a failed first\n" +
 			"install, with no installation record, is cleaned with --product. A plan\n" +
@@ -156,8 +157,10 @@ func newInstallationRemoveCommand(app *App) *cobra.Command {
 			// As `morzer backup` attaches it, and refused the same way: a
 			// removal asked to back up first does not start without the
 			// means to.
+			// A resume past the backup has no release left to build an
+			// engine from, and needs none; the removal says whether it does.
 			if backup {
-				if err := app.attachBackupEngine(cmd.Context(), withDowntime(true)); err != nil {
+				if err := app.attachBackupEngine(cmd.Context(), withDowntime(true)); err != nil && !app.Flags.resume {
 					return err
 				}
 			}
