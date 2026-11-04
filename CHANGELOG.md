@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The undo re-created the services before the recorded values and the
   rendered files were put back, so they came back with the rejected value.
 
+- **`doctor` says when the current-release record cannot be read.** It
+  reported a corrupt or unreadable record as "no release is installed yet",
+  which describes a machine that never installed one. It now fails
+  `runtime.release` with the read error, and `config.drift` says why it did
+  not check.
+
 - **A task no longer leaves its finished dependencies behind.** A task whose
   service waits on one-shot jobs behind a profile left each of them exited,
   and `status` drew them as failures. Once they exit 0 they are removed with
