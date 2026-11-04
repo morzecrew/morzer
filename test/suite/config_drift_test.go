@@ -267,3 +267,19 @@ func TestATickThatCannotCompareHolds(t *testing.T) {
 	assert.False(t, res.Applied, "the tick installed over files it could not compare")
 	assert.Contains(t, res.Assessment.Why(), "could not be compared")
 }
+
+// A current-release record that cannot be read is said to be unreadable, not
+// reported as a machine that never installed a release (#236).
+func TestDoctorSaysAnUnreadableReleaseRecordIsUnreadable(t *testing.T) {
+	h := appliedHarness(t)
+	require.NoError(t, os.WriteFile(h.Paths.CurrentReleaseFile(), []byte("{not json"), 0o600))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	release := findCheck(t, report, "runtime.release")
+	assert.Equal(t, "fail", release.Status)
+	assert.Contains(t, release.Message, "cannot read")
+	assert.NotContains(t, release.Message, "no release is installed")
+	drift := findCheck(t, report, "config.drift")
+	assert.NotContains(t, drift.Message, "no release is installed")
+}

@@ -202,8 +202,15 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkStagedInputs(),
 	)
 
-	current, _ := d.State.CurrentRelease(ctx)
-	if current.IsZero() {
+	current, currentErr := d.State.CurrentRelease(ctx)
+	if currentErr != nil {
+		// A record that is there and will not read is not a machine that
+		// never installed a release, and an operator told it was would
+		// reinstall over one (#236).
+		checks = append(checks, d.checkReleaseRecordUnreadable(currentErr),
+			d.checkConfigDrift(inst, domain.Release{}, "the current release record cannot be read"),
+			d.checkDefinitionDrift(inst, domain.Release{}, "the current release record cannot be read"))
+	} else if current.IsZero() {
 		checks = append(checks, d.checkNoReleaseInstalled(),
 			d.checkConfigDrift(inst, domain.Release{}, "no release is installed"),
 			d.checkDefinitionDrift(inst, domain.Release{}, "no release is installed"))
@@ -971,6 +978,22 @@ func (d *Deps) checkNoReleaseInstalled() preflight.Check {
 			return preflight.Warn(
 				"install one with `morzer update <bundle>`",
 				"no release is installed yet")
+		},
+	}
+}
+
+func (d *Deps) checkReleaseRecordUnreadable(cause error) preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.release",
+		Category:    preflight.CategoryRuntime,
+		Description: "the current release record is readable",
+		Fatal:       true,
+		Run: func(context.Context) events.CheckResult {
+			return preflight.Fail(
+				fmt.Sprintf("restore %s from a backup of the manager's state, or reinstall the release "+
+					"with `morzer update <bundle>`; `morzer history` names the last one installed",
+					d.Paths.CurrentReleaseFile()),
+				"cannot read the current release record: %s", domain.AsError(cause).Message)
 		},
 	}
 }
