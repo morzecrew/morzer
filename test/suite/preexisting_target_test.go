@@ -187,6 +187,7 @@ func TestTheFirstApplyKeepsAFileAtItsTarget(t *testing.T) {
 
 // An undo that cannot put a file back keeps the copy: it may be the only one.
 func TestAFailedUpdateThatCannotRestoreKeepsTheCopy(t *testing.T) {
+	requireNonRoot(t)
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
