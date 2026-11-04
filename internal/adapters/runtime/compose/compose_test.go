@@ -691,3 +691,59 @@ func TestDefinitionDriftFailsOnAComposeWithoutHashes(t *testing.T) {
 		t.Errorf("error = %v", err)
 	}
 }
+
+// `run --rm` removes the one-shot's own container and no other, so the
+// dependencies it started that finished are removed after it: those in its
+// `depends_on` closure that the configuration does not start, and only those
+// that exited 0. A failed one stays for its logs, a finished service `up` starts
+// stays as `up` leaves it, and a job outside the closure is not the run's: an
+// old release's service during an update is one.
+func TestARunRemovesTheOnDemandJobsItLeftCompleted(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("json reset", `{"services":{"reset":{},"postgres":{},"init-bucket":{},`+
+		`"reset-wipe":{},"reset-migrate":{},"reset-seed":{},"reset-tool":{}}}`)
+	runner.OnOutput(" config ", `{"services":{"postgres":{},"init-bucket":{}}}`)
+	runner.OnOutput(" ps ", strings.Join([]string{
+		`{"Name":"demo-postgres-1","Service":"postgres","State":"running","ExitCode":0}`,
+		`{"Name":"demo-init-bucket-1","Service":"init-bucket","State":"exited","ExitCode":0}`,
+		`{"Name":"demo-old-job-1","Service":"old-job","State":"exited","ExitCode":0}`,
+		`{"Name":"demo-reset-wipe-1","Service":"reset-wipe","State":"exited","ExitCode":0}`,
+		`{"Name":"demo-reset-migrate-1","Service":"reset-migrate","State":"Exited","ExitCode":0}`,
+		`{"Name":"demo-reset-seed-1","Service":"reset-seed","State":"exited","ExitCode":1}`,
+		`{"Name":"demo-reset-tool-1","Service":"reset-tool","State":"running","ExitCode":0}`,
+	}, "\n"))
+
+	if _, err := r.RunOneShot(context.Background(), cfg(), "reset", ports.RunOptions{Remove: true}); err != nil {
+		t.Fatal(err)
+	}
+	var removed []string
+	for _, c := range runner.Calls() {
+		if len(c.Argv) > 1 && c.Argv[1] == "rm" {
+			removed = c.Argv[2:]
+		}
+	}
+	want := []string{"demo-reset-wipe-1", "demo-reset-migrate-1"}
+	if strings.Join(removed, " ") != strings.Join(want, " ") {
+		t.Errorf("removed %v, want %v:\n%s", removed, want, runner.CommandLines())
+	}
+}
+
+// A one-shot that keeps its container keeps its dependencies too, and a
+// cleanup that cannot run does not turn a finished job into a failed one.
+func TestARunThatKeepsItsContainerRemovesNothing(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput(" ps ", `{"Name":"demo-reset-wipe-1","Service":"reset-wipe","State":"exited","ExitCode":0}`)
+	if _, err := r.RunOneShot(context.Background(), cfg(), "reset", ports.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.Ran(" config ") || runner.Ran(" ps ") || runner.Ran("docker rm") {
+		t.Errorf("a run without Remove cleaned up:\n%s", runner.CommandLines())
+	}
+
+	r, runner = newRuntime()
+	runner.OnError(" config ", errors.New("daemon gone"))
+	res, err := r.RunOneShot(context.Background(), cfg(), "reset", ports.RunOptions{Remove: true})
+	if err != nil || res.ExitCode != 0 {
+		t.Errorf("a cleanup that failed changed the run's result: %v, exit %d", err, res.ExitCode)
+	}
+}

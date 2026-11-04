@@ -318,7 +318,7 @@ func TestAStoppedServiceIsMarkedWithoutColour(t *testing.T) {
 		Product: "demo",
 		Services: []ports.ServiceState{
 			{Name: "app", State: "running", Health: ports.HealthHealthy},
-			{Name: "db", State: "exited (137)"},
+			{Name: "db", State: "exited", ExitCode: 137},
 		},
 	}
 

@@ -23,6 +23,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/infra/logging"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -595,6 +596,9 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	// fail the run. Measured with Compose 5.5.1.
 	cmd.Env = append(cmd.Env, "COMPOSE_PROGRESS=quiet")
 	res, err := r.runner.Run(ctx, cmd)
+	if opts.Remove {
+		r.removeCompletedOnDemand(ctx, cfg, service)
+	}
 	out := ports.ExitResult{
 		ExitCode: res.ExitCode,
 		Stdout:   res.Stdout,
@@ -615,6 +619,86 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		return out, wrapExit(err, fmt.Sprintf("cannot run service %q", service), "")
 	}
 	return out, nil
+}
+
+// removeCompletedOnDemand removes what `run --rm` leaves: the containers of
+// dependencies it started that have finished. `--rm` removes the one-shot's own
+// container and no other, so a task whose service waits on a chain of one-shot
+// jobs behind a profile left each of them exited, and `status` drew a healthy
+// deployment with a row of failures.
+//
+// Only the run's own dependencies, as `compose config <service>` resolves its
+// `depends_on` closure, less the services the configuration starts, and only a
+// container that exited 0. Anything else is not this run's: during an update a
+// migration runs against the new release's configuration, and an old release's
+// service it no longer defines must survive for a compensation to use. A
+// failed job stays for `docker compose logs`, and a service `up` starts is
+// left as `up` would leave it. By container name, since `compose rm` does not
+// reach a service whose profile is inactive. Best effort: the run has
+// happened, and its result is the caller's answer.
+func (r *Runtime) removeCompletedOnDemand(ctx context.Context, cfg ports.RuntimeConfig, service string) {
+	log := logging.FromContext(ctx)
+	services := func(named ...string) ([]string, bool) {
+		cmd := r.command(cfg, 60*time.Second, append(r.args(cfg, "config", "--format", "json"), named...)...)
+		cmd.OnLine = nil
+		res, err := r.runner.Run(ctx, cmd)
+		if err == nil {
+			var names []string
+			if names, err = serviceNames(res.Stdout); err == nil {
+				return names, true
+			}
+		}
+		log.Warn("cannot read the configuration's services", "error", err)
+		return nil, false
+	}
+	started, ok := services()
+	if !ok {
+		return
+	}
+	closure, ok := services(service)
+	if !ok {
+		return
+	}
+	var jobs []string
+	for _, name := range closure {
+		if name != service && !slices.Contains(started, name) {
+			jobs = append(jobs, name)
+		}
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	ps := r.command(cfg, 60*time.Second, r.args(cfg, "ps", "--all", "--format", "json")...)
+	ps.OnLine = nil
+	res, err := r.runner.Run(ctx, ps)
+	if err != nil {
+		log.Warn("cannot list the containers a one-shot left", "error", err)
+		return
+	}
+	entries, err := parsePSEntries(res.Stdout)
+	if err != nil {
+		log.Warn("cannot list the containers a one-shot left", "error", err)
+		return
+	}
+
+	var done []string
+	for _, e := range entries {
+		if e.Name != "" && slices.Contains(jobs, e.Service) &&
+			strings.EqualFold(e.State, "exited") && e.ExitCode == 0 {
+			done = append(done, e.Name)
+		}
+	}
+	if len(done) == 0 {
+		return
+	}
+	// Without -f: a container that started again since `ps` is refused
+	// rather than killed.
+	rm := r.command(cfg, 60*time.Second, append([]string{r.docker, "rm"}, done...)...)
+	rm.OnLine = nil
+	if _, err := r.runner.Run(ctx, rm); err != nil {
+		log.Warn("cannot remove the completed containers a one-shot left", "containers", done, "error", err)
+	}
 }
 
 func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service string, argv []string) (ports.ExitResult, error) {

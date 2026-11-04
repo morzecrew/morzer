@@ -218,7 +218,8 @@ runtime that does not answer, or whose configuration for this release cannot
 be built, is `morzer_runtime_up 0`, with no service and no health series, never
 a set of zeros. When nothing is installed, or nothing has been applied yet,
 `status` does not ask the runtime, and `morzer_runtime_up` is absent with the
-rest of the runtime's series, since there is nothing for them to describe. RFC 0026 learned that lesson about the
+rest of the runtime's series, since there is nothing for them to describe. *(2026-11-04: a completed job
+behind an inactive profile exports no service series; see decision 19.)* RFC 0026 learned that lesson about the
 fleet row: a count of zero and "could not look" have to be told apart. A state
 that does not load writes `morzer_up 0` and nothing else, into the directory
 the unit names, so the file still replaces the last good one rather than
@@ -340,6 +341,7 @@ ruling.)*
 | 16 | `ASSUMED` | Changing or unsetting `metrics.textfile` removes both files from the directory it named before; `installation remove` removes them as well. |
 | 17 | `ASSUMED` | `metrics.textfile` moves the installation schema to 16 for the write path, as 7, 8 and 15 did: an older manager rewriting the state would drop the field and remove its timer, and the bump makes it refuse the state instead. |
 | 18 | `ASSUMED` | Turning the doctor timer off with `doctor.scheduled=false` removes the doctor file, as unsetting `metrics.textfile` does. |
+| 19 | `ASSUMED` | *(2026-11-04, ruled by the author)* A container of a service the configuration does not start, one behind an inactive profile, that exited 0 is a completed job, such as a dependency a task or a migration started. The status file exports no `morzer_service_running` or `morzer_service_containers` series for it, and `ls --status` and the fleet row leave it out of their counts the same way, so the three agree. A service the configuration starts that exited 0 still counts as not running, since a `docker stop` ends one that way too. One-shot runs remove such containers once they finish (see [logs/task-cleanup.md](../logs/task-cleanup.md)), so this covers a removal that failed and containers an older manager left. |
 
 ## 12. Phasing
 

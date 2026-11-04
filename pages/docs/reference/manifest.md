@@ -414,7 +414,8 @@ service runs on the application network and sees the container's.
 
 A runtime service starts the services it `depends_on` first, and waits for any
 condition it names, so a migration service can reach the database on a first
-install, before the deployment's other services have ever started. On an update,
+install, before the deployment's other services have ever started. A dependency
+behind a profile the deployment does not activate is removed once it exits 0. On an update,
 a dependency whose configuration changed is recreated at that point, so
 migrations run against the new release's database service. Exit `2` means
 "nothing to do", as it does for a hook. Any other non-zero exit fails the step,
@@ -495,7 +496,10 @@ production machine by name, before anything runs, and `--force` does not
 override it. A machine's mode is fixed when it is created.
 
 A task runs whether or not the deployment is up: the container starts the
-services it `depends_on` first, as a migration service does. It gets the same
+services it `depends_on` first, as a migration service does. A dependency
+behind a profile the deployment does not activate, such as a chain of one-shot
+jobs a reset task waits on, is removed once it exits 0, with the task's own
+container. One that fails stays, for `docker compose logs`. It gets the same
 [hook ABI variables](hooks.md#a-migration-service), with `OPERATION_TYPE` and
 `PHASE` set to `task`. Any non-zero exit fails it, `2` included; "nothing to
 do" belongs to migrations.

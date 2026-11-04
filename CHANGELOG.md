@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installation's lock. `--to` pins a release, `--from` reads one offline, and
   an older one is refused.
 
+### Fixed
+
+- **A task no longer leaves its finished dependencies behind.** A task whose
+  service waits on one-shot jobs behind a profile left each of them exited,
+  and `status` drew them as failures. Once they exit 0 they are removed with
+  the task's container; one that fails stays for its logs.
+
+- **`status` says how a stopped service exited.** It printed `exited` alone,
+  for a finished job and a killed service alike, and now prints the exit code,
+  as in `exited (0)` or `exited (137)`.
+
 ### Security
 
 - **`update` refuses a release older than the one installed.** It only warned
