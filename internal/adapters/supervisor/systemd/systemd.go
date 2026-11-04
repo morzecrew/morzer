@@ -735,7 +735,7 @@ After={{.Product}}.service
 [Service]
 Type=oneshot
 ExecStart={{.ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
-TimeoutStartSec=50
+TimeoutStartSec=120
 StandardOutput=journal
 StandardError=journal
 `
