@@ -639,11 +639,6 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			// The file is put back below, and a copy left beside it
-			// would name a second, stale one as the operator's.
-			if err := os.RemoveAll(d.replacedDir(st.OpID)); err != nil {
-				return err
-			}
 			backups, ok := st.Get(keyBackups)
 			if !ok {
 				return nil
@@ -674,7 +669,15 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 					failed = append(failed, target)
 				}
 			}
+			kept := d.replacedDir(st.OpID)
 			if len(failed) == 0 {
+				// Every file is back, so a copy would only be a second,
+				// stale one. Removed after the files, never before: until
+				// then it may be the only copy. Failing to remove it is
+				// not a failed undo.
+				if err := os.RemoveAll(kept); err != nil {
+					st.Warn("could not remove the copies under %s, which are no longer needed: %v", kept, err)
+				}
 				return nil
 			}
 			// Reported rather than swallowed, and remembered: the
@@ -682,8 +685,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// must not be started against the new release's files.
 			st.Set(keyConfigNotRestored, true)
 			sort.Strings(failed)
-			return domain.InstallationError(nil,
-				"could not put back %s", strings.Join(failed, ", "))
+			e := domain.InstallationError(nil, "could not put back %s", strings.Join(failed, ", "))
+			if _, err := os.Stat(kept); err == nil {
+				e = e.WithHint("the files the update replaced where no release rendered one are kept under %s", kept)
+			}
+			return e
 		},
 	}
 }
@@ -1435,10 +1441,10 @@ func (d *Deps) replacedDir(opID string) string {
 // beside the file, which a `conf.d/*` include would load. Owner-only, as the
 // file may hold a credential; its own mode is in the journal.
 func (d *Deps) keepReplaced(st *engine.State, target string, backup configBackup) error {
-	kept := filepath.Join(d.replacedDir(st.OpID), target)
-	if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
-		return domain.InstallationError(err, "cannot keep a copy of %s", target)
-	}
+	// Cleaned, so no spelling of the target climbs out of the directory.
+	// WriteFile creates the missing directories 0700 and makes them durable
+	// before the target is replaced.
+	kept := filepath.Join(d.replacedDir(st.OpID), filepath.Clean(target))
 	if err := atomicfs.WriteFile(kept, backup.content, 0o600); err != nil {
 		return err
 	}
