@@ -620,3 +620,25 @@ func TestARemovalWithBackupRefusesTargetsThatChangedWhileItWaited(t *testing.T) 
 	require.NoError(t, err)
 	assert.True(t, exists)
 }
+
+// A target added between a failed removal and its resume never received the
+// backup, so the resume is refused rather than finish without it.
+func TestAResumedRemovalRefusesTargetsItsBackupNeverReached(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	inst, _ = withOffsiteTarget(t, h, inst)
+	h.Supervisor.Fail["RemoveUnits"] = errors.New("systemctl is not answering")
+	_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+	delete(h.Supervisor.Fail, "RemoveUnits")
+
+	inst.Backup.Targets = append(inst.Backup.Targets, domain.BackupTargetConfig{URL: "file://" + t.TempDir()})
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	_, err = ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true, Resume: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err, "the resume finished without the new target receiving the backup")
+	assert.Contains(t, domain.AsError(err).Message, "targets changed")
+}

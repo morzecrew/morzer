@@ -3,6 +3,7 @@ package ops
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -142,6 +143,12 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 	// A removal resumed past its backup needs neither a release nor a
 	// backup engine any more, and must not run the backup again.
 	backedUp := opts.Backup && backupStepsDone(prior)
+	// The push it resumes past reached the targets of its day; a target
+	// added since would finish the removal without the backup.
+	if backedUp && prior.Flags["backup_targets"] != targetsDigest(inst.Backup.Targets) {
+		return Result{}, domain.Usage("the backup targets changed since this removal took its backup").
+			WithHint("run the removal again without --resume, and it backs up to the targets configured now")
+	}
 	if opts.Backup && !backedUp {
 		if err := d.refuseRemovalBackup(ctx, exists, inst, current, relErr, opts); err != nil {
 			return Result{}, err
@@ -154,7 +161,7 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 		Type:        domain.OpTypeRemove,
 		Description: "remove " + d.Paths.Product,
 		Steps:       append(removalBackupSteps(d, inst, rel, opts, backedUp), removeSteps(d, inst, deployed, rel, relErr, opts.Purge)...),
-		Flags:       removeFlags(opts),
+		Flags:       removeFlags(opts, inst),
 	}
 
 	report := RemoveReport{
@@ -253,7 +260,7 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 	return out, nil
 }
 
-func removeFlags(opts RemoveOptions) map[string]string {
+func removeFlags(opts RemoveOptions, inst domain.Installation) map[string]string {
 	flags := map[string]string{"force": "true"}
 	if opts.Purge {
 		// Recorded because it is the choice an incident review asks
@@ -262,8 +269,20 @@ func removeFlags(opts RemoveOptions) map[string]string {
 	}
 	if opts.Backup {
 		flags["backup"] = "true"
+		// Which targets the backup went to, as a digest: a URL can carry
+		// a password, and a resume needs only to know whether they changed.
+		flags["backup_targets"] = targetsDigest(inst.Backup.Targets)
 	}
 	return flags
+}
+
+// targetsDigest names a list of backup targets without spelling any of them.
+func targetsDigest(targets []domain.BackupTargetConfig) string {
+	h := sha256.New()
+	for _, t := range targets {
+		_, _ = fmt.Fprintf(h, "%s\n", t.URL)
+	}
+	return fmt.Sprintf("%d:%x", len(targets), h.Sum(nil)[:8])
 }
 
 // refuseRemovalBackup is every reason `--backup` cannot keep its promise,

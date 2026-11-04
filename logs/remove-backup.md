@@ -107,3 +107,19 @@ evidence: internal/lifecycle/ops/remove.go:152-163
 action: decided
 proposal: ASSUMED — under the lock, a removal with `--backup` re-reads the installation and refuses when its backup targets changed, so it pushes to the targets it planned for or not at all.
 ```
+
+From #267's second review round. A removal resumed past its backup reports the
+push satisfied, so a target added between the failure and the resume would
+never receive the backup.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-04T21:00:00Z
+attempt: 2
+claim: the targets a resumed removal would push to can differ from those its completed backup reached
+evidence: internal/lifecycle/ops/remove.go:380-392
+action: decided
+proposal: ASSUMED — a removal with `--backup` records a digest of its backup targets in its journal record, and a resume past the backup is refused when the targets configured now have a different digest, pointing at a fresh removal that takes a new backup.
+```
