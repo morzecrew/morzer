@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -470,8 +471,17 @@ func (d *Deps) keptCopiesNote(rel domain.Release) string {
 		declared[d.configTarget(cfg.Target)] = true
 	}
 	var notes []string
+	var unread error
 	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
+		switch {
+		case err != nil && path == root && errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			// Named rather than skipped: a copy in a directory that
+			// could not be listed is one the operator has to look for.
+			unread = errors.Join(unread, err)
+			return nil
+		case entry.IsDir():
 			return nil
 		}
 		rest, err := filepath.Rel(root, path)
@@ -486,6 +496,10 @@ func (d *Deps) keptCopiesNote(rel domain.Release) string {
 		}
 		return nil
 	})
+	if unread != nil {
+		notes = append(notes, fmt.Sprintf("not every copy under %s could be listed (%v); look there for the rest",
+			root, unread))
+	}
 	if len(notes) == 0 {
 		return ""
 	}

@@ -93,7 +93,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		Description: describe(opType, domain.Version{}, rel.Version()),
 		To:          rel.Version(),
 		Steps:       steps,
-		Flags:       applyFlags(opts),
+		Flags:       carryReplaced(applyFlags(opts), prior),
 	}
 
 	var (
@@ -240,7 +240,7 @@ func applySummary(rec domain.OperationRecord, rel domain.Release, dryRun bool) s
 	if dryRun {
 		return fmt.Sprintf("would apply %s %s", rel.Name(), rel.Version())
 	}
-	return fmt.Sprintf("%s %s applied", rel.Name(), rel.Version())
+	return fmt.Sprintf("%s %s applied", rel.Name(), rel.Version()) + replacedNote(rec.Flags)
 }
 
 // applySteps is the apply pipeline from the spec, one step per stage.
@@ -1469,4 +1469,19 @@ func replacedNote(flags map[string]string) string {
 		return ""
 	}
 	return "; " + strings.Join(notes, "; ")
+}
+
+// carryReplaced keeps the copies an interrupted run recorded. A resume is a
+// new operation, and its render finds those files already replaced, so
+// without them its summary would not say where the old files are.
+func carryReplaced(flags map[string]string, prior *domain.OperationRecord) map[string]string {
+	if prior == nil {
+		return flags
+	}
+	for key, value := range prior.Flags {
+		if strings.HasPrefix(key, replacedFlag) {
+			flags[key] = value
+		}
+	}
+	return flags
 }

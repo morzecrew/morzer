@@ -158,7 +158,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		From:        from.Version,
 		To:          staged.Version(),
 		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
-		Flags:       updateFlags(inst, opts),
+		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
 
 	var result engine.Result
