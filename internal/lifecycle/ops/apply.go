@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -560,7 +561,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			detail := fmt.Sprintf("%d file(s)", comparison.Targets)
 			// Ahead of the diff, which shows such a file as one more
 			// change: it is one no installed release rendered (RFC 0048).
-			if existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile); err == nil && existing.any() {
+			switch existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile); {
+			case err != nil:
+				detail += "; cannot tell whether a file the release adds is already there: " +
+					domain.AsError(err).Error()
+			case existing.any():
 				detail += "; " + strings.Join(existing.lines(rel.Version().String(), false), "; ")
 			}
 			return detail, comparison.text(shown)
@@ -578,13 +583,9 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 
 			// Kept past the operation, unlike the backups below, which
 			// go with it (RFC 0048 decision 3).
-			found, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile)
+			owned, err := d.ownedTargetsFor(ctx, rel)
 			if err != nil {
 				return err
-			}
-			keep := make(map[string]bool, len(found.replaced))
-			for _, target := range found.replaced {
-				keep[target] = true
 			}
 
 			backups := make(map[string]configBackup, len(rendered))
@@ -610,7 +611,10 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 						backup.mode = info.Mode().Perm()
 					}
 					backups[target] = backup
-					if keep[target] {
+					// Decided from the bytes about to be replaced, not from
+					// an earlier scan, which a file written since would
+					// have missed.
+					if !owned.owns(target) && !bytes.Equal(existing, rendered[target]) {
 						if err := d.keepReplaced(st, target, backup); err != nil {
 							return err
 						}

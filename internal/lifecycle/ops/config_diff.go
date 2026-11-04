@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -322,9 +323,7 @@ func (d *Deps) driftedFiles(ctx context.Context, inst domain.Installation) (int,
 // other bytes. The drift checks cannot see these, as they compare against
 // the installed release only.
 type existingTargets struct {
-	// installed is the version that does not render them, empty when no
-	// release is installed.
-	installed  string
+	owner      ownedTargets
 	replaced   []string
 	unreadable []string
 }
@@ -334,9 +333,12 @@ func (e existingTargets) any() bool { return len(e.replaced)+len(e.unreadable) >
 // lines says what happens to each, one line per file, for a plan and for the
 // tick's reason.
 func (e existingTargets) lines(next string, held bool) []string {
-	by := "no release renders it yet"
-	if e.installed != "" {
-		by = e.installed + " does not render it"
+	by := e.owner.installed + " does not render it"
+	switch {
+	case e.owner.unknown:
+		by = "the installed release cannot be read to tell whether it renders it"
+	case e.owner.installed == "":
+		by = "no release has rendered it here yet"
 	}
 	what := next + " replaces it and keeps a copy"
 	if held {
@@ -352,11 +354,75 @@ func (e existingTargets) lines(next string, held bool) []string {
 	return out
 }
 
-// existingTargetsFor is the one list the plan, the render step and the tick
-// use (RFC 0048 decision 2). The installed release is the one recorded as
-// current when it is asked, so a resume past the new release's record finds
-// its files already rendered. A current release that cannot be loaded leaves
-// no target declared, so every differing file is kept rather than none.
+// ownedTargets are the paths the installed release renders, for telling a
+// file it put there from one it did not.
+type ownedTargets struct {
+	// all is a release that is itself the installed one: it owns every
+	// target it renders, and nothing it renders is new.
+	all bool
+	// installed is the version that owns declared, empty when no release
+	// has converged here.
+	installed string
+	// unknown is an installed release that could not be loaded. It owns
+	// nothing, so every differing file is kept rather than none.
+	unknown  bool
+	declared map[string]bool
+}
+
+func (o ownedTargets) owns(target string) bool {
+	return o.all || o.declared[filepath.Clean(target)]
+}
+
+// ownedTargetsFor reads what the installed release renders when it is asked,
+// so a resume past the new release's record finds it owning its own files. A
+// release recorded and never converged, as `init --release` leaves one, has
+// rendered nothing: until an apply, update, rollback or restore succeeds, no
+// release is installed for this purpose (RFC 0048 decision 1).
+func (d *Deps) ownedTargetsFor(ctx context.Context, rel domain.Release) (ownedTargets, error) {
+	owned := ownedTargets{declared: map[string]bool{}}
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return owned, err
+	}
+	converged, err := d.everConverged(ctx)
+	if err != nil || !converged {
+		return owned, err
+	}
+	if current.Root == rel.Root {
+		owned.all = true
+		return owned, nil
+	}
+	owned.installed = current.Version.String()
+	installed, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		owned.unknown = true
+		return owned, nil
+	}
+	for _, cfg := range installed.Manifest.Configuration {
+		owned.declared[filepath.Clean(d.configTarget(cfg.Target))] = true
+	}
+	return owned, nil
+}
+
+// everConverged is whether any operation that renders the configuration has
+// succeeded here. Unlike neverApplied, an operation still running does not
+// count: the first apply is the one asking.
+func (d *Deps) everConverged(ctx context.Context) (bool, error) {
+	recs, err := d.State.Operations(ctx, ports.Filter{Status: domain.StatusSucceeded})
+	if err != nil {
+		return false, err
+	}
+	for _, rec := range recs {
+		switch rec.Type {
+		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore:
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// existingTargetsFor is the one list the plan and the tick use (RFC 0048
+// decision 2), with the profile the render uses.
 func (d *Deps) existingTargetsFor(
 	ctx context.Context, inst domain.Installation, rel domain.Release, profile string,
 ) (existingTargets, error) {
@@ -364,33 +430,22 @@ func (d *Deps) existingTargetsFor(
 	if len(rel.Manifest.Configuration) == 0 {
 		return out, nil
 	}
-	current, err := d.State.CurrentRelease(ctx)
-	if err != nil {
+	owned, err := d.ownedTargetsFor(ctx, rel)
+	if err != nil || owned.all {
 		return out, err
 	}
-	declared := map[string]bool{}
-	if !current.IsZero() {
-		if current.Root == rel.Root {
-			return out, nil
-		}
-		out.installed = current.Version.String()
-		if installed, err := d.resolveCurrentRelease(ctx, current); err == nil {
-			for _, cfg := range installed.Manifest.Configuration {
-				declared[d.configTarget(cfg.Target)] = true
-			}
-		}
-	}
+	out.owner = owned
 	comparison, err := configComparison(ctx, d, inst, rel, profile)
 	if err != nil {
 		return out, err
 	}
 	for _, diff := range comparison.Diffs {
-		if _, err := os.Lstat(diff.Target); err == nil && !declared[diff.Target] {
+		if _, err := os.Lstat(diff.Target); err == nil && !owned.owns(diff.Target) {
 			out.replaced = append(out.replaced, diff.Target)
 		}
 	}
 	for _, u := range comparison.Unreadable {
-		if !declared[u.Target] {
+		if !owned.owns(u.Target) {
 			out.unreadable = append(out.unreadable, u.Target)
 		}
 	}

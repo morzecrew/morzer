@@ -155,3 +155,51 @@ func TestAFileAtANewTargetHoldsAnUnattendedUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, res.Applied, "the tick still held once the file was gone: %s", res.Assessment.Why())
 }
+
+// `init --release` records a release before anything renders it, so the first
+// apply treats every target as new and keeps a file it finds there.
+func TestTheFirstApplyKeepsAFileAtItsTarget(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	target := applicationTarget(h)
+	writeOperatorFile(t, target, "written before the first apply\n")
+
+	res, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	copied := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID, target)
+	assert.Equal(t, "written before the first apply\n", readFile(t, copied))
+	assert.Contains(t, res.Summary, copied)
+
+	// Converged now, so the release owns its target and a second apply keeps
+	// nothing, edited file or not.
+	writeOperatorFile(t, target, "edited after\n")
+	res, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotContains(t, res.Summary, "kept at")
+}
+
+// An undo that cannot put a file back keeps the copy: it may be the only one.
+func TestAFailedUpdateThatCannotRestoreKeepsTheCopy(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	src := stageUpgradeSource(t, h)
+	target := addTarget(t, src)
+	writeOperatorFile(t, target, "the operator's own block\n")
+	dir := filepath.Dir(target)
+	h.Runtime.Fail["Pull"] = domain.RuntimeError(nil, "injected: registry unreachable")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Pull" {
+			require.NoError(t, os.Chmod(dir, 0o500))
+		}
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	res, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	copied := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID, target)
+	assert.Equal(t, "the operator's own block\n", readFile(t, copied), "the undo removed the only copy")
+}

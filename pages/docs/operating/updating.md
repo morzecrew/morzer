@@ -343,8 +343,11 @@ The update replaces it and keeps the old file under the installation's data
 directory, at `replaced/<operation id>/` followed by the file's own path, readable by root
 only. The update's summary says where. A file that already holds what the
 release renders is left alone. A first install treats every file it renders
-this way. [`morzer config diff`](changing-configuration.md) does not show these files, because it
-compares against the installed release, which does not render them.
+this way, and so does the first `morzer apply` after `init --release`. An
+update that fails puts the file back and removes the copy. If it cannot put the
+file back, the copy stays and the error says where.
+[`morzer config diff`](changing-configuration.md) does not show these files,
+because it compares against the installed release, which does not render them.
 
 For a reference that has to be fetched, a dry run does fetch: a plan that
 refused to could tell you nothing about the release you asked about. It goes to

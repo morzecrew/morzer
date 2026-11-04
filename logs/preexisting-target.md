@@ -77,3 +77,21 @@ evidence: internal/lifecycle/ops/config_diff.go:406-419
 action: departed
 proposal: ASSUMED — as decision 4, and a candidate the tick cannot render is not held by this gate. Its update fails at the render and says why, as any failed candidate does.
 ```
+
+From #273's review.
+
+The render step called the list before its write loop, and kept what the list
+named. A file written after that scan and before the write was replaced with
+no copy, and the scan rendered every template a second time.
+
+```divergence
+decision: 2
+grade: ASSUMED
+class: discovery
+at: 2026-11-04T22:33:00Z
+attempt: 2
+claim: a list computed before the writes can miss a file that appears before them, since the deployment lock does not stop an operator writing one
+evidence: internal/lifecycle/ops/apply.go:614-621
+action: departed
+proposal: ASSUMED — as decision 2 for the plan and the tick. The render step decides per file inside its write loop, from the installed release's targets and the bytes it is about to replace, so the copy is taken of what is actually there.
+```
