@@ -52,3 +52,13 @@ func TestRollbackSaysWhenItCannotListTheCopies(t *testing.T) {
 	note := d.keptCopiesNote(domain.Release{})
 	assert.True(t, strings.Contains(note, "could be listed"), note)
 }
+
+// Rollback compares the release's targets cleaned, as the copies are, so a
+// target it renders is not reported as one it leaves.
+func TestRollbackComparesTargetsCleaned(t *testing.T) {
+	d := &Deps{Paths: domain.PathsUnder(t.TempDir(), "demo")}
+	st := &engine.State{OpID: "op_1"}
+	require.NoError(t, d.keepReplaced(st, "/etc/b.conf", configBackup{content: []byte("x")}))
+	rel := domain.Release{Manifest: domain.Manifest{Configuration: []domain.ConfigurationFile{{Target: "/etc/a/../b.conf"}}}}
+	assert.Empty(t, d.keptCopiesNote(rel))
+}

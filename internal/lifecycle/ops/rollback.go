@@ -468,7 +468,7 @@ func (d *Deps) keptCopiesNote(rel domain.Release) string {
 	root := filepath.Join(d.Paths.VarDir, "replaced")
 	declared := map[string]bool{}
 	for _, cfg := range rel.Manifest.Configuration {
-		declared[d.configTarget(cfg.Target)] = true
+		declared[filepath.Clean(d.configTarget(cfg.Target))] = true
 	}
 	var notes []string
 	var unread error
