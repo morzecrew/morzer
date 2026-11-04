@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   minute and the scheduled `doctor` writes its checks. `morzer metrics` prints
   the same. Installation state moves to schema 16.
 
+- **`installation remove --backup` backs up before it removes.** The backup
+  `morzer backup` takes runs first, under the removal's lock, and a backup
+  that fails or does not reach a target stops the removal. With `--purge` it
+  needs a target outside the installation and a recovery key.
+
 ### Fixed
 
 - **A task no longer leaves its finished dependencies behind.** A task whose

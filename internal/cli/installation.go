@@ -125,8 +125,8 @@ func newInstallationRotateSigningKeyCommand(app *App) *cobra.Command {
 
 func newInstallationRemoveCommand(app *App) *cobra.Command {
 	var (
-		purge   bool
-		confirm string
+		purge, backup bool
+		confirm       string
 	)
 
 	cmd := &cobra.Command{
@@ -139,21 +139,38 @@ func newInstallationRemoveCommand(app *App) *cobra.Command {
 			"backup directories, the attestations, the journal, the secret state and\n" +
 			"the machine key. --purge removes those too. Nothing on a backup target\n" +
 			"is removed either way; the removal's own attestation is pushed there.\n\n" +
+			"--backup takes the backup `morzer backup` takes first, verified and\n" +
+			"pushed to every configured target, under the removal's lock; if it\n" +
+			"fails, nothing is removed. With --purge it needs a backup target\n" +
+			"outside the installation and a recipient other than the machine key,\n" +
+			"since --purge removes the local backups and the machine key.\n\n" +
 			"Destructive: requires --force, and on a production installation\n" +
 			"--confirm <installation-id> as well. A machine left by a failed first\n" +
 			"install, with no installation record, is cleaned with --product. A plan\n" +
 			"is confirmed like the removal, so --dry-run takes the same flags.",
 		Example: "  morzer installation remove --dry-run --force --confirm inst_01K2Z9X7QK\n" +
 			"  morzer installation remove --force --confirm inst_01K2Z9X7QK\n" +
-			"  morzer installation remove --product demo --force --purge",
+			"  morzer installation remove --product demo --force --purge\n" +
+			"  morzer installation remove --force --confirm inst_01K2Z9X7QK --backup --purge",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// As `morzer backup` attaches it, and refused the same way: a
+			// removal asked to back up first does not start without the
+			// means to.
+			// A resume past the backup has no release left to build an
+			// engine from, and needs none; the removal says whether it does.
+			if backup {
+				if err := app.attachBackupEngine(cmd.Context(), withDowntime(true)); err != nil && !app.Flags.resume {
+					return err
+				}
+			}
 			var report ops.RemoveReport
 			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				res, err := ops.Remove(ctx, app.Deps, ops.RemoveOptions{
 					Options:                 app.operationOptions(),
 					Purge:                   purge,
 					ConfirmedInstallationID: confirm,
+					Backup:                  backup,
 				})
 				report, _ = res.Data.(ops.RemoveReport)
 				return res, err
@@ -171,6 +188,8 @@ func newInstallationRemoveCommand(app *App) *cobra.Command {
 			"and machine key")
 	cmd.Flags().StringVar(&confirm, "confirm", "",
 		"the installation id, typed to confirm removing a production installation")
+	cmd.Flags().BoolVar(&backup, "backup", false,
+		"take a backup first, as morzer backup does, and remove nothing if it fails")
 	return cmd
 }
 

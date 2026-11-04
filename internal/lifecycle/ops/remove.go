@@ -3,9 +3,11 @@ package ops
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,6 +33,12 @@ type RemoveOptions struct {
 	// installation is not removed without it, as it is not restored without
 	// it: a typed id cannot be answered by reflex.
 	ConfirmedInstallationID string
+
+	// Backup takes the backup `morzer backup` takes, verified and pushed to
+	// every target, as the removal's first steps under its lock (RFC 0034
+	// decision 11). A backup that fails stops the removal before anything
+	// is removed.
+	Backup bool
 }
 
 // RemoveReport is what a removal did, or would do.
@@ -51,6 +59,9 @@ type RemoveReport struct {
 	// Journal is where the installation's journal is now. Empty on a plan,
 	// and when it could not be renamed.
 	Journal string `json:"journal,omitempty"`
+
+	// Backup is the backup `--backup` took first, empty without it.
+	Backup string `json:"backup,omitempty"`
 
 	Images ImagesPrune `json:"images"`
 }
@@ -129,14 +140,28 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 			return Result{}, err
 		}
 	}
+	// A removal resumed past its backup needs neither a release nor a
+	// backup engine any more, and must not run the backup again.
+	backedUp := opts.Backup && backupStepsDone(prior)
+	// The push it resumes past reached the targets of its day; a target
+	// added since would finish the removal without the backup.
+	if backedUp && prior.Flags["backup_targets"] != targetsDigest(inst.Backup.Targets) {
+		return Result{}, domain.Usage("the backup targets changed since this removal took its backup").
+			WithHint("run the removal again without --resume, and it backs up to the targets configured now")
+	}
+	if opts.Backup && !backedUp {
+		if err := d.refuseRemovalBackup(ctx, exists, inst, current, relErr, opts); err != nil {
+			return Result{}, err
+		}
+	}
 
 	opID := d.newOpID()
 	op := engine.Operation{
 		ID:          opID,
 		Type:        domain.OpTypeRemove,
 		Description: "remove " + d.Paths.Product,
-		Steps:       removeSteps(d, inst, deployed, rel, relErr, opts.Purge),
-		Flags:       removeFlags(opts),
+		Steps:       append(removalBackupSteps(d, inst, rel, opts, backedUp), removeSteps(d, inst, deployed, rel, relErr, opts.Purge)...),
+		Flags:       removeFlags(opts, inst),
 	}
 
 	report := RemoveReport{
@@ -157,6 +182,16 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 		if exists && currentErr == nil {
 			if err := d.refuseMovedRelease(ctx, current); err != nil {
 				return err
+			}
+		}
+		// The steps push to the targets read before the lock; a
+		// `backup target add` this removal waited behind would be left
+		// without the backup.
+		if opts.Backup && !backedUp {
+			if fresh, err := d.State.LoadInstallation(ctx); err == nil &&
+				!slices.Equal(fresh.Backup.Targets, inst.Backup.Targets) {
+				return domain.Locked("the backup targets changed while this removal waited").
+					WithHint("run it again, and it backs up to the targets configured now")
 			}
 		}
 
@@ -211,6 +246,9 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 		if images, err := engine.GetTyped[ImagesPrune](result.State, keyRemovedImages); err == nil {
 			report.Images = images
 		}
+		if ref, err := engine.GetTyped[ports.BackupRef](result.State, engine.KeyBackupRef); err == nil && !ref.IsZero() {
+			report.Backup = ref.ID
+		}
 	}
 	report.Kept = d.keptAfterRemoval(opts.Purge, opts.DryRun, report.Journal)
 
@@ -222,14 +260,154 @@ func Remove(ctx context.Context, d *Deps, opts RemoveOptions) (Result, error) {
 	return out, nil
 }
 
-func removeFlags(opts RemoveOptions) map[string]string {
+func removeFlags(opts RemoveOptions, inst domain.Installation) map[string]string {
 	flags := map[string]string{"force": "true"}
 	if opts.Purge {
 		// Recorded because it is the choice an incident review asks
 		// about: whether the data went with the installation.
 		flags["purge"] = "true"
 	}
+	if opts.Backup {
+		flags["backup"] = "true"
+		// Which targets the backup went to, as a digest: a URL can carry
+		// a password, and a resume needs only to know whether they changed.
+		flags["backup_targets"] = targetsDigest(inst.Backup.Targets)
+	}
 	return flags
+}
+
+// targetsDigest names a list of backup targets without spelling any of them.
+func targetsDigest(targets []domain.BackupTargetConfig) string {
+	h := sha256.New()
+	for _, t := range targets {
+		_, _ = fmt.Fprintf(h, "%s\n", t.URL)
+	}
+	return fmt.Sprintf("%d:%x", len(targets), h.Sum(nil)[:8])
+}
+
+// refuseRemovalBackup is every reason `--backup` cannot keep its promise,
+// before the lock, so a refusal removes nothing and journals nothing.
+func (d *Deps) refuseRemovalBackup(
+	ctx context.Context, exists bool, inst domain.Installation, current domain.ReleaseRecord, relErr error, opts RemoveOptions,
+) error {
+	without := "remove it without --backup"
+	switch {
+	case !exists:
+		return domain.Usage("there is no installation record, so there is nothing to back up").
+			WithHint("%s", without)
+	case relErr != nil || current.IsZero():
+		return domain.Usage("no current release resolves, so there is nothing to back up").
+			WithHint("%s, or repair the release first", without)
+	case d.Backup == nil:
+		return domain.BackupError(domain.ErrUnsupported, "no backup engine is configured").
+			WithHint("%s", without)
+	case !opts.Purge:
+		return nil
+	case !inst.Backup.HasTargets():
+		// --purge removes the local backups, and with no target the one
+		// taken first would be among them.
+		return domain.Usage("--backup with --purge needs a backup target: --purge removes the backups on this machine").
+			WithHint("add one with `morzer backup target add`, or drop --purge to keep the backup here")
+	}
+	// What --purge deletes must not hold the only copy, nor the only key.
+	for _, t := range inst.Backup.Targets {
+		if dir, inside := d.insideInstallation(t.URL); inside {
+			return domain.Usage("the backup target %s is inside %s, which --purge removes", t.URL, dir).
+				WithHint("back up to a target outside the installation's directories, or drop --purge")
+		}
+	}
+	if d.Secrets == nil {
+		return domain.Internal(nil, "this build cannot read who the backup is encrypted to")
+	}
+	recipients, err := d.Secrets.Recipients(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(recipients, func(r ports.Recipient) bool { return r.Kind != ports.RecipientMachine }) {
+		return domain.Usage("the backup would be readable only with the machine key, which --purge removes").
+			WithHint("add a recovery key with `morzer secret recipients add`, or drop --purge to keep the key here")
+	}
+	return nil
+}
+
+// insideInstallation says whether a file:// target resolves inside a directory
+// the removal deletes, and which; other schemes are elsewhere by construction.
+func (d *Deps) insideInstallation(rawURL string) (string, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "file" {
+		return "", false
+	}
+	target := resolvedPath(u.Path)
+	for _, dir := range []string{d.Paths.VarDir, d.Paths.EtcDir, d.Paths.RunDir, d.Paths.OptDir} {
+		if dir == "" {
+			continue
+		}
+		base := resolvedPath(dir)
+		if rel, err := filepath.Rel(base, target); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
+			return dir, true
+		}
+	}
+	return "", false
+}
+
+// resolvedPath follows symlinks through the longest part of p that exists, so
+// a target reached through a link is compared where it really is.
+func resolvedPath(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for cur := p; ; cur = filepath.Dir(cur) {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		if parent := filepath.Dir(cur); parent == cur {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+	}
+}
+
+// backupStepsDone says whether the record a removal resumes finished its
+// backup steps, which a resume must neither repeat nor need the means for.
+func backupStepsDone(prior *domain.OperationRecord) bool {
+	if prior == nil {
+		return false
+	}
+	created := false
+	for _, s := range prior.Steps {
+		switch s.ID {
+		case "create-backup", "verify-backup", "push-backup":
+			if s.Status != domain.StepSucceeded && s.Status != domain.StepSkipped {
+				return false
+			}
+			created = created || s.ID == "create-backup"
+		}
+	}
+	return created
+}
+
+// removalBackupSteps are `morzer backup`'s own create, verify and push, first
+// in the removal (RFC 0034 decision 11). No retention: the removal keeps or
+// purges every local backup anyway.
+func removalBackupSteps(d *Deps, inst domain.Installation, rel domain.Release, opts RemoveOptions, done bool) []engine.Step {
+	if !opts.Backup {
+		return nil
+	}
+	steps := []engine.Step{
+		stepCreateBackup(d, inst, rel, BackupOptions{Reason: "pre-remove", Components: ports.AllComponents}),
+		stepVerifyBackup(d),
+	}
+	if inst.Backup.HasTargets() {
+		steps = append(steps, stepPushBackup(d, inst))
+	}
+	// On a resume past them, the same steps report already satisfied: the
+	// engine re-runs idempotent ones to rebuild state, and verify and push
+	// have no reference to the backup across processes.
+	if done {
+		for i := range steps {
+			steps[i].Check = func(context.Context, *engine.State) (bool, error) { return true, nil }
+		}
+	}
+	return steps
 }
 
 func removeSummary(product string, opts RemoveOptions) string {

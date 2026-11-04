@@ -324,6 +324,7 @@ reason naming a field that no longer exists.
 morzer installation remove --dry-run --force --confirm <installation-id>
 morzer installation remove --force --confirm <installation-id>
 morzer installation remove --force --purge --confirm <installation-id>
+morzer installation remove --force --backup --purge --confirm <installation-id>
 ```
 
 Takes one installation off this machine, and touches nothing whose path is not
@@ -336,6 +337,7 @@ step, and plannable with `--dry-run`.
 | `--force` | Required. Removal is destructive on every machine. |
 | `--confirm` | The installation id, typed out. Required on a production installation, as it is for [`restore`](commands.md#restore). A dev installation needs `--force` alone, and a typed id that names another installation is refused on either. |
 | `--purge` | Also remove the data and what unlocks it — see below. |
+| `--backup` | Take the backup [`morzer backup`](commands.md#backup) takes first, verified and pushed to every configured target, under the removal's lock. If it fails, or a configured target does not receive it, nothing is removed; with no target it stays on this machine. With `--purge` it needs a backup target outside the installation's directories and a recipient other than the machine key, such as a recovery key, since `--purge` removes the local backups and the machine key. |
 
 A plan is confirmed like the removal itself, because `--dry-run` refuses
 whatever the operation would refuse. Pass it the same flags.
@@ -409,10 +411,11 @@ A product with nothing of it on the machine is refused, so a typo in
 
 !!! tip "Take a backup first"
 
-    The command takes no backup of its own. `morzer backup` before
-    `installation remove --purge` keeps a copy on your targets, and
-    `installation import --from-backup` with your recovery key brings it back
-    on any machine.
+    `--backup` takes one as the removal's first step, under the same lock, so
+    no timer runs between the backup and the removal, and a backup that fails
+    stops the removal. With `--purge` the copy on your targets is the one that
+    survives, and `installation import --from-backup` with your recovery key
+    brings it back on any machine. The removal's journal names the backup.
 
 ## Rotating the signing key
 

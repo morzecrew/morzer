@@ -18,6 +18,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // RFC 0034: `installation remove` takes an installation off the machine, keeps
@@ -419,4 +420,225 @@ func TestAProjectNamedByNothingIsAssumedOutLoud(t *testing.T) {
 	})
 	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
 	assert.True(t, warned)
+}
+
+// `--backup` takes `morzer backup`'s backup first, under the removal's lock,
+// and the removal goes on only once it is taken and verified (RFC 0034
+// decision 11).
+func TestARemovalWithBackupTakesItFirst(t *testing.T) {
+	h, inst := removable(t)
+	before, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+
+	res, report := removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID, Backup: true})
+	require.NotEmpty(t, report.Backup, "the report does not name the backup it took")
+	assert.Equal(t, "create-backup", res.Record.Steps[0].ID, "the backup was not the first step")
+	assert.Equal(t, "verify-backup", res.Record.Steps[1].ID)
+	assert.Equal(t, "true", res.Record.Flags["backup"])
+
+	after, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, after, len(before)+1)
+	assert.Equal(t, report.Backup, after[0].ID)
+}
+
+// A backup that fails stops the removal before anything is removed.
+func TestARemovalWhoseBackupFailsRemovesNothing(t *testing.T) {
+	for _, method := range []string{"Create", "Verify"} {
+		t.Run(method, func(t *testing.T) {
+			h, inst := removable(t)
+			h.Backup.Fail[method] = domain.BackupError(nil, "disk full")
+
+			_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+				Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+			})
+			require.Error(t, err)
+			exists, err := h.Deps.State.InstallationExists(context.Background())
+			require.NoError(t, err)
+			assert.True(t, exists, "the installation was forgotten after its backup failed")
+			assert.NotEmpty(t, h.Supervisor.Installed, "the units were removed after the backup failed")
+		})
+	}
+}
+
+// What `--backup` could not keep is refused before anything runs: purging the
+// only copy of the backup it takes, and a machine with no installation to back
+// up.
+func TestARemovalRefusesABackupItCouldNotKeep(t *testing.T) {
+	h, inst := removable(t)
+	require.False(t, inst.Backup.HasTargets(), "the harness has a target, so this proves nothing")
+
+	_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true, Purge: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "needs a backup target")
+	assert.NotEmpty(t, h.Supervisor.Installed, "a refused removal removed the units")
+	exists, err := h.Deps.State.InstallationExists(context.Background())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	h.Deps.Backup = nil
+	_, err = ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "no backup engine")
+}
+
+// With a target, the backup reaches it before anything is removed, so even
+// `--purge` leaves a copy off the machine.
+func TestARemovalWithBackupPushesItBeforePurging(t *testing.T) {
+	h, inst := removable(t)
+	inst, offsite := withOffsiteTarget(t, h, inst)
+
+	res, report := removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID, Backup: true, Purge: true})
+	assert.Equal(t, "push-backup", res.Record.Steps[2].ID)
+	entries, err := os.ReadDir(offsite)
+	require.NoError(t, err)
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	assert.Contains(t, names, report.Backup, "the backup never left the machine before the purge")
+}
+
+// withOffsiteTarget gives the installation a file target outside everything
+// the removal deletes, and a recovery recipient, so `--backup --purge` leaves
+// a copy something can read.
+func withOffsiteTarget(t *testing.T, h *harness, inst domain.Installation) (domain.Installation, string) {
+	t.Helper()
+	ctx := context.Background()
+	h.Backup.Root = t.TempDir()
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets, h.Deps.Objects = registry, registry
+	offsite := filepath.Join(t.TempDir(), "offsite")
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + offsite}}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	require.NoError(t, h.Secrets.AddRecipient(ctx, ports.Recipient{
+		PublicKey: "age1recoveryrecipientplaceholder", Kind: ports.RecipientRecovery,
+	}))
+	return inst, offsite
+}
+
+// A removal resumed after its backup steps finished does not run them again:
+// it has neither the reference they would verify nor, past remove-releases,
+// the release a backup needs.
+func TestARemovalWithBackupResumesPastItsBackup(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	h.Supervisor.Fail["RemoveUnits"] = errors.New("systemctl is not answering")
+	_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+
+	delete(h.Supervisor.Fail, "RemoveUnits")
+	h.Backup.Fail["Verify"] = errors.New("the backup was verified already; this must not run")
+	res, _ := removeIt(t, h, ops.RemoveOptions{
+		Options: ops.Options{Resume: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	assert.Equal(t, domain.StatusSucceeded, res.Record.Status)
+}
+
+func TestARemovalWithBackupResumesPastTheReleases(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root removes from a 0555 directory, so this arrangement proves nothing")
+	}
+	h, inst := removable(t)
+	ctx := context.Background()
+	require.NoError(t, os.Chmod(h.Paths.EtcDir, 0o555)) //nolint:gosec // the point is a directory nobody may write
+	_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.NoError(t, os.Chmod(h.Paths.EtcDir, 0o750)) //nolint:gosec // restored
+	require.Error(t, err)
+	_, err = os.Stat(h.Paths.ReleasesDir())
+	require.ErrorIs(t, err, os.ErrNotExist, "the removal stopped before the releases went, so this proves nothing")
+
+	res, _ := removeIt(t, h, ops.RemoveOptions{
+		Options: ops.Options{Resume: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	assert.Equal(t, domain.StatusSucceeded, res.Record.Status)
+}
+
+// `--purge` must leave a copy something can read: not on a target inside what
+// it deletes, and not encrypted only to the machine key it deletes.
+func TestABackupPurgeLeavesACopySomethingCanRead(t *testing.T) {
+	t.Run("a target inside the installation", func(t *testing.T) {
+		h, inst := removable(t)
+		inst, _ = withOffsiteTarget(t, h, inst)
+		inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + filepath.Join(h.Paths.VarDir, "offsite")}}
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+		_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+			Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true, Purge: true,
+		})
+		require.Error(t, err)
+		assert.Contains(t, domain.AsError(err).Message, "inside")
+	})
+	t.Run("only the machine key", func(t *testing.T) {
+		h, inst := removable(t)
+		inst, _ = withOffsiteTarget(t, h, inst)
+		require.NoError(t, h.Secrets.RemoveRecipient(context.Background(), ports.Recipient{
+			PublicKey: "age1recoveryrecipientplaceholder", Kind: ports.RecipientRecovery,
+		}))
+		recipients, err := h.Secrets.Recipients(context.Background())
+		require.NoError(t, err)
+		for _, r := range recipients {
+			require.Equal(t, ports.RecipientMachine, r.Kind, "the harness has another recipient, so this proves nothing")
+		}
+
+		_, err = ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+			Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true, Purge: true,
+		})
+		require.Error(t, err)
+		assert.Contains(t, domain.AsError(err).Message, "machine key")
+	})
+}
+
+// A target added while the removal waited for its lock is one it did not plan
+// to push to, so it stops rather than leave that target without the backup.
+func TestARemovalWithBackupRefusesTargetsThatChangedWhileItWaited(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	inst, _ = withOffsiteTarget(t, h, inst)
+	h.Locker.BeforeAcquire = func() {
+		changed := inst
+		changed.Backup.Targets = append(changed.Backup.Targets, domain.BackupTargetConfig{URL: "file://" + t.TempDir()})
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, changed))
+		h.Locker.BeforeAcquire = nil
+	}
+
+	_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Message, "targets changed")
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
+// A target added between a failed removal and its resume never received the
+// backup, so the resume is refused rather than finish without it.
+func TestAResumedRemovalRefusesTargetsItsBackupNeverReached(t *testing.T) {
+	h, inst := removable(t)
+	ctx := context.Background()
+	inst, _ = withOffsiteTarget(t, h, inst)
+	h.Supervisor.Fail["RemoveUnits"] = errors.New("systemctl is not answering")
+	_, err := ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err)
+	delete(h.Supervisor.Fail, "RemoveUnits")
+
+	inst.Backup.Targets = append(inst.Backup.Targets, domain.BackupTargetConfig{URL: "file://" + t.TempDir()})
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	_, err = ops.Remove(ctx, h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true, Resume: true}, ConfirmedInstallationID: inst.ID, Backup: true,
+	})
+	require.Error(t, err, "the resume finished without the new target receiving the backup")
+	assert.Contains(t, domain.AsError(err).Message, "targets changed")
 }

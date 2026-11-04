@@ -1135,6 +1135,11 @@ func movesVolumeData(commandPath string) bool {
 	// `backup fetch` and the rest only read, and are meant to work on an
 	// installation too broken to resolve.
 	parts := strings.Fields(commandPath)
+	// `installation remove` attaches a backup engine only for --backup,
+	// which takes the backup `morzer backup` takes.
+	if len(parts) == 3 && parts[1] == "installation" && parts[2] == "remove" {
+		return true
+	}
 	if len(parts) != 2 {
 		return false
 	}
