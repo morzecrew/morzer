@@ -142,3 +142,38 @@ evidence: internal/lifecycle/ops/metrics.go:236-270
 action: departed
 proposal: ASSUMED — with `metrics.textfile` set, `doctor` warns when the status file is missing or more than ten minutes old, whether or not a timer is installed, and names the timer to check.
 ```
+
+From #265's review.
+
+Retiring the old files in `config set` raced two writers: a metrics run
+already under way with the old directory, which renames its file back after
+the removal, and a unit refresh that fails after the state is saved, which
+leaves the old unit writing the old directory and a retry with nothing to
+retire.
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-04T18:54:00Z
+attempt: 2
+claim: a retirement done once, by `config set`, cannot see a writer that started before it or a unit that outlived it
+evidence: internal/lifecycle/ops/metrics.go:61-75
+action: departed
+proposal: ASSUMED — as decision 16, and a metrics run writes its file only while the installation's setting still names its directory, read again just before the write. A run whose directory is no longer the setting's removes its file instead, so an old unit or an old run retires what it wrote.
+```
+
+Decision 10 checks the directory is writable, and `$` passes the path
+validation although systemd expands it on an `ExecStart=` line.
+
+```divergence
+decision: 10
+grade: ASSUMED
+class: discovery
+at: 2026-11-04T18:54:00Z
+attempt: 2
+claim: access(2) answers for the user running `doctor`, not for the root the units run as, and a `$` in the directory reaches the command as something else
+evidence: internal/lifecycle/ops/metrics.go:253
+action: departed
+proposal: ASSUMED — the writability warning is given only when `doctor` runs as root, as the units do; otherwise the staleness warning covers a directory the timer cannot write. The path may hold no `$` either.
+```

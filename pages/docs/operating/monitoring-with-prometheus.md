@@ -97,6 +97,11 @@ groups:
       - alert: MorzerMetricsStale
         expr: time() - node_textfile_mtime_seconds{file=~"(.*/)?morzer-status-.*\\.prom"} > 600
         for: 5m
+      # One per installation: a file never written, or removed, has no
+      # mtime to go stale.
+      - alert: MorzerMetricsMissing
+        expr: absent(node_textfile_mtime_seconds{file=~"(.*/)?morzer-status-demo\\.prom"})
+        for: 10m
       - alert: MorzerStateUnreadable
         expr: morzer_up == 0
         for: 5m
@@ -110,18 +115,24 @@ groups:
         expr: morzer_health_check_ok == 0
         for: 5m
       - alert: MorzerBackupOld
-        expr: time() - morzer_last_backup_timestamp_seconds > 36 * 3600
+        expr: >
+          time() - morzer_last_backup_timestamp_seconds > 36 * 3600
+          or (morzer_up == 1 unless on(product) morzer_last_backup_timestamp_seconds)
+        for: 1h
       - alert: MorzerNeedsAttention
         expr: morzer_operations_needing_attention > 0
       - alert: MorzerDoctorCheckFailing
         expr: morzer_doctor_check == 2
 ```
 
-The first rule is the one that catches everything else going quiet. When the
+The first two rules are the ones that catch everything else going quiet. When the
 timer stops, or a run cannot write the file, the last file stays and the node
 exporter's `node_textfile_mtime_seconds` stops advancing. Its `file` label is
 the file's name in older node exporter releases and its full path in newer
-ones, which is why the rule matches either. `morzer doctor` warns too, as
+ones, which is why the rule matches either. A file that was never written, or
+was removed, has no such series at all, which is what the second rule, one per
+installation, is for. The backup rule's second half fires for an installation
+that has never taken a backup, since it has no backup timestamp to age. `morzer doctor` warns too, as
 `metrics.textfile`, when the directory is missing or not writable, or when the
 status file is more than ten minutes old.
 
