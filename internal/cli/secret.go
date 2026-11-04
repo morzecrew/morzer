@@ -452,9 +452,6 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	}
 
 	services := schema.ServicesFor(names)
-	if len(services) == 0 {
-		return nil, nil
-	}
 
 	current, err := a.Deps.State.CurrentRelease(ctx)
 	if err != nil || current.IsZero() {
@@ -486,9 +483,21 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	}
 
 	// The rendered files must be updated before the restart, or the
-	// services would come back holding the old value.
+	// services would come back holding the old value. Rendered whether or
+	// not a service declares the secret: a template or a container may read
+	// the file without the release saying so (#238).
 	if _, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema); err != nil {
 		return nil, err
+	}
+
+	if len(services) == 0 {
+		a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
+			fmt.Sprintf("No service declares %s, so none was restarted. Its rendered file has the new value.",
+				strings.Join(names, ", ")),
+			"A configuration file that uses it changes on the next `morzer apply`, and anything " +
+				"else reading the file sees the new value the next time it reads it.",
+		}})
+		return nil, nil
 	}
 
 	// Rendered, and nothing restarted: a restart starts a stopped container,
