@@ -52,6 +52,7 @@ here. The reference column points at the section that documents it; the
 | `morzer logs` | Read the deployment's logs | [commands](commands.md#logs) |
 | `morzer ps` | List the deployment's containers | [commands](commands.md#ps) |
 | `morzer stats` | Show CPU, memory and I/O per container | [commands](commands.md#stats) |
+| `morzer metrics` | Print this installation's state as Prometheus metrics | [commands](commands.md#metrics) |
 | `morzer exec` | Run a command inside a running service | [commands](commands.md#exec) |
 | `morzer task` | Run a command the release declares | [commands](commands.md#task) |
 | `morzer task list` | List the tasks the installed release declares | [commands](commands.md#task) |

@@ -179,10 +179,16 @@ type UnitParams struct {
 	DoctorSchedule string
 
 	// DoctorTimer asks for the doctor pair at all. False on a machine with
-	// no notify target, since a scheduled `doctor` with nobody to tell
-	// writes only to the journal (RFC 0043 decision 4), and false when
+	// no notify target and no metrics export, since a scheduled `doctor`
+	// with nobody to tell and nowhere to write writes only to the journal
+	// (RFC 0043 decision 4, RFC 0047 decision 3), and false when
 	// `doctor.scheduled` is off.
 	DoctorTimer bool
+
+	// MetricsDir is the textfile directory the metrics pair writes into,
+	// and empty when the installation exports no metrics, which leaves the
+	// pair out (RFC 0047 decisions 2 and 15).
+	MetricsDir string
 }
 
 // Unit is a supervisor unit to install.

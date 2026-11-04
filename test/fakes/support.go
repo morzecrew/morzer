@@ -692,6 +692,9 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		if strings.HasPrefix(name, params.Product+"-doctor.") && !params.DoctorTimer {
 			continue
 		}
+		if strings.HasPrefix(name, params.Product+"-metrics.") && params.MetricsDir == "" {
+			continue
+		}
 		// And the backup pair, which is conditional the other way round
 		// (RFC 0030 row 4): present unless the installation declares it
 		// wants none. A fake that always returned it would make a test
@@ -724,6 +727,8 @@ func (s *Supervisor) ManagedUnitNames(product string) []string {
 		product + "-fleet.timer",
 		product + "-doctor.service",
 		product + "-doctor.timer",
+		product + "-metrics.service",
+		product + "-metrics.timer",
 	}
 }
 

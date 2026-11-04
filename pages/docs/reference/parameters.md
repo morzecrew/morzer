@@ -185,7 +185,8 @@ morzer config unset update.channel           # back to absent, which is always t
 | `backup.schedule` | When scheduled backups run, as a systemd `OnCalendar` expression. Absent takes the nightly default. |
 | `backup.scheduled` | Whether this manager runs backups on a timer at all. Absent means it does. |
 | `doctor.schedule` | When the [scheduled `doctor`](../operating/notifications.md#the-scheduled-doctor) runs, as a systemd `OnCalendar` expression. Absent takes the morning default, `*-*-* 06:00:00`. |
-| `doctor.scheduled` | Whether `doctor` runs on a timer and notifies what it finds. Absent means it does, while a notify target is configured; with none there is no timer. |
+| `doctor.scheduled` | Whether `doctor` runs on a timer. Absent means it does, while a notify target or a metrics export is configured; with neither there is no timer. |
+| `metrics.textfile` | The node exporter's textfile directory, which a timer writes this installation's metrics into every minute. An absolute path to an existing directory, with no whitespace, quotes, backslashes or `%`. Absent means no export. See [monitoring with Prometheus](../operating/monitoring-with-prometheus.md). |
 | `backup.before_update` | Whether an update takes a backup before it changes anything. Absent means it does. Only a [dev-mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth) machine may set `false`; on a production machine, `update --skip-backup --force` skips it for one update. |
 | `retention.pre_update_backups` | How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least `1`. Absent takes `3`. See [retention](../operating/backups.md#retention). |
 | `retention.releases` | How many releases the store keeps beside the current, previous and staged ones, which are never pruned; at least `1`. Absent takes the release's `retention.releases`. |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -201,8 +202,27 @@ var settings = map[string]setting{
 		// `doctor.scheduled`'s question and the notify targets'.
 		Clear: func(i *domain.Installation) { i.Policy.DoctorSchedule = "" },
 	},
+	"metrics.textfile": {
+		Description: "the node exporter's textfile directory, which a timer writes this installation's metrics into",
+		Read:        func(i domain.Installation) string { return i.Policy.MetricsTextfile },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			dir := strings.TrimSpace(raw)
+			if err := domain.ValidateMetricsTextfile(dir); err != nil {
+				return err
+			}
+			// Not created: the node exporter decides where it reads, and
+			// a directory nothing reads is a quiet failure (decision 10).
+			if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+				return domain.ValidationError(err, "%s is not a directory", dir).
+					WithHint("name the directory the node exporter's --collector.textfile.directory reads")
+			}
+			i.Policy.MetricsTextfile = dir
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.MetricsTextfile = "" },
+	},
 	"doctor.scheduled": {
-		Description: "whether doctor runs on a timer and notifies what it finds, while a notify target is configured",
+		Description: "whether doctor runs on a timer, while a notify target or a metrics export is configured",
 		Read: func(i domain.Installation) string {
 			return strconv.FormatBool(!i.Policy.SkipScheduledDoctor)
 		},
@@ -672,7 +692,11 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		// After the state, not before: the units are derived from it,
 		// and a crash between the two leaves a timer that the next
 		// setting change reconciles rather than a state nothing polls.
-		return d.refreshUnits(ctx, fresh)
+		if err := d.refreshUnits(ctx, fresh); err != nil {
+			return err
+		}
+		d.retireMetricsFiles(ctx, prior, fresh)
+		return nil
 	})
 	if ran {
 		d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, err)
@@ -862,11 +886,17 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// opt-in does not arise.
 		FleetTimer: inst.Backup.HasTargets(),
 
-		// Whenever someone is configured to be told, and not when the
-		// operator turned it off (RFC 0043 decision 4): a scheduled
-		// `doctor` with no target writes only to the journal.
-		DoctorTimer:    inst.Notify.HasTargets() && !inst.Policy.SkipScheduledDoctor,
+		// Whenever someone is configured to be told or its findings are
+		// exported, and not when the operator turned it off (RFC 0043
+		// decision 4, RFC 0047 decision 3): a scheduled `doctor` with
+		// neither writes only to the journal.
+		DoctorTimer: (inst.Notify.HasTargets() || inst.Policy.MetricsTextfile != "") &&
+			!inst.Policy.SkipScheduledDoctor,
 		DoctorSchedule: inst.Policy.DoctorSchedule,
+
+		// The metrics pair, carrying the directory it writes into
+		// (RFC 0047 decisions 2 and 15).
+		MetricsDir: inst.Policy.MetricsTextfile,
 	}
 }
 

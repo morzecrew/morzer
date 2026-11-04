@@ -86,7 +86,9 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Policy.DoctorSchedule": keep("when the scheduled doctor runs -- local behaviour, and it " +
 			"reports only to notify targets, which a sandbox does not keep"),
 		"Policy.SkipScheduledDoctor": keep("whether the scheduled doctor runs at all -- local, " +
-			"and with no notify target left a sandbox has no doctor timer either way"),
+			"and with no notify target left a sandbox has a doctor timer only while it exports metrics"),
+		"Policy.MetricsTextfile": keep("where this machine's metrics are written -- a local directory " +
+			"the node exporter reads, and nothing it writes leaves the machine (RFC 0047 decision 6)"),
 		"Policy.SkipScheduledBackups": keep("whether this machine's backups are the manager's " +
 			"job at all -- local, and a sandbox of a machine backed up at the " +
 			"storage layer should not start taking its own on a timer just " +

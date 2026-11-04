@@ -117,7 +117,8 @@ morzer config set doctor.schedule='Mon..Fri *-*-* 07:00:00'   # when it runs
 morzer config set doctor.scheduled=false                      # no timer at all
 ```
 
-The timer exists while a target does, and goes when the last one is removed.
+The timer exists while a target does, and goes when the last one is removed,
+unless a [metrics export](monitoring-with-prometheus.md) keeps it.
 
 ## Delivery
 

@@ -94,6 +94,9 @@
         "doctor_schedule": {
           "type": "string"
         },
+        "metrics_textfile": {
+          "type": "string"
+        },
         "require_signature": {
           "type": "boolean"
         },

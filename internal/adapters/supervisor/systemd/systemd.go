@@ -471,9 +471,15 @@ type UnitParams struct {
 	DoctorSchedule string
 
 	// DoctorTimer generates the doctor pair at all (RFC 0043 §5.4): false on
-	// a machine with no notify target, for the reason FleetTimer is false on
-	// one with nowhere to publish.
+	// a machine with no notify target and no metrics export, for the reason
+	// FleetTimer is false on one with nowhere to publish.
 	DoctorTimer bool
+
+	// MetricsDir is the textfile directory the metrics pair writes into;
+	// empty leaves the pair out (RFC 0047). Written into ExecStart= as it
+	// stands, so domain.ValidateMetricsTextfile is what keeps it one
+	// argument.
+	MetricsDir string
 
 	// SkipBackupTimer leaves the backup pair out (RFC 0030 row 4).
 	//
@@ -499,15 +505,17 @@ type unitSpec struct {
 }
 
 // ServiceUnitName and friends derive unit names from the product.
-func ServiceUnitName(product string) string       { return product + ".service" }
-func BackupServiceUnitName(product string) string { return product + "-backup.service" }
-func BackupTimerUnitName(product string) string   { return product + "-backup.timer" }
-func UpdateServiceUnitName(product string) string { return product + "-update.service" }
-func UpdateTimerUnitName(product string) string   { return product + "-update.timer" }
-func FleetServiceUnitName(product string) string  { return product + "-fleet.service" }
-func FleetTimerUnitName(product string) string    { return product + "-fleet.timer" }
-func DoctorServiceUnitName(product string) string { return product + "-doctor.service" }
-func DoctorTimerUnitName(product string) string   { return product + "-doctor.timer" }
+func ServiceUnitName(product string) string        { return product + ".service" }
+func BackupServiceUnitName(product string) string  { return product + "-backup.service" }
+func BackupTimerUnitName(product string) string    { return product + "-backup.timer" }
+func UpdateServiceUnitName(product string) string  { return product + "-update.service" }
+func UpdateTimerUnitName(product string) string    { return product + "-update.timer" }
+func FleetServiceUnitName(product string) string   { return product + "-fleet.service" }
+func FleetTimerUnitName(product string) string     { return product + "-fleet.timer" }
+func DoctorServiceUnitName(product string) string  { return product + "-doctor.service" }
+func DoctorTimerUnitName(product string) string    { return product + "-doctor.timer" }
+func MetricsServiceUnitName(product string) string { return product + "-metrics.service" }
+func MetricsTimerUnitName(product string) string   { return product + "-metrics.timer" }
 
 // serviceTemplate is the main unit.
 //
@@ -716,6 +724,36 @@ RandomizedDelaySec=1800
 WantedBy=timers.target
 `
 
+// metricsServiceTemplate writes the status metrics into the node exporter's
+// textfile directory (RFC 0047 §5.2). The directory is in the command rather
+// than read from the state, so a run whose state will not load still knows
+// where to say so (decision 15).
+const metricsServiceTemplate = `[Unit]
+Description={{.Description}}
+After={{.Product}}.service
+
+[Service]
+Type=oneshot
+ExecStart={{.ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+TimeoutStartSec=50
+StandardOutput=journal
+StandardError=journal
+`
+
+// metricsTimerTemplate runs it every minute. Not Persistent: a run missed
+// while the machine was off is not worth catching up, since the next one
+// writes the current state anyway.
+const metricsTimerTemplate = `[Unit]
+Description={{.Description}}
+
+[Timer]
+OnCalendar=*:*:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+`
+
 // DefaultDoctorSchedule runs the scheduled `doctor` each morning, after the
 // nightly backup and update ticks, so it reports on both.
 const DefaultDoctorSchedule = "*-*-* 06:00:00"
@@ -842,6 +880,20 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		)
 	}
 
+	if p.MetricsDir != "" {
+		if err := domain.ValidateMetricsTextfile(p.MetricsDir); err != nil {
+			return nil, domain.Internal(err, "the metrics directory cannot be written into a unit")
+		}
+		specs = append(specs,
+			unitSpec{MetricsServiceUnitName(p.Product), metricsServiceTemplate,
+				p.Product + " metrics", false},
+			// The timer is enabled and the service is not: enabling a
+			// oneshot runs it at every boot.
+			unitSpec{MetricsTimerUnitName(p.Product), metricsTimerTemplate,
+				p.Product + " scheduled metrics", true},
+		)
+	}
+
 	units := make([]ports.Unit, 0, len(specs))
 	for _, spec := range specs {
 		params := p
@@ -887,6 +939,8 @@ func UnitNames(product string) []string {
 		FleetTimerUnitName(product),
 		DoctorServiceUnitName(product),
 		DoctorTimerUnitName(product),
+		MetricsServiceUnitName(product),
+		MetricsTimerUnitName(product),
 	}
 }
 
@@ -926,6 +980,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		FleetTimer:       params.FleetTimer,
 		DoctorSchedule:   params.DoctorSchedule,
 		DoctorTimer:      params.DoctorTimer,
+		MetricsDir:       params.MetricsDir,
 	})
 }
 

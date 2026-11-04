@@ -253,8 +253,18 @@ func (d *Deps) fillServiceCounts(
 		return
 	}
 
-	counts := ServiceCounts{Total: len(services)}
+	// A finished job behind an inactive profile is neither running nor
+	// down, as the metrics export counts it (RFC 0047 decision 19).
+	var configured []string
+	if rendered, err := d.Runtime.Validate(queryCtx, cfg); err == nil {
+		configured = rendered.Services
+	}
+	var counts ServiceCounts
 	for _, s := range services {
+		if completedJob(s, configured) {
+			continue
+		}
+		counts.Total++
 		if s.Running() {
 			counts.Running++
 		}
