@@ -28,10 +28,16 @@ func addTarget(t *testing.T, bundle string) string {
 	path := filepath.Join(bundle, "manifest.yaml")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
+	// The bundle's own target, already retargeted under the test root: the
+	// value of its `target:` line, whatever the root's path holds.
 	const own = "/etc/demo/application.yaml"
-	i := strings.Index(string(data), own)
-	require.Positive(t, i, "the bundle no longer declares its own target")
-	root := string(data)[strings.LastIndex(string(data[:i]), " ")+1 : i]
+	var root string
+	for _, line := range strings.Split(string(data), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "target: "); ok && strings.HasSuffix(value, own) {
+			root = strings.TrimSuffix(value, own)
+		}
+	}
+	require.NotEmpty(t, root, "the bundle no longer declares its own target")
 	target := filepath.Join(root, "etc", "nginx", "conf.d", "demo.conf")
 
 	block := "  - template: templates/proxy.conf.tmpl\n    target: " + target + "\n"
