@@ -149,7 +149,8 @@ requirement.
    the operator's arguments, the service environment with `OPERATION_TYPE=task`
    and `PHASE=task`, and the task's timeout. It starts the service's
    dependencies, as a migration does, so a task runs whether or not the
-   deployment is up.
+   deployment is up. *(2026-11-04: those behind an inactive profile are
+   removed once they exit 0; see decision 23.)*
 4. **A non-zero exit fails the step**, naming the exit code. The step aborts:
    nothing is compensated and nothing is flagged for intervention. The error
    quotes none of the output, unlike a migration service's (decision 20).
