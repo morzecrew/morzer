@@ -785,7 +785,7 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 		return plan, nil
 	}
 	if plan.services = d.runningServices(ctx, after, plan.rel); len(plan.services) > 0 {
-		plan.steps = append(plan.steps, stepRecreateServices(d, after, plan.rel, plan.services))
+		plan.steps = append(plan.steps, stepRecreateServices(d, before, after, plan.rel, plan.services))
 	}
 	return plan, nil
 }

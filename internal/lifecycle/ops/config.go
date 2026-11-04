@@ -357,7 +357,7 @@ func configSteps(
 	// declared services needs a full `apply`, which the summary says out
 	// loud rather than guessing at.
 	if services := affectedServices(rel, changed); len(services) > 0 && running {
-		steps = append(steps, stepRecreateServices(d, updated, rel, services))
+		steps = append(steps, stepRecreateServices(d, inst, updated, rel, services))
 	}
 	return steps
 }
@@ -403,8 +403,11 @@ func stepRecordParameters(d *Deps, previous, updated domain.Installation) engine
 // Forced, because a value can also reach a service only through a rendered
 // file bind-mounted into it: the definition does not change, and a plain `up`
 // leaves the container running with the old contents (#239).
+//
+// previous is the installation before the change, which the undo re-creates
+// with.
 func stepRecreateServices(
-	d *Deps, inst domain.Installation, rel domain.Release, services []string,
+	d *Deps, previous, inst domain.Installation, rel domain.Release, services []string,
 ) engine.Step {
 	return engine.Step{
 		ID:          "recreate-services",
@@ -416,14 +419,14 @@ func stepRecreateServices(
 			return d.recreate(ctx, inst, rel, services)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			// The previous step has already restored the old
-			// values, so re-creating again returns the containers
-			// to what they were.
-			prior, err := d.State.LoadInstallation(ctx)
-			if err != nil {
+			// The engine undoes the failed step first, so neither the
+			// recorded values nor the rendered files are back yet: a
+			// forced re-create now would mount the new files. The files
+			// go back here, and the services with the old values.
+			if err := restoreConfigBackups(st); err != nil {
 				return err
 			}
-			return d.recreate(ctx, prior, rel, services)
+			return d.recreate(ctx, previous, rel, services)
 		},
 	}
 }

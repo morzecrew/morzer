@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept the container on the old file while the summary said it was
   re-created. It is now re-created forced, as a domain change already was.
 
+- **A failed `config set` or domain change is undone with the old value.**
+  The undo re-created the services before the recorded values and the
+  rendered files were put back, so they came back with the rejected value.
+
 - **A task no longer leaves its finished dependencies behind.** A task whose
   service waits on one-shot jobs behind a profile left each of them exited,
   and `status` drew them as failures. Once they exit 0 they are removed with

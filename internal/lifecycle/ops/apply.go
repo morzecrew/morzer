@@ -474,8 +474,6 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 // them back: a failed apply must not leave the product configured for a
 // release that is not running.
 func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Release, opts Options) engine.Step {
-	const keyBackups = "config-backups"
-
 	renderAll := func(ctx context.Context, st *engine.State) (map[string][]byte, error) {
 		// The schema is normally left in state by the load-secrets step.
 		// During a dry run that step never executes, so it is loaded
@@ -580,7 +578,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// replaced, and this step's own compensator, which runs
 			// for the step that failed, has to find their backups.
 			// The map is shared, so what the loop adds is seen.
-			st.Set(keyBackups, backups)
+			st.Set(keyConfigBackups, backups)
 
 			// In a fixed order, so which files a failure leaves
 			// replaced does not depend on map iteration.
@@ -616,48 +614,60 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			backups, ok := st.Get(keyBackups)
-			if !ok {
-				return nil
-			}
-			previous, ok := backups.(map[string]configBackup)
-			if !ok {
-				return nil
-			}
-			var failed []string
-			for target, backup := range previous {
-				// Every file is attempted, so one that fails
-				// does not strand the rest.
-				//
-				// In the file's own mode. Every restored file
-				// used to come back 0640, and a failed update
-				// now restarts the previous release, whose
-				// containers may run as a user that only a
-				// wider mode let read it.
-				var err error
-				if backup.created {
-					if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
-						err = nil
-					}
-				} else {
-					err = atomicfs.WriteFile(target, backup.content, backup.mode)
-				}
-				if err != nil {
-					failed = append(failed, target)
-				}
-			}
-			if len(failed) == 0 {
-				return nil
-			}
-			// Reported rather than swallowed, and remembered: the
-			// previous release is brought back up after this, and
-			// must not be started against the new release's files.
-			st.Set(keyConfigNotRestored, true)
-			sort.Strings(failed)
-			return domain.InstallationError(nil,
-				"could not put back %s", strings.Join(failed, ", "))
+			return restoreConfigBackups(st)
 		},
 	}
+}
+
+// keyConfigBackups holds the files the render replaced, for the steps that
+// have to put them back.
+const keyConfigBackups = "config-backups"
+
+// restoreConfigBackups puts back what the render replaced. The render step's
+// compensator, and recreate-services', which the engine undoes first and which
+// must not re-create the services against the new files. Idempotent, so the
+// second call writes the same bytes again.
+func restoreConfigBackups(st *engine.State) error {
+	backups, ok := st.Get(keyConfigBackups)
+	if !ok {
+		return nil
+	}
+	previous, ok := backups.(map[string]configBackup)
+	if !ok {
+		return nil
+	}
+	var failed []string
+	for target, backup := range previous {
+		// Every file is attempted, so one that fails
+		// does not strand the rest.
+		//
+		// In the file's own mode. Every restored file
+		// used to come back 0640, and a failed update
+		// now restarts the previous release, whose
+		// containers may run as a user that only a
+		// wider mode let read it.
+		var err error
+		if backup.created {
+			if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
+				err = nil
+			}
+		} else {
+			err = atomicfs.WriteFile(target, backup.content, backup.mode)
+		}
+		if err != nil {
+			failed = append(failed, target)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	// Reported rather than swallowed, and remembered: the
+	// previous release is brought back up after this, and
+	// must not be started against the new release's files.
+	st.Set(keyConfigNotRestored, true)
+	sort.Strings(failed)
+	return domain.InstallationError(nil,
+		"could not put back %s", strings.Join(failed, ", "))
 }
 
 // configBackup is a configuration file as it was before a render replaced it.
