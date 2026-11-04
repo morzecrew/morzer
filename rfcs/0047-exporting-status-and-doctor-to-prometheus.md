@@ -1,7 +1,9 @@
 # RFC 0047 — Exporting status and doctor to Prometheus
 
-- **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-03: §11's
-  `OPEN` rows as recommended. P1 is ready to build
+- **Status:** ✅ Complete — proposed, and ruled by the author 2026-11-03: §11's
+  `OPEN` rows as recommended. **P1 built 2026-11-04** in #265; the entries its
+  build and review wrote in [logs/prometheus-metrics.md](../logs/prometheus-metrics.md)
+  are decisions 20–27
 - **Scope:** How a machine that already runs Prometheus's node exporter learns
   what `morzer status` and `morzer doctor` know, without anybody running them.
   It adds a command, `morzer metrics`, that prints an installation's state in
@@ -342,9 +344,17 @@ ruling.)*
 | 17 | `ASSUMED` | `metrics.textfile` moves the installation schema to 16 for the write path, as 7, 8 and 15 did: an older manager rewriting the state would drop the field and remove its timer, and the bump makes it refuse the state instead. |
 | 18 | `ASSUMED` | Turning the doctor timer off with `doctor.scheduled=false` removes the doctor file, as unsetting `metrics.textfile` does. |
 | 19 | `ASSUMED` | *(2026-11-04, ruled by the author)* A container of a service the configuration does not start, one behind an inactive profile, that exited 0 is a completed job, such as a dependency a task or a migration started. The status file exports no `morzer_service_running` or `morzer_service_containers` series for it, and `ls --status` and the fleet row leave it out of their counts the same way, so the three agree. A service the configuration starts that exited 0 still counts as not running, since a `docker stop` ends one that way too. One-shot runs remove such containers once they finish (see [logs/task-cleanup.md](../logs/task-cleanup.md)), so this covers a removal that failed and containers an older manager left. |
+| 20 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* `metrics.textfile` is recorded as `policy.metrics_textfile`, beside the doctor's schedule and switch, which are the other settings that decide a timer. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (unlisted, attempt 1, 18:20, the field). |
+| 21 | `ASSUMED` | *(2026-11-04, from the build and the review; accepted 2026-11-04)* **Refines decision 10.** The directory may hold no whitespace, quote, backslash, `%` or `$`. It is written into the unit's `ExecStart=` line, where systemd reads `%` as a specifier and expands `$`, so each would run the command with a directory other than the one stored. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (decision 10, attempt 1, 18:20, and attempt 2, 18:54). |
+| 22 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* `morzer_service_running` counts the containers `Running()` accepts, running and not unhealthy, as `ls --status` and the fleet row count them, so an unhealthy service alerts as not running. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (unlisted, attempt 1, 18:20, running). |
+| 23 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* For each operation type in the journal, the last-operation families describe the newest record whose status is terminal. Its finish time is the timestamp, and success is 1 only for `succeeded`, so a compensated or interrupted operation reads 0. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (unlisted, attempt 1, 18:20, the last operation). |
+| 24 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* A state that does not load is printed or written as `morzer_up 0`, its reason goes to the log, and `morzer metrics` exits 0. A file that cannot be written is an error, and the unit fails. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (unlisted, attempt 1, 18:20, the exit). |
+| 25 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* **Refines decision 6.** `morzer_release_info`'s `mode` is the installation's own word: `dev` on a sandbox, and `production` where the installation records none. A rule then matches the value every other surface shows. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (decision 6, attempt 1, 18:29). |
+| 26 | `ASSUMED` | *(2026-11-04, from the build and the review; accepted 2026-11-04)* **Refines decision 10.** With `metrics.textfile` set, `doctor` warns when the status file is missing or more than ten minutes old, whether or not a timer is installed, and it names the timer to check. It warns that the directory is not writable only when it runs as root, as the units do, because `access(2)` answers for the user who asked. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (decision 10, attempt 1, 18:29, and attempt 2, 18:54). |
+| 27 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* **Refines decision 16.** A metrics run writes its file only while the installation's setting still names its directory, which it reads again just before the write. A run whose directory is no longer the setting's removes its file there instead, so an old unit or a run under way when the setting changed retires what it wrote. `--textfile` is the timer's flag in practice, and writing anywhere else is a print and a redirect. See [logs/prometheus-metrics.md](../logs/prometheus-metrics.md) (decision 16, attempt 2, 18:54). |
 
 ## 12. Phasing
 
 - **P1** (§5.1–§5.4): `morzer metrics`, `metrics.textfile`, the metrics timer,
   the doctor file, `doctor`'s check, and the monitoring page. One PR. It needs
-  decisions 1–5.
+  decisions 1–5. *(2026-11-04: built in #265.)*
