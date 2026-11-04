@@ -380,6 +380,12 @@ A list of templates rendered onto the host.
 
 Rendered files contain *paths* to secrets, never secret values.
 
+A target the installed release does not declare may already hold a file the
+operator wrote. The update keeps a copy before replacing it, and an unattended
+update waits for an operator instead. Pick a target path that will not clash
+with a file someone keeps by hand. See
+[Updating](../operating/updating.md#a-file-where-the-new-release-puts-a-new-one).
+
 The quotes on `mode` are load-bearing. YAML reads an unquoted `0640` as the
 decimal number 416, which is the permission `0416` — owner read-only, group
 execute-only, other read/write. Unquoted modes are refused rather than applied,

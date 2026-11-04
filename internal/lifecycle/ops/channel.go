@@ -554,6 +554,12 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
 		return out, nil
 	}
+	// And while the candidate would replace a file no installed release
+	// rendered, which the drift gate cannot see (RFC 0048 decision 4).
+	if held := d.heldForExisting(ctx, now, candidate.Root); held != "" {
+		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
+		return out, nil
+	}
 
 	out.Assessment, err = d.assessUnattended(ctx, inst, candidate)
 	if err != nil {

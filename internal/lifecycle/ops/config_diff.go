@@ -10,6 +10,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // ConfigDiffReport is where the configuration files on disk differ from what
@@ -313,4 +314,109 @@ func (d *Deps) driftedFiles(ctx context.Context, inst domain.Installation) (int,
 		}
 	}
 	return n, nil
+}
+
+// existingTargets are the files a release would replace although the
+// installed release never rendered them (RFC 0048 §5.1): a target the
+// installed release does not declare, where something already is and holds
+// other bytes. The drift checks cannot see these, as they compare against
+// the installed release only.
+type existingTargets struct {
+	// installed is the version that does not render them, empty when no
+	// release is installed.
+	installed  string
+	replaced   []string
+	unreadable []string
+}
+
+func (e existingTargets) any() bool { return len(e.replaced)+len(e.unreadable) > 0 }
+
+// lines says what happens to each, one line per file, for a plan and for the
+// tick's reason.
+func (e existingTargets) lines(next string, held bool) []string {
+	by := "no release renders it yet"
+	if e.installed != "" {
+		by = e.installed + " does not render it"
+	}
+	what := next + " replaces it and keeps a copy"
+	if held {
+		what = next + " would replace it"
+	}
+	var out []string
+	for _, target := range e.replaced {
+		out = append(out, fmt.Sprintf("%s exists, and %s: %s", target, by, what))
+	}
+	for _, target := range e.unreadable {
+		out = append(out, fmt.Sprintf("%s exists and cannot be read, so it cannot be kept", target))
+	}
+	return out
+}
+
+// existingTargetsFor is the one list the plan, the render step and the tick
+// use (RFC 0048 decision 2). The installed release is the one recorded as
+// current when it is asked, so a resume past the new release's record finds
+// its files already rendered. A current release that cannot be loaded leaves
+// no target declared, so every differing file is kept rather than none.
+func (d *Deps) existingTargetsFor(
+	ctx context.Context, inst domain.Installation, rel domain.Release, profile string,
+) (existingTargets, error) {
+	var out existingTargets
+	if len(rel.Manifest.Configuration) == 0 {
+		return out, nil
+	}
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return out, err
+	}
+	declared := map[string]bool{}
+	if !current.IsZero() {
+		if current.Root == rel.Root {
+			return out, nil
+		}
+		out.installed = current.Version.String()
+		if installed, err := d.resolveCurrentRelease(ctx, current); err == nil {
+			for _, cfg := range installed.Manifest.Configuration {
+				declared[d.configTarget(cfg.Target)] = true
+			}
+		}
+	}
+	comparison, err := configComparison(ctx, d, inst, rel, profile)
+	if err != nil {
+		return out, err
+	}
+	for _, diff := range comparison.Diffs {
+		if _, err := os.Lstat(diff.Target); err == nil && !declared[diff.Target] {
+			out.replaced = append(out.replaced, diff.Target)
+		}
+	}
+	for _, u := range comparison.Unreadable {
+		if !declared[u.Target] {
+			out.unreadable = append(out.unreadable, u.Target)
+		}
+	}
+	return out, nil
+}
+
+// heldForExisting is why an unattended tick leaves a candidate staged rather
+// than replace a file no installed release rendered (RFC 0048 decision 4), or
+// empty. The copy an attended update keeps saves the bytes and not the
+// behaviour: the product would read the vendor's file from then on, with
+// nobody watching.
+//
+// A candidate whose files cannot be rendered is not held here: its update
+// fails at the render, before anything is replaced, and says why.
+func (d *Deps) heldForExisting(ctx context.Context, inst domain.Installation, root string) string {
+	rel, err := release.Load(root)
+	if err != nil {
+		return ""
+	}
+	if retired := domain.Parameters(inst.Parameters).ValidateAgainst(rel.Manifest.Parameters); len(retired) > 0 {
+		inst = withoutParameters(inst, retired)
+	}
+	existing, err := d.existingTargetsFor(ctx, inst, rel, "")
+	if err != nil || !existing.any() {
+		return ""
+	}
+	return strings.Join(existing.lines(rel.Version().String(), true), "; ") +
+		", so the release is staged and not installed; `morzer update --dry-run` shows it"
 }

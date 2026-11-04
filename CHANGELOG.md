@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An update keeps a file it replaces at a new configuration target.** A
+  release that added a target overwrote whatever file was there and kept
+  nothing. The plan now names such a file, the update keeps a copy and says
+  where, and an unattended update waits.
+
 - **A task no longer leaves its finished dependencies behind.** A task whose
   service waits on one-shot jobs behind a profile left each of them exited,
   and `status` drew them as failures. Once they exit 0 they are removed with

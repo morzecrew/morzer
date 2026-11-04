@@ -69,6 +69,20 @@ release, and nor does one that is absent, which loses nothing when written. A
 tick that cannot render the installed release's configuration to compare holds,
 and says why.
 
+A third holds it too: a file at a path the new release renders and the
+installed release does not, which the update would replace with the vendor's.
+The tick names it, and `morzer update --dry-run` shows what the update would do:
+
+```text
+/etc/nginx/conf.d/demo.conf exists, and 1.2.0 does not render it: 1.3.0 would
+replace it, so the release is staged and not installed; `morzer update
+--dry-run` shows it
+```
+
+Moving the file away lets the next tick install. An attended
+[update](updating.md#a-file-where-the-new-release-puts-a-new-one) keeps a copy
+and installs.
+
 ## Turning it on
 
 ```sh

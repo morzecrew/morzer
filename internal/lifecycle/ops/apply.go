@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -556,7 +557,13 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				return "cannot render: " + domain.AsError(err).Message, ""
 			}
 			comparison, shown := d.scrubbed(ctx, comparison)
-			return fmt.Sprintf("%d file(s)", comparison.Targets), comparison.text(shown)
+			detail := fmt.Sprintf("%d file(s)", comparison.Targets)
+			// Ahead of the diff, which shows such a file as one more
+			// change: it is one no installed release rendered (RFC 0048).
+			if existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile); err == nil && existing.any() {
+				detail += "; " + strings.Join(existing.lines(rel.Version().String(), false), "; ")
+			}
+			return detail, comparison.text(shown)
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			rendered, err := renderAll(ctx, st)
@@ -568,6 +575,17 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// under the installation's salt. The bytes stay here;
 			// only the digest travels.
 			st.Set(engine.KeyRenderedConfig, rendered)
+
+			// Kept past the operation, unlike the backups below, which
+			// go with it (RFC 0048 decision 3).
+			found, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile)
+			if err != nil {
+				return err
+			}
+			keep := make(map[string]bool, len(found.replaced))
+			for _, target := range found.replaced {
+				keep[target] = true
+			}
 
 			backups := make(map[string]configBackup, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
@@ -592,6 +610,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 						backup.mode = info.Mode().Perm()
 					}
 					backups[target] = backup
+					if keep[target] {
+						if err := d.keepReplaced(st, target, backup); err != nil {
+							return err
+						}
+					}
 				case errors.Is(err, fs.ErrNotExist):
 					// Created by this render, so putting it back
 					// means removing it.
@@ -616,6 +639,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			// The file is put back below, and a copy left beside it
+			// would name a second, stale one as the operator's.
+			if err := os.RemoveAll(d.replacedDir(st.OpID)); err != nil {
+				return err
+			}
 			backups, ok := st.Get(keyBackups)
 			if !ok {
 				return nil
@@ -1392,4 +1420,43 @@ func (d *Deps) findResumable(ctx context.Context, opType domain.OperationType) (
 	}
 	return nil, domain.Usage("no interrupted %s operation to resume", opType).
 		WithHint("run the command without --resume")
+}
+
+// replacedFlag prefixes the journal flag that records a kept copy, keyed by
+// the target, so a summary can name it after the step has run.
+const replacedFlag = "replaced:"
+
+func (d *Deps) replacedDir(opID string) string {
+	return filepath.Join(d.Paths.VarDir, "replaced", opID)
+}
+
+// keepReplaced copies a file no installed release rendered before the render
+// replaces it (RFC 0048 decisions 3 and 5). Under the data directory and not
+// beside the file, which a `conf.d/*` include would load. Owner-only, as the
+// file may hold a credential; its own mode is in the journal.
+func (d *Deps) keepReplaced(st *engine.State, target string, backup configBackup) error {
+	kept := filepath.Join(d.replacedDir(st.OpID), target)
+	if err := os.MkdirAll(filepath.Dir(kept), 0o700); err != nil {
+		return domain.InstallationError(err, "cannot keep a copy of %s", target)
+	}
+	if err := atomicfs.WriteFile(kept, backup.content, 0o600); err != nil {
+		return err
+	}
+	st.SetFlag(replacedFlag+target, fmt.Sprintf("%s mode %04o", kept, backup.mode))
+	return nil
+}
+
+// replacedNote names the copies an operation kept, for its summary.
+func replacedNote(flags map[string]string) string {
+	var notes []string
+	for _, key := range slices.Sorted(maps.Keys(flags)) {
+		if target, ok := strings.CutPrefix(key, replacedFlag); ok {
+			kept, _, _ := strings.Cut(flags[key], " mode ")
+			notes = append(notes, fmt.Sprintf("the file that was at %s is kept at %s", target, kept))
+		}
+	}
+	if len(notes) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(notes, "; ")
 }
