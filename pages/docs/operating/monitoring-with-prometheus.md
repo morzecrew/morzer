@@ -97,10 +97,10 @@ groups:
       - alert: MorzerMetricsStale
         expr: time() - node_textfile_mtime_seconds{file=~"(.*/)?morzer-status-.*\\.prom"} > 600
         for: 5m
-      # One per installation: a file never written, or removed, has no
-      # mtime to go stale.
+      # One per machine and installation: a file never written, or removed,
+      # has no mtime to go stale, and absent() answers for its selector only.
       - alert: MorzerMetricsMissing
-        expr: absent(node_textfile_mtime_seconds{file=~"(.*/)?morzer-status-demo\\.prom"})
+        expr: absent(node_textfile_mtime_seconds{instance="host-1:9100",file=~"(.*/)?morzer-status-demo\\.prom"})
         for: 10m
       - alert: MorzerStateUnreadable
         expr: morzer_up == 0
@@ -109,7 +109,7 @@ groups:
         expr: morzer_runtime_up == 0
         for: 5m
       - alert: MorzerServiceNotRunning
-        expr: morzer_service_running < morzer_service_containers and on(product) morzer_stopped == 0
+        expr: morzer_service_running < morzer_service_containers and on(job, instance, product) morzer_stopped == 0
         for: 5m
       - alert: MorzerHealthCheckFailing
         expr: morzer_health_check_ok == 0
@@ -117,7 +117,7 @@ groups:
       - alert: MorzerBackupOld
         expr: >
           time() - morzer_last_backup_timestamp_seconds > 36 * 3600
-          or (morzer_up == 1 unless on(product) morzer_last_backup_timestamp_seconds)
+          or (morzer_up == 1 unless on(job, instance, product) morzer_last_backup_timestamp_seconds)
         for: 1h
       - alert: MorzerNeedsAttention
         expr: morzer_operations_needing_attention > 0
@@ -130,8 +130,11 @@ timer stops, or a run cannot write the file, the last file stays and the node
 exporter's `node_textfile_mtime_seconds` stops advancing. Its `file` label is
 the file's name in older node exporter releases and its full path in newer
 ones, which is why the rule matches either. A file that was never written, or
-was removed, has no such series at all, which is what the second rule, one per
-installation, is for. The backup rule's second half fires for an installation
+was removed, has no such series at all, which is what the second rule is for.
+`absent()` answers only for its own selector, so write one per machine and
+installation, naming the machine's `instance`. The joins match on `job`,
+`instance` and `product`, because one product can run on several machines and
+each machine's series must be compared with its own. The backup rule's second half fires for an installation
 that has never taken a backup, since it has no backup timestamp to age. `morzer doctor` warns too, as
 `metrics.textfile`, when the directory is missing or not writable, or when the
 status file is more than ten minutes old.
