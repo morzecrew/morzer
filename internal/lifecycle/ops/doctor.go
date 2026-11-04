@@ -989,11 +989,12 @@ func (d *Deps) checkReleaseRecordUnreadable(cause error) preflight.Check {
 		Description: "the current release record is readable",
 		Fatal:       true,
 		Run: func(context.Context) events.CheckResult {
+			// Not `morzer update`: it reads the same record first and
+			// stops on the same error.
 			return preflight.Fail(
-				fmt.Sprintf("restore %s from a backup of the manager's state, or reinstall the release "+
-					"with `morzer update <bundle>`; `morzer history` names the last one installed",
-					d.Paths.CurrentReleaseFile()),
-				"cannot read the current release record: %s", domain.AsError(cause).Message)
+				fmt.Sprintf("restore %s from a backup of the manager's state; "+
+					"`morzer history` names the release it recorded", d.Paths.CurrentReleaseFile()),
+				"cannot read the current release record: %s", cause)
 		},
 	}
 }

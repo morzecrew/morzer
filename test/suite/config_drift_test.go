@@ -279,7 +279,14 @@ func TestDoctorSaysAnUnreadableReleaseRecordIsUnreadable(t *testing.T) {
 	release := findCheck(t, report, "runtime.release")
 	assert.Equal(t, "fail", release.Status)
 	assert.Contains(t, release.Message, "cannot read")
+	assert.Contains(t, release.Message, "invalid character", "the decode error itself was dropped")
 	assert.NotContains(t, release.Message, "no release is installed")
 	drift := findCheck(t, report, "config.drift")
 	assert.NotContains(t, drift.Message, "no release is installed")
+
+	// The remedy names only what can repair the record: update reads the
+	// same record first and stops on the same error.
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: testBundlePath(t)})
+	require.Error(t, err)
+	assert.NotContains(t, release.Remedy, "morzer update", "the remedy names a command that fails on the same record")
 }
