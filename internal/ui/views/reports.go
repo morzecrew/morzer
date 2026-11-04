@@ -85,6 +85,12 @@ func init() {
 		Rich:  func(w io.Writer, t *theme.Theme, u ops.ManagerUpdate) { emit(w, managerUpdateDoc(doc(w, t), u)) },
 		Plain: func(w io.Writer, u ops.ManagerUpdate) { emit(w, managerUpdateDoc(plainDoc(w), u)) },
 	})
+	// The exposition verbatim: it is the format a scraper reads, and a
+	// written file says nothing on stdout.
+	ui.Register(ui.View[ops.MetricsReport]{
+		Rich:  func(w io.Writer, _ *theme.Theme, r ops.MetricsReport) { _, _ = io.WriteString(w, r.Text) },
+		Plain: func(w io.Writer, r ops.MetricsReport) { _, _ = io.WriteString(w, r.Text) },
+	})
 	ui.Register(ui.View[ops.SettingsReport]{
 		Rich:  func(w io.Writer, t *theme.Theme, r ops.SettingsReport) { emit(w, settingsDoc(doc(w, t), r)) },
 		Plain: func(w io.Writer, r ops.SettingsReport) { emit(w, settingsDoc(plainDoc(w), r)) },

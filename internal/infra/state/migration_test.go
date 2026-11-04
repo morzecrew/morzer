@@ -247,7 +247,16 @@ func TestASchemaThirteenInstallationIsNotStopped(t *testing.T) {
 func TestASchemaFourteenInstallationKeepsTheDoctorTimer(t *testing.T) {
 	got, err := migrateInstallation(domain.Installation{SchemaVersion: 14})
 	require.NoError(t, err)
-	assert.Equal(t, 15, got.SchemaVersion)
+	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
 	assert.Empty(t, got.Policy.DoctorSchedule)
 	assert.False(t, got.Policy.SkipScheduledDoctor)
+}
+
+// 15 -> 16 added `policy.metrics_textfile` (RFC 0047). A machine written before
+// it exports nothing.
+func TestASchemaFifteenInstallationExportsNothing(t *testing.T) {
+	got, err := migrateInstallation(domain.Installation{SchemaVersion: 15})
+	require.NoError(t, err)
+	assert.Equal(t, 16, got.SchemaVersion)
+	assert.Empty(t, got.Policy.MetricsTextfile)
 }

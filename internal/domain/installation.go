@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -109,7 +110,10 @@ import (
 // Bumped to 14 for `stopped` (RFC 0040 decision 6). An older manager would drop
 // the record on its next write, and the boot-time `apply` would then start a
 // product an operator had taken down on purpose.
-const InstallationSchemaVersion = 15
+// Bumped to 16 for `policy.metrics_textfile` (RFC 0047 decision 17). An older
+// manager's `config set` would drop it, and the next reconciliation would
+// remove the metrics timer an operator's alerts depend on.
+const InstallationSchemaVersion = 16
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -807,6 +811,35 @@ type Policy struct {
 	// Negative for the reason SkipScheduledBackups is: a field missing from
 	// a hand-edited state file must mean the timer runs.
 	SkipScheduledDoctor bool `yaml:"skip_scheduled_doctor" json:"skip_scheduled_doctor,omitempty"`
+
+	// MetricsTextfile is the node exporter's textfile directory, which the
+	// metrics timer and the scheduled `doctor` write into (RFC 0047). Empty
+	// means no export. It is written into a unit's ExecStart= line, so
+	// ValidateMetricsTextfile bounds what it may hold.
+	MetricsTextfile string `yaml:"metrics_textfile" json:"metrics_textfile,omitempty"`
+}
+
+// ValidateMetricsTextfile refuses a directory that could not be written into a
+// unit as one argument: it must be absolute and clean, and hold no whitespace,
+// quote or backslash, no `%`, which systemd reads as a specifier, and no `$`,
+// which it expands as a variable. Whether it
+// exists is the setting's question, at the moment it is set.
+func ValidateMetricsTextfile(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	if !filepath.IsAbs(raw) || filepath.Clean(raw) != raw {
+		return ValidationError(nil, "the metrics directory %q is not an absolute, clean path", raw).
+			WithHint("name the node exporter's textfile directory, such as /var/lib/prometheus/node-exporter")
+	}
+	if strings.ContainsFunc(raw, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r) || strings.ContainsRune("\"'\\%$", r)
+	}) {
+		return ValidationError(nil, "the metrics directory %q holds a character a systemd unit cannot carry", raw).
+			WithHint("it is written into the metrics unit's command line; choose a path without " +
+				"whitespace, quotes, backslashes, %% or $")
+	}
+	return nil
 }
 
 // ValidateBackupSchedule refuses a schedule that could not safely be rendered.
@@ -1090,6 +1123,9 @@ func (i Installation) Validate() error {
 	}
 	if err := ValidateDoctorSchedule(i.Policy.DoctorSchedule); err != nil {
 		v.add("policy.doctor_schedule", "%s", AsError(err).Message)
+	}
+	if err := ValidateMetricsTextfile(i.Policy.MetricsTextfile); err != nil {
+		v.add("policy.metrics_textfile", "%s", AsError(err).Message)
 	}
 
 	// An unknown mode is refused rather than read as production. A typo --

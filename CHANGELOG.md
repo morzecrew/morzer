@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installation's lock. `--to` pins a release, `--from` reads one offline, and
   an older one is refused.
 
+- **Prometheus can alert on an installation.** With `metrics.textfile` naming
+  the node exporter's textfile directory, a timer writes the status there each
+  minute and the scheduled `doctor` writes its checks. `morzer metrics` prints
+  the same. Installation state moves to schema 16.
+
 ### Fixed
 
 - **A task no longer leaves its finished dependencies behind.** A task whose

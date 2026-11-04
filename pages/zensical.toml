@@ -50,6 +50,7 @@ nav = [
         "operating/changing-configuration.md",
         "operating/installing-offline.md",
         "operating/notifications.md",
+        "operating/monitoring-with-prometheus.md",
         "operating/looking-inside.md",
         "operating/asking-for-help.md",
         "operating/several-installations.md",

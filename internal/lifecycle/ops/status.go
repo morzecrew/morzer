@@ -286,10 +286,37 @@ func (d *Deps) neverApplied(ctx context.Context) bool {
 }
 
 func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.Installation, rel domain.Release) {
+	read := d.readRuntime(ctx, inst, rel)
+	if read.err != nil {
+		out.Problems = append(out.Problems, domain.AsError(read.err).Message)
+		return
+	}
+	out.Services = read.services
+	out.Health = read.health
+	if read.healthErr != nil {
+		out.Problems = append(out.Problems, domain.AsError(read.healthErr).Message)
+	}
+}
+
+// runtimeRead is what the runtime said about a release, kept apart from
+// "could not ask": `status` lists both as problems, and the metrics export
+// tells them apart (RFC 0047 decision 9).
+type runtimeRead struct {
+	cfg      ports.RuntimeConfig
+	services []ports.ServiceState
+	health   []ports.HealthResult
+
+	// err is the runtime's configuration that could not be built, or a
+	// runtime that did not answer. healthErr is probes that could not be
+	// specified; probes that ran and failed are results.
+	err       error
+	healthErr error
+}
+
+func (d *Deps) readRuntime(ctx context.Context, inst domain.Installation, rel domain.Release) runtimeRead {
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
-		out.Problems = append(out.Problems, domain.AsError(err).Message)
-		return
+		return runtimeRead{err: err}
 	}
 
 	services, err := d.Runtime.Status(ctx, cfg)
@@ -297,16 +324,15 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 		// The adapter's message already names what failed; prefixing it
 		// again produced "cannot read service status: cannot read
 		// service status".
-		out.Problems = append(out.Problems, domain.AsError(err).Message)
-		return
+		return runtimeRead{cfg: cfg, err: err}
 	}
-	out.Services = services
+	out := runtimeRead{cfg: cfg, services: services}
 
 	// Health probes are only meaningful once something is running.
 	// Probing a stopped deployment would report a wall of connection
 	// refusals that say nothing the service list has not already said.
 	if len(rel.Manifest.Health.Checks) == 0 || !anyRunning(services) || inst.Stopped != nil {
-		return
+		return out
 	}
 
 	// A short bound: status reports the current state, it does not wait
@@ -316,12 +342,13 @@ func (d *Deps) fillRuntimeStatus(ctx context.Context, out *Status, inst domain.I
 
 	specs, err := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
 	if err != nil {
-		out.Problems = append(out.Problems, domain.AsError(err).Message)
-		return
+		out.healthErr = err
+		return out
 	}
 	if results, err := d.Health.CheckOnce(probeCtx, specs); err == nil {
-		out.Health = results
+		out.health = results
 	}
+	return out
 }
 
 func anyRunning(services []ports.ServiceState) bool {

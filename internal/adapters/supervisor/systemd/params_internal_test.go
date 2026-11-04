@@ -198,3 +198,31 @@ func TestUnitsManagerPathsReadsEveryInstalledUnit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/opt/morzer/bin/morzer", "/usr/local/bin/morzer"}, paths)
 }
+
+// The metrics pair exists only with a directory, and its service carries the
+// directory in its command, so a run whose state does not load still knows where
+// to write (RFC 0047 decision 15). A directory a command line cannot carry as
+// one argument is refused before it reaches a unit.
+func TestTheMetricsUnitCarriesItsDirectory(t *testing.T) {
+	base := UnitParams{Product: "demo", ManagerPath: "/usr/local/bin/morzer"}
+	units, err := BuildUnits(base)
+	require.NoError(t, err)
+	for _, u := range units {
+		assert.NotContains(t, u.Name, "metrics", "a pair was written with no directory")
+	}
+
+	base.MetricsDir = "/var/lib/prometheus/node-exporter"
+	units, err = BuildUnits(base)
+	require.NoError(t, err)
+	var service string
+	for _, u := range units {
+		if u.Name == MetricsServiceUnitName("demo") {
+			service = string(u.Contents)
+		}
+	}
+	assert.Contains(t, service, "ExecStart=/usr/local/bin/morzer metrics --textfile /var/lib/prometheus/node-exporter --plain")
+
+	base.MetricsDir = "/var/lib/node exporter"
+	_, err = BuildUnits(base)
+	assert.Error(t, err, "a directory with a space was written into ExecStart")
+}

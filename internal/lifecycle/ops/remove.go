@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -248,12 +249,17 @@ func removeSummary(product string, opts RemoveOptions) string {
 func removeSteps(
 	d *Deps, inst domain.Installation, deployed bool, rel domain.Release, relErr error, purge bool,
 ) []engine.Step {
-	steps := []engine.Step{
-		stepRemoveUnits(d),
+	steps := []engine.Step{stepRemoveUnits(d)}
+	if inst.Policy.MetricsTextfile != "" {
+		// After the units, so no timer writes one back (RFC 0047
+		// decision 16).
+		steps = append(steps, stepRemoveMetricsFiles(inst))
+	}
+	steps = append(steps,
 		stepTakeDownProject(d, inst, deployed, rel, relErr, purge),
 		stepRemoveReleases(d),
 		stepRemoveTree("remove-rendered-secrets", "remove rendered secrets", d.Paths.RunDir),
-	}
+	)
 	if purge {
 		steps = append(steps, stepRemoveEntries("remove-data",
 			"remove data, backups and attestations", d.Paths.VarDir,
@@ -270,6 +276,47 @@ func removeSteps(
 			d.Paths.ManagerDir(), d.managerKept(purge), "",
 			filepath.Base(d.Paths.InstallationState())),
 	)
+}
+
+// stepRemoveMetricsFiles removes the files the installation wrote into the
+// node exporter's directory, which is not the installation's and stays.
+func stepRemoveMetricsFiles(inst domain.Installation) engine.Step {
+	dir := inst.Policy.MetricsTextfile
+	paths := []string{
+		filepath.Join(dir, MetricsFileName(metricsRoleStatus, inst.Product)),
+		filepath.Join(dir, MetricsFileName(metricsRoleDoctor, inst.Product)),
+	}
+	return engine.Step{
+		ID:          "remove-metrics-files",
+		Description: "remove the metrics files",
+		Idempotent:  true,
+		OnFailure:   engine.Abort,
+		Timeout:     time.Minute,
+		Check: func(ctx context.Context, st *engine.State) (bool, error) {
+			for _, p := range paths {
+				switch _, err := os.Lstat(p); {
+				case err == nil:
+					return false, nil
+				case !errors.Is(err, fs.ErrNotExist):
+					// A directory that cannot be searched is not
+					// proof the file is gone.
+					return false, domain.Internal(err, "cannot inspect %s", p)
+				}
+			}
+			return true, nil
+		},
+		Execute: func(ctx context.Context, st *engine.State) error {
+			for _, p := range paths {
+				if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+					return domain.Internal(err, "cannot remove %s", p)
+				}
+			}
+			return nil
+		},
+		PlanDetail: func(ctx context.Context, st *engine.State) (string, string) {
+			return strings.Join(paths, ", "), ""
+		},
+	}
 }
 
 // stepRemoveUnits removes every unit the supervisor manages for the product.

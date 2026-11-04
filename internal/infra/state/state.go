@@ -378,6 +378,13 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// the write path, so an older manager refuses this state
 			// rather than rewriting it without them.
 			i.SchemaVersion = 15
+		case 15:
+			// 15 -> 16 added `policy.metrics_textfile` (RFC 0047).
+			// Nothing to convert: absent means no export. The bump is
+			// for the write path, so an older manager refuses this
+			// state rather than dropping the directory and, with it,
+			// the metrics timer.
+			i.SchemaVersion = 16
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

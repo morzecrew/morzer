@@ -259,6 +259,40 @@ func newPsCommand(app *App) *cobra.Command {
 // rather than the deployment.
 const statsWatchFloor = time.Second
 
+func newMetricsCommand(app *App) *cobra.Command {
+	var textfile string
+	cmd := &cobra.Command{
+		Use:   "metrics",
+		Short: "Print this installation's state as Prometheus metrics",
+		Long: "What `status` knows, in the Prometheus text format: the release, the\n" +
+			"services and their health, the stop, the operations that need a human,\n" +
+			"the last outcome of each kind of operation, the last backup and a staged\n" +
+			"update. It reads, and changes nothing.\n\n" +
+			"--textfile is the metrics timer's: it names the directory `metrics.textfile`\n" +
+			"named when the unit was written, and the run writes\n" +
+			"`morzer-status-<product>.prom` there atomically, every minute. Into a\n" +
+			"directory that is no longer the setting's it removes that file instead.\n" +
+			"A state that will not load is reported as `morzer_up 0`, not as an error.",
+		Example: "  morzer metrics\n" +
+			"  morzer metrics --textfile /var/lib/prometheus/node-exporter",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// As `status` does, and tolerated as it is: without it the
+			// last backup's timestamp is never exported, and an
+			// installation that cannot list its backups still has the
+			// rest of its metrics to report.
+			_ = app.attachBackupEngine(cmd.Context())
+			report, err := ops.Metrics(cmd.Context(), app.Deps, ops.MetricsOptions{Textfile: textfile})
+			if err != nil {
+				return err
+			}
+			return app.render(report)
+		},
+	}
+	cmd.Flags().StringVar(&textfile, "textfile", "", "write the metrics into this directory, which must be metrics.textfile's, instead of printing them")
+	return cmd
+}
+
 func newStatsCommand(app *App) *cobra.Command {
 	var (
 		watch    bool

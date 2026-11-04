@@ -89,6 +89,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`logs`](#logs) | Read the deployment's logs. |
 | [`ps`](#ps) | List the deployment's containers. |
 | [`stats`](#stats) | Show CPU, memory and I/O per container. |
+| [`metrics`](#metrics) | Print this installation's state as Prometheus metrics. |
 | [`exec`](#exec) | Run a command inside a running service. |
 | [`task`](#task) | List and run the commands the release declares. |
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
@@ -469,6 +470,34 @@ A runtime that cannot report statistics refuses by name with
 [exit 7](exit-codes.md) rather than returning an empty table, which would be
 indistinguishable from an idle deployment.
 
+## metrics
+
+```sh
+morzer metrics
+morzer metrics --textfile /var/lib/prometheus/node-exporter
+```
+
+Prints what `status` knows in the Prometheus text format: the release, the
+services and their health, the stop, the operations that need a human, the last
+outcome of each kind of operation, the last backup and a staged update. It reads
+and changes nothing. Every series carries a `product` label, and no label
+carries free text.
+
+`--textfile <dir>` is what the metrics timer runs every minute once
+[`metrics.textfile`](parameters.md#changing-one-after-install) is set: it writes
+`morzer-status-<product>.prom` into that directory, atomically and with mode
+0644. The directory travels in the unit so that a state that will not load can
+still be reported. A run whose directory is no longer the setting's, from a unit
+or a run older than a change, removes its file there instead. To write
+somewhere else, print and redirect. A state that will not load is reported as `morzer_up 0` and exits 0,
+since that is the answer; a directory it cannot write is an error. See
+[monitoring with Prometheus](../operating/monitoring-with-prometheus.md) for
+the metrics and example alerts.
+
+| Flag | Meaning |
+| --- | --- |
+| `--textfile` | Write into this directory, which must be `metrics.textfile`'s, instead of printing. |
+
 ## exec
 
 ```sh
@@ -735,7 +764,8 @@ shows them, naming a URL kept in a secret by its secret.
 `morzer notify target remove <url|name>` stops reporting to one, and deletes
 what the outbox held for it. The first target added installs the
 [doctor timer](../operating/notifications.md#the-scheduled-doctor) unless
-`doctor.scheduled` is off, and removing the last removes it.
+`doctor.scheduled` is off, and removing the last removes it, unless a
+[metrics export](../operating/monitoring-with-prometheus.md) keeps it.
 
 | Flag | Meaning |
 | --- | --- |

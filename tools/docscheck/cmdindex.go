@@ -70,6 +70,7 @@ var referencePage = map[string]string{
 	"restore":      "reference/commands.md",
 	"notify":       "reference/commands.md",
 	"version":      "reference/commands.md",
+	"metrics":      "reference/commands.md",
 	"self-update":  "reference/commands.md",
 	"config":       "reference/parameters.md#changing-one-after-install",
 	"secret":       "reference/secret-commands.md",

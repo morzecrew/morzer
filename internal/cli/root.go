@@ -640,6 +640,7 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newLogsCommand(app))),
 		grouped(groupOperate, installationScope(newPsCommand(app))),
 		grouped(groupOperate, installationScope(newStatsCommand(app))),
+		grouped(groupOperate, installationScope(newMetricsCommand(app))),
 		grouped(groupOperate, installationScope(newExecCommand(app))),
 		// Beside exec, which runs an operator's command: this runs one the
 		// release declares, and an operator reaching for one should find
