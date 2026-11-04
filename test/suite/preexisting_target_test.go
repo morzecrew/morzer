@@ -210,3 +210,47 @@ func TestAFailedUpdateThatCannotRestoreKeepsTheCopy(t *testing.T) {
 	copied := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID, target)
 	assert.Equal(t, "the operator's own block\n", readFile(t, copied), "the undo removed the only copy")
 }
+
+// A file can appear after the tick checked and before the render: the
+// unattended update refuses it rather than replace it with nobody watching.
+func TestAnUnattendedUpdateRefusesAFileThatAppearedAfterTheCheck(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	src := stageUpgradeSource(t, h)
+	target := addTarget(t, src)
+	writeOperatorFile(t, target, "written while the backup ran\n")
+
+	_, err := ops.Update(context.Background(), h.Deps,
+		ops.UpdateOptions{Ref: src, Options: ops.Options{Unattended: true}})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Error(), "an unattended update does not replace it")
+	assert.Equal(t, "written while the backup ran\n", readFile(t, target))
+}
+
+// The tick passes that it is unattended, so a file that appears once its gate
+// has passed is refused by the render rather than replaced.
+func TestATickRefusesAFileThatAppearsAfterItsGate(t *testing.T) {
+	var target string
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		recoverableUpdate(t, dir)
+		target = addTarget(t, dir)
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	h.Runtime.OnCall = func(method string) {
+		if method == "Status" && target != "" {
+			if _, err := os.Stat(target); err != nil {
+				writeOperatorFile(t, target, "written while the update ran\n")
+			}
+		}
+	}
+
+	res, err := ops.RunUnattended(context.Background(), h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err, "the file appeared before the gate, so the test proves nothing")
+	assert.Contains(t, domain.AsError(err).Error(), "an unattended update does not replace it")
+	assert.False(t, res.Applied, "the tick replaced a file that appeared after its gate")
+	assert.Equal(t, "written while the update ran\n", readFile(t, target))
+}

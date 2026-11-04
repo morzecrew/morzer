@@ -95,3 +95,19 @@ evidence: internal/lifecycle/ops/apply.go:614-621
 action: departed
 proposal: ASSUMED — as decision 2 for the plan and the tick. The render step decides per file inside its write loop, from the installed release's targets and the bytes it is about to replace, so the copy is taken of what is actually there.
 ```
+
+The tick's gate runs before the update, and the backup and staging run
+between the two. A file written in that window met the attended render, which
+kept a copy and replaced it with nobody watching.
+
+```divergence
+decision: 4
+grade: ASSUMED
+class: discovery
+at: 2026-11-04T23:04:00Z
+attempt: 2
+claim: a gate before the update cannot see a file that appears while the update runs, and the render then treats the run as attended
+evidence: internal/lifecycle/ops/apply.go:618-624
+action: departed
+proposal: ASSUMED — as decision 4, and the tick marks its update unattended. Its render refuses such a file as a failed preflight, before replacing it, rather than keep a copy. The update fails and is compensated, and the candidate is not retried until `morzer update --to` or the channel moves, as any failed candidate.
+```

@@ -615,6 +615,13 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 					// an earlier scan, which a file written since would
 					// have missed.
 					if !owned.owns(target) && !bytes.Equal(existing, rendered[target]) {
+						if opts.Unattended {
+							return domain.Preflight(nil,
+								"%s appeared after the update was checked, and the installed release "+
+									"does not render it; an unattended update does not replace it", target).
+								WithHint("`morzer update --to %s` installs it and keeps a copy of the file; "+
+									"`--dry-run` shows it first", rel.Version())
+						}
 						if err := d.keepReplaced(st, target, backup); err != nil {
 							return err
 						}

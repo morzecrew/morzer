@@ -227,6 +227,12 @@ type Options struct {
 	// it installs adds, as `init --generate-secrets=false` does at init.
 	// Journaled. Nothing else generates (RFC 0036).
 	NoGenerateSecrets bool
+
+	// Unattended is an update the timer started with nobody watching. Its
+	// render refuses a file at a new target rather than keep a copy and
+	// replace it (RFC 0048 decision 4): the tick checked before the update,
+	// and a file can appear while the backup runs.
+	Unattended bool
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and

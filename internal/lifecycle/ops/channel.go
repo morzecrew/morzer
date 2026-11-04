@@ -576,7 +576,9 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		return out, nil
 	}
 
-	result, err := Update(ctx, d, UpdateOptions{Options: opts.Options, To: candidate.Version.String()})
+	unattended := opts.Options
+	unattended.Unattended = true
+	result, err := Update(ctx, d, UpdateOptions{Options: unattended, To: candidate.Version.String()})
 	out.Update = &result
 	out.Applied = err == nil
 	if err != nil && result.Record.ID != "" {

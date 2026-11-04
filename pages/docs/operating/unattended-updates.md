@@ -79,6 +79,10 @@ replace it, so the release is staged and not installed; `morzer update
 --dry-run` shows it
 ```
 
+A file that appears there while the update is already running stops the update
+before it is replaced. The update fails, puts back what it changed, and is not
+retried until `morzer update --to <version>` installs it or the channel moves.
+
 Moving the file away lets the next tick install. An attended
 [update](updating.md#a-file-where-the-new-release-puts-a-new-one) keeps a copy
 and installs.
