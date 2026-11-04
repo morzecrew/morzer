@@ -693,15 +693,20 @@ func TestDefinitionDriftFailsOnAComposeWithoutHashes(t *testing.T) {
 }
 
 // `run --rm` removes the one-shot's own container and no other, so the
-// dependencies it started that finished are removed after it: those of a
-// service the configuration does not start, and only those that exited 0. A
-// failed one stays for its logs, and so does a finished service `up` starts.
+// dependencies it started that finished are removed after it: those in its
+// `depends_on` closure that the configuration does not start, and only those
+// that exited 0. A failed one stays for its logs, a finished service `up` starts
+// stays as `up` leaves it, and a job outside the closure is not the run's: an
+// old release's service during an update is one.
 func TestARunRemovesTheOnDemandJobsItLeftCompleted(t *testing.T) {
 	r, runner := newRuntime()
+	runner.OnOutput("json reset", `{"services":{"reset":{},"postgres":{},"init-bucket":{},`+
+		`"reset-wipe":{},"reset-migrate":{},"reset-seed":{},"reset-tool":{}}}`)
 	runner.OnOutput(" config ", `{"services":{"postgres":{},"init-bucket":{}}}`)
 	runner.OnOutput(" ps ", strings.Join([]string{
 		`{"Name":"demo-postgres-1","Service":"postgres","State":"running","ExitCode":0}`,
 		`{"Name":"demo-init-bucket-1","Service":"init-bucket","State":"exited","ExitCode":0}`,
+		`{"Name":"demo-old-job-1","Service":"old-job","State":"exited","ExitCode":0}`,
 		`{"Name":"demo-reset-wipe-1","Service":"reset-wipe","State":"exited","ExitCode":0}`,
 		`{"Name":"demo-reset-migrate-1","Service":"reset-migrate","State":"Exited","ExitCode":0}`,
 		`{"Name":"demo-reset-seed-1","Service":"reset-seed","State":"exited","ExitCode":1}`,

@@ -119,12 +119,11 @@ func statusServices(d *ui.Doc, s ops.Status) {
 	rows := make([][]string, 0, len(s.Services))
 	for _, svc := range s.Services {
 		// The symbol carries the verdict; the state string is Compose's
-		// own word for it and is shown unchanged, because "exited (137)"
-		// is the thing worth reading.
+		// own word for it, with the exit code beside "exited", because
+		// "exited (137)" is the thing worth reading and the word alone
+		// cannot tell a finished job from a killed service.
 		state := svc.State
 		if state == "exited" {
-			// The runtime's state word says nothing about how; the code
-			// tells a finished job from a killed service.
 			state = fmt.Sprintf("exited (%d)", svc.ExitCode)
 		}
 		if svc.Health != ports.HealthNone && svc.Health != "" {

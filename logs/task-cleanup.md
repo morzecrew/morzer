@@ -33,3 +33,22 @@ evidence: internal/adapters/runtime/compose/compose.go:562-565
 action: decided
 proposal: ASSUMED — after a one-shot run with `Remove`, the containers of services the configuration does not start (behind an inactive profile) that exited with code 0 are removed by name. A dependency that failed stays, for `docker compose logs`, and so does any container of a service the configuration starts, which `up` would leave the same way. A removal that fails is logged and does not change the run's result.
 ```
+
+From #264's review. Every on-demand container that exited 0 was too wide a
+net. During an update a migration runs against the new release's
+configuration, so a service the old release had and the new one drops,
+stopped with exit 0, matched it and would be removed before a compensation
+could bring the old configuration back. A finished job this run never started
+matched it too.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-04T16:38:00Z
+attempt: 2
+claim: the services the configuration does not start include ones unrelated to the run, such as an old release's services during an update, and their containers are not the run's to remove
+evidence: internal/adapters/runtime/compose/compose.go:663-668
+action: decided
+proposal: ASSUMED — as attempt 1 proposed, narrowed to the run's own dependencies: the service's `depends_on` closure as `compose config <service>` resolves it, less the services the configuration starts. Containers of any other service are left alone.
+```
