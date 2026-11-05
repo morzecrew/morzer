@@ -2724,7 +2724,9 @@ command is refused rather than half-applied.</p>
 <p>A published port is fixed when a container is created. <code>docker compose restart</code>
 restarts the <em>existing</em> containers, so a restart after a port change would
 report success and leave the old mapping in place. <code>config set</code> re-creates the
-affected services instead.</p>
+affected services instead, forced: a service that reads the value only from a
+rendered file has an unchanged Compose definition, and a plain <code>up</code> would leave
+it running with the file's old contents.</p>
 <p>This is the opposite of <a href="../secret-commands/"><code>secret rotate</code></a>, which restarts:
 a secret reaches a container as a mounted file, and restarting re-reads it.</p>
 <p>A parameter that declares no dependent services is recorded and takes effect on
