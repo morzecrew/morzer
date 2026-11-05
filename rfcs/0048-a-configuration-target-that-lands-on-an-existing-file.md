@@ -1,8 +1,10 @@
 # RFC 0048 — A configuration target that lands on an existing file
 
-- **Status:** 📝 Draft — proposed 2026-11-04, from
+- **Status:** ✅ Complete — proposed 2026-11-04, from
   [#237](https://github.com/morzecrew/morzer/issues/237), and ruled by the
-  author 2026-11-04: §11's `OPEN` rows as recommended.
+  author 2026-11-04: §11's `OPEN` rows as recommended. **Built 2026-11-05** in
+  #273; the entries its build and review wrote in
+  [logs/preexisting-target.md](../logs/preexisting-target.md) are decisions 9–15.
 - **Scope:** What happens to a file that is already at a path the release
   about to be installed renders for the first time. That covers a release
   that adds a configuration target, and a first install onto a machine that
@@ -11,7 +13,9 @@
   shows, and where a copy is kept. Not covered: a target the installed release
   already renders, which is drift and RFC 0044's; files a newer release stops
   rendering; and `rollback` removing the targets the release it returns to
-  does not declare.
+  does not declare. *(2026-11-05: a rollback returning to a release that
+  renders a target the release it leaves does not is covered, and keeps a
+  copy as an update does; see decision 15.)*
 - **Related:** [0044](0044-configuration-drift-an-operator-can-see.md) (drift, `config diff` and
   the unattended hold, decisions 4 and 15);
   [0034](0034-removing-an-installation.md) (removal leaves targets outside the
@@ -118,12 +122,16 @@ The render step already refuses to replace it (`apply.go:600-604`).
 `apply`, `update`, `rollback` or `restore` has succeeded on the machine.
 `init --release` records a release before anything renders it, so until then
 no release is installed for this purpose, and the first `apply` treats every
-target as new. Paths are compared after `filepath.Clean`.
+target as new. Paths are compared after `filepath.Clean`. *(2026-11-04: read
+when the render runs, and a current release that cannot be loaded declares
+nothing; see decision 9. 2026-11-05: a rollback counts against the release it
+leaves; see decision 15.)*
 
 One function computes the list. Its inputs are the installation, the profile
 the render uses, the installed release (or none), and the release about to be
 installed. The plan, the render step and the tick each call it, so none of
-them can disagree about a file.
+them can disagree about a file. *(2026-11-04: the render step decides each
+file in its write loop instead, from the same inputs; see decision 12.)*
 
 ### 5.2 What `--dry-run` shows
 
@@ -147,7 +155,9 @@ counted file before replacing it, to
 journal detail records the target, the copy and the original mode. The
 command's summary says, for example: "replaced /etc/nginx/conf.d/demo.conf,
 which 1.2.0 did not render; the old file is at
-/var/lib/demo/replaced/op_…/etc/nginx/conf.d/demo.conf".
+/var/lib/demo/replaced/op_…/etc/nginx/conf.d/demo.conf". *(2026-11-05: a
+release that declares one file under two spellings is refused before anything
+is written; see decision 14.)*
 
 A copy next to the file was considered and rejected. A `conf.d/*` include
 would load `demo.conf.orig` as configuration, which changes a third-party
@@ -171,6 +181,9 @@ edited file.
 A file at such a path that cannot be read holds the tick too. The update would
 refuse at the render, and a candidate that failed is not retried until the
 channel moves, so letting the tick try it would cost the release.
+*(2026-11-04: a candidate the tick cannot render is not held by this gate, and
+a file that appears after the gate is refused at the render; see decisions 11
+and 13.)*
 
 ### 5.5 Alternatives considered
 
@@ -245,9 +258,16 @@ channel moves, so letting the tick try it would cost the release.
 | 6 | `ASSUMED` | **What `rollback` does with a copy.** Recommended: nothing; its summary names the copy when the release it returns to does not declare the target. Rollback cannot tell whether the operator has since changed the file, and the wider gap (§8) needs its own design. Alternative: rollback puts the copy back when the release it returns to does not declare the target. Was `OPEN`; ruled by the author 2026-11-04: as recommended. |
 | 7 | `ASSUMED` | The plan names each counted file on its own line, ahead of the scrubbed diff, saying which release does not render it. |
 | 8 | `ASSUMED` | `config diff` and `config.drift` are unchanged. They compare against the installed release, and between updates no other release exists to compare with. |
+| 9 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-05)* **Refines decision 1.** The installed release is read when the render step runs. A resume after the new release became current finds its files already rendered, so nothing counts. When the current release cannot be loaded, as an update with a fallback release can find, no target counts as declared, so every differing file is copied rather than none. Decision 15 refines this for `rollback`. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 1, attempt 1, 21:52). |
+| 10 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-05)* **Refines decision 6.** `rollback` finds the copies by walking `<VarDir>/replaced/`, where a copy's path is its target's, rather than in the journal of the update it undoes, which it does not know. It names every copy whose target the release it returns to does not render, an earlier update's copy of the same target included. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 6, attempt 1, 21:52). |
+| 11 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-05)* **Refines decision 4.** A candidate the tick cannot render is not held by this gate. Its update fails at the render step, before the first write, and says why, as any failed candidate does. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 4, attempt 1, 21:58). |
+| 12 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-05)* **Refines decision 2.** The plan and the tick call the list. The render step decides each file inside its write loop, from the installed release's targets and the bytes it is about to replace, so the copy is of what is there at the write, a file written after the plan included. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 2, attempt 2, 22:33). |
+| 13 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-05)* **Refines decision 4.** The tick marks its update unattended. Its render refuses a counted file that appeared after the gate as a failed preflight, before replacing it, rather than keep a copy. The update fails and is compensated, and the candidate is not retried until `morzer update --to` or the channel moves. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 4, attempt 2, 23:04). |
+| 14 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* The render refuses a release whose configuration targets clean to the same path, as a validation error naming both, before it writes anything. Written twice, the file's second backup and copy held the first render, and a failed update could put back the wrong bytes and then remove the copy. The manifest's own validation is unchanged, so an installed release that declares one still loads. See [logs/preexisting-target.md](../logs/preexisting-target.md) (unlisted, attempt 3, 08:02). |
+| 15 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decisions 3 and 9.** The installed release is the one the operation started from. `rollback` moves the pointer before it renders, so it passes the release it leaves to the render, which counts files against it; a resume, which `rollback` does not have, still reads the current release. A rollback keeps a copy of a counted file as an attended update does, and names it in its summary. Before this, its plan named the file and its render replaced it with no copy. See [logs/preexisting-target.md](../logs/preexisting-target.md) (decision 2, attempt 3, 08:24). |
 
 ## 12. Phasing
 
 One phase, one PR. The function from decision 2, the plan line, the copy or
 refusal from decision 3, and the tick's gate from decision 4, with tests and
-docs.
+docs. *(2026-11-05: built in #273.)*
