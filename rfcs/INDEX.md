@@ -128,7 +128,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0048**. Before creating an RFC, glance at the table
+The next free number is **0049**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -186,6 +186,7 @@ number in the filename in sync.
 | [0045](0045-preflight-checks-a-vendor-ships.md) | Preflight checks a vendor ships | ✅ Complete | Checks a bundle ships as executables, run with the manager's own preflight checks and in `doctor`, through the hook ABI's reserved `preflight` phase. |
 | [0046](0046-updating-the-manager-itself.md) | Updating the manager itself | ✅ Complete | Telling an operator that the manager binary is out of date, and whether `morzer self-update`, which RFC 0022 refused, should replace it in place. |
 | [0047](0047-exporting-status-and-doctor-to-prometheus.md) | Exporting status and doctor to Prometheus | ✅ Complete | Exporting what `status` and `doctor` know as Prometheus metrics, through the node exporter's textfile directory, so a monitored machine can alert on an installation. |
+| [0048](0048-a-configuration-target-that-lands-on-an-existing-file.md) | A configuration target that lands on an existing file | 📝 Draft | What `update` does with a file already at a path the new release renders for the first time: show it in the plan, keep a copy or refuse, and hold an unattended update. |
 
 ## Status legend
 
