@@ -558,6 +558,56 @@ if grep -qF "${db_password}" "${ROOT}/var/lib/demo/manager/operations.jsonl"; th
 	fail "a known secret value reached the journal in an argv"
 fi
 
+step "exec -i: stdin through a pipe, and a TTY at a terminal"
+# What only a real daemon and a real terminal can show. Piped, the command reads
+# the manager's stdin, and no TTY is asked for. Under `script`, which gives the
+# manager a terminal, `compose exec` allocates one and the command inside sees
+# it. Each session is journalled with `interactive` and nothing it read.
+piped=$(printf 'through the pipe\n' | "${MORZER}" --root "${ROOT}" exec -i app -- cat)
+[ "${piped}" = "through the pipe" ] || fail "exec -i did not hand the command its stdin: got '${piped}'"
+grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" | tail -1 |
+	jq -e '.flags.interactive == "true" and .flags.argv == "cat"' >/dev/null ||
+	fail "the interactive session was not journalled as one"
+if grep -qF "through the pipe" "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
+	fail "what the session read reached the journal"
+fi
+# `|| true`: without a TTY the inner test fails and exits 1, and the case
+# below is what says so.
+at_terminal=$(script -q -e -c "'${MORZER}' --root '${ROOT}' exec -i app -- sh -c 'test -t 0 && test -t 1 && echo has-a-tty'" /dev/null </dev/null) || true
+case "${at_terminal}" in
+*has-a-tty*) info "a session at a terminal got a TTY" ;;
+*) fail "a session at a terminal did not get a TTY: ${at_terminal}" ;;
+esac
+
+step "exec -i: Ctrl-C and SIGTERM end the session, and it is journalled"
+# A session in a process group of its own, as a terminal's foreground job is.
+# SIGINT to the whole group is what Ctrl-C sends without a TTY: `compose` ends,
+# and the manager, which catches it rather than dying of it, writes the record.
+# SIGTERM to the manager alone, which no terminal sends, reaches `compose`
+# through the manager, and the record is written all the same.
+signal_session() {
+	local target=$1 argv=$2
+	local before session status=0
+	before=$(grep -c '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl")
+	setsid "${MORZER}" --root "${ROOT}" exec -i app -- sleep "${argv}" </dev/null >/dev/null 2>&1 &
+	session=$!
+	sleep 2
+	case "${target}" in
+	group) kill -INT -- "-${session}" ;;
+	manager) kill -TERM "${session}" ;;
+	esac
+	wait "${session}" || status=$?
+	[ "${status}" -ne 0 ] || fail "a session ended by a signal exited 0"
+	[ "$(grep -c '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl")" -gt "${before}" ] ||
+		fail "the session the ${target} signal ended was not journalled"
+	grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" | tail -1 |
+		jq -e --arg argv "sleep ${argv}" '.flags.interactive == "true" and .flags.argv == $argv' >/dev/null ||
+		fail "the last record is not the session the ${target} signal ended"
+	info "a ${target} signal ended the session with status ${status}, journalled"
+}
+signal_session group 31
+signal_session manager 32
+
 step "restart re-creates one service and journals it"
 # A forced re-create against real Compose, which no fake can show: a new
 # container for the service named, the other one left alone because it still
