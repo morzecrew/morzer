@@ -123,3 +123,22 @@ evidence: internal/adapters/runtime/compose/interactive.go:41-42
 action: departed
 proposal: ASSUMED — refines decision 7. A SIGTERM to the manager ends a session only when `compose`'s stdout is not a terminal. At a terminal, `docker` is killed after 10 seconds, the session is journalled with the kill's 137, and the plugin is left running; a hangup or a shutdown signals the plugin itself, so only a signal sent to the manager by PID meets this. Accepted as Docker's own behaviour rather than worked around.
 ```
+
+Attempt 3's entry was wrong about the plugin and too sure of the kill. Run
+again on Docker 29.7.2 with Compose 5.5.1 at a pty, the plugin outlived the
+`SIGTERM` but ended within 3 seconds of `docker`'s `SIGKILL`, whose death
+closes the plugin socket; the exec'd command was still running in the
+container. And a command that finishes inside the grace lets `docker` exit
+on its own, with no kill.
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-05T23:18:00Z
+attempt: 4
+claim: at a terminal the Compose plugin does not outlive `docker`'s kill, and the kill happens only when the command is still running after the grace
+evidence: internal/adapters/runtime/compose/interactive.go:41-42
+action: departed
+proposal: ASSUMED — refines decision 7, replacing attempt 3's proposal. A SIGTERM to the manager ends a session promptly only when `compose`'s stdout is not a terminal. At a terminal, unless the command finishes first, `docker` is killed after 10 seconds and the session is journalled with the kill's 137; its death closes the plugin socket, which ends the plugin, and the command in the container can still be running.
+```

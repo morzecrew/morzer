@@ -306,9 +306,11 @@ with nobody to journal it, as it would leave any child.
   its output on `/dev/null`, ends with 130, not the 137 of a kill. When
   stdout is a terminal the CLI does not tell the plugin, leaving it to the
   signals the terminal sends the whole group, so a SIGTERM sent to the
-  manager alone always ends in the kill (decision 17). Either way the kill
-  reaches only `docker`, as killing any child does, and a plugin still
-  running then is left to the operating system.
+  manager alone ends the session through the kill, unless the command
+  finishes within the 10 seconds (decision 17). Either way the kill reaches
+  only `docker`, as killing any child does. Its death closes the plugin
+  socket, which ends the plugin (Compose 5.5.1 on Docker 29.7.2), and the
+  command in the container can still be running.
 
 ## 10. Unresolved questions
 
@@ -335,7 +337,7 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 | 14 | `ASSUMED` | *(2026-11-05, from the build; ruled by the author 2026-11-05)* **Refines decision 7.** The session's `compose` stays in the manager's process group, unlike every other command the adapter starts in a group of its own: a process outside the terminal's foreground group is stopped when it reads the terminal and never receives Ctrl-C. Its cancellation signals `compose` alone, not the group, which holds the manager too. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 1, 15:05). |
 | 15 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** The hold on the signals is taken only once the command starts, and given back when it ends; the checks before it stay the root handler's and cancellable, so a Ctrl-C while the service is checked stops the command from starting. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, the hold). |
 | 16 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** `SIGINT` and `SIGQUIT` are caught and dropped; `SIGTSTP` is left at its default, since a caught Ctrl-Z without a TTY suspended `compose` and left the manager waiting, so the shell never got the terminal back. With a TTY it is a byte for the container's terminal either way. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, `SIGTSTP`). |
-| 17 | `ASSUMED` | *(2026-11-05, from the review of #282; ruled by the author 2026-11-05)* **Refines decision 7.** A `SIGTERM` to the manager ends a session only when `compose`'s stdout is not a terminal. At a terminal, Docker's CLI does not pass a termination signal to its Compose plugin, leaving it to the signals the terminal sends the whole group, so the `SIGTERM` the manager forwards to `docker` ends nothing: `docker` is killed after 10 seconds, the session is journalled with the kill's 137, and the plugin is left running. A hangup or a shutdown signals the plugin itself, so only a signal sent to the manager by PID meets this. Accepted as what `docker compose exec` does when `docker` alone is signalled, rather than worked around. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 3, 22:58). |
+| 17 | `ASSUMED` | *(2026-11-05, from the review of #282; ruled by the author 2026-11-05)* **Refines decision 7.** A `SIGTERM` to the manager ends a session only when `compose`'s stdout is not a terminal. At a terminal, Docker's CLI does not pass a termination signal to its Compose plugin, leaving it to the signals the terminal sends the whole group, so the `SIGTERM` the manager forwards to `docker` ends nothing. Unless the command finishes first, `docker` is killed after 10 seconds and the session is journalled with the kill's 137; `docker`'s death closes the plugin socket, which ends the plugin, and the command in the container can still be running. A hangup or a shutdown signals the plugin itself, so only a signal sent to the manager by PID meets this. Accepted as what `docker compose exec` does when `docker` alone is signalled, rather than worked around. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempts 3 and 4, 22:58 and 23:18). |
 
 ## 12. Phasing
 
