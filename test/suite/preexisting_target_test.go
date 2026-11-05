@@ -282,3 +282,42 @@ func TestARenderRefusesTwoSpellingsOfOneTarget(t *testing.T) {
 	assert.Contains(t, domain.AsError(err).Error(), "the same file")
 	assert.Equal(t, "the operator's own block\n", readFile(t, target))
 }
+
+// A rollback that returns to a release declaring a target the release it
+// leaves does not render counts a file there as an update does: the plan names
+// it, and the render keeps a copy and says where.
+func TestARollbackKeepsAFileTheReleaseItLeavesDoesNotRender(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	src := stageRecoverableUpgradeSource(t, h)
+	target := addTarget(t, src)
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	// 1.4.0 stops rendering the target, and the file stays.
+	next := stageRecoverableUpgradeSource(t, h)
+	manifest := filepath.Join(next, "manifest.yaml")
+	data, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest,
+		[]byte(strings.Replace(string(data), "  version: 1.3.0\n", "  version: 1.4.0\n", 1)), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(next, "VERSION"), []byte("1.4.0\n"), 0o644))
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: next})
+	require.NoError(t, err)
+	writeOperatorFile(t, target, "the operator's own block\n")
+
+	back := ops.RollbackOptions{Options: ops.Options{Force: true, DryRun: true}}
+	_, err = ops.Rollback(ctx, h.Deps, back)
+	require.NoError(t, err)
+	assert.Contains(t, renderPlanStep(t, h).Description, target+" exists, and 1.4.0 does not render it")
+
+	back.DryRun = false
+	res, err := ops.Rollback(ctx, h.Deps, back)
+	require.NoError(t, err)
+	copied := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID, target)
+	assert.Equal(t, proxyRendered, readFile(t, target))
+	assert.Equal(t, "the operator's own block\n", readFile(t, copied), "the file was replaced and not kept")
+	assert.Contains(t, res.Summary, copied, "the summary does not say where the old file is")
+}

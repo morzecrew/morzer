@@ -187,7 +187,8 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	out := Result{Record: result.Record, Data: report}
 	if result.Record.Status == domain.StatusSucceeded {
 		out.Summary = fmt.Sprintf("rolled %s back from %s to %s",
-			previousRel.Name(), current.Version, previous.Version) + d.keptCopiesNote(previousRel)
+			previousRel.Name(), current.Version, previous.Version) +
+			replacedNote(result.Record.Flags) + d.keptCopiesNote(previousRel)
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeRollback, result.Record, runErr)
 
@@ -392,6 +393,9 @@ func rollbackSteps(
 
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
+	// The pointer moves before the render, which would otherwise count
+	// files against the release it returns to.
+	converge.Leaving = current
 	apply := applySteps(d, inst, previousRel, converge)
 
 	// Preflight, apply's first step, runs before the pointer moves. It aborts

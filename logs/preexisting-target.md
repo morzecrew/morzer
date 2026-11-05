@@ -129,3 +129,23 @@ evidence: internal/lifecycle/ops/apply.go:575-586
 action: decided
 proposal: ASSUMED — the render refuses a release whose configuration targets clean to the same path, as a validation error naming both, before it writes anything. The manifest's own validation is unchanged, so an installed release that declares one still loads.
 ```
+
+Review found that a rollback's plan and its render disagreed. Rollback moves
+the release pointer before it renders, so the render read the release it
+returns to as the installed one and owned every target, while the plan, which
+runs before the move, named a file the release being left does not render as
+one it would keep. The render replaced that file and kept nothing.
+
+```divergence
+decision: 2
+grade: ASSUMED
+class: drift
+at: 2026-11-05T08:24:00Z
+attempt: 3
+claim: the render read the installed release when it ran, which for a rollback is after the pointer has moved, so it computed the list from different inputs than the plan
+evidence: internal/lifecycle/ops/rollback.go:396-398
+action: departed
+proposal: ASSUMED — as decision 2, and the installed release is the one the operation started from. Rollback passes the release it leaves to the render, which counts files against it; a resume, which rollback does not have, keeps reading the current release. A rollback keeps a copy of a counted file as an attended update does (decision 3), and names it in its summary.
+```
+
+**Drift count: 1.**

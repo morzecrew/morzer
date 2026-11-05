@@ -223,6 +223,11 @@ type Options struct {
 	// and `rollback`; `apply` replaces nothing, a first install included.
 	PreviousVersion domain.Version
 
+	// Leaving is the installed release when the pointer has moved off it
+	// before the render, as `rollback` moves it. The render counts a file
+	// against it (RFC 0048 decision 1); zero reads the current release.
+	Leaving domain.ReleaseRecord
+
 	// NoGenerateSecrets stops `update` generating the secrets the release
 	// it installs adds, as `init --generate-secrets=false` does at init.
 	// Journaled. Nothing else generates (RFC 0036).

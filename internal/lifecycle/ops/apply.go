@@ -593,7 +593,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 
 			// Kept past the operation, unlike the backups below, which
 			// go with it (RFC 0048 decision 3).
-			owned, err := d.ownedTargetsFor(ctx, rel)
+			owned, err := d.ownedTargetsFor(ctx, rel, opts.Leaving)
 			if err != nil {
 				return err
 			}

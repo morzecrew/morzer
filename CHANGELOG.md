@@ -41,8 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **An update keeps a file it replaces at a new configuration target.** A
   release that added a target overwrote whatever file was there and kept
-  nothing. The plan now names such a file, the update keeps a copy and says
-  where, and an unattended update waits.
+  nothing. The plan now names such a file, an update or rollback keeps a copy
+  and says where, and an unattended update waits.
 
 - **`config set` re-creates a service that reads the value only from a
   rendered file.** Its Compose definition does not change, so a plain `up`

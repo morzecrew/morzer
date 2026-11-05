@@ -94,6 +94,10 @@ update replaced a file that was already at that path, the rollback's summary
 names the copy the update kept. It does not put the copy back, because the file
 may have changed since.
 
+The other way round, a file at a target the older release renders and the newer
+one does not is treated as an update treats one: the rollback keeps a copy
+before replacing it, and its summary says where.
+
 ## When rollback is not the answer
 
 If the rollback is refused, the sequence is a restore:

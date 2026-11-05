@@ -377,12 +377,19 @@ func (o ownedTargets) owns(target string) bool {
 // so a resume past the new release's record finds it owning its own files. A
 // release recorded and never converged, as `init --release` leaves one, has
 // rendered nothing: until an apply, update, rollback or restore succeeds, no
-// release is installed for this purpose (RFC 0048 decision 1).
-func (d *Deps) ownedTargetsFor(ctx context.Context, rel domain.Release) (ownedTargets, error) {
+// release is installed for this purpose (RFC 0048 decision 1). Rollback moves
+// the pointer before its render and does not resume, so it passes the release
+// it leaves as leaving.
+func (d *Deps) ownedTargetsFor(
+	ctx context.Context, rel domain.Release, leaving domain.ReleaseRecord,
+) (ownedTargets, error) {
 	owned := ownedTargets{declared: map[string]bool{}}
-	current, err := d.State.CurrentRelease(ctx)
-	if err != nil || current.IsZero() {
-		return owned, err
+	current := leaving
+	if current.IsZero() {
+		var err error
+		if current, err = d.State.CurrentRelease(ctx); err != nil || current.IsZero() {
+			return owned, err
+		}
 	}
 	converged, err := d.everConverged(ctx)
 	if err != nil || !converged {
@@ -430,7 +437,7 @@ func (d *Deps) existingTargetsFor(
 	if len(rel.Manifest.Configuration) == 0 {
 		return out, nil
 	}
-	owned, err := d.ownedTargetsFor(ctx, rel)
+	owned, err := d.ownedTargetsFor(ctx, rel, domain.ReleaseRecord{})
 	if err != nil || owned.all {
 		return out, err
 	}
