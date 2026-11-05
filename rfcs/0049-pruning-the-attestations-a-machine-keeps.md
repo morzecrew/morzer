@@ -1,7 +1,9 @@
 # RFC 0049 — Pruning the attestations a machine keeps
 
-- **Status:** 📝 Draft — proposed 2026-11-05, and ruled by the author
-  2026-11-05: §11's `OPEN` rows as recommended. Ready to build.
+- **Status:** ✅ Complete — proposed 2026-11-05, and ruled by the author
+  2026-11-05: §11's `OPEN` rows as recommended. **Built 2026-11-05** in #276;
+  the entries its build and review wrote in
+  [logs/attestation-retention.md](../logs/attestation-retention.md) are decisions 9–12.
 - **Scope:** A retention setting for the signed statements under
   `<VarDir>/attestations/`, which nothing prunes today. It covers what the
   limit counts, when the prune runs, which statements it never removes, and
@@ -70,12 +72,15 @@ only grows.
   (`attest.go:96-110`, `attest.go:190`). Operation ids are `op_` plus a ULID
   (`ops.go:246-248`), so sorting the names orders the statements by when
   their operations started, to the millisecond. `localStatements` already
-  lists them in that order (`attest_push.go:332-351`).
+  lists them in that order (`attest_push.go:332-351`). *(2026-11-05: it does
+  not: an id is minted before the deployment lock, so a command that waited
+  for it can start after one with a later id; see decision 11.)*
 - **When they are written.** `emitAttestation` files the statement, then
   pushes it to every backup target (`attest.go:45-53`). Callers emit after
   the deployment lock is released (for example `apply.go:170`, after the
   `withLock` that starts at `apply.go:103`), so two operations' emissions
-  can overlap.
+  can overlap. *(2026-11-05: writing a statement and the prune now hold a
+  lock of their own; see decision 10.)*
 - **What has left the machine.** `attestationPushState` lists each target's
   `attestations/` prefix and counts, per target, the local statements whose
   document or signature is missing there (`attest_push.go:259-326`). `doctor`
@@ -158,7 +163,11 @@ operation; a failure is a warning, and the next operation tries again.
 It runs after the lock is released, as the emission does, so two
 operations' prunes can overlap. A statement already gone is not an error,
 and neither prune can remove the statement the other just wrote, since the
-newest statements are the ones kept.
+newest statements are the ones kept. *(2026-11-05: they no longer overlap.
+Writing a statement with its signature, the prune and `attest push` each
+hold the `attestations` lock, waiting at most 30 seconds for it; see
+decisions 10 and 12. A prune that removed statements says how many; see
+decision 9.)*
 
 No command of its own. An operator who sets the limit sees it applied at
 the next operation; one who wants it now runs any operation that attests.
@@ -167,7 +176,8 @@ A `morzer attest prune` is §8's.
 ### 5.3 What is never removed
 
 The oldest statements past the limit are candidates, in name order. A
-candidate is kept when either holds:
+candidate is kept when either holds: *(2026-11-05: in the order `attest
+verify` uses, the operation's start and then its id; see decision 11.)*
 
 - **It has not reached every backup target.** With targets configured, the
   prune reads `attestationPushState` once and keeps every statement any
@@ -292,8 +302,12 @@ None. Decisions 1–3 were ruled by the author 2026-11-05.
 | 6 | `ASSUMED` | The setting is the installation's only. The manifest gains no `retention.attestations`: how long an audit record is kept is the operator's decision, not the vendor's. |
 | 7 | `ASSUMED` | The installation schema moves to 17 for `policy.retain_attestations`, as every field added to the state has moved it, so an older manager refuses the state rather than rewriting it without the field. Nothing to convert: absent means unset, which keeps everything. |
 | 8 | `ASSUMED` | A statement's `.minisig` is removed before the statement, so an interrupted prune leaves an unsigned statement and never an orphaned signature. No marker records a prune. |
+| 9 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* A prune that removed statements publishes one informational message naming how many and the setting that asked for it. A prune that removed nothing says nothing. See [logs/attestation-retention.md](../logs/attestation-retention.md) (unlisted, attempt 1, 10:05). |
+| 10 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decision 5.** Writing a statement with its signature, the prune, and `attest push` each hold the installation's `attestations` lock, so none sees a statement before its signature exists. The statement is written before its signature, so a write that fails leaves an earlier pair as it was: a resume files its statement under the interrupted run's id. A signature that is not written removes the earlier one beside the new statement. Without the lock the statement is written anyway and the prune removes nothing. See [logs/attestation-retention.md](../logs/attestation-retention.md) (unlisted, attempt 3, 10:35, which supersedes attempt 2, 10:14: signing first broke that earlier pair). |
+| 11 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decision 4.** "Oldest" is the order `attest verify` uses, the operation's start and then its id, not the file name: an id is minted before the deployment lock, so a command that waited for it can start after one with a later id. A statement that cannot be read has no start and sorts first. See [logs/attestation-retention.md](../logs/attestation-retention.md) (decision 4, attempt 4, 10:57). |
+| 12 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decision 10.** The wait for the `attestations` lock is bounded at 30 seconds, since `attest push` holds it across calls to targets that may not answer. On timeout the statement is written without the lock, which the holder cannot see because it chose its files first; the prune removes nothing; and `attest push` fails. See [logs/attestation-retention.md](../logs/attestation-retention.md) (unlisted, attempt 4, 10:57). |
 
 ## 12. Phasing
 
 One phase, one PR: the setting, the prune in the emission path, tests and
-docs.
+docs. *(2026-11-05: built in #276.)*

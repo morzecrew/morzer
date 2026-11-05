@@ -187,7 +187,7 @@ number in the filename in sync.
 | [0046](0046-updating-the-manager-itself.md) | Updating the manager itself | ✅ Complete | Telling an operator that the manager binary is out of date, and whether `morzer self-update`, which RFC 0022 refused, should replace it in place. |
 | [0047](0047-exporting-status-and-doctor-to-prometheus.md) | Exporting status and doctor to Prometheus | ✅ Complete | Exporting what `status` and `doctor` know as Prometheus metrics, through the node exporter's textfile directory, so a monitored machine can alert on an installation. |
 | [0048](0048-a-configuration-target-that-lands-on-an-existing-file.md) | A configuration target that lands on an existing file | ✅ Complete | What `update` does with a file already at a path the new release renders for the first time: show it in the plan, keep a copy or refuse, and hold an unattended update. |
-| [0049](0049-pruning-the-attestations-a-machine-keeps.md) | Pruning the attestations a machine keeps | 📝 Draft | Bounding the signed statements under the attestation directory, which nothing prunes: what the limit counts, which statements are never removed, and whether the targets' copies go too. |
+| [0049](0049-pruning-the-attestations-a-machine-keeps.md) | Pruning the attestations a machine keeps | ✅ Complete | Bounding the signed statements under the attestation directory, which nothing prunes: what the limit counts, which statements are never removed, and whether the targets' copies go too. |
 
 ## Status legend
 
