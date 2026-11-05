@@ -2472,7 +2472,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_OPERATION_TYPE</code></td>
-<td><code>apply</code>, <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>init</code> is reserved: no hook runs under it. A <a href="#a-task">task's container</a> sees <code>task</code>, and a <a href="#a-preflight-check">preflight check</a> that <code>doctor</code> runs sees <code>doctor</code>.</td>
+<td><code>apply</code>, <code>start</code>, <code>update</code>, <code>rollback</code>, <code>restart</code>, <code>backup</code>, <code>restore</code>: the operation running the hook. A first install is <code>apply</code>, as every re-apply is, a boot's included. <code>restart</code> runs only the health checks. <code>init</code> is reserved: no hook runs under it. A <a href="#a-task">task's container</a> sees <code>task</code>, and a <a href="#a-preflight-check">preflight check</a> that <code>doctor</code> runs sees <code>doctor</code>.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PHASE</code></td>

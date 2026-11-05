@@ -1545,6 +1545,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        restart
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2578,6 +2589,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        restart
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3115,6 +3137,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <td>Bring a stopped product back.</td>
 </tr>
 <tr>
+<td><a href="#restart"><code>restart</code></a></td>
+<td>Re-create services from the installed release.</td>
+</tr>
+<tr>
 <td><a href="#status"><code>status</code></a></td>
 <td>Show what is deployed and whether it is working.</td>
 </tr>
@@ -3443,7 +3469,7 @@ volumes are kept: no flag of <code>stop</code> or <code>start</code> can remove 
 </tr>
 </tbody>
 </table>
-<p>While stopped, <code>apply</code>, <code>update</code>, <code>rollback</code> and <code>task run</code> are refused with
+<p>While stopped, <code>apply</code>, <code>update</code>, <code>rollback</code>, <code>restart</code> and <code>task run</code> are refused with
 <a href="../exit-codes/">exit 2</a>, the update timer stages without installing, and the
 scheduled backup is skipped. <code>restore</code> and an explicit <code>backup</code> still run.
 <a href="../../operating/taking-a-product-down/">Taking a product down for a while</a> has
@@ -3457,6 +3483,25 @@ it succeeds.</p>
 <p>It does not install a release staged while the product was stopped; the next
 tick of the update timer, or <code>morzer update</code>, does. On a product that is not
 stopped, <code>start</code> is <code>apply</code>, and says nothing was stopped.</p>
+<h2 id="restart">restart<a class="headerlink" href="#restart" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restart<span class="w"> </span>&lt;service&gt;...
+</code></pre></div>
+<p>Re-creates the named services from the installed release, forced, then waits
+for the release's health checks. A container changed by hand comes back as the
+release defines it, and its writable layer does not survive, as with any
+re-create <code>apply</code> does. Dependencies are converged as <code>apply</code> converges them,
+not forced: one that is down is started, and one whose container no longer
+matches the release is re-created. After an <code>apply</code>, every one matches, so
+only the named services are replaced.</p>
+<p>A <code>restart</code> operation in the journal, under the deployment lock. Refused with
+<a href="../exit-codes/">exit 2</a> while the product is stopped, before the first <code>apply</code>,
+with no service named, and for a service the release does not start, including
+one behind an inactive profile; the refusal lists the services it does start.
+A service that does not come back healthy fails the restart, and nothing is put
+back. It files no attestation: it moves neither a version nor a configuration.</p>
+<p>An interrupted restart has no <code>--resume</code>. Clear it with
+<code>morzer status --clear-intervention</code> and run it again.</p>
+<p>To restart everything, use <code>stop</code> and <code>start</code>.</p>
 <h2 id="status">status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
 <p>Shows what is deployed, which services are up, the last backup, the last
 operation, and anything needing attention.</p>
