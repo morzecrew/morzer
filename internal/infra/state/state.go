@@ -385,6 +385,12 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// state rather than dropping the directory and, with it,
 			// the metrics timer.
 			i.SchemaVersion = 16
+		case 16:
+			// 16 -> 17 added `policy.retain_attestations` (RFC 0049).
+			// Nothing to convert: absent keeps every statement, as
+			// before. The bump is for the write path, as every other
+			// field's was.
+			i.SchemaVersion = 17
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

@@ -100,6 +100,9 @@
         "require_signature": {
           "type": "boolean"
         },
+        "retain_attestations": {
+          "type": "integer"
+        },
         "retain_backups": {
           "type": "integer"
         },

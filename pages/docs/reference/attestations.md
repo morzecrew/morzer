@@ -330,14 +330,39 @@ the category's tick, like every check that passed. Configuring a
 [backup target](backup-targets.md) gives the record somewhere to go, and
 `morzer attest push` then sends what is already here.
 
+## Keeping fewer of them
+
+Every operation files a statement, and by default every one is kept. To keep
+only the newest:
+
+```console
+$ morzer config set retention.attestations=500
+```
+
+After each operation files and pushes its statement, the oldest past that
+count are removed from this machine, each with its signature, and the
+operation says how many. `config unset retention.attestations` keeps them all
+again. There is no default, and the release cannot set one.
+
+Some statements stay whatever the count:
+
+- **One a backup target does not have yet**, document or signature, since it
+  is the only copy. `doctor` reports these, and `morzer attest push` sends
+  them; the prune catches up at the next operation. A target that cannot be
+  listed keeps every statement.
+- **The newest one that succeeded**, which `attest verify --against-live`
+  compares the deployment with.
+- **Anything newer than a statement that stays.** Only the oldest are removed,
+  so what is left is one unbroken run and `attest verify` reports no gap in
+  the chain. It starts at the oldest statement left.
+
+The copies on the targets are never removed. A target is where the record
+outlives this machine; bound it with the storage's own lifecycle rules.
+
 ## What this does not do yet
 
 Stated here rather than discovered:
 
-- **Nothing prunes them.** One statement per operation is small, but `config`
-  and `apply` are frequent — a machine applying at every boot accumulates one
-  per boot. The directory has no retention policy the way releases and backups
-  do.
 - **`verify` reads the local directory**, or a path you give it. It will not
   fetch a target's copies to check them, so verifying what is off-site means
   fetching them yourself first.

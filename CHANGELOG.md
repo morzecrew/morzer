@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that fails or does not reach a target stops the removal. With `--purge` it
   needs a target outside the installation and a recovery key.
 
+- **An operator can bound the attestations a machine keeps.**
+  `config set retention.attestations=<n>` keeps the newest n. A statement a
+  backup target does not have yet is never removed, nor is the newest one that
+  succeeded, and the targets keep every copy. Installation state moves to
+  schema 17.
+
 ### Fixed
 
 - **An update keeps a file it replaces at a new configuration target.** A

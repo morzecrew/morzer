@@ -3,15 +3,20 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Attestation emission.
@@ -49,6 +54,9 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 		// machine does not have, and a record that dies with the disk is
 		// the gap RFC 0025 §1 is about.
 		pushStatement(ctx, d, in.Installation, path)
+		// After the push, so the statement just filed counts as having
+		// left the machine when it did (RFC 0049 decision 5).
+		pruneStatements(ctx, d, in.Installation)
 	}
 }
 
@@ -100,6 +108,17 @@ func fileAttestation(
 	}
 
 	path := filepath.Join(dir, rec.ID+".json")
+
+	// Held until the signature is written too, so neither the prune nor
+	// `attest push` sees the statement without the signature it will have
+	// (RFC 0049). Unheld, the statement is written anyway: the record
+	// matters more than the race.
+	if release, err := d.lockAttestations(ctx, rec.ID); err != nil {
+		d.warnf("writing the attestation for %s without its lock: %s", rec.ID, domain.AsError(err).Message)
+	} else {
+		defer release()
+	}
+
 	// 0644: an audit record with no secret in it by construction, and one
 	// an auditor cannot read is one they will not read.
 	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
@@ -165,10 +184,23 @@ func (d *Deps) signingKeyForDocument(
 
 // sign writes the detached signature beside a statement, or says why it could
 // not. Never fails the emission; the statement is already on disk.
+//
+// A resume files its statement under the interrupted run's id, over that run's
+// signed pair, so a signature not written here would leave the old one beside
+// a document it does not sign. It is removed instead.
 func sign(
 	ctx context.Context, d *Deps, rec domain.OperationRecord,
 	in domain.AttestationInputs, path string, body []byte,
 ) {
+	signed := false
+	defer func() {
+		if !signed {
+			if err := os.Remove(path + minisigExt); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				d.warnf("cannot remove the earlier signature beside %s: %v", path, err)
+			}
+		}
+	}()
+
 	if d.Signer == nil {
 		// An unsigned statement is still a record, and this build signs
 		// nothing. Said out loud rather than left for a reader to infer
@@ -190,7 +222,42 @@ func sign(
 	if err := atomicfs.WriteFile(path+minisigExt, sig.Encoded, 0o644); err != nil {
 		d.warnf("cannot write the attestation signature for %s: %s",
 			rec.ID, domain.AsError(err).Message)
+		return
 	}
+	signed = true
+}
+
+// attestationLockWait bounds the wait for the attestation lock. Long enough for
+// another operation's statement to be written, signed and pushed. A push of a
+// long backlog to a slow target can hold it longer; then the statement is
+// written without it, which that push cannot see, since it chose what to send
+// before it took the lock. A variable for tests.
+var attestationLockWait = 30 * time.Second
+
+// lockAttestations takes the lock every writer of the attestation directory
+// holds: filing a statement with its signature, the prune, and `attest push`.
+// A build with no locker has nothing to take.
+func (d *Deps) lockAttestations(ctx context.Context, opID string) (func(), error) {
+	if d.Locker == nil {
+		return func() {}, nil
+	}
+	// Bounds the wait only: the lock is held until release.
+	wait, cancel := context.WithTimeout(ctx, attestationLockWait)
+	defer cancel()
+	release, err := d.Locker.Acquire(wait, "attestations", ports.LockOptions{
+		Wait: true,
+		Owner: ports.LockOwner{
+			PID: os.Getpid(), OperationID: opID, Type: "attestations", StartedAt: domain.NewTime(d.now()),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		if err := release(); err != nil {
+			d.warnf("cannot release the attestation lock: %v", err)
+		}
+	}, nil
 }
 
 // warnf publishes a warning without failing anything.
