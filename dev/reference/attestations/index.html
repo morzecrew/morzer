@@ -1853,6 +1853,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#keeping-fewer-of-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping fewer of them
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-this-does-not-do-yet" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2255,6 +2266,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Getting them off the machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keeping-fewer-of-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping fewer of them
       </span>
     </span>
   </a>
@@ -2669,13 +2691,32 @@ would teach its operator to read past <code>doctor</code>. The default view fold
 the category's tick, like every check that passed. Configuring a
 <a href="../backup-targets/">backup target</a> gives the record somewhere to go, and
 <code>morzer attest push</code> then sends what is already here.</p>
+<h2 id="keeping-fewer-of-them">Keeping fewer of them<a class="headerlink" href="#keeping-fewer-of-them" title="Permanent link">&para;</a></h2>
+<p>Every operation files a statement, and by default every one is kept. To keep
+only the newest:</p>
+<div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>retention.attestations<span class="o">=</span><span class="m">500</span>
+</code></pre></div>
+<p>After each operation files and pushes its statement, the oldest past that
+count are removed from this machine, each with its signature, and the
+operation says how many. <code>config unset retention.attestations</code> keeps them all
+again. There is no default, and the release cannot set one.</p>
+<p>Some statements stay whatever the count:</p>
+<ul>
+<li><strong>One a backup target does not have yet</strong>, document or signature, since it
+  is the only copy. <code>doctor</code> reports these, and <code>morzer attest push</code> sends
+  them; the prune catches up at the next operation. A target that cannot be
+  listed keeps every statement.</li>
+<li><strong>The newest one that succeeded</strong>, which <code>attest verify --against-live</code>
+  compares the deployment with.</li>
+<li><strong>Anything newer than a statement that stays.</strong> Only the oldest are removed,
+  so what is left is one unbroken run and <code>attest verify</code> reports no gap in
+  the chain. It starts at the oldest statement left.</li>
+</ul>
+<p>The copies on the targets are never removed. A target is where the record
+outlives this machine; bound it with the storage's own lifecycle rules.</p>
 <h2 id="what-this-does-not-do-yet">What this does not do yet<a class="headerlink" href="#what-this-does-not-do-yet" title="Permanent link">&para;</a></h2>
 <p>Stated here rather than discovered:</p>
 <ul>
-<li><strong>Nothing prunes them.</strong> One statement per operation is small, but <code>config</code>
-  and <code>apply</code> are frequent — a machine applying at every boot accumulates one
-  per boot. The directory has no retention policy the way releases and backups
-  do.</li>
 <li><strong><code>verify</code> reads the local directory</strong>, or a path you give it. It will not
   fetch a target's copies to check them, so verifying what is off-site means
   fetching them yourself first.</li>
