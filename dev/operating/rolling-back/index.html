@@ -744,6 +744,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#files-the-older-release-does-not-render" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Files the older release does not render
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-rollback-is-not-the-answer" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2128,6 +2139,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#files-the-older-release-does-not-render" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Files the older release does not render
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-rollback-is-not-the-answer" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2287,6 +2309,14 @@ on the way back, the way an update retires one a new release dropped: the
 rollback's last step removes it and says so. A parameter the older release
 requires and you have no value for is reported by its preflight, before
 anything moves.</p>
+<h2 id="files-the-older-release-does-not-render">Files the older release does not render<a class="headerlink" href="#files-the-older-release-does-not-render" title="Permanent link">&para;</a></h2>
+<p>A file the newer release added stays as that release rendered it. When the
+update replaced a file that was already at that path, the rollback's summary
+names the copy the update kept. It does not put the copy back, because the file
+may have changed since.</p>
+<p>The other way round, a file at a target the older release renders and the newer
+one does not is treated as an update treats one: the rollback keeps a copy
+before replacing it, and its summary says where.</p>
 <h2 id="when-rollback-is-not-the-answer">When rollback is not the answer<a class="headerlink" href="#when-rollback-is-not-the-answer" title="Permanent link">&para;</a></h2>
 <p>If the rollback is refused, the sequence is a restore:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>backup<span class="w"> </span>list

@@ -789,6 +789,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Planning first">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-file-where-the-new-release-puts-a-new-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A file where the new release puts a new one
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2337,6 +2354,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Planning first">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-file-where-the-new-release-puts-a-new-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A file where the new release puts a new one
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2691,6 +2725,21 @@ appear only when the update replaces one this manager can read. A first
 install shows the notes alone.</p>
 <p><code>--json</code> carries the same as <code>data.preview</code>: <code>rollback</code>, <code>image_changes</code> and
 <code>release_notes</code>.</p>
+<h3 id="a-file-where-the-new-release-puts-a-new-one">A file where the new release puts a new one<a class="headerlink" href="#a-file-where-the-new-release-puts-a-new-one" title="Permanent link">&para;</a></h3>
+<p>A release can add a configuration file at a path the installed release never
+rendered, such as <code>/etc/nginx/conf.d/demo.conf</code>. When a file is already there,
+the plan's <code>render configuration</code> line names it:</p>
+<div class="highlight"><pre><span></span><code>/etc/nginx/conf.d/demo.conf exists, and 1.2.0 does not render it: 1.3.0 replaces it and keeps a copy
+</code></pre></div>
+<p>The update replaces it and keeps the old file under the installation's data
+directory, at <code>replaced/&lt;operation id&gt;/</code> followed by the file's own path, readable by root
+only. The update's summary says where. A file that already holds what the
+release renders is left alone. A first install treats every file it renders
+this way, and so does the first <code>morzer apply</code> after <code>init --release</code>. An
+update that fails puts the file back and removes the copy. If it cannot put the
+file back, the copy stays and the error says where.
+<a href="../changing-configuration/"><code>morzer config diff</code></a> does not show these files,
+because it compares against the installed release, which does not render them.</p>
 <p>For a reference that has to be fetched, a dry run does fetch: a plan that
 refused to could tell you nothing about the release you asked about. It goes to
 the staging directory and is removed when the command ends.</p>
