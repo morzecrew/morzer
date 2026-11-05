@@ -66,3 +66,37 @@ evidence: internal/adapters/runtime/compose/stream.go:165-185
 action: departed
 proposal: ASSUMED — as decision 7. The session's `compose` stays in the manager's process group, and its cancellation signals `compose` alone, not the group, which holds the manager too.
 ```
+
+From #281's review.
+
+The CLI detached the context and caught SIGINT before the deployment was
+resolved and the service checked, so a Ctrl-C during those checks was dropped
+and the command still started. Decision 7's hold belongs to the command alone.
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: discovery
+at: 2026-11-05T19:57:00Z
+attempt: 2
+claim: a session's hold on the signals, taken before the checks, swallowed a Ctrl-C meant to stop the command from starting
+evidence: internal/lifecycle/ops/inspect.go:369-380
+action: departed
+proposal: ASSUMED — as decision 7, with the hold taken only once the command starts and given back when it ends: the checks before it stay the root handler's and cancellable.
+```
+
+Decision 7 caught `SIGTSTP` with `SIGINT` and `SIGQUIT`, as `morzer shell`
+does. Without a TTY, a caught Ctrl-Z stopped `compose` and left the manager
+waiting on it, so the shell never got the terminal back.
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: discovery
+at: 2026-11-05T19:57:00Z
+attempt: 2
+claim: catching SIGTSTP during a session without a TTY suspends the command and not the manager, which hangs the session
+evidence: internal/cli/inspect.go:540-565
+action: departed
+proposal: ASSUMED — as decision 7 for `SIGINT` and `SIGQUIT`, caught and dropped; `SIGTSTP` is left at its default, so Ctrl-Z suspends the session and the manager together and `fg` resumes both. With a TTY it is a byte for the container's terminal either way.
+```

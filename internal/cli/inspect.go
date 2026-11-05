@@ -509,15 +509,6 @@ func newExecCommand(app *App) *cobra.Command {
 }
 
 // execInteractive runs an `exec -i` session (RFC 0050 P2).
-//
-// The session's to end, not the root handler's. Its context is cut from the
-// root's cancellation, which a Ctrl-C without a TTY would otherwise turn into
-// killing `compose` mid-session. The terminal's keys are caught here and
-// dropped rather than ignored, because an ignored signal is inherited through
-// exec and the command would shrug off Ctrl-C too, as `morzer shell` found;
-// the terminal sends them to `compose` itself. A SIGTERM, which no terminal
-// sends, ends the session through `compose`, and the record is written either
-// way.
 func (a *App) execInteractive(ctx context.Context, opts ops.ExecOptions) error {
 	// The command owns the streams until it ends, so there is no single
 	// object --json could promise.
@@ -530,11 +521,26 @@ func (a *App) execInteractive(ctx context.Context, opts ops.ExecOptions) error {
 		TTY: ui.IsTerminal(a.Stream.In) && ui.IsTerminal(a.Stream.Out),
 	}
 
+	result, err := ops.ExecInteractive(ctx, a.Deps, opts, streams, holdSession)
+	return a.finishExec(result, err)
+}
+
+// holdSession is the session's hold on the process's signals, from the moment
+// the command starts until it ends; the checks before it stay the root
+// handler's, so a Ctrl-C there still stops the command from starting.
+//
+// The session's context is cut from the root's cancellation, which a Ctrl-C
+// without a TTY would otherwise turn into killing `compose` mid-session. SIGINT
+// and SIGQUIT are caught and dropped rather than ignored, because an ignored
+// signal is inherited through exec and the command would shrug off Ctrl-C too,
+// as `morzer shell` found; the terminal sends them to `compose` itself. SIGTSTP
+// is left alone, so Ctrl-Z stops the session and the manager together and the
+// shell gets the terminal back. A SIGTERM, which no terminal sends, ends the
+// session through `compose`, and the record is written either way.
+func holdSession(ctx context.Context) (context.Context, func()) {
 	session, end := context.WithCancel(context.WithoutCancel(ctx))
-	defer end()
 	keys := make(chan os.Signal, 8)
-	signal.Notify(keys, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTSTP, syscall.SIGTERM)
-	defer func() { signal.Stop(keys); close(keys) }()
+	signal.Notify(keys, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 	go func() {
 		for sig := range keys {
 			if sig == syscall.SIGTERM {
@@ -542,9 +548,11 @@ func (a *App) execInteractive(ctx context.Context, opts ops.ExecOptions) error {
 			}
 		}
 	}()
-
-	result, err := ops.ExecInteractive(session, a.Deps, opts, streams)
-	return a.finishExec(result, err)
+	return session, func() {
+		signal.Stop(keys)
+		close(keys)
+		end()
+	}
 }
 
 // finishExec presents what `exec` ran and decides its exit.

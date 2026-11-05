@@ -364,14 +364,29 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 // ExecInService's: the refusal of a service that is not running, the journal
 // with the argv redacted and never the output, and the command's exit code.
 // No timeout: a session lasts as long as the operator.
-func ExecInteractive(ctx context.Context, d *Deps, opts ExecOptions, streams ports.ExecIO) (ExecResult, error) {
+func ExecInteractive(
+	ctx context.Context, d *Deps, opts ExecOptions, streams ports.ExecIO, guard SessionGuard,
+) (ExecResult, error) {
 	return execSession(ctx, d, opts, true,
 		func(ctx context.Context, cfg ports.RuntimeConfig) (ports.ExitResult, error) {
+			// Taken only now, so the checks before the command stay
+			// cancellable: a Ctrl-C while the deployment is resolved or
+			// the service checked stops the command from starting.
+			if guard != nil {
+				var release func()
+				ctx, release = guard(ctx)
+				defer release()
+			}
 			started := d.now()
 			code, err := d.Runtime.ExecInteractive(ctx, cfg, opts.Service, opts.Argv, streams)
 			return ports.ExitResult{ExitCode: code, Duration: d.now().Sub(started)}, err
 		})
 }
+
+// SessionGuard takes the process's signals over for a session's length and
+// returns the context the session runs under; the func it returns gives them
+// back. The CLI's, since signals are the process's (RFC 0050 decision 7).
+type SessionGuard func(context.Context) (context.Context, func())
 
 func execSession(
 	ctx context.Context, d *Deps, opts ExecOptions, interactive bool,

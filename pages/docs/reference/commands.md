@@ -550,9 +550,12 @@ root.
 | `-i`, `--interactive` | Give the command this terminal's stdin, and a TTY when stdin and stdout are both terminals, for as long as it runs. |
 
 With `-i` the command's streams are the terminal's own: nothing is buffered or
-cut, and no timeout applies. Ctrl-C belongs to the command; without a TTY it ends
-the session, and with one it is a key the command reads. A `SIGTERM` sent to
-`morzer` ends the session too. The command is still named after `--`, there is
+cut, and no timeout applies. Ctrl-C belongs to the command. Without a TTY it ends
+the session. With one, `compose` holds the terminal in raw mode, so Ctrl-C reaches
+the container's terminal and interrupts the command there, as it would at a
+terminal inside it. `morzer` leaves Ctrl-Z to the shell rather than catching it,
+so a session without a TTY is suspended as any foreground job is. A `SIGTERM`
+sent to `morzer` ends the session too. The command is still named after `--`, there is
 no `--json`, and the journal records the session with `interactive: true`, the
 argv scrubbed as for any `exec`, and none of what passed through it.
 

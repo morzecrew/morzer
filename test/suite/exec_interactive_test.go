@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,7 +23,7 @@ func interactiveExec(h *harness, stdin string, argv ...string) (ops.ExecResult, 
 	var out bytes.Buffer
 	res, err := ops.ExecInteractive(context.Background(), h.Deps,
 		ops.ExecOptions{Service: "app", Argv: argv},
-		ports.ExecIO{Stdin: strings.NewReader(stdin), Stdout: &out, Stderr: &out})
+		ports.ExecIO{Stdin: strings.NewReader(stdin), Stdout: &out, Stderr: &out}, nil)
 	return res, out.String(), err
 }
 
@@ -105,4 +106,35 @@ func TestAnInteractiveExecStillNeedsACommand(t *testing.T) {
 	_, _, err := interactiveExec(h, "")
 	require.Error(t, err)
 	assert.Empty(t, h.Runtime.Sessions)
+}
+
+// The CLI's hold on the process's signals spans the command and nothing
+// before it: a Ctrl-C while the deployment is resolved or the service checked
+// still stops the command from starting. So the guard is taken after those
+// checks, never for a refused session, and given back when the command ends.
+func TestTheSessionGuardHoldsOnlyTheCommand(t *testing.T) {
+	h := newHarness(t)
+	h.running(t)
+	var taken, released int
+	var checkedFirst bool
+	since := len(h.Runtime.Calls)
+	guard := func(ctx context.Context) (context.Context, func()) {
+		taken++
+		checkedFirst = slices.Contains(h.Runtime.Calls[since:], "Status") && len(h.Runtime.Sessions) == 0
+		return ctx, func() { released++ }
+	}
+	streams := ports.ExecIO{Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}}
+
+	_, err := ops.ExecInteractive(context.Background(), h.Deps,
+		ops.ExecOptions{Service: "app", Argv: []string{"sh"}}, streams, guard)
+	require.NoError(t, err)
+	assert.Equal(t, 1, taken)
+	assert.Equal(t, 1, released, "the signals were not given back when the command ended")
+	assert.True(t, checkedFirst, "the guard was taken before the service was checked")
+
+	h.Runtime.RemoveService("app")
+	_, err = ops.ExecInteractive(context.Background(), h.Deps,
+		ops.ExecOptions{Service: "app", Argv: []string{"sh"}}, streams, guard)
+	require.Error(t, err)
+	assert.Equal(t, 1, taken, "a refused session took the signals over")
 }
