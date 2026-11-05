@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -287,4 +288,33 @@ func TestAResumeThatCannotWriteItsStatementKeepsTheEarlierPair(t *testing.T) {
 		require.NoError(t, os.WriteFile(statement+".minisig", []byte("the earlier signature\n"), 0o644))
 	})
 	assert.Equal(t, "the earlier signature\n", readFile(t, statement+".minisig"))
+}
+
+// An id is minted before the deployment lock, so a command that waited for it
+// can start after one with a later id. The prune orders statements by start, as
+// `attest verify` does, not by name.
+func TestRetentionOrdersByStartNotByName(t *testing.T) {
+	h := retentionHarness(t)
+	inst := signingInstallation(t, h)
+	statement := func(id string, started time.Time) string {
+		var stmt domain.Statement
+		stmt.Predicate.Operation.ID = id
+		stmt.Predicate.Operation.Started = domain.NewTime(started)
+		stmt.Predicate.Operation.Outcome = string(domain.StatusFailed)
+		body, err := json.Marshal(stmt)
+		require.NoError(t, err)
+		path := filepath.Join(h.Paths.AttestationsDir(), id+".json")
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, body, 0o644))
+		return path
+	}
+	// The first by name started last, the second by name first.
+	waited := statement("op_1", time.Now().Add(time.Hour))
+	earliest := statement("op_2", time.Now().Add(-time.Hour))
+	h.Deps.NewOpID = func(time.Time) string { return "op_3" }
+
+	keepAttestations(t, h, inst, 2)
+	applyOnce(t, h)
+	assert.NoFileExists(t, earliest, "the statement that started first was kept")
+	assert.FileExists(t, waited, "a statement that started after one kept was removed")
 }
