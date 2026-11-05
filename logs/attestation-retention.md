@@ -92,3 +92,35 @@ evidence: internal/lifecycle/ops/attest.go:232-254
 action: decided
 proposal: ASSUMED — supersedes attempt 2's. Writing a statement and its signature, the prune, and `attest push` each hold the installation's `attestations` lock, so none sees a statement before its signature exists. The statement is written before its signature, as before RFC 0049, so a failed write leaves an earlier pair as it was; a signature that is not written removes the earlier one beside the new statement. Without the lock the statement is written anyway and the prune removes nothing.
 ```
+
+From #276's third review. RFC 0049 §3 says sorting the names orders
+statements by when their operations started. It does not: an id is minted
+before the deployment lock, so a command that waited for it with `--wait`
+starts after one whose id is later.
+
+```divergence
+decision: 4
+grade: ASSUMED
+class: discovery
+at: 2026-11-05T10:57:00Z
+attempt: 4
+claim: operation ids do not order statements by start, so a prune in name order could remove a statement newer than one it kept
+evidence: internal/lifecycle/ops/attest_prune.go:78-111
+action: departed
+proposal: ASSUMED — as decision 4, with "oldest" meaning the order `attest verify` uses: the operation's start, then its id. A statement that cannot be read has no start and sorts first.
+```
+
+The lock from attempt 3 had no bound on its wait, and `attest push` holds it
+across calls to targets that may not answer.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-11-05T10:57:00Z
+attempt: 4
+claim: a holder stuck on a target that does not answer kept every other writer waiting for as long as it ran
+evidence: internal/lifecycle/ops/attest.go:230-255
+action: decided
+proposal: ASSUMED — refines attempt 3's lock. The wait is bounded at 30 seconds. On timeout the statement is written without the lock, which the holder cannot see because it chose its files first; the prune removes nothing; and `attest push` fails.
+```

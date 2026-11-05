@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -226,6 +227,13 @@ func sign(
 	signed = true
 }
 
+// attestationLockWait bounds the wait for the attestation lock. Long enough for
+// another operation's statement to be written, signed and pushed. A push of a
+// long backlog to a slow target can hold it longer; then the statement is
+// written without it, which that push cannot see, since it chose what to send
+// before it took the lock. A variable for tests.
+var attestationLockWait = 30 * time.Second
+
 // lockAttestations takes the lock every writer of the attestation directory
 // holds: filing a statement with its signature, the prune, and `attest push`.
 // A build with no locker has nothing to take.
@@ -233,7 +241,10 @@ func (d *Deps) lockAttestations(ctx context.Context, opID string) (func(), error
 	if d.Locker == nil {
 		return func() {}, nil
 	}
-	release, err := d.Locker.Acquire(ctx, "attestations", ports.LockOptions{
+	// Bounds the wait only: the lock is held until release.
+	wait, cancel := context.WithTimeout(ctx, attestationLockWait)
+	defer cancel()
+	release, err := d.Locker.Acquire(wait, "attestations", ports.LockOptions{
 		Wait: true,
 		Owner: ports.LockOwner{
 			PID: os.Getpid(), OperationID: opID, Type: "attestations", StartedAt: domain.NewTime(d.now()),

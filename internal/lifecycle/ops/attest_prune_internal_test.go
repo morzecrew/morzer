@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Two operations' prunes can overlap, so one finds a statement the other has
@@ -57,4 +59,35 @@ func TestNoObjectStoreKeepsEveryStatement(t *testing.T) {
 	left, err := localStatements(d.Paths.AttestationsDir())
 	require.NoError(t, err)
 	assert.Len(t, left, 3)
+}
+
+// neverFreeLocker is held by somebody else for as long as anyone waits.
+type neverFreeLocker struct{ ports.Locker }
+
+func (neverFreeLocker) Acquire(ctx context.Context, name string, _ ports.LockOptions) (func() error, error) {
+	<-ctx.Done()
+	return nil, domain.Interrupted("gave up waiting for the %s lock", name)
+}
+
+// The wait for the attestation lock is bounded, so a holder stuck on a target
+// that does not answer cannot hold an operation's end open.
+func TestTheAttestationLockWaitIsBounded(t *testing.T) {
+	defer func(was time.Duration) { attestationLockWait = was }(attestationLockWait)
+	attestationLockWait = 10 * time.Millisecond
+
+	d := &Deps{Paths: domain.PathsUnder(t.TempDir(), "demo"), Locker: neverFreeLocker{}}
+	statementsIn(t, d, 3)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pruneStatements(context.Background(), d, domain.Installation{Policy: domain.Policy{RetainAttestations: 1}})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the prune waited for the attestation lock without bound")
+	}
+	left, err := localStatements(d.Paths.AttestationsDir())
+	require.NoError(t, err)
+	assert.Len(t, left, 3, "the prune ran without the lock")
 }
