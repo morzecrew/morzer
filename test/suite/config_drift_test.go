@@ -267,3 +267,26 @@ func TestATickThatCannotCompareHolds(t *testing.T) {
 	assert.False(t, res.Applied, "the tick installed over files it could not compare")
 	assert.Contains(t, res.Assessment.Why(), "could not be compared")
 }
+
+// A current-release record that cannot be read is said to be unreadable, not
+// reported as a machine that never installed a release (#236).
+func TestDoctorSaysAnUnreadableReleaseRecordIsUnreadable(t *testing.T) {
+	h := appliedHarness(t)
+	require.NoError(t, os.WriteFile(h.Paths.CurrentReleaseFile(), []byte("{not json"), 0o600))
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	release := findCheck(t, report, "runtime.release")
+	assert.Equal(t, "fail", release.Status)
+	assert.Contains(t, release.Message, "cannot read")
+	assert.Contains(t, release.Message, "invalid character", "the decode error itself was dropped")
+	assert.NotContains(t, release.Message, "no release is installed")
+	drift := findCheck(t, report, "config.drift")
+	assert.NotContains(t, drift.Message, "no release is installed")
+
+	// The remedy names only what can repair the record: update reads the
+	// same record first and stops on the same error.
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: testBundlePath(t)})
+	require.Error(t, err)
+	assert.NotContains(t, release.Remedy, "morzer update", "the remedy names a command that fails on the same record")
+}

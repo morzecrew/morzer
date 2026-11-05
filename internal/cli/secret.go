@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -452,9 +453,6 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	}
 
 	services := schema.ServicesFor(names)
-	if len(services) == 0 {
-		return nil, nil
-	}
 
 	current, err := a.Deps.State.CurrentRelease(ctx)
 	if err != nil || current.IsZero() {
@@ -486,9 +484,36 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	}
 
 	// The rendered files must be updated before the restart, or the
-	// services would come back holding the old value.
-	if _, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema); err != nil {
+	// services would come back holding the old value. Rendered whether or
+	// not a service declares the secret: a template or a container may read
+	// the file without the release saying so (#238).
+	files, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema)
+	if err != nil {
 		return nil, err
+	}
+
+	if len(services) == 0 {
+		// Only the names a file was rendered for: one the release does not
+		// declare is stored and never rendered, and one `secret edit`
+		// removed has had its file pruned.
+		var written []string
+		for _, f := range files {
+			if slices.Contains(names, f.Name) {
+				written = append(written, f.Name)
+			}
+		}
+		if len(written) > 0 {
+			// Not "the next apply": a template holds the secret's path,
+			// so no configuration file changes, and a container that
+			// mounts the file holds the replaced one until it restarts.
+			a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
+				fmt.Sprintf("No service declares %s, so none was restarted. Its file under %s has the new value.",
+					strings.Join(written, ", "), a.Deps.Paths.SecretsRenderDir()),
+				"Whatever opens the file reads the new value. A container that mounts the file " +
+					"keeps reading the old one until it restarts.",
+			}})
+		}
+		return nil, nil
 	}
 
 	// Rendered, and nothing restarted: a restart starts a stopped container,

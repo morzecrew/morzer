@@ -5,6 +5,9 @@
   `ASSUMED`: none was ruled before the build, and each is open to the author's
   ruling in review. Gaps the build exposed are in
   [logs/rfc-0034-installation-remove.md](../logs/rfc-0034-installation-remove.md).
+  *(2026-11-04: `--backup` reopened by the author and built in #267, decision
+  11; the entries its build and review wrote in
+  [logs/remove-backup.md](../logs/remove-backup.md) are decisions 12–16.)*
 - **Scope:** A verb that takes an installation off a machine:
   `morzer installation remove`. Covers what it removes, what it keeps by default
   and what `--purge` adds, how it is confirmed, its step order, how it ends with a
@@ -158,6 +161,8 @@ The refusals come before the lock is taken, so they leave no journal entry.
 | `forget-installation` | the manager's directory, except `locks/` and the journal | nothing is left |
 
 - **Units first,** so no timer starts an update or a backup halfway through.
+  *(2026-11-04: with `--backup`, the backup's own steps come before them,
+  under the same lock; see decisions 11 and 15.)*
 - **The project is taken down with the release's own files** when the current
   release resolves. Otherwise it is taken down by project name alone, from an
   empty project directory: Compose finds the containers and volumes by label.
@@ -292,6 +297,11 @@ differently on any of them.
 | 9 | `ASSUMED` | With no installation record, `--product` names the product. `stop-services` is skipped, and nothing is attested or notified (§5.5). |
 | 10 | `ASSUMED` | When the current release cannot be read, the project is taken down by name alone, from an empty project directory. When no release was ever recorded, nothing is taken down (§5.3). |
 | 11 | `ASSUMED` | *(2026-11-04, ruled by the author)* **Reopens §4's non-goal and §8's exclusion, for the backup alone.** `installation remove --backup` takes the backup `morzer backup` takes, verified and pushed to every configured target, as the first steps of the removal and under its lock. A backup that fails, or does not reach a target, stops the removal before anything is removed. The documented `morzer backup && morzer installation remove …` leaves a window a timer can run in, and a script whose backup failed part way still reaches `--purge`. The flag configures nothing new, since the backup is the installation's own. `--export` stays out. |
+| 12 | `ASSUMED` | *(2026-11-04, from the build and the review; accepted 2026-11-04)* `--backup --purge` is refused before the lock unless the backup would leave a copy something can read. That needs a backup target, no `file://` target resolving inside the installation's directories, and a recipient in the secret state other than the machine's own, since `--purge` removes the local backups and the machine key. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:18, and attempt 2, 20:36). |
+| 13 | `ASSUMED` | *(2026-11-04, from the build; accepted 2026-11-04)* `--backup` is refused before the lock when there is no installation record or the current release does not resolve, since there is nothing to back up. The backup records `pre-remove` as its reason, verifies as `morzer backup` does, and prunes nothing. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:18, nothing to back up). |
+| 14 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* Under the lock, a removal with `--backup` re-reads the installation, and refuses when its backup targets changed since it planned. It pushes to the targets it planned for or not at all. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:36, targets under the lock). |
+| 15 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* When the record a removal resumes shows its backup steps finished, those steps report already satisfied rather than run, and neither the release nor a backup engine is required. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:36, the resume). |
+| 16 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* A removal with `--backup` records a digest of its backup targets in its journal record, and a resume past the backup is refused when the targets configured now differ. A fresh removal then takes a new backup to them. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 2, 21:00). |
 
 ## 12. Phasing
 

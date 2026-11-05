@@ -44,6 +44,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing. The plan now names such a file, the update keeps a copy and says
   where, and an unattended update waits.
 
+- **`config set` re-creates a service that reads the value only from a
+  rendered file.** Its Compose definition does not change, so a plain `up`
+  kept the container on the old file while the summary said it was
+  re-created. It is now re-created forced, as a domain change already was.
+
+- **A failed `config set` or domain change is undone with the old value.**
+  The undo re-created the services before the recorded values and the
+  rendered files were put back, so they came back with the rejected value.
+
+- **A secret no service declares is rendered when it changes.** `secret set`,
+  `generate`, `rotate` and `edit` skipped the render when nothing would be
+  restarted, so the rendered file kept the old value. Now it is rendered, and
+  the command says what picks the new value up.
+
+- **`doctor` says when the current-release record cannot be read.** It
+  reported a corrupt or unreadable record as "no release is installed yet",
+  which describes a machine that never installed one. It now fails
+  `runtime.release` with the read error, and `config.drift` says why it did
+  not check.
+
 - **A task no longer leaves its finished dependencies behind.** A task whose
   service waits on one-shot jobs behind a profile left each of them exited,
   and `status` drew them as failures. Once they exit 0 they are removed with

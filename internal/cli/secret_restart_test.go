@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -29,6 +30,13 @@ import (
 // them.
 func restartApp(t *testing.T, services ...ports.ServiceState) (*App, *fakes.Runtime) {
 	t.Helper()
+	bundle, err := filepath.Abs(filepath.Join("..", "..", "testdata", "bundle"))
+	require.NoError(t, err)
+	return restartAppAt(t, bundle, services...)
+}
+
+func restartAppAt(t *testing.T, bundle string, services ...ports.ServiceState) (*App, *fakes.Runtime) {
+	t.Helper()
 	ctx := context.Background()
 
 	paths := domain.PathsUnder(t.TempDir(), "demo")
@@ -40,8 +48,6 @@ func restartApp(t *testing.T, services ...ports.ServiceState) (*App, *fakes.Runt
 		Profile:       "embedded",
 	}))
 
-	bundle, err := filepath.Abs(filepath.Join("..", "..", "testdata", "bundle"))
-	require.NoError(t, err)
 	rel, err := release.Load(bundle)
 	require.NoError(t, err)
 	require.NoError(t, st.SetCurrentRelease(ctx, domain.ReleaseRecord{
@@ -137,4 +143,51 @@ func TestRestartDependentsRestartsNothingWhileStopped(t *testing.T) {
 	assert.Empty(t, restarted)
 	assert.NotContains(t, rt.Calls, "Restart")
 	assert.DirExists(t, app.Deps.Paths.SecretsRenderDir(), "the change was not rendered for start to pick up")
+}
+
+// A secret no service declares is still rendered when it changes, so whatever
+// reads the rendered file is not left with the old value, and the operator is
+// told what picks the new one up (#238).
+func TestASecretNoServiceDeclaresIsStillRendered(t *testing.T) {
+	ctx := context.Background()
+	bundle := t.TempDir()
+	require.NoError(t, os.CopyFS(bundle, os.DirFS(filepath.Join("..", "..", "testdata", "bundle"))))
+	schemaPath := filepath.Join(bundle, "secrets.schema.yaml")
+	schema, err := os.ReadFile(schemaPath)
+	require.NoError(t, err)
+	schema = append(schema, []byte("  - name: report_token\n    description: read only by a configuration template\n    required: false\n")...)
+	require.NoError(t, os.WriteFile(schemaPath, schema, 0o600))
+
+	app, rt := restartAppAt(t, bundle, ports.ServiceState{Name: "app", State: ports.StateRunning})
+	store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+	require.True(t, ok)
+	store.Seed(map[string]string{
+		"db_password": "a-stored-password", "session_key": "a-stored-session-key", "report_token": "old",
+	})
+	_, err = app.restartDependents(ctx, []string{"report_token"})
+	require.NoError(t, err)
+	rendered := filepath.Join(app.Deps.Paths.SecretsRenderDir(), "report_token")
+	require.FileExists(t, rendered)
+
+	var told bytes.Buffer
+	app.Stream.Err = &told
+	require.NoError(t, store.Set(ctx, "report_token", domain.NewSecret("new")))
+	restarted, err := app.restartDependents(ctx, []string{"report_token"})
+	require.NoError(t, err)
+	assert.Empty(t, restarted)
+	assert.NotContains(t, rt.Calls, "Restart")
+	got, err := os.ReadFile(rendered)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(got), "the rendered file kept the old value")
+	assert.Contains(t, told.String(), "No service declares report_token")
+	assert.Contains(t, told.String(), "until it restarts")
+	assert.NotContains(t, told.String(), "morzer apply", "a template holds the path, so apply changes nothing")
+
+	// A name the release does not declare is stored and never rendered, so
+	// nothing may claim a file holds it.
+	told.Reset()
+	require.NoError(t, store.Set(ctx, "not_declared", domain.NewSecret("v")))
+	_, err = app.restartDependents(ctx, []string{"not_declared"})
+	require.NoError(t, err)
+	assert.NotContains(t, told.String(), "rendered file", "a file that does not exist was said to hold the value")
 }
