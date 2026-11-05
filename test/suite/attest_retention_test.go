@@ -13,6 +13,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Pruning the attestations a machine keeps (RFC 0049).
@@ -177,4 +178,40 @@ func TestRetentionAttestationsIsASetting(t *testing.T) {
 		ops.SetSettingsOptions{Unset: []string{"retention.attestations"}})
 	require.NoError(t, err)
 	assert.Zero(t, installation(t, h).Policy.RetainAttestations)
+}
+
+// watchingSigner notes, when it is asked to sign, whether a statement is
+// already on disk without its signature.
+type watchingSigner struct {
+	ports.Signer
+	dir      string
+	unsigned []string
+}
+
+func (s *watchingSigner) Sign(ctx context.Context, data []byte, comment string) (ports.Signature, error) {
+	entries, _ := os.ReadDir(s.dir)
+	for _, e := range entries {
+		name := filepath.Join(s.dir, e.Name())
+		if filepath.Ext(name) == ".json" {
+			if _, err := os.Stat(name + ".minisig"); err != nil {
+				s.unsigned = append(s.unsigned, e.Name())
+			}
+		}
+	}
+	return s.Signer.Sign(ctx, data, comment)
+}
+
+// A statement appears only once its signature is there. A prune or an
+// `attest push` that ran between the two would otherwise see an unsigned
+// statement, send or count it as complete, and remove it before its signature
+// was written.
+func TestAStatementAppearsOnlyWithItsSignature(t *testing.T) {
+	h := retentionHarness(t)
+	signingInstallation(t, h)
+	watching := &watchingSigner{Signer: h.Deps.Signer, dir: h.Paths.AttestationsDir()}
+	h.Deps.Signer = watching
+	applyOnce(t, h)
+	applyOnce(t, h)
+	assert.Empty(t, watching.unsigned)
+	assert.Len(t, statementsOnDisk(t, h), 2)
 }

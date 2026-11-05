@@ -54,3 +54,22 @@ evidence: rfcs/0049-pruning-the-attestations-a-machine-keeps.md:151-166
 action: decided
 proposal: ASSUMED — a prune that removed statements publishes one informational message naming how many and the setting that asked for it. A prune that removed nothing says nothing.
 ```
+
+From #276's review.
+
+A statement was written before its signature. A prune between the two found
+a statement with no local signature, took a target holding the document as
+holding all of it, and could remove the statement before its signature was
+written. An `attest push` in the same window sent the document alone.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-11-05T10:14:00Z
+attempt: 2
+claim: a prune running beside another operation's emission can see that operation's statement before its signature exists, and remove it
+evidence: internal/lifecycle/ops/attest.go:117-132
+action: decided
+proposal: ASSUMED — a statement is signed before it is written, so it appears on disk with its signature or, where the machine cannot sign, without one for good. A statement whose write fails takes its signature with it.
+```

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -103,12 +104,6 @@ func fileAttestation(
 	}
 
 	path := filepath.Join(dir, rec.ID+".json")
-	// 0644: an audit record with no secret in it by construction, and one
-	// an auditor cannot read is one they will not read.
-	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
-		d.warnf("cannot write the attestation to %s: %s", path, domain.AsError(err).Message)
-		return "", false
-	}
 
 	// Signed if this machine can, and pushed either way.
 	//
@@ -119,7 +114,21 @@ func fileAttestation(
 	// produces exactly the record that most needs to survive its disk, and
 	// keeping it local because it lacked a signature would withhold
 	// evidence from the installations with the least of it.
+	//
+	// The signature first, so a statement never appears without the one it
+	// will have: a prune or an `attest push` between the two would take it
+	// for an unsigned statement, and count a target holding the document as
+	// holding all of it (RFC 0049).
 	sign(ctx, d, rec, in, path, body)
+
+	// 0644: an audit record with no secret in it by construction, and one
+	// an auditor cannot read is one they will not read.
+	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
+		d.warnf("cannot write the attestation to %s: %s", path, domain.AsError(err).Message)
+		// Its signature would be for a statement that is not there.
+		_ = os.Remove(path + minisigExt)
+		return "", false
+	}
 	return path, true
 }
 
@@ -166,8 +175,9 @@ func (d *Deps) signingKeyForDocument(
 	return key.Line
 }
 
-// sign writes the detached signature beside a statement, or says why it could
-// not. Never fails the emission; the statement is already on disk.
+// sign writes the detached signature where a statement is about to be written,
+// or says why it could not. Never fails the emission; the statement is written
+// either way.
 func sign(
 	ctx context.Context, d *Deps, rec domain.OperationRecord,
 	in domain.AttestationInputs, path string, body []byte,
