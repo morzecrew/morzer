@@ -41,7 +41,7 @@ finishes it, and the next boot leaves the product alone either way.
 | --- | --- |
 | A reboot | Leaves the product down. The unit exits 0 and logs `stopped by the operator since <time>: <reason>`. |
 | The update timer | Fetches, verifies and stages a new release, and never installs it, whatever `update.auto_apply` says. |
-| `apply`, `update`, `rollback`, `task run` | Refused with [exit 2](../reference/exit-codes.md) and a hint to run `morzer start`: each would start the product. |
+| `apply`, `update`, `rollback`, `restart`, `task run` | Refused with [exit 2](../reference/exit-codes.md) and a hint to run `morzer start`: each would start the product. |
 | `restore` | Runs, and leaves the product stopped. `morzer start` applies the release over the restored data. |
 | The scheduled backup | Skipped, with a line in the unit's journal. `morzer backup` still runs when you run it, and a backup hook that needs a running service will fail then. |
 | `config set`, `secret set`, `secret generate`, `secret rotate`, `secret edit` | Store the change and restart nothing. It takes effect at `morzer start`. |

@@ -17,9 +17,10 @@ func newStopCommand(app *App) *cobra.Command {
 		Long: "Stops every service and records the stop, so the product stays down\n" +
 			"across a reboot and an unattended update until `morzer start`.\n\n" +
 			"Containers, networks and volumes are kept: nothing here can remove a\n" +
-			"volume. While stopped, `apply`, `update`, `rollback` and `task run` are\n" +
-			"refused, the update timer stages without installing, and the scheduled\n" +
-			"backup is skipped. `restore` and an explicit `backup` still run.\n\n" +
+			"volume. While stopped, `apply`, `update`, `rollback`, `restart` and\n" +
+			"`task run` are refused, the update timer stages without installing, and\n" +
+			"the scheduled backup is skipped. `restore` and an explicit `backup` still\n" +
+			"run.\n\n" +
 			"Docs: https://morzecrew.github.io/morzer/latest/operating/taking-a-product-down/",
 		Example: "  morzer stop --reason \"moving to a new disk\"\n" +
 			"  morzer start",

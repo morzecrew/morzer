@@ -21,6 +21,7 @@ here. The reference column points at the section that documents it; the
 | `morzer rollback` | Return to the previous release | [commands](commands.md#rollback) |
 | `morzer stop` | Take the product down and keep it down until it is started | [commands](commands.md#stop) |
 | `morzer start` | Bring a stopped product back | [commands](commands.md#start) |
+| `morzer restart` | Re-create services from the installed release | [commands](commands.md#restart) |
 | `morzer config` | Read and change the release parameters | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config list` (also `ls`) | Show every parameter the release declares | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config get` | Print one parameter's effective value | [parameters](parameters.md#changing-one-after-install) |

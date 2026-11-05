@@ -84,6 +84,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`rollback`](#rollback) | Return to the previous release. |
 | [`stop`](#stop) | Take the product down and keep it down until it is started. |
 | [`start`](#start) | Bring a stopped product back. |
+| [`restart`](#restart) | Re-create services from the installed release. |
 | [`status`](#status) | Show what is deployed and whether it is working. |
 | [`doctor`](#doctor) | Run read-only diagnostics. |
 | [`logs`](#logs) | Read the deployment's logs. |
@@ -273,7 +274,7 @@ volumes are kept: no flag of `stop` or `start` can remove a volume.
 | --- | --- |
 | `--reason` | Why, in one line of at most 200 characters; shown by `status`, `doctor` and `ls` until `start`. |
 
-While stopped, `apply`, `update`, `rollback` and `task run` are refused with
+While stopped, `apply`, `update`, `rollback`, `restart` and `task run` are refused with
 [exit 2](exit-codes.md), the update timer stages without installing, and the
 scheduled backup is skipped. `restore` and an explicit `backup` still run.
 [Taking a product down for a while](../operating/taking-a-product-down.md) has
@@ -291,6 +292,29 @@ it succeeds.
 It does not install a release staged while the product was stopped; the next
 tick of the update timer, or `morzer update`, does. On a product that is not
 stopped, `start` is `apply`, and says nothing was stopped.
+
+## restart
+
+```sh
+morzer restart <service>...
+```
+
+Re-creates the named services from the installed release, forced, then waits
+for the release's health checks. A container changed by hand comes back as the
+release defines it, and its writable layer does not survive, as with any
+re-create `apply` does. A dependency that is down is started, never re-created.
+
+A `restart` operation in the journal, under the deployment lock. Refused with
+[exit 2](exit-codes.md) while the product is stopped, before the first `apply`,
+with no service named, and for a service the release does not start, including
+one behind an inactive profile; the refusal lists the services it does start.
+A service that does not come back healthy fails the restart, and nothing is put
+back. It files no attestation: it moves neither a version nor a configuration.
+
+An interrupted restart has no `--resume`. Clear it with
+`morzer status --clear-intervention` and run it again.
+
+To restart everything, use `stop` and `start`.
 
 ## status
 
