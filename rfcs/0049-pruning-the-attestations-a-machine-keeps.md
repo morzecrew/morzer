@@ -8,7 +8,8 @@
   what `attest verify` and `attest log` read after a prune. Not covered:
   where statements are pushed (RFC 0025 decision 5), a target list of their
   own, and fetching a target's copies to verify them. No change to the
-  statement format or the predicate type. No installation schema bump.
+  statement format or the predicate type. The installation schema moves to
+  17.
 - **Related:** [0025](0025-attesting-an-installation.md) (the statements;
   §10's volume risk and the status line's "no retention on the attestation
   directory"); [0042](0042-settings-an-operator-changes-after-init.md)
@@ -138,9 +139,14 @@ today. A default would start deleting audit records on the first operation
 after an upgrade, on machines whose operators never asked for it, to save a
 few megabytes a year.
 
-An older manager that rewrites the state drops the field and keeps
-everything, which is the safe direction, so the installation schema stays
-at 16 (decision 7). `retain_pre_update_backups` was added the same way.
+The installation schema moves to 17 (decision 7), as it has for every field
+added to the state since 2 -> 3 (`state.go:190-388`), including
+`retain_pre_update_backups` at 11 -> 12. The bump is for the write path: an
+older manager refuses the state rather than rewriting it without the field.
+Dropped, the field would only mean keeping everything, the safe direction,
+but the refusal is the convention every other field follows, and the
+unreleased changes already move the schema to 16 (RFC 0047), so a release
+that carries this asks nothing more of an operator going back.
 
 ### 5.2 When the prune runs
 
@@ -267,9 +273,8 @@ own off-site evidence.
   what it says.
 - **One unpushed statement holds back every prune.** Accepted: `doctor`
   already warns about it, and `attest push` clears it.
-- **Settings an older manager drops.** A state rewritten by an older manager
-  loses `retain_attestations`, and the newer one keeps everything until the
-  operator sets it again. Accepted, as for `retain_pre_update_backups`.
+- **Going back to an older manager.** It refuses a state at schema 17, as it
+  refuses 16 already. Accepted: the bump rides the release that carries 16.
 
 ## 10. Unresolved questions
 
@@ -285,7 +290,7 @@ None. Decisions 1–3 were ruled by the author 2026-11-05.
 | 4 | `ASSUMED` | Only the oldest statements are removed, in name order, and the prune stops at the first one it must keep: one that a backup target is missing (document or signature), every statement when a target cannot be listed, and the newest successful statement. A hole in the middle would read as a chain break. |
 | 5 | `ASSUMED` | The prune runs after `emitAttestation` has filed and pushed a statement, outside the engine and the lock. A failure warns and never fails the operation (RFC 0025 decision 6), and a statement already gone is not an error. |
 | 6 | `ASSUMED` | The setting is the installation's only. The manifest gains no `retention.attestations`: how long an audit record is kept is the operator's decision, not the vendor's. |
-| 7 | `ASSUMED` | No installation schema bump. An older manager that rewrites the state drops `policy.retain_attestations` and keeps everything, the safe direction. |
+| 7 | `ASSUMED` | The installation schema moves to 17 for `policy.retain_attestations`, as every field added to the state has moved it, so an older manager refuses the state rather than rewriting it without the field. Nothing to convert: absent means unset, which keeps everything. |
 | 8 | `ASSUMED` | A statement's `.minisig` is removed before the statement, so an interrupted prune leaves an unsigned statement and never an orphaned signature. No marker records a prune. |
 
 ## 12. Phasing
