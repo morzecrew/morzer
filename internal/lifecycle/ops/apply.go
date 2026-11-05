@@ -1127,7 +1127,10 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 			return len(rel.Manifest.Health.Checks) == 0, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			specs, err := d.checkSpecs(inst, rel, st.OpID, domain.OpTypeApply)
+			// The operation running the check, as every hook is told
+			// (hooks.md): `update`, `rollback`, `start` and `restart` run
+			// this step too.
+			specs, err := d.checkSpecs(inst, rel, st.OpID, st.OpType)
 			if err != nil {
 				return err
 			}

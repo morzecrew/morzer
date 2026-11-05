@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A command health check is told the operation running it.** During
+  `update`, `rollback` and `start` its `OPERATION_TYPE` said `apply`, which
+  the hook reference says is the value for an `apply` alone.
+
 - **An update keeps a file it replaces at a new configuration target.** A
   release that added a target overwrote whatever file was there and kept
   nothing. The plan now names such a file, an update or rollback keeps a copy

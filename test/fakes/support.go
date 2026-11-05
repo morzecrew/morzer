@@ -54,6 +54,10 @@ type Health struct {
 
 	// Err is returned instead of results when set.
 	Err error
+
+	// LastSpecs is what the latest WaitReady was handed, so a test can read
+	// the environment a command check would run with.
+	LastSpecs []ports.CheckSpec
 }
 
 func NewHealth() *Health { return &Health{Healthy: true} }
@@ -98,6 +102,7 @@ func (h *Health) WaitReady(ctx context.Context, specs []ports.CheckSpec) ([]port
 	}
 
 	h.mu.Lock()
+	h.LastSpecs = specs
 	patience, interval := h.Patience, h.Interval
 	failThisWait := h.FailingWaits > 0
 	if failThisWait {

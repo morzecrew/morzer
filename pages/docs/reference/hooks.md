@@ -32,7 +32,7 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_PRODUCT` | The product name itself. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
-| `<PRODUCT>_OPERATION_TYPE` | `apply`, `update`, `rollback`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
+| `<PRODUCT>_OPERATION_TYPE` | `apply`, `start`, `update`, `rollback`, `restart`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `restart` runs only the health checks. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
 | `<PRODUCT>_PHASE` | Where in the lifecycle this invocation sits — see below. |
 | `<PRODUCT>_RELEASE_VERSION` | Version of the release the hook belongs to. |
 | `<PRODUCT>_RELEASE_DIR` | Absolute path to the release root. Same as the working directory. |
