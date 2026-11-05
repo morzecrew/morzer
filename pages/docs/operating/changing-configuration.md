@@ -95,6 +95,7 @@ claims a service was re-created; it says what *would* happen.
 | The domains | `config set installation.domains=<a>,<b>`, which re-creates every running service |
 | Whether a signature is required | `config set release.require_signature=true`, after `release trust add` |
 | How many releases and ordinary backups to keep | `config set retention.releases=<n> retention.backups=<n>`; unset follows the manifest's [`retention`](../reference/manifest.md#retention) |
+| How many attestations to keep | `config set retention.attestations=<n>`; unset keeps them all. See [Keeping fewer of them](../reference/attestations.md#keeping-fewer-of-them) |
 | The service topology | The vendor's, in the release's Compose files |
 
 !!! danger "Parameters are not secrets"

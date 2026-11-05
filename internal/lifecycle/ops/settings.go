@@ -361,6 +361,23 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Policy.RetainBackups = 0 },
 	},
+	// The installation's only, with no manifest field: how long an audit
+	// record is kept is the operator's decision (RFC 0049 decision 6).
+	"retention.attestations": {
+		Description: "how many of the newest attestations this machine keeps; at least 1, and unset keeps " +
+			"them all. A statement not yet on every backup target is never removed",
+		Read: func(i domain.Installation) string { return countOrEmpty(i.Policy.RetainAttestations) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			n, err := retentionCount(raw)
+			if err != nil {
+				// No release declares a count to return to.
+				return domain.AsError(err).WithHint("`config unset` keeps every statement")
+			}
+			i.Policy.RetainAttestations = n
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.RetainAttestations = 0 },
+	},
 	"update.channel": {
 		Description: "a mutable reference to follow, e.g. oci://registry.example/demo/bundle:stable",
 		Read:        func(i domain.Installation) string { return i.Update.Channel },

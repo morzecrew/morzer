@@ -79,6 +79,7 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Policy.RetainReleases":         keep("local disk retention"),
 		"Policy.RetainBackups":          keep("local disk retention"),
 		"Policy.RetainPreUpdateBackups": keep("local disk retention"),
+		"Policy.RetainAttestations":     keep("local disk retention"),
 		"Policy.SkipBackupBeforeUpdate": keep("local behaviour"),
 		"Policy.StaleBackupAfter":       keep("when doctor warns; local"),
 		"Policy.BackupSchedule": keep("when scheduled backups run -- local behaviour, and a " +

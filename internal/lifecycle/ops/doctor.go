@@ -417,6 +417,7 @@ func policyEqual(a, b domain.Policy) bool {
 		a.RetainReleases == b.RetainReleases &&
 		a.RetainBackups == b.RetainBackups &&
 		a.RetainPreUpdateBackups == b.RetainPreUpdateBackups &&
+		a.RetainAttestations == b.RetainAttestations &&
 		a.SkipBackupBeforeUpdate == b.SkipBackupBeforeUpdate &&
 		a.StaleBackupAfter == b.StaleBackupAfter &&
 		a.BackupSchedule == b.BackupSchedule &&

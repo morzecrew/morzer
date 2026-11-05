@@ -49,6 +49,9 @@ func emitAttestation(ctx context.Context, d *Deps, rec domain.OperationRecord, i
 		// machine does not have, and a record that dies with the disk is
 		// the gap RFC 0025 §1 is about.
 		pushStatement(ctx, d, in.Installation, path)
+		// After the push, so the statement just filed counts as having
+		// left the machine when it did (RFC 0049 decision 5).
+		pruneStatements(ctx, d, in.Installation)
 	}
 }
 

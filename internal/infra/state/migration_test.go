@@ -257,6 +257,15 @@ func TestASchemaFourteenInstallationKeepsTheDoctorTimer(t *testing.T) {
 func TestASchemaFifteenInstallationExportsNothing(t *testing.T) {
 	got, err := migrateInstallation(domain.Installation{SchemaVersion: 15})
 	require.NoError(t, err)
-	assert.Equal(t, 16, got.SchemaVersion)
+	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
 	assert.Empty(t, got.Policy.MetricsTextfile)
+}
+
+// 16 -> 17 added `policy.retain_attestations` (RFC 0049). A machine written
+// before it keeps every statement.
+func TestASchemaSixteenInstallationKeepsEveryAttestation(t *testing.T) {
+	got, err := migrateInstallation(domain.Installation{SchemaVersion: 16})
+	require.NoError(t, err)
+	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
+	assert.Zero(t, got.Policy.RetainAttestations)
 }

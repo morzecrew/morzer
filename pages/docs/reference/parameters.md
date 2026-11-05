@@ -191,6 +191,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `retention.pre_update_backups` | How many of the newest pre-update backups retention keeps, on top of the ordinary count; at least `1`. Absent takes `3`. See [retention](../operating/backups.md#retention). |
 | `retention.releases` | How many releases the store keeps beside the current, previous and staged ones, which are never pruned; at least `1`. Absent takes the release's `retention.releases`. |
 | `retention.backups` | How many of the newest backups retention keeps; at least `1`. Absent takes the release's `retention.backups`. |
+| `retention.attestations` | How many of the newest [attestations](attestations.md#keeping-fewer-of-them) this machine keeps; at least `1`. Absent keeps them all, and no release sets it. A statement a backup target does not have yet is never removed. |
 | `release.require_signature` | Refuse any release not signed by a key [`release trust`](release-commands.md#release-trust) lists. `true` needs a trusted key; `false` is refused while `update.auto_apply` is on, and is journalled. See [unattended updates](../operating/unattended-updates.md#turning-it-on). |
 | `installation.domains` | The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an `https://` URL. A change renders the configuration and re-creates every running service. |
 

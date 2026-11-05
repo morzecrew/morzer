@@ -113,7 +113,9 @@ import (
 // Bumped to 16 for `policy.metrics_textfile` (RFC 0047 decision 17). An older
 // manager's `config set` would drop it, and the next reconciliation would
 // remove the metrics timer an operator's alerts depend on.
-const InstallationSchemaVersion = 16
+// Bumped to 17 for `policy.retain_attestations` (RFC 0049 decision 7), for the
+// write path, as every field added to the state has been.
+const InstallationSchemaVersion = 17
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -735,6 +737,10 @@ type Policy struct {
 	// all kept, forever, until a machine updating every ten minutes kept a
 	// full backup per update (RFC 0001 decision 21).
 	RetainPreUpdateBackups int `yaml:"retain_pre_update_backups" json:"retain_pre_update_backups,omitempty"`
+
+	// RetainAttestations is how many of the newest statements this machine
+	// keeps. Zero keeps them all, as before it existed (RFC 0049).
+	RetainAttestations int `yaml:"retain_attestations" json:"retain_attestations,omitempty"`
 
 	// SkipBackupBeforeUpdate turns off the pre-update backup for every
 	// update on this installation.
