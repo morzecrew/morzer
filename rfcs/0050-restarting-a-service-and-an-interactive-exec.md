@@ -1,10 +1,11 @@
 # RFC 0050 — Restarting a service, and an interactive exec
 
-- **Status:** 🚧 In progress — proposed 2026-11-05, and ruled by the author
+- **Status:** ✅ Complete — proposed 2026-11-05, and ruled by the author
   2026-11-05: RFC 0021 decisions 8 and 12 reopened, and §11's `OPEN` rows
   as recommended. **P1 built 2026-11-05** in #279; the entries its build and
   review wrote in [logs/restart-service.md](../logs/restart-service.md) are decisions 9–12.
-  P2 is ready to build.
+  **P2 built 2026-11-05** in #281; the entries in
+  [logs/exec-interactive.md](../logs/exec-interactive.md) are decisions 13–16, ruled by the author 2026-11-05.
 - **Scope:** Two commands RFC 0021 left out on purpose. `morzer restart
   <service>…` re-creates named services from the installed release, under
   the deployment lock, and journals it. `morzer exec --interactive` gives
@@ -297,6 +298,13 @@ with nobody to journal it, as it would leave any child.
   journal's argv is redacted as before.
 - **A TTY session ties up the manager process for as long as it runs.** It
   holds no lock, so nothing else waits on it.
+- *(2026-11-05, accepted by the author)* **A session that ignores SIGTERM is
+  killed after 10 seconds, and the kill reaches `docker` alone.** On a
+  current Docker the CLI tells its Compose plugin over the plugin socket when
+  it gets SIGTERM, and waits for it, so a session ends cleanly; the
+  acceptance run's SIGTERM step ends with 130, not the 137 of a kill. The
+  fallback kill reaches only `docker`, as killing any child does, and a
+  plugin still running then is left to the operating system.
 
 ## 10. Unresolved questions
 
@@ -319,10 +327,14 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 | 10 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* A restart has no `--resume`. Its steps are idempotent, so an interrupted one is cleared with `morzer status --clear-intervention`, as `config`'s is, and run again. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 1, 13:00). |
 | 11 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decision 4.** A restart's first step runs `apply`'s `images.bundled` check and refuses, naming `release ingest`, before anything is re-created: a bundled image reaches Compose through a mutable local tag, and a missing one would be pulled from the registry under it. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 2, 13:23). |
 | 12 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* A command health check is told the operation running it, as every hook is: `restart` under a restart, and `update`, `rollback` and `start` under those, where it was told `apply`. The hook reference lists `restart`. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 2, 13:23). |
+| 13 | `ASSUMED` | *(2026-11-05, from the build; ruled by the author 2026-11-05)* **Refines decision 6.** A command that exits non-zero returns its code and a nil error, as `Exec` does; the error is for a session that could not start, a runtime failure, and an unsupported runtime. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 6, attempt 1, 15:05). |
+| 14 | `ASSUMED` | *(2026-11-05, from the build; ruled by the author 2026-11-05)* **Refines decision 7.** The session's `compose` stays in the manager's process group, unlike every other command the adapter starts in a group of its own: a process outside the terminal's foreground group is stopped when it reads the terminal and never receives Ctrl-C. Its cancellation signals `compose` alone, not the group, which holds the manager too. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 1, 15:05). |
+| 15 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** The hold on the signals is taken only once the command starts, and given back when it ends; the checks before it stay the root handler's and cancellable, so a Ctrl-C while the service is checked stops the command from starting. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, the hold). |
+| 16 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** `SIGINT` and `SIGQUIT` are caught and dropped; `SIGTSTP` is left at its default, since a caught Ctrl-Z without a TTY suspended `compose` and left the manager waiting, so the shell never got the terminal back. With a TTY it is a byte for the container's terminal either way. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, `SIGTSTP`). |
 
 ## 12. Phasing
 
 - **P1 — `restart`.** Decisions 1, 3, 4. One PR. *(2026-11-05: built in
   #279.)*
 - **P2 — `exec -i`.** Decisions 2, 5–7: the port method, the Compose
-  adapter, the fake, the CLI flag. One PR.
+  adapter, the fake, the CLI flag. One PR. *(2026-11-05: built in #281.)*
