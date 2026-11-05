@@ -207,8 +207,10 @@ func TestAFailedUpdateThatCannotRestoreKeepsTheCopy(t *testing.T) {
 
 	res, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.Error(t, err)
-	copied := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID, target)
-	assert.Equal(t, "the operator's own block\n", readFile(t, copied), "the undo removed the only copy")
+	kept := filepath.Join(h.Paths.VarDir, "replaced", res.Record.ID)
+	assert.Equal(t, "the operator's own block\n", readFile(t, filepath.Join(kept, target)),
+		"the undo removed the only copy")
+	assert.Contains(t, err.Error(), kept, "the failure does not say where the copy is")
 }
 
 // A file can appear after the tick checked and before the render: the

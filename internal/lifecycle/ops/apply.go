@@ -650,9 +650,11 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			kept := d.replacedDir(st.OpID)
 			if err := restoreConfigBackups(st); err != nil {
-				var de *domain.Error
-				if _, statErr := os.Stat(kept); statErr == nil && errors.As(err, &de) {
-					return de.WithHint("the files the update replaced where no release rendered one are kept under %s", kept)
+				// In the message, not a hint: the engine reports only a
+				// compensator's message.
+				if _, statErr := os.Stat(kept); statErr == nil {
+					return domain.InstallationError(nil, "%s; the files the update replaced where "+
+						"no release rendered one are kept under %s", domain.AsError(err).Message, kept)
 				}
 				return err
 			}
