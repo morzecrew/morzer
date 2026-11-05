@@ -573,6 +573,18 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err != nil {
 				return err
 			}
+			// Two spellings of one target are one file, written twice and
+			// backed up twice: the second backup and kept copy would hold
+			// the first render, not the file it replaced.
+			spelled := make(map[string]string, len(rendered))
+			for _, target := range slices.Sorted(maps.Keys(rendered)) {
+				if other, ok := spelled[filepath.Clean(target)]; ok {
+					return domain.ValidationError(nil,
+						"configuration targets %s and %s are the same file", other, target).
+						WithHint("the release's manifest declares that file twice; its vendor can fix the release")
+				}
+				spelled[filepath.Clean(target)] = target
+			}
 
 			// Into state for the attestation, which digests it
 			// under the installation's salt. The bytes stay here;

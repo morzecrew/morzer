@@ -375,7 +375,7 @@ A list of templates rendered onto the host.
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
 | `template` | path | ✅ | Release-relative template file. |
-| `target` | path | ✅ | Absolute destination on the host. |
+| `target` | path | ✅ | Absolute destination on the host. Two entries may not name one file, however it is spelled. |
 | `mode` | quoted octal | | File mode. Default `"0640"`. |
 
 Rendered files contain *paths* to secrets, never secret values.

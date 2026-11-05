@@ -256,3 +256,29 @@ func TestATickRefusesAFileThatAppearsAfterItsGate(t *testing.T) {
 	assert.False(t, res.Applied, "the tick replaced a file that appeared after its gate")
 	assert.Equal(t, "written while the update ran\n", readFile(t, target))
 }
+
+// Two spellings of one target are one file, written twice and kept and put
+// back twice, so the second would replace the copy of the operator's file:
+// refused before anything is written.
+func TestARenderRefusesTwoSpellingsOfOneTarget(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	src := stageUpgradeSource(t, h)
+	target := addTarget(t, src)
+	path := filepath.Join(src, "manifest.yaml")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	other := filepath.Dir(target) + "/./" + filepath.Base(target)
+	block := "  - template: templates/other.conf.tmpl\n    target: " + other + "\n"
+	require.NoError(t, os.WriteFile(path,
+		[]byte(strings.Replace(string(data), "configuration:\n", "configuration:\n"+block, 1)), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "templates", "other.conf.tmpl"), []byte("other\n"), 0o644))
+	writeOperatorFile(t, target, "the operator's own block\n")
+
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Error(), "the same file")
+	assert.Equal(t, "the operator's own block\n", readFile(t, target))
+}

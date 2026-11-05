@@ -111,3 +111,21 @@ evidence: internal/lifecycle/ops/apply.go:618-624
 action: departed
 proposal: ASSUMED — as decision 4, and the tick marks its update unattended. Its render refuses such a file as a failed preflight, before replacing it, rather than keep a copy. The update fails and is compensated, and the candidate is not retried until `morzer update --to` or the channel moves, as any failed candidate.
 ```
+
+Review found that the manifest accepts two spellings of one target, such as
+`/etc/nginx/./demo.conf` and `/etc/nginx/demo.conf`. The render wrote the
+file twice. The second pass kept the first template's output as the copy, and
+a failed update put the two backups back in map order and then removed the
+copy. The operator's file was lost either way.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-11-05T08:02:00Z
+attempt: 3
+claim: a release may declare one file under two target spellings, and the second render's copy and backup then hold the first render, not the file it replaced
+evidence: internal/lifecycle/ops/apply.go:575-586
+action: decided
+proposal: ASSUMED — the render refuses a release whose configuration targets clean to the same path, as a validation error naming both, before it writes anything. The manifest's own validation is unchanged, so an installed release that declares one still loads.
+```
