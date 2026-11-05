@@ -1,8 +1,10 @@
 # RFC 0050 — Restarting a service, and an interactive exec
 
-- **Status:** 📝 Draft — proposed 2026-11-05, and ruled by the author
+- **Status:** 🚧 In progress — proposed 2026-11-05, and ruled by the author
   2026-11-05: RFC 0021 decisions 8 and 12 reopened, and §11's `OPEN` rows
-  as recommended. Ready to build.
+  as recommended. **P1 built 2026-11-05** in #279; the entries its build and
+  review wrote in [logs/restart-service.md](../logs/restart-service.md) are decisions 9–12.
+  P2 is ready to build.
 - **Scope:** Two commands RFC 0021 left out on purpose. `morzer restart
   <service>…` re-creates named services from the installed release, under
   the deployment lock, and journals it. `morzer exec --interactive` gives
@@ -42,7 +44,9 @@ method. The command is still required. No timeout applies, and the journal
 records the argv, redacted, as it does for `exec` today.
 
 Both reopen decisions RFC 0021 made without grades, which count as `LOCKED`:
-decision 8 (no `restart`) and decision 12 (no interactive form). The author
+decision 8 (no `restart`) and decision 12 (no interactive form; *2026-11-05:
+strictly, no bare `morzer exec <service>` shell, with the interactive form
+left to RFC 0021's P4*). The author
 reopened both on 2026-11-05 and ruled §11's three questions as recommended:
 `restart` re-creates (decision 1), `exec -i` still needs a command (decision
 2), and `restart` is journalled, not attested (decision 3).
@@ -311,9 +315,14 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 | 6 | `ASSUMED` | A new port method, `Runtime.ExecInteractive`, rather than a wider `Exec`, answering RFC 0021 §10. A runtime without it returns `domain.ErrUnsupported`, refused by name. |
 | 7 | `ASSUMED` | With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. For the session's length the manager catches, not ignores, `SIGINT`, `SIGQUIT` and `SIGTSTP`, as `morzer shell` does, since an ignored signal is inherited by `compose`; the session runs under `context.WithoutCancel`, so the root handler's cancellation does not kill it, and it is journalled when it ends. A `SIGTERM` to the manager is forwarded to `compose`, which ends the session; it is journalled, and the manager exits with the command's status. |
 | 8 | `ASSUMED` | Reopens RFC 0021 decision 8 for `restart` alone (`port-forward` and log storage stay out) and decision 12 for `exec -i` alone. Both were ungraded, so they move only when the author rules here. Ruled by the author 2026-11-05: both reopened. |
+| 9 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* **Refines decision 4.** Both of the restart's steps abort on failure, so a restart whose health checks fail is journalled as failed, not compensated: nothing was put back. See [logs/restart-service.md](../logs/restart-service.md) (decision 4, attempt 1, 13:00). |
+| 10 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* A restart has no `--resume`. Its steps are idempotent, so an interrupted one is cleared with `morzer status --clear-intervention`, as `config`'s is, and run again. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 1, 13:00). |
+| 11 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* **Refines decision 4.** A restart's first step runs `apply`'s `images.bundled` check and refuses, naming `release ingest`, before anything is re-created: a bundled image reaches Compose through a mutable local tag, and a missing one would be pulled from the registry under it. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 2, 13:23). |
+| 12 | `ASSUMED` | *(2026-11-05, from the review; accepted 2026-11-05)* A command health check is told the operation running it, as every hook is: `restart` under a restart, and `update`, `rollback` and `start` under those, where it was told `apply`. The hook reference lists `restart`. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 2, 13:23). |
 
 ## 12. Phasing
 
-- **P1 — `restart`.** Decisions 1, 3, 4. One PR.
+- **P1 — `restart`.** Decisions 1, 3, 4. One PR. *(2026-11-05: built in
+  #279.)*
 - **P2 — `exec -i`.** Decisions 2, 5–7: the port method, the Compose
   adapter, the fake, the CLI flag. One PR.
