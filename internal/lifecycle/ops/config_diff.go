@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // ConfigDiffReport is where the configuration files on disk differ from what
@@ -313,4 +315,170 @@ func (d *Deps) driftedFiles(ctx context.Context, inst domain.Installation) (int,
 		}
 	}
 	return n, nil
+}
+
+// existingTargets are the files a release would replace although the
+// installed release never rendered them (RFC 0048 §5.1): a target the
+// installed release does not declare, where something already is and holds
+// other bytes. The drift checks cannot see these, as they compare against
+// the installed release only.
+type existingTargets struct {
+	owner      ownedTargets
+	replaced   []string
+	unreadable []string
+}
+
+func (e existingTargets) any() bool { return len(e.replaced)+len(e.unreadable) > 0 }
+
+// lines says what happens to each, one line per file, for a plan and for the
+// tick's reason.
+func (e existingTargets) lines(next string, held bool) []string {
+	by := e.owner.installed + " does not render it"
+	switch {
+	case e.owner.unknown:
+		by = "the installed release cannot be read to tell whether it renders it"
+	case e.owner.installed == "":
+		by = "no release has rendered it here yet"
+	}
+	what := next + " replaces it and keeps a copy"
+	if held {
+		what = next + " would replace it"
+	}
+	var out []string
+	for _, target := range e.replaced {
+		out = append(out, fmt.Sprintf("%s exists, and %s: %s", target, by, what))
+	}
+	for _, target := range e.unreadable {
+		out = append(out, fmt.Sprintf("%s exists and cannot be read, so it cannot be kept", target))
+	}
+	return out
+}
+
+// ownedTargets are the paths the installed release renders, for telling a
+// file it put there from one it did not.
+type ownedTargets struct {
+	// all is a release that is itself the installed one: it owns every
+	// target it renders, and nothing it renders is new.
+	all bool
+	// installed is the version that owns declared, empty when no release
+	// has converged here.
+	installed string
+	// unknown is an installed release that could not be loaded. It owns
+	// nothing, so every differing file is kept rather than none.
+	unknown  bool
+	declared map[string]bool
+}
+
+func (o ownedTargets) owns(target string) bool {
+	return o.all || o.declared[filepath.Clean(target)]
+}
+
+// ownedTargetsFor reads what the installed release renders when it is asked,
+// so a resume past the new release's record finds it owning its own files. A
+// release recorded and never converged, as `init --release` leaves one, has
+// rendered nothing: until an apply, update, rollback or restore succeeds, no
+// release is installed for this purpose (RFC 0048 decision 1). Rollback moves
+// the pointer before its render and does not resume, so it passes the release
+// it leaves as leaving.
+func (d *Deps) ownedTargetsFor(
+	ctx context.Context, rel domain.Release, leaving domain.ReleaseRecord,
+) (ownedTargets, error) {
+	owned := ownedTargets{declared: map[string]bool{}}
+	current := leaving
+	if current.IsZero() {
+		var err error
+		if current, err = d.State.CurrentRelease(ctx); err != nil || current.IsZero() {
+			return owned, err
+		}
+	}
+	converged, err := d.everConverged(ctx)
+	if err != nil || !converged {
+		return owned, err
+	}
+	if current.Root == rel.Root {
+		owned.all = true
+		return owned, nil
+	}
+	owned.installed = current.Version.String()
+	installed, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		owned.unknown = true
+		return owned, nil
+	}
+	for _, cfg := range installed.Manifest.Configuration {
+		owned.declared[filepath.Clean(d.configTarget(cfg.Target))] = true
+	}
+	return owned, nil
+}
+
+// everConverged is whether any operation that renders the configuration has
+// succeeded here. Unlike neverApplied, an operation still running does not
+// count: the first apply is the one asking.
+func (d *Deps) everConverged(ctx context.Context) (bool, error) {
+	recs, err := d.State.Operations(ctx, ports.Filter{Status: domain.StatusSucceeded})
+	if err != nil {
+		return false, err
+	}
+	for _, rec := range recs {
+		switch rec.Type {
+		case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeRollback, domain.OpTypeRestore:
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// existingTargetsFor is the one list the plan and the tick use (RFC 0048
+// decision 2), with the profile the render uses.
+func (d *Deps) existingTargetsFor(
+	ctx context.Context, inst domain.Installation, rel domain.Release, profile string,
+) (existingTargets, error) {
+	var out existingTargets
+	if len(rel.Manifest.Configuration) == 0 {
+		return out, nil
+	}
+	owned, err := d.ownedTargetsFor(ctx, rel, domain.ReleaseRecord{})
+	if err != nil || owned.all {
+		return out, err
+	}
+	out.owner = owned
+	comparison, err := configComparison(ctx, d, inst, rel, profile)
+	if err != nil {
+		return out, err
+	}
+	for _, diff := range comparison.Diffs {
+		if _, err := os.Lstat(diff.Target); err == nil && !owned.owns(diff.Target) {
+			out.replaced = append(out.replaced, diff.Target)
+		}
+	}
+	for _, u := range comparison.Unreadable {
+		if !owned.owns(u.Target) {
+			out.unreadable = append(out.unreadable, u.Target)
+		}
+	}
+	return out, nil
+}
+
+// heldForExisting is why an unattended tick leaves a candidate staged rather
+// than replace a file no installed release rendered (RFC 0048 decision 4), or
+// empty. The copy an attended update keeps saves the bytes and not the
+// behaviour: the product would read the vendor's file from then on, with
+// nobody watching.
+//
+// A candidate whose files cannot be rendered is not held here: its update
+// fails at the render, before anything is replaced, and says why.
+func (d *Deps) heldForExisting(ctx context.Context, inst domain.Installation, root string) string {
+	rel, err := release.Load(root)
+	if err != nil {
+		return ""
+	}
+	if retired := domain.Parameters(inst.Parameters).ValidateAgainst(rel.Manifest.Parameters); len(retired) > 0 {
+		inst = withoutParameters(inst, retired)
+	}
+	existing, err := d.existingTargetsFor(ctx, inst, rel, "")
+	if err != nil || !existing.any() {
+		return ""
+	}
+	return strings.Join(existing.lines(rel.Version().String(), true), "; ") +
+		", so the release is staged and not installed; `morzer update --dry-run` shows it"
 }

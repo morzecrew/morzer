@@ -329,6 +329,26 @@ install shows the notes alone.
 `--json` carries the same as `data.preview`: `rollback`, `image_changes` and
 `release_notes`.
 
+### A file where the new release puts a new one
+
+A release can add a configuration file at a path the installed release never
+rendered, such as `/etc/nginx/conf.d/demo.conf`. When a file is already there,
+the plan's `render configuration` line names it:
+
+```text
+/etc/nginx/conf.d/demo.conf exists, and 1.2.0 does not render it: 1.3.0 replaces it and keeps a copy
+```
+
+The update replaces it and keeps the old file under the installation's data
+directory, at `replaced/<operation id>/` followed by the file's own path, readable by root
+only. The update's summary says where. A file that already holds what the
+release renders is left alone. A first install treats every file it renders
+this way, and so does the first `morzer apply` after `init --release`. An
+update that fails puts the file back and removes the copy. If it cannot put the
+file back, the copy stays and the error says where.
+[`morzer config diff`](changing-configuration.md) does not show these files,
+because it compares against the installed release, which does not render them.
+
 For a reference that has to be fetched, a dry run does fetch: a plan that
 refused to could tell you nothing about the release you asked about. It goes to
 the staging directory and is removed when the command ends.

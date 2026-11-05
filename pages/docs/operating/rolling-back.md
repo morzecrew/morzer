@@ -87,6 +87,17 @@ rollback's last step removes it and says so. A parameter the older release
 requires and you have no value for is reported by its preflight, before
 anything moves.
 
+## Files the older release does not render
+
+A file the newer release added stays as that release rendered it. When the
+update replaced a file that was already at that path, the rollback's summary
+names the copy the update kept. It does not put the copy back, because the file
+may have changed since.
+
+The other way round, a file at a target the older release renders and the newer
+one does not is treated as an update treats one: the rollback keeps a copy
+before replacing it, and its summary says where.
+
 ## When rollback is not the answer
 
 If the rollback is refused, the sequence is a restore:

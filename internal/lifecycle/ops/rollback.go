@@ -2,7 +2,10 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -184,7 +187,8 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	out := Result{Record: result.Record, Data: report}
 	if result.Record.Status == domain.StatusSucceeded {
 		out.Summary = fmt.Sprintf("rolled %s back from %s to %s",
-			previousRel.Name(), current.Version, previous.Version)
+			previousRel.Name(), current.Version, previous.Version) +
+			replacedNote(result.Record.Flags) + d.keptCopiesNote(previousRel)
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeRollback, result.Record, runErr)
 
@@ -389,6 +393,9 @@ func rollbackSteps(
 
 	converge := opts.Options
 	converge.PreviousVersion = current.Version
+	// The pointer moves before the render, which would otherwise count
+	// files against the release it returns to.
+	converge.Leaving = current
 	apply := applySteps(d, inst, previousRel, converge)
 
 	// Preflight, apply's first step, runs before the pointer moves. It aborts
@@ -452,4 +459,53 @@ func stepPointToPrevious(d *Deps, current, previous domain.ReleaseRecord, previo
 			return atomicfs.ReplaceSymlink(current.Root, d.Paths.CurrentLink())
 		},
 	}
+}
+
+// keptCopiesNote names the copies an update kept of files at targets the
+// release returned to does not render (RFC 0048 decision 6). Rollback leaves
+// those files as the newer release rendered them and does not put a copy
+// back: it cannot tell whether the operator has changed the file since.
+// Found on disk rather than in the journal, since a rollback does not know
+// which update it undoes, and an older copy of the same target is one an
+// operator looking for the file wants too.
+func (d *Deps) keptCopiesNote(rel domain.Release) string {
+	root := filepath.Join(d.Paths.VarDir, "replaced")
+	declared := map[string]bool{}
+	for _, cfg := range rel.Manifest.Configuration {
+		declared[filepath.Clean(d.configTarget(cfg.Target))] = true
+	}
+	var notes []string
+	var unread error
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		switch {
+		case err != nil && path == root && errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil:
+			// Named rather than skipped: a copy in a directory that
+			// could not be listed is one the operator has to look for.
+			unread = errors.Join(unread, err)
+			return nil
+		case entry.IsDir():
+			return nil
+		}
+		rest, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		// The first element is the operation that kept it.
+		_, target, ok := strings.Cut(rest, string(filepath.Separator))
+		if target = string(filepath.Separator) + target; ok && !declared[target] {
+			notes = append(notes, fmt.Sprintf("%s, which %s does not render, is left as it is; "+
+				"the file that was there is kept at %s", target, rel.Version(), path))
+		}
+		return nil
+	})
+	if unread != nil {
+		notes = append(notes, fmt.Sprintf("not every copy under %s could be listed (%v); look there for the rest",
+			root, unread))
+	}
+	if len(notes) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(notes, "; ")
 }

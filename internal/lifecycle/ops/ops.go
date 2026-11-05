@@ -223,10 +223,21 @@ type Options struct {
 	// and `rollback`; `apply` replaces nothing, a first install included.
 	PreviousVersion domain.Version
 
+	// Leaving is the installed release when the pointer has moved off it
+	// before the render, as `rollback` moves it. The render counts a file
+	// against it (RFC 0048 decision 1); zero reads the current release.
+	Leaving domain.ReleaseRecord
+
 	// NoGenerateSecrets stops `update` generating the secrets the release
 	// it installs adds, as `init --generate-secrets=false` does at init.
 	// Journaled. Nothing else generates (RFC 0036).
 	NoGenerateSecrets bool
+
+	// Unattended is an update the timer started with nobody watching. Its
+	// render refuses a file at a new target rather than keep a copy and
+	// replace it (RFC 0048 decision 4): the tick checked before the update,
+	// and a file can appear while the backup runs.
+	Unattended bool
 }
 
 // NewOperationID returns a ULID: lexicographically sortable and

@@ -158,7 +158,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		From:        from.Version,
 		To:          staged.Version(),
 		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
-		Flags:       updateFlags(inst, opts),
+		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
 
 	var result engine.Result
@@ -424,12 +424,12 @@ func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
 		if dryRun {
 			return fmt.Sprintf("would install %s %s", to.Name(), to.Version())
 		}
-		return fmt.Sprintf("installed %s %s", to.Name(), to.Version())
+		return fmt.Sprintf("installed %s %s", to.Name(), to.Version()) + replacedNote(rec.Flags)
 	}
 	if dryRun {
 		return fmt.Sprintf("would update %s from %s to %s", to.Name(), from.Version, to.Version())
 	}
-	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version())
+	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version()) + replacedNote(rec.Flags)
 }
 
 // updateSteps is the update pipeline: four steps of its own, then apply's.

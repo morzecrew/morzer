@@ -1,12 +1,14 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -91,7 +93,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		Description: describe(opType, domain.Version{}, rel.Version()),
 		To:          rel.Version(),
 		Steps:       steps,
-		Flags:       applyFlags(opts),
+		Flags:       carryReplaced(applyFlags(opts), prior),
 	}
 
 	var (
@@ -238,7 +240,7 @@ func applySummary(rec domain.OperationRecord, rel domain.Release, dryRun bool) s
 	if dryRun {
 		return fmt.Sprintf("would apply %s %s", rel.Name(), rel.Version())
 	}
-	return fmt.Sprintf("%s %s applied", rel.Name(), rel.Version())
+	return fmt.Sprintf("%s %s applied", rel.Name(), rel.Version()) + replacedNote(rec.Flags)
 }
 
 // applySteps is the apply pipeline from the spec, one step per stage.
@@ -554,18 +556,47 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				return "cannot render: " + domain.AsError(err).Message, ""
 			}
 			comparison, shown := d.scrubbed(ctx, comparison)
-			return fmt.Sprintf("%d file(s)", comparison.Targets), comparison.text(shown)
+			detail := fmt.Sprintf("%d file(s)", comparison.Targets)
+			// Ahead of the diff, which shows such a file as one more
+			// change: it is one no installed release rendered (RFC 0048).
+			switch existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile); {
+			case err != nil:
+				detail += "; cannot tell whether a file the release adds is already there: " +
+					domain.AsError(err).Error()
+			case existing.any():
+				detail += "; " + strings.Join(existing.lines(rel.Version().String(), false), "; ")
+			}
+			return detail, comparison.text(shown)
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			rendered, err := renderAll(ctx, st)
 			if err != nil {
 				return err
 			}
+			// Two spellings of one target are one file, written twice and
+			// backed up twice: the second backup and kept copy would hold
+			// the first render, not the file it replaced.
+			spelled := make(map[string]string, len(rendered))
+			for _, target := range slices.Sorted(maps.Keys(rendered)) {
+				if other, ok := spelled[filepath.Clean(target)]; ok {
+					return domain.ValidationError(nil,
+						"configuration targets %s and %s are the same file", other, target).
+						WithHint("the release's manifest declares that file twice; its vendor can fix the release")
+				}
+				spelled[filepath.Clean(target)] = target
+			}
 
 			// Into state for the attestation, which digests it
 			// under the installation's salt. The bytes stay here;
 			// only the digest travels.
 			st.Set(engine.KeyRenderedConfig, rendered)
+
+			// Kept past the operation, unlike the backups below, which
+			// go with it (RFC 0048 decision 3).
+			owned, err := d.ownedTargetsFor(ctx, rel, opts.Leaving)
+			if err != nil {
+				return err
+			}
 
 			backups := make(map[string]configBackup, len(rendered))
 			modes := make(map[string]uint32, len(rendered))
@@ -590,6 +621,21 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 						backup.mode = info.Mode().Perm()
 					}
 					backups[target] = backup
+					// Decided from the bytes about to be replaced, not from
+					// an earlier scan, which a file written since would
+					// have missed.
+					if !owned.owns(target) && !bytes.Equal(existing, rendered[target]) {
+						if opts.Unattended {
+							return domain.Preflight(nil,
+								"%s appeared after the update was checked, and the installed release "+
+									"does not render it; an unattended update does not replace it", target).
+								WithHint("`morzer update --to %s` installs it and keeps a copy of the file; "+
+									"`--dry-run` shows it first", rel.Version())
+						}
+						if err := d.keepReplaced(st, target, backup); err != nil {
+							return err
+						}
+					}
 				case errors.Is(err, fs.ErrNotExist):
 					// Created by this render, so putting it back
 					// means removing it.
@@ -614,7 +660,24 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			return restoreConfigBackups(st)
+			kept := d.replacedDir(st.OpID)
+			if err := restoreConfigBackups(st); err != nil {
+				// In the message, not a hint: the engine reports only a
+				// compensator's message.
+				if _, statErr := os.Stat(kept); statErr == nil {
+					return domain.InstallationError(nil, "%s; the files the update replaced where "+
+						"no release rendered one are kept under %s", domain.AsError(err).Message, kept)
+				}
+				return err
+			}
+			// Every file is back, so a copy would only be a second,
+			// stale one. Removed after the files, never before: until
+			// then it may be the only copy. Failing to remove it is
+			// not a failed undo.
+			if err := os.RemoveAll(kept); err != nil {
+				st.Warn("could not remove the copies under %s, which are no longer needed: %v", kept, err)
+			}
+			return nil
 		},
 	}
 }
@@ -1402,4 +1465,66 @@ func (d *Deps) findResumable(ctx context.Context, opType domain.OperationType) (
 	}
 	return nil, domain.Usage("no interrupted %s operation to resume", opType).
 		WithHint("run the command without --resume")
+}
+
+// replacedFlag prefixes the journal flag that records a kept copy, keyed by
+// the target, so a summary can name it after the step has run.
+const replacedFlag = "replaced:"
+
+func (d *Deps) replacedDir(opID string) string {
+	return filepath.Join(d.Paths.VarDir, "replaced", opID)
+}
+
+// keepReplaced copies a file no installed release rendered before the render
+// replaces it (RFC 0048 decisions 3 and 5). Under the data directory and not
+// beside the file, which a `conf.d/*` include would load. Owner-only, as the
+// file may hold a credential; its own mode is in the journal.
+func (d *Deps) keepReplaced(st *engine.State, target string, backup configBackup) error {
+	// Cleaned, so no spelling of the target climbs out of the directory.
+	// WriteFile creates the missing directories 0700 and makes them durable
+	// before the target is replaced.
+	kept := filepath.Join(d.replacedDir(st.OpID), filepath.Clean(target))
+	if err := atomicfs.WriteFile(kept, backup.content, 0o600); err != nil {
+		return err
+	}
+	st.SetFlag(replacedFlag+target, fmt.Sprintf("%s mode %04o", kept, backup.mode))
+	return nil
+}
+
+// replacedNote names the copies an operation kept, for its summary.
+func replacedNote(flags map[string]string) string {
+	var notes []string
+	for _, key := range slices.Sorted(maps.Keys(flags)) {
+		if target, ok := strings.CutPrefix(key, replacedFlag); ok {
+			// The last " mode ": a path may hold the text too.
+			kept := flags[key]
+			if i := strings.LastIndex(kept, " mode "); i >= 0 {
+				kept = kept[:i]
+			}
+			notes = append(notes, fmt.Sprintf("the file that was at %s is kept at %s", target, kept))
+		}
+	}
+	if len(notes) == 0 {
+		return ""
+	}
+	return "; " + strings.Join(notes, "; ")
+}
+
+// carryReplaced keeps the copies an interrupted run recorded. A resume is a
+// new operation, and its render finds those files already replaced, so
+// without them its summary would not say where the old files are.
+func carryReplaced(flags map[string]string, prior *domain.OperationRecord) map[string]string {
+	if prior == nil {
+		return flags
+	}
+	for key, value := range prior.Flags {
+		if strings.HasPrefix(key, replacedFlag) {
+			if flags == nil {
+				// applyFlags has none to give for a plain apply.
+				flags = map[string]string{}
+			}
+			flags[key] = value
+		}
+	}
+	return flags
 }
