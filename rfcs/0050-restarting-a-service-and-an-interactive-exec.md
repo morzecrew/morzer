@@ -31,7 +31,8 @@
 ## 1. Summary
 
 `morzer restart app` re-creates the `app` service from the installed release,
-forced and without its dependencies, waits for the release's health checks,
+forced, starting a dependency that is down but never re-creating one, waits
+for the release's health checks,
 and journals a `restart` operation. It takes the deployment lock and refuses
 an installation `morzer stop` took down.
 
@@ -125,7 +126,11 @@ one behind an inactive profile, is refused by name before anything runs.
 
 Decision 1 decides what a restart does. The recommendation is to re-create:
 render nothing new, and call `d.recreate` with the installed release and
-the named services, forced and without dependencies. The container is
+the named services, forced. It passes no `--no-deps`, so a dependency of a
+named service is never re-created but is started if it is down: under
+`--no-deps` a dependency that is down is neither started nor resolved, and
+the restarted service waits on it, which the Compose adapter measured when
+`RunOneShot` stopped passing the flag (`compose.go:552-561`). The container is
 replaced from the definition the manager chose, which is what RFC 0021 §8
 asked of it. A drifted container (one changed by hand) comes back as the
 release defines it, and a container's writable layer does not survive,
@@ -199,9 +204,21 @@ name as RFC 0021 decision 4 does for `stats`. The Compose adapter runs
 `compose exec` (with `--no-TTY` unless `TTY`) and hands it the streams. With
 a TTY it hands over the terminal itself: `compose` puts it in raw mode,
 handles resizing, and the manager forwards no bytes. Without one it copies
-the streams. In both cases the manager ignores `SIGINT` while the session
-runs, so an interrupt reaches the command and not the manager halfway
-through journalling it.
+the streams.
+
+Ctrl-C belongs to the session, as it does in `morzer shell`
+(`cli/shell.go:96-106`). For as long as the session runs, the manager
+catches `SIGINT`, `SIGQUIT` and `SIGTSTP` and does nothing with them; it
+does not ignore them, because an ignored signal is inherited through exec,
+and `compose` would then shrug off Ctrl-C too. The terminal sends the
+signal to the foreground process group, which `compose` is in. Without a
+TTY, Ctrl-C therefore ends `compose exec`; what reaches the command inside
+the container is Docker's to decide. With a TTY, `compose` holds the
+terminal in raw mode, and Ctrl-C is a byte the command reads. The session
+runs under a context the root handler's cancellation does not reach
+(`context.WithoutCancel`), so a Ctrl-C ends the session and the manager
+journals it afterwards, rather than killing `compose` through the context
+mid-session.
 
 ### 5.4 Alternatives considered
 
@@ -219,7 +236,7 @@ through journalling it.
 ## 6. Tests
 
 - `restart` re-creates the named service with the installed release's
-  definition, forced and without dependencies, and journals one `restart`
+  definition, forced, without re-creating a dependency, and journals one `restart`
   record; an unknown service, a service the release does not start, and no
   service at all are refused before anything runs.
 - `restart` refuses a stopped installation, takes the deployment lock, and
@@ -229,6 +246,9 @@ through journalling it.
   for a TTY only when stdin and stdout are terminals; refuses `--json`; and
   journals the redacted argv with `interactive: true` and no output.
 - A runtime without `ExecInteractive` is refused by name.
+- Without a TTY, a `SIGINT` to the process group ends the session, the
+  manager survives it, and the session is journalled with the command's
+  exit status.
 - The Compose adapter's argv for both, against a recorded command line, and
   one container-lane test that types into `sh` through a pseudo-terminal.
 
@@ -270,13 +290,13 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `ASSUMED` | **What `restart` does.** Recommended: re-create the named services from the installed release, forced and without dependencies (`d.recreate`), so the container is the one the release defines, as RFC 0021 §8 asked. Alternative: `Runtime.Restart`, a plain `compose restart`, which keeps the container and whatever was changed in it by hand. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 1 | `ASSUMED` | **What `restart` does.** Recommended: re-create the named services from the installed release, forced, starting a dependency that is down but never re-creating one (`d.recreate`), so the container is the one the release defines, as RFC 0021 §8 asked. Alternative: `Runtime.Restart`, a plain `compose restart`, which keeps the container and whatever was changed in it by hand. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 2 | `ASSUMED` | **Whether `exec -i` has a bare shell form.** Recommended: no; the command is required and everything after `--` is the container's argv (RFC 0021 decision 13). Alternative: `morzer exec -i <service>` with no command runs `/bin/sh`. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 3 | `ASSUMED` | **Whether `restart` attests.** Recommended: no; it is journalled, and RFC 0025 attests what moves a version or a configuration, which a restart does not. Alternative: attest it as a sixth operation kind, so an auditor's record shows every time a service was bounced. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 4 | `ASSUMED` | `restart` is an operation: journalled as `restart`, under the deployment lock, refused while the installation is stopped, followed by the release's health checks, and failed (with nothing to compensate) when they fail. One or more services by name; none, an unknown one, or one the release does not start is refused before anything runs. |
 | 5 | `ASSUMED` | `exec -i` attaches stdin and asks for a TTY exactly when stdin and stdout are terminals; there is no `-t`. No timeout, no lock, `--json` refused, and the journal records the redacted argv with `interactive: true` and never the output. `exec` without `-i` is unchanged. |
 | 6 | `ASSUMED` | A new port method, `Runtime.ExecInteractive`, rather than a wider `Exec`, answering RFC 0021 §10. A runtime without it returns `domain.ErrUnsupported`, refused by name. |
-| 7 | `ASSUMED` | With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. The manager ignores `SIGINT` while a session runs. |
+| 7 | `ASSUMED` | With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. For the session's length the manager catches, not ignores, `SIGINT`, `SIGQUIT` and `SIGTSTP`, as `morzer shell` does, since an ignored signal is inherited by `compose`; the session runs under `context.WithoutCancel`, so the root handler's cancellation does not kill it, and it is journalled when it ends. |
 | 8 | `ASSUMED` | Reopens RFC 0021 decision 8 for `restart` alone (`port-forward` and log storage stay out) and decision 12 for `exec -i` alone. Both were ungraded, so they move only when the author rules here. Ruled by the author 2026-11-05: both reopened. |
 
 ## 12. Phasing
