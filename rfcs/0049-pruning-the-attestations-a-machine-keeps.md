@@ -1,7 +1,7 @@
 # RFC 0049 — Pruning the attestations a machine keeps
 
-- **Status:** 📝 Draft — proposed 2026-11-05; §11's `OPEN` rows await the
-  author's ruling.
+- **Status:** 📝 Draft — proposed 2026-11-05, and ruled by the author
+  2026-11-05: §11's `OPEN` rows as recommended. Ready to build.
 - **Scope:** A retention setting for the signed statements under
   `<VarDir>/attestations/`, which nothing prunes today. It covers what the
   limit counts, when the prune runs, which statements it never removes, and
@@ -36,9 +36,9 @@ target is never removed, nor is the newest successful one, which
 targets are not touched. Unset, nothing is pruned, which is today's
 behaviour.
 
-Three questions are left to the author in §11: whether the limit is a count
-or an age (decision 1), whether there is a default (decision 2), and whether
-copies on the targets are pruned too (decision 3).
+The author ruled §11's three questions as recommended: the limit is a count
+(decision 1), there is no default (decision 2), and the targets' copies are
+not pruned (decision 3).
 
 ## 2. Motivation
 
@@ -273,15 +273,15 @@ own off-site evidence.
 
 ## 10. Unresolved questions
 
-- Decisions 1–3, for the author.
+None. Decisions 1–3 were ruled by the author 2026-11-05.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **What the limit counts.** Recommended: statements, as `retention.attestations=N`, at least 1, as releases and backups count, and as RFC 0025 §10 assumed. Alternative: an age in days, `retention.attestations_days=N`, measured from each statement's operation start, which is how audit retention is usually stated and does not depend on how often the machine operates. |
-| 2 | `OPEN` | **Whether there is a default.** Recommended: no; unset prunes nothing, as today, so no machine starts deleting audit records because its manager was upgraded. Alternative: a default (1,000 statements, or 365 days under decision 1's alternative) that every installation gets, so the directory is bounded without anyone asking. |
-| 3 | `OPEN` | **Whether the targets' copies are pruned.** Recommended: no; a target is where a record survives this machine, and its own lifecycle rules can bound it. Alternative: prune them as backup retention prunes backups, with the same limit, after the local prune. |
+| 1 | `ASSUMED` | **What the limit counts.** Recommended: statements, as `retention.attestations=N`, at least 1, as releases and backups count, and as RFC 0025 §10 assumed. Alternative: an age in days, `retention.attestations_days=N`, measured from each statement's operation start, which is how audit retention is usually stated and does not depend on how often the machine operates. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 2 | `ASSUMED` | **Whether there is a default.** Recommended: no; unset prunes nothing, as today, so no machine starts deleting audit records because its manager was upgraded. Alternative: a default (1,000 statements, or 365 days under decision 1's alternative) that every installation gets, so the directory is bounded without anyone asking. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 3 | `ASSUMED` | **Whether the targets' copies are pruned.** Recommended: no; a target is where a record survives this machine, and its own lifecycle rules can bound it. Alternative: prune them as backup retention prunes backups, with the same limit, after the local prune. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 4 | `ASSUMED` | Only the oldest statements are removed, in name order, and the prune stops at the first one it must keep: one that a backup target is missing (document or signature), every statement when a target cannot be listed, and the newest successful statement. A hole in the middle would read as a chain break. |
 | 5 | `ASSUMED` | The prune runs after `emitAttestation` has filed and pushed a statement, outside the engine and the lock. A failure warns and never fails the operation (RFC 0025 decision 6), and a statement already gone is not an error. |
 | 6 | `ASSUMED` | The setting is the installation's only. The manifest gains no `retention.attestations`: how long an audit record is kept is the operator's decision, not the vendor's. |
