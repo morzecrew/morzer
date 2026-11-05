@@ -59,6 +59,7 @@ var referencePage = map[string]string{
 	"rollback":     "reference/commands.md",
 	"stop":         "reference/commands.md",
 	"start":        "reference/commands.md",
+	"restart":      "reference/commands.md",
 	"doctor":       "reference/commands.md",
 	"history":      "reference/commands.md",
 	"logs":         "reference/commands.md",

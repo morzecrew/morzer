@@ -558,6 +558,26 @@ if grep -qF "${db_password}" "${ROOT}/var/lib/demo/manager/operations.jsonl"; th
 	fail "a known secret value reached the journal in an argv"
 fi
 
+step "restart re-creates one service and journals it"
+# A forced re-create against real Compose, which no fake can show: a new
+# container for the service named, the other one left alone because it still
+# matches the release, the health checks passing again, and a `restart`
+# record that names the service.
+app_before=$(docker compose -p demo ps -q app)
+db_before=$(docker compose -p demo ps -q db)
+"${MORZER}" --root "${ROOT}" restart app
+[ "$(docker compose -p demo ps -q app)" != "${app_before}" ] ||
+	fail "restart left the app container in place"
+[ "$(docker compose -p demo ps -q db)" = "${db_before}" ] ||
+	fail "restart re-created db, which it was not asked to and which still matched"
+assert_running 2
+# A record is appended at each change of status, so the succeeded one is
+# asserted, not the count of lines.
+grep '"type":"restart"' "${ROOT}/var/lib/demo/manager/operations.jsonl" |
+	jq -e -s 'map(select(.status == "succeeded")) | length == 1 and .[0].flags.services == "app"' >/dev/null ||
+	fail "the restart was not journalled with the service it restarted"
+expect_exit 2 "${MORZER}" --root "${ROOT}" restart nosuch
+
 step "a reboot: services stopped, then apply --startup"
 # Restarting the Docker daemon is what a reboot does to a deployment, but doing
 # it on a shared runner would disrupt everything else. Stopping the project's

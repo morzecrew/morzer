@@ -246,6 +246,7 @@ product's data in a file nobody thinks of as one.
 - **Not a way into an unpublished port.** Published ports are declared in the
   manifest and already reachable; a tunnel to one that is not is a different
   security posture.
-- **Not a way to restart one service.** Converging is
-  [`apply`](../reference/commands.md#apply)'s job, and a restart outside it
-  would leave a container running a definition the manager did not choose.
+- **Not a way to restart one service.** That is
+  [`morzer restart`](../reference/commands.md#restart), which re-creates the
+  service from the installed release and journals it, so the container that
+  comes back is the one the release defines.

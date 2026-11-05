@@ -43,7 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   succeeded, and the targets keep every copy. Installation state moves to
   schema 17.
 
+- **`morzer restart <service>` re-creates services from the installed
+  release.** It waits for the health checks, is journalled under the
+  deployment lock, and is refused while the product is stopped or for a
+  service the release does not start.
+
 ### Fixed
+
+- **A command health check is told the operation running it.** During
+  `update`, `rollback` and `start` its `OPERATION_TYPE` said `apply`, which
+  the hook reference says is the value for an `apply` alone.
 
 - **An update keeps a file it replaces at a new configuration target.** A
   release that added a target overwrote whatever file was there and kept

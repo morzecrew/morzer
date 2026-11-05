@@ -48,6 +48,11 @@ const (
 	OpTypeStop  OperationType = "stop"
 	OpTypeStart OperationType = "start"
 
+	// OpTypeRestart re-creates named services from the installed release
+	// (RFC 0050). Its own type, so a service bounced by hand is told apart
+	// from one a change re-created.
+	OpTypeRestart OperationType = "restart"
+
 	// OpTypeRotateSigningKey replaces the machine's signing key (RFC 0028
 	// P2). Its own type because an auditor reading the journal after a
 	// suspected compromise needs to see when the key changed, and why
