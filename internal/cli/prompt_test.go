@@ -90,6 +90,13 @@ func TestAFileThatIsNotATerminalIsNotOneEither(t *testing.T) {
 	assert.False(t, ui.IsTerminal(f))
 	assert.False(t, ui.IsTerminal(strings.NewReader("")))
 	assert.False(t, ui.IsTerminal(nil))
+
+	// A character device that is not a terminal. `exec -i app -- cat
+	// </dev/null` asked Compose for a TTY, which it then refused.
+	null, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer func() { _ = null.Close() }()
+	assert.False(t, ui.IsTerminal(null), "/dev/null was taken for a terminal")
 }
 
 // TestAnUnreasonablyLargeValueIsRefused. Without the bound, `secret set x <

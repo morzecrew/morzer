@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`/dev/null` is not taken for a terminal.** Redirected from it, `init`
+  offered its interactive form and `secret edit` opened an editor, because the
+  check asked whether stdin was a character device rather than a terminal.
+
 - **A command health check is told the operation running it.** During
   `update`, `rollback` and `start` its `OPERATION_TYPE` said `apply`, which
   the hook reference says is the value for an `apply` alone.

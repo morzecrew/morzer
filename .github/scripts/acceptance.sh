@@ -571,6 +571,10 @@ grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" | tail -1 |
 if grep -qF "through the pipe" "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
 	fail "what the session read reached the journal"
 fi
+# Redirected from /dev/null, a character device that is not a terminal, no
+# TTY is asked for, so Compose does not refuse the session.
+"${MORZER}" --root "${ROOT}" exec -i app -- cat </dev/null >/dev/null ||
+	fail "exec -i refused a session whose stdin is /dev/null"
 # `|| true`: without a TTY the inner test fails and exits 1, and the case
 # below is what says so.
 at_terminal=$(script -q -e -c "'${MORZER}' --root '${ROOT}' exec -i app -- sh -c 'test -t 0 && test -t 1 && echo has-a-tty'" /dev/null </dev/null) || true
