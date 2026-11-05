@@ -2509,9 +2509,15 @@ The exit code is the command's own, so this works in a script:</p>
 <span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"the database is not accepting connections"</span>
 <span class="k">fi</span>
 </code></pre></div>
-<p>It is <strong>not an interactive shell.</strong> There is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command
-that prompts will wait for an answer nobody can give. One command, named on the
-command line.</p>
+<p>Without <code>-i</code> there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that prompts will wait
+for an answer nobody can give. With <code>-i</code> the command gets this terminal for as
+long as it runs:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span>demo
+morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-i<span class="w"> </span>db<span class="w"> </span>--<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span>demo<span class="w"> </span>&lt;<span class="w"> </span>migrate.sql
+</code></pre></div>
+<p>A <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> is allocated when stdin and stdout are both terminals, so the first is a
+<code>psql</code> prompt and the second a byte stream. Ctrl-C belongs to the command. The
+shell is still named: <code>morzer exec -i app -- sh</code>.</p>
 <p>There is no <code>--user</code>, and no shortcut for running as root. A manager flag that
 made privilege escalation a keystroke would be a manager opinion about something
 it cannot audit. A service that is not running is refused by name rather than

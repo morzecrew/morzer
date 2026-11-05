@@ -3773,7 +3773,7 @@ the metrics and example alerts.</p>
 </tbody>
 </table>
 <h2 id="exec">exec<a class="headerlink" href="#exec" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;service&gt;<span class="w"> </span>--<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>args...<span class="o">]</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="o">[</span>-i<span class="o">]</span><span class="w"> </span>&lt;service&gt;<span class="w"> </span>--<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>args...<span class="o">]</span>
 </code></pre></div>
 <p>Runs one command inside a running container of the named service and propagates
 its exit code, so a failed command fails the invocation. Everything after <code>--</code>
@@ -3783,9 +3783,32 @@ stderr on stderr, unchanged. The first 256 KiB of each is kept, so a longer
 output is cut; a warning on stderr after it says so, and with <code>--json</code>
 <code>truncated</code> is true. The exit code is still the command's own, so <code>exec</code>
 cannot carry a dump larger than that.</p>
-<p>Not an interactive shell: there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that
-prompts waits for an answer nobody can give. There is no <code>--user</code> and no
-shortcut for running as root.</p>
+<p>Without <code>-i</code> there is no <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> and no stdin, so a command that prompts waits for an
+answer nobody can give. There is no <code>--user</code> and no shortcut for running as
+root.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-i</code>, <code>--interactive</code></td>
+<td>Give the command this terminal's stdin, and a <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> when stdin and stdout are both terminals, for as long as it runs.</td>
+</tr>
+</tbody>
+</table>
+<p>With <code>-i</code> the command's streams are the terminal's own: nothing is buffered or
+cut, and no timeout applies. Ctrl-C belongs to the command. Without a <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> it ends
+the session. With one, <code>compose</code> holds the terminal in raw mode, so Ctrl-C reaches
+the container's terminal and interrupts the command there, as it would at a
+terminal inside it. <code>morzer</code> leaves Ctrl-Z to the shell rather than catching it,
+so a session without a <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> is suspended as any foreground job is. A <code>SIGTERM</code>
+sent to <code>morzer</code> ends the session too. The command is still named after <code>--</code>, there is
+no <code>--json</code>, and the journal records the session with <code>interactive: true</code>, the
+argv scrubbed as for any <code>exec</code>, and none of what passed through it.</p>
 <p>A service that is not running is refused by name, with the state it is in, and
 exit 7. A scaled service is refused only when none of its instances is running,
 because Compose runs the command in one that is. A command that fails because
