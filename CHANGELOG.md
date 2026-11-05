@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A secret no service declares is rendered when it changes.** `secret set`,
+  `generate`, `rotate` and `edit` skipped the render when nothing would be
+  restarted, so the rendered file kept the old value. Now it is rendered, and
+  the command says what picks the new value up.
+
 - **`doctor` says when the current-release record cannot be read.** It
   reported a corrupt or unreadable record as "no release is installed yet",
   which describes a machine that never installed one. It now fails
