@@ -73,3 +73,22 @@ evidence: internal/lifecycle/ops/attest.go:117-132
 action: decided
 proposal: ASSUMED — a statement is signed before it is written, so it appears on disk with its signature or, where the machine cannot sign, without one for good. A statement whose write fails takes its signature with it.
 ```
+
+From #276's second review. Attempt 2's proposal was wrong. A resume files
+its statement under the interrupted run's id (`engine.go:631`), over that
+run's signed pair. Signing first replaced the earlier signature before the
+document, so a document write that failed left the earlier document beside a
+signature it did not match, or beside none. Order cannot keep two writers
+apart; a lock can.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-11-05T10:35:00Z
+attempt: 3
+claim: no write order makes a statement and its signature appear together, and the resume path needs the old order to keep an earlier pair whole when a write fails
+evidence: internal/lifecycle/ops/attest.go:232-254
+action: decided
+proposal: ASSUMED — supersedes attempt 2's. Writing a statement and its signature, the prune, and `attest push` each hold the installation's `attestations` lock, so none sees a statement before its signature exists. The statement is written before its signature, as before RFC 0049, so a failed write leaves an earlier pair as it was; a signature that is not written removes the earlier one beside the new statement. Without the lock the statement is written anyway and the prune removes nothing.
+```

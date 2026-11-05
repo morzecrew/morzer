@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -180,38 +181,110 @@ func TestRetentionAttestationsIsASetting(t *testing.T) {
 	assert.Zero(t, installation(t, h).Policy.RetainAttestations)
 }
 
-// watchingSigner notes, when it is asked to sign, whether a statement is
-// already on disk without its signature.
-type watchingSigner struct {
+// lockedSigner notes, when it is asked to sign, whether the attestation lock
+// was free to take.
+type lockedSigner struct {
 	ports.Signer
-	dir      string
-	unsigned []string
+	locker ports.Locker
+	free   bool
 }
 
-func (s *watchingSigner) Sign(ctx context.Context, data []byte, comment string) (ports.Signature, error) {
-	entries, _ := os.ReadDir(s.dir)
-	for _, e := range entries {
-		name := filepath.Join(s.dir, e.Name())
-		if filepath.Ext(name) == ".json" {
-			if _, err := os.Stat(name + ".minisig"); err != nil {
-				s.unsigned = append(s.unsigned, e.Name())
-			}
-		}
+func (s *lockedSigner) Sign(ctx context.Context, data []byte, comment string) (ports.Signature, error) {
+	if release, err := s.locker.Acquire(ctx, "attestations", ports.LockOptions{}); err == nil {
+		s.free = true
+		_ = release()
 	}
 	return s.Signer.Sign(ctx, data, comment)
 }
 
-// A statement appears only once its signature is there. A prune or an
-// `attest push` that ran between the two would otherwise see an unsigned
-// statement, send or count it as complete, and remove it before its signature
-// was written.
-func TestAStatementAppearsOnlyWithItsSignature(t *testing.T) {
+// A statement is written and signed under the lock the prune and `attest
+// push` take, so neither sees it before its signature exists: the prune would
+// count a target holding the document as holding all of it and remove it, and
+// the push would send the document alone.
+func TestAStatementIsSignedUnderTheAttestationLock(t *testing.T) {
 	h := retentionHarness(t)
 	signingInstallation(t, h)
-	watching := &watchingSigner{Signer: h.Deps.Signer, dir: h.Paths.AttestationsDir()}
-	h.Deps.Signer = watching
+	locked := &lockedSigner{Signer: h.Deps.Signer, locker: h.Deps.Locker}
+	h.Deps.Signer = locked
+	applyOnce(t, h)
+	assert.False(t, locked.free, "the statement was signed with the attestation lock free")
+}
+
+// While something holds the lock, the prune removes nothing and `attest push`
+// does not start.
+func TestThePruneAndAttestPushTakeTheAttestationLock(t *testing.T) {
+	h := retentionHarness(t)
+	inst, _ := h.withAttestationTarget(t)
 	applyOnce(t, h)
 	applyOnce(t, h)
-	assert.Empty(t, watching.unsigned)
-	assert.Len(t, statementsOnDisk(t, h), 2)
+	keepAttestations(t, h, inst, 1)
+
+	release, err := h.Deps.Locker.Acquire(context.Background(), "attestations", ports.LockOptions{})
+	require.NoError(t, err)
+	applyOnce(t, h)
+	assert.Len(t, statementsOnDisk(t, h), 3, "the prune ran without the lock")
+	_, err = ops.AttestPush(context.Background(), h.Deps, ops.Options{})
+	require.Error(t, err, "attest push ran without the lock")
+	require.NoError(t, release())
+}
+
+// resumeApply resumes an apply journaled as killed mid-run, after prepare has
+// set up the statement path its resume files under: a resume keeps the
+// interrupted run's id.
+func resumeApply(t *testing.T, h *harness, prepare func(statement string)) string {
+	t.Helper()
+	ctx := context.Background()
+	clean, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	killed := clean.Record
+	killed.ID = "op-killed-mid-apply"
+	killed.Status = domain.StatusRunning
+	killed.FinishedAt = domain.Time{}
+	// After the clean run, which the engine stamps with the wall clock.
+	killed.StartedAt = domain.NewTime(time.Now().Add(time.Second))
+	killed.Steps = append([]domain.StepRecord(nil), clean.Record.Steps...)
+	for i := range killed.Steps {
+		killed.Steps[i].Status = domain.StepPending
+	}
+	require.NoError(t, h.Deps.State.AppendOperation(ctx, killed))
+
+	statement := filepath.Join(h.Paths.AttestationsDir(), killed.ID+".json")
+	prepare(statement)
+	resumed, err := ops.Apply(ctx, h.Deps, ops.Options{Resume: true})
+	require.NoError(t, err)
+	require.Equal(t, killed.ID, resumed.Record.ID)
+	return statement
+}
+
+type refusingSigner struct{ ports.Signer }
+
+func (refusingSigner) Sign(context.Context, []byte, string) (ports.Signature, error) {
+	return ports.Signature{}, domain.NoSigningKey(nil, "no key")
+}
+
+// A resume that cannot sign leaves its statement unsigned, not beside the
+// interrupted run's signature, which signs a document that is gone.
+func TestAResumeThatCannotSignLeavesNoEarlierSignature(t *testing.T) {
+	h := retentionHarness(t)
+	signingInstallation(t, h)
+	statement := resumeApply(t, h, func(statement string) {
+		require.NoError(t, os.WriteFile(statement, []byte("{}\n"), 0o644))
+		require.NoError(t, os.WriteFile(statement+".minisig", []byte("the earlier signature\n"), 0o644))
+		h.Deps.Signer = refusingSigner{h.Deps.Signer}
+	})
+	assert.NotEqual(t, "{}\n", readFile(t, statement))
+	assert.NoFileExists(t, statement+".minisig")
+}
+
+// A resume whose statement cannot be written leaves the interrupted run's
+// signed pair as it was.
+func TestAResumeThatCannotWriteItsStatementKeepsTheEarlierPair(t *testing.T) {
+	h := retentionHarness(t)
+	signingInstallation(t, h)
+	statement := resumeApply(t, h, func(statement string) {
+		// A directory with something in it cannot be replaced by a file.
+		require.NoError(t, os.MkdirAll(filepath.Join(statement, "x"), 0o755))
+		require.NoError(t, os.WriteFile(statement+".minisig", []byte("the earlier signature\n"), 0o644))
+	})
+	assert.Equal(t, "the earlier signature\n", readFile(t, statement+".minisig"))
 }

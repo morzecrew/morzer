@@ -3,7 +3,9 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Attestation emission.
@@ -105,6 +108,23 @@ func fileAttestation(
 
 	path := filepath.Join(dir, rec.ID+".json")
 
+	// Held until the signature is written too, so neither the prune nor
+	// `attest push` sees the statement without the signature it will have
+	// (RFC 0049). Unheld, the statement is written anyway: the record
+	// matters more than the race.
+	if release, err := d.lockAttestations(ctx, rec.ID); err != nil {
+		d.warnf("writing the attestation for %s without its lock: %s", rec.ID, domain.AsError(err).Message)
+	} else {
+		defer release()
+	}
+
+	// 0644: an audit record with no secret in it by construction, and one
+	// an auditor cannot read is one they will not read.
+	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
+		d.warnf("cannot write the attestation to %s: %s", path, domain.AsError(err).Message)
+		return "", false
+	}
+
 	// Signed if this machine can, and pushed either way.
 	//
 	// **Either way** is the deliberate part, and it is why this is a
@@ -114,21 +134,7 @@ func fileAttestation(
 	// produces exactly the record that most needs to survive its disk, and
 	// keeping it local because it lacked a signature would withhold
 	// evidence from the installations with the least of it.
-	//
-	// The signature first, so a statement never appears without the one it
-	// will have: a prune or an `attest push` between the two would take it
-	// for an unsigned statement, and count a target holding the document as
-	// holding all of it (RFC 0049).
 	sign(ctx, d, rec, in, path, body)
-
-	// 0644: an audit record with no secret in it by construction, and one
-	// an auditor cannot read is one they will not read.
-	if err := atomicfs.WriteFile(path, body, 0o644); err != nil {
-		d.warnf("cannot write the attestation to %s: %s", path, domain.AsError(err).Message)
-		// Its signature would be for a statement that is not there.
-		_ = os.Remove(path + minisigExt)
-		return "", false
-	}
 	return path, true
 }
 
@@ -175,13 +181,25 @@ func (d *Deps) signingKeyForDocument(
 	return key.Line
 }
 
-// sign writes the detached signature where a statement is about to be written,
-// or says why it could not. Never fails the emission; the statement is written
-// either way.
+// sign writes the detached signature beside a statement, or says why it could
+// not. Never fails the emission; the statement is already on disk.
+//
+// A resume files its statement under the interrupted run's id, over that run's
+// signed pair, so a signature not written here would leave the old one beside
+// a document it does not sign. It is removed instead.
 func sign(
 	ctx context.Context, d *Deps, rec domain.OperationRecord,
 	in domain.AttestationInputs, path string, body []byte,
 ) {
+	signed := false
+	defer func() {
+		if !signed {
+			if err := os.Remove(path + minisigExt); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				d.warnf("cannot remove the earlier signature beside %s: %v", path, err)
+			}
+		}
+	}()
+
 	if d.Signer == nil {
 		// An unsigned statement is still a record, and this build signs
 		// nothing. Said out loud rather than left for a reader to infer
@@ -203,7 +221,32 @@ func sign(
 	if err := atomicfs.WriteFile(path+minisigExt, sig.Encoded, 0o644); err != nil {
 		d.warnf("cannot write the attestation signature for %s: %s",
 			rec.ID, domain.AsError(err).Message)
+		return
 	}
+	signed = true
+}
+
+// lockAttestations takes the lock every writer of the attestation directory
+// holds: filing a statement with its signature, the prune, and `attest push`.
+// A build with no locker has nothing to take.
+func (d *Deps) lockAttestations(ctx context.Context, opID string) (func(), error) {
+	if d.Locker == nil {
+		return func() {}, nil
+	}
+	release, err := d.Locker.Acquire(ctx, "attestations", ports.LockOptions{
+		Wait: true,
+		Owner: ports.LockOwner{
+			PID: os.Getpid(), OperationID: opID, Type: "attestations", StartedAt: domain.NewTime(d.now()),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		if err := release(); err != nil {
+			d.warnf("cannot release the attestation lock: %v", err)
+		}
+	}, nil
 }
 
 // warnf publishes a warning without failing anything.

@@ -22,6 +22,15 @@ func pruneStatements(ctx context.Context, d *Deps, inst domain.Installation) {
 	if limit <= 0 {
 		return
 	}
+	// The lock a statement is written and signed under, so no statement this
+	// reads is still waiting for its signature.
+	release, err := d.lockAttestations(ctx, "")
+	if err != nil {
+		d.warnf("cannot take the attestation lock, so no attestation is removed: %s", domain.AsError(err).Message)
+		return
+	}
+	defer release()
+
 	dir := d.Paths.AttestationsDir()
 	local, err := localStatements(dir)
 	if err != nil {

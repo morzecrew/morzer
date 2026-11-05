@@ -212,6 +212,16 @@ func AttestPush(ctx context.Context, d *Deps, opts Options) (Result, error) {
 				"attestations go to the same places backups do")
 	}
 
+	if !opts.DryRun {
+		// Held for the whole push, so every statement it reads has the
+		// signature it will keep, and no prune removes one mid-send.
+		release, err := d.lockAttestations(ctx, "")
+		if err != nil {
+			return Result{}, err
+		}
+		defer release()
+	}
+
 	report, err := d.attestationPushState(ctx, inst)
 	if err != nil {
 		return Result{}, err
