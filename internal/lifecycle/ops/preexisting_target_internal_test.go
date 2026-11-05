@@ -62,3 +62,10 @@ func TestRollbackComparesTargetsCleaned(t *testing.T) {
 	rel := domain.Release{Manifest: domain.Manifest{Configuration: []domain.ConfigurationFile{{Target: "/etc/a/../b.conf"}}}}
 	assert.Empty(t, d.keptCopiesNote(rel))
 }
+
+// The mode is the last " mode " in the flag: a path may hold the text too.
+func TestTheSummaryNamesACopyWhosePathSaysMode(t *testing.T) {
+	kept := "/srv/dark mode /replaced/op_1/srv/dark mode /app.conf"
+	note := replacedNote(map[string]string{replacedFlag + "/srv/dark mode /app.conf": kept + " mode 0644"})
+	assert.Contains(t, note, "is kept at "+kept)
+}

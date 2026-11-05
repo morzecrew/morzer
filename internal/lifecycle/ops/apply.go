@@ -1496,7 +1496,11 @@ func replacedNote(flags map[string]string) string {
 	var notes []string
 	for _, key := range slices.Sorted(maps.Keys(flags)) {
 		if target, ok := strings.CutPrefix(key, replacedFlag); ok {
-			kept, _, _ := strings.Cut(flags[key], " mode ")
+			// The last " mode ": a path may hold the text too.
+			kept := flags[key]
+			if i := strings.LastIndex(kept, " mode "); i >= 0 {
+				kept = kept[:i]
+			}
 			notes = append(notes, fmt.Sprintf("the file that was at %s is kept at %s", target, kept))
 		}
 	}
