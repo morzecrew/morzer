@@ -111,3 +111,20 @@ evidence: internal/lifecycle/ops/apply.go:1130-1134
 action: decided
 proposal: ASSUMED — a health check run by `morzer restart` sees `OPERATION_TYPE=restart`, a value the hook reference now lists; under `update`, `rollback` and `start` it sees those.
 ```
+
+From #278's second review. Attempt 1's proposal for decision 1 said a
+dependency is never re-created. `up` converges every dependency it touches,
+so one whose container no longer matches the release is re-created, as the
+Compose adapter's own note records for `run`.
+
+```divergence
+decision: 1
+grade: ASSUMED
+class: discovery
+at: 2026-11-05T13:40:00Z
+attempt: 3
+claim: a forced `up` of named services still re-creates a dependency whose container has diverged from the release
+evidence: internal/adapters/runtime/compose/compose.go:557-560
+action: departed
+proposal: ASSUMED — supersedes attempt 1's proposal. The named services are re-created, forced; their dependencies are converged as any `up` converges them, not forced: started if down, re-created only when their container no longer matches. After an `apply` every dependency matches, so only the named services are replaced.
+```

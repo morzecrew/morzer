@@ -302,7 +302,10 @@ morzer restart <service>...
 Re-creates the named services from the installed release, forced, then waits
 for the release's health checks. A container changed by hand comes back as the
 release defines it, and its writable layer does not survive, as with any
-re-create `apply` does. A dependency that is down is started, never re-created.
+re-create `apply` does. Dependencies are converged as `apply` converges them,
+not forced: one that is down is started, and one whose container no longer
+matches the release is re-created. After an `apply`, every one matches, so
+only the named services are replaced.
 
 A `restart` operation in the journal, under the deployment lock. Refused with
 [exit 2](exit-codes.md) while the product is stopped, before the first `apply`,

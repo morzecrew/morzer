@@ -145,8 +145,8 @@ func restartSteps(d *Deps, inst domain.Installation, rel domain.Release, service
 			OnFailure:   engine.Abort,
 			Timeout:     10 * time.Minute,
 			Execute: func(ctx context.Context, st *engine.State) error {
-				// Forced, and a dependency is started if it is down but
-				// never re-created (RFC 0050 decision 1).
+				// Forced; dependencies are converged as any `up` converges
+				// them, not forced (RFC 0050 decision 1).
 				return d.recreate(ctx, inst, rel, services)
 			},
 		},

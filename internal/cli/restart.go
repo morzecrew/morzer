@@ -15,8 +15,9 @@ func newRestartCommand(app *App) *cobra.Command {
 		Long: "Re-creates the named services from the installed release, forced, and\n" +
 			"waits for the release's health checks. A container changed by hand comes\n" +
 			"back as the release defines it, and its writable layer does not survive,\n" +
-			"as with any re-create `apply` does. A dependency that is down is started,\n" +
-			"never re-created.\n\n" +
+			"as with any re-create `apply` does. Dependencies are converged as `apply`\n" +
+			"converges them: one that is down is started, and one whose container no\n" +
+			"longer matches the release is re-created.\n\n" +
 			"Journalled as a `restart` operation, under the deployment lock, and\n" +
 			"refused while the product is stopped. A service the release does not\n" +
 			"start, including one behind an inactive profile, is refused by name.\n\n" +
