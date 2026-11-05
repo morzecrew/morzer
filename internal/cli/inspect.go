@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/tty"
 	"github.com/morzecrew/morzer/internal/ui/views"
 )
@@ -441,8 +445,10 @@ func (a *App) appendStats(ctx context.Context, interval time.Duration) error {
 }
 
 func newExecCommand(app *App) *cobra.Command {
+	var interactive bool
+
 	cmd := &cobra.Command{
-		Use:   "exec <service> -- <command> [args...]",
+		Use:   "exec [-i] <service> -- <command> [args...]",
 		Short: "Run a command inside a running service",
 		Long: "Runs one command inside a running container of the named service and\n" +
 			"propagates its exit code, so `morzer exec db -- psql -c 'select 1'`\n" +
@@ -451,15 +457,20 @@ func newExecCommand(app *App) *cobra.Command {
 			"nothing else: there is no --user, and no shortcut for running as root.\n" +
 			"A manager flag that made privilege escalation a keystroke would be a\n" +
 			"manager opinion about something it cannot audit.\n\n" +
-			"Not an interactive shell. There is no TTY and no stdin, so a command\n" +
-			"that prompts will wait for an answer nobody can give.\n\n" +
+			"Without -i there is no stdin and no TTY, the output comes back when the\n" +
+			"command ends, and a command that prompts waits for an answer nobody can\n" +
+			"give. With -i the command gets this terminal's stdin, and a TTY when\n" +
+			"stdin and stdout are both terminals, for as long as it runs; Ctrl-C\n" +
+			"belongs to the command. The command is still named after `--`.\n\n" +
 			"Journalled with its argv and never its output, with this installation's\n" +
 			"known secret values scrubbed. A credential the manager has never been\n" +
 			"told about is beyond that, so an argv is still not the place for one.\n\n" +
 			"Takes no lock, and refuses a service that is not running.",
 		Example: "  morzer exec db -- psql -U demo -c 'select count(*) from users'\n" +
 			"  morzer exec app -- ls -la /var/lib/demo\n" +
-			"  morzer exec app -- env | grep DEMO_",
+			"  morzer exec app -- env | grep DEMO_\n" +
+			"  morzer exec -i db -- psql -U demo\n" +
+			"  morzer exec -i db -- psql -U demo < migrate.sql",
 		Args:              cobra.MinimumNArgs(2),
 		ValidArgsFunction: onlyFirst(app.completeValues(services)),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -484,14 +495,56 @@ func newExecCommand(app *App) *cobra.Command {
 						"the argv on your command line is the whole plan")
 			}
 
-			result, err := ops.ExecInService(cmd.Context(), app.Deps, ops.ExecOptions{
-				Service: args[0],
-				Argv:    args[1:],
-			})
+			opts := ops.ExecOptions{Service: args[0], Argv: args[1:]}
+			if interactive {
+				return app.execInteractive(cmd.Context(), opts)
+			}
+			result, err := ops.ExecInService(cmd.Context(), app.Deps, opts)
 			return app.finishExec(result, err)
 		},
 	}
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false,
+		"give the command this terminal's stdin, and a TTY when stdin and stdout are terminals")
 	return cmd
+}
+
+// execInteractive runs an `exec -i` session (RFC 0050 P2).
+//
+// The session's to end, not the root handler's. Its context is cut from the
+// root's cancellation, which a Ctrl-C without a TTY would otherwise turn into
+// killing `compose` mid-session. The terminal's keys are caught here and
+// dropped rather than ignored, because an ignored signal is inherited through
+// exec and the command would shrug off Ctrl-C too, as `morzer shell` found;
+// the terminal sends them to `compose` itself. A SIGTERM, which no terminal
+// sends, ends the session through `compose`, and the record is written either
+// way.
+func (a *App) execInteractive(ctx context.Context, opts ops.ExecOptions) error {
+	// The command owns the streams until it ends, so there is no single
+	// object --json could promise.
+	if a.json != nil {
+		return domain.Usage("exec -i hands the command this terminal, and --json has nothing to report").
+			WithHint("drop --json, or drop -i to get the output back as one result")
+	}
+	streams := ports.ExecIO{
+		Stdin: a.Stream.In, Stdout: a.Stream.Out, Stderr: a.Stream.Err,
+		TTY: ui.IsTerminal(a.Stream.In) && ui.IsTerminal(a.Stream.Out),
+	}
+
+	session, end := context.WithCancel(context.WithoutCancel(ctx))
+	defer end()
+	keys := make(chan os.Signal, 8)
+	signal.Notify(keys, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTSTP, syscall.SIGTERM)
+	defer func() { signal.Stop(keys); close(keys) }()
+	go func() {
+		for sig := range keys {
+			if sig == syscall.SIGTERM {
+				end()
+			}
+		}
+	}()
+
+	result, err := ops.ExecInteractive(session, a.Deps, opts, streams)
+	return a.finishExec(result, err)
 }
 
 // finishExec presents what `exec` ran and decides its exit.

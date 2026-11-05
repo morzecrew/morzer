@@ -44,9 +44,20 @@ func TestExecRequiresTheTerminator(t *testing.T) {
 		ExitCode(domain.ExitUsage).
 		SaysAll("goes after `--`")
 
-	// And a service on its own is not a command: there is no TTY, so a
-	// bare `morzer exec app` would open a shell nobody could type into.
+	// And a service on its own is not a command, with -i or without: the
+	// operator names the shell (RFC 0050 decision 2).
 	r.Run("exec", "app").Failed()
+	r.Run("exec", "-i", "app").Failed()
+}
+
+// A session owns the terminal until it ends, so there is no one object --json
+// could promise. Refused before anything reaches the runtime.
+func TestAnInteractiveExecRefusesJSON(t *testing.T) {
+	r := clitest.NewInstalled(t)
+
+	r.Run("--json", "exec", "-i", "app", "--", "sh").
+		ExitCode(domain.ExitUsage).
+		SaysAll("--json has nothing to report")
 }
 
 func TestExecRefusesToPlanACommandItCannotSee(t *testing.T) {

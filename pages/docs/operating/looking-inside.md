@@ -189,9 +189,18 @@ if ! morzer exec db -- pg_isready -q; then
 fi
 ```
 
-It is **not an interactive shell.** There is no TTY and no stdin, so a command
-that prompts will wait for an answer nobody can give. One command, named on the
-command line.
+Without `-i` there is no TTY and no stdin, so a command that prompts will wait
+for an answer nobody can give. With `-i` the command gets this terminal for as
+long as it runs:
+
+```sh
+morzer exec -i db -- psql -U demo
+morzer exec -i db -- psql -U demo < migrate.sql
+```
+
+A TTY is allocated when stdin and stdout are both terminals, so the first is a
+`psql` prompt and the second a byte stream. Ctrl-C belongs to the command. The
+shell is still named: `morzer exec -i app -- sh`.
 
 There is no `--user`, and no shortcut for running as root. A manager flag that
 made privilege escalation a keystroke would be a manager opinion about something

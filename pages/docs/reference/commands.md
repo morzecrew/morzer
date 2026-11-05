@@ -528,7 +528,7 @@ the metrics and example alerts.
 ## exec
 
 ```sh
-morzer exec <service> -- <command> [args...]
+morzer exec [-i] <service> -- <command> [args...]
 ```
 
 Runs one command inside a running container of the named service and propagates
@@ -541,9 +541,20 @@ output is cut; a warning on stderr after it says so, and with `--json`
 `truncated` is true. The exit code is still the command's own, so `exec`
 cannot carry a dump larger than that.
 
-Not an interactive shell: there is no TTY and no stdin, so a command that
-prompts waits for an answer nobody can give. There is no `--user` and no
-shortcut for running as root.
+Without `-i` there is no TTY and no stdin, so a command that prompts waits for an
+answer nobody can give. There is no `--user` and no shortcut for running as
+root.
+
+| Flag | Meaning |
+| --- | --- |
+| `-i`, `--interactive` | Give the command this terminal's stdin, and a TTY when stdin and stdout are both terminals, for as long as it runs. |
+
+With `-i` the command's streams are the terminal's own: nothing is buffered or
+cut, and no timeout applies. Ctrl-C belongs to the command; without a TTY it ends
+the session, and with one it is a key the command reads. A `SIGTERM` sent to
+`morzer` ends the session too. The command is still named after `--`, there is
+no `--json`, and the journal records the session with `interactive: true`, the
+argv scrubbed as for any `exec`, and none of what passed through it.
 
 A service that is not running is refused by name, with the state it is in, and
 exit 7. A scaled service is refused only when none of its instances is running,

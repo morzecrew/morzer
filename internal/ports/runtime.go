@@ -84,6 +84,13 @@ type Runtime interface {
 	// Exec runs a command inside an already-running service.
 	Exec(ctx context.Context, cfg RuntimeConfig, service string, argv []string) (ExitResult, error)
 
+	// ExecInteractive runs a command inside an already-running service with
+	// the caller's streams, for as long as it runs (RFC 0050 P2). A command
+	// that exits non-zero returns its code and a nil error, as Exec does;
+	// the error is a session that could not run. A runtime that cannot hold
+	// one returns domain.ErrUnsupported.
+	ExecInteractive(ctx context.Context, cfg RuntimeConfig, service string, argv []string, streams ExecIO) (int, error)
+
 	// Status reports the state of every service in the project.
 	Status(ctx context.Context, cfg RuntimeConfig) ([]ServiceState, error)
 
@@ -219,6 +226,16 @@ type RunOptions struct {
 	// (RFC 0041). A runtime that cannot mount one must refuse the run, not
 	// start the container without it.
 	Mounts []Mount
+}
+
+// ExecIO is what an interactive session reads and writes.
+type ExecIO struct {
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
+
+	// TTY asks for a terminal. The caller sets it only when its stdin and
+	// stdout are both terminals.
+	TTY bool
 }
 
 // Mount is one host path in a one-off container.

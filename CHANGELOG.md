@@ -48,6 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deployment lock, and is refused while the product is stopped or for a
   service the release does not start.
 
+- **`morzer exec -i` gives a command this terminal.** Its stdin, and a TTY
+  when stdin and stdout are terminals, for as long as it runs, so `psql` and
+  `sh` work inside a service. Ctrl-C belongs to the command, and the session
+  is journalled without what passed through it.
+
 ### Fixed
 
 - **A command health check is told the operation running it.** During

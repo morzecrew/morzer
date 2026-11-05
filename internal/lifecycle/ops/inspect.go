@@ -353,6 +353,30 @@ type ExecResult struct {
 // No lock. An operator reading state with `psql` while an update runs is the
 // case this exists for.
 func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, error) {
+	return execSession(ctx, d, opts, false,
+		func(ctx context.Context, cfg ports.RuntimeConfig) (ports.ExitResult, error) {
+			return d.Runtime.Exec(ctx, cfg, opts.Service, opts.Argv)
+		})
+}
+
+// ExecInteractive runs a command inside a running service with the caller's
+// streams, for as long as it runs (RFC 0050 P2). Everything else is
+// ExecInService's: the refusal of a service that is not running, the journal
+// with the argv redacted and never the output, and the command's exit code.
+// No timeout: a session lasts as long as the operator.
+func ExecInteractive(ctx context.Context, d *Deps, opts ExecOptions, streams ports.ExecIO) (ExecResult, error) {
+	return execSession(ctx, d, opts, true,
+		func(ctx context.Context, cfg ports.RuntimeConfig) (ports.ExitResult, error) {
+			started := d.now()
+			code, err := d.Runtime.ExecInteractive(ctx, cfg, opts.Service, opts.Argv, streams)
+			return ports.ExitResult{ExitCode: code, Duration: d.now().Sub(started)}, err
+		})
+}
+
+func execSession(
+	ctx context.Context, d *Deps, opts ExecOptions, interactive bool,
+	run func(context.Context, ports.RuntimeConfig) (ports.ExitResult, error),
+) (ExecResult, error) {
 	if len(opts.Argv) == 0 {
 		return ExecResult{}, domain.Usage("a command to run inside %s is required", opts.Service).
 			WithHint("morzer exec %s -- <command> [args…]", opts.Service)
@@ -378,9 +402,16 @@ func ExecInService(ctx context.Context, d *Deps, opts ExecOptions) (ExecResult, 
 	armed := d.armRedaction(ctx)
 
 	started := d.now()
-	res, err := d.Runtime.Exec(ctx, dep.Config, opts.Service, opts.Argv)
-	record := d.execRecord(dep, opts, started, res, err, armed)
-	if journalErr := d.State.AppendOperation(ctx, record); journalErr != nil {
+	res, err := run(ctx, dep.Config)
+	// A runtime that cannot run one ran nothing, and is refused by name
+	// rather than journalled as something a human did (RFC 0021 decision 4).
+	if errors.Is(err, domain.ErrUnsupported) {
+		return ExecResult{Service: opts.Service}, err
+	}
+	record := d.execRecord(dep, opts, interactive, started, res, err, armed)
+	// Written whatever ended the command: a session a SIGTERM ended has a
+	// cancelled context, and a human was inside all the same.
+	if journalErr := d.State.AppendOperation(context.WithoutCancel(ctx), record); journalErr != nil {
 		// Logged and dropped. The command ran inside the container
 		// whether or not the manager could write it down, and failing
 		// the invocation afterwards would report a failure that did not
@@ -484,6 +515,7 @@ func requireRunning(states []ports.ServiceState, service string) error {
 func (d *Deps) execRecord(
 	dep deployment,
 	opts ExecOptions,
+	interactive bool,
 	started time.Time,
 	res ports.ExitResult,
 	runErr error,
@@ -505,6 +537,9 @@ func (d *Deps) execRecord(
 	flags := map[string]string{
 		"service":   opts.Service,
 		"exit_code": strconv.Itoa(res.ExitCode),
+	}
+	if interactive {
+		flags["interactive"] = "true"
 	}
 
 	// Three answers rather than two, and the third is the point. Refusing
