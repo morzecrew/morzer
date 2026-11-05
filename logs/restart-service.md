@@ -76,3 +76,38 @@ evidence: internal/lifecycle/ops/config.go:434-444
 action: departed
 proposal: ASSUMED — as decision 1, through `d.recreate` as `config set` uses it: the named services are re-created, forced, and a dependency is started if it is down but never re-created.
 ```
+
+From #279's review.
+
+The re-create resolves a bundled image through its local alias, a mutable
+tag. `apply` refuses a missing one in its preflight; the restart had no
+preflight, so Compose would have pulled whatever the vendor's registry holds
+under that tag.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-05T13:23:00Z
+attempt: 2
+claim: a restart with a bundled image missing from the store re-created the service from an image pulled under a mutable tag
+evidence: internal/lifecycle/ops/restart.go:124-140
+action: decided
+proposal: ASSUMED — a restart's first step runs apply's `images.bundled` check and refuses, naming `release ingest`, before anything is re-created.
+```
+
+A health check's `OPERATION_TYPE` was `apply` whatever ran it, against the
+hook reference. The step now passes the operation running it, which gives
+the ABI a value it did not have.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: discovery
+at: 2026-11-05T13:23:00Z
+attempt: 2
+claim: hooks are told the operation running them, and a health check during a restart is run by a restart
+evidence: internal/lifecycle/ops/apply.go:1130-1134
+action: decided
+proposal: ASSUMED — a health check run by `morzer restart` sees `OPERATION_TYPE=restart`, a value the hook reference now lists; under `update`, `rollback` and `start` it sees those.
+```

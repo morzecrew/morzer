@@ -59,6 +59,7 @@ func TestRestartRecreatesTheNamedServices(t *testing.T) {
 	recs := restartRecords(t, h)
 	require.Len(t, recs, 1)
 	assert.Equal(t, domain.StatusSucceeded, recs[0].Status)
+	assert.Equal(t, "app", recs[0].Flags["services"], "the journal does not say which service was restarted")
 }
 
 // A name the release does not start is refused before anything runs: `up`
@@ -130,4 +131,64 @@ func TestARestartIsNotAttested(t *testing.T) {
 	after, err := os.ReadDir(h.Paths.AttestationsDir())
 	require.NoError(t, err)
 	assert.Len(t, after, len(before))
+}
+
+// A `config set` that lands while the restart waits for the lock is not
+// undone: the services are re-created with the values it saved.
+func TestRestartUsesTheValuesSavedWhileItWaited(t *testing.T) {
+	h := restartHarness(t)
+	saved := false
+	h.Deps.Locker = &lockerThatRaces{Locker: h.Locker, at: func() {
+		if saved {
+			return
+		}
+		saved = true
+		inst := installation(t, h)
+		if inst.Parameters == nil {
+			inst.Parameters = map[string]string{}
+		}
+		inst.Parameters["log_level"] = "debug"
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	}}
+
+	_, err := restart(h, "app")
+	require.NoError(t, err)
+	last := h.Runtime.UpConfigs[len(h.Runtime.UpConfigs)-1]
+	assert.Equal(t, "debug", last.Env["DEMO_PARAM_LOG_LEVEL"], "the restart re-created the service with the value replaced")
+}
+
+// A bundled image reaches Compose through a mutable local tag. Missing, the
+// re-create would pull whatever the registry holds under it, so the restart
+// refuses as apply does.
+func TestRestartRefusesABundledImageThatIsNotLoaded(t *testing.T) {
+	h := newHarness(t)
+	ref, alias := h.bundleImage(t)
+	h.install()
+	h.setHookEnv()
+	ctx := context.Background()
+	_, err := ops.IngestImages(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	applyBaseline(t, h)
+	h.Runtime.ValidateResult = ports.Rendered{Services: []string{"app", "db"}}
+	require.NoError(t, h.Runtime.RemoveImage(ctx, alias))
+	before := len(h.Runtime.UpOptions)
+
+	_, err = restart(h, "app")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "release ingest")
+	assert.NotContains(t, h.Runtime.PulledImages, ref)
+	assert.Len(t, h.Runtime.UpOptions, before, "services were re-created without their image")
+}
+
+// A command health check is told the operation running it, as every hook is.
+func TestARestartsHealthChecksAreToldItIsARestart(t *testing.T) {
+	h := restartHarness(t)
+	_, err := restart(h, "app")
+	require.NoError(t, err)
+	var told []string
+	for _, spec := range h.Health.LastSpecs {
+		told = append(told, spec.Env["DEMO_OPERATION_TYPE"])
+	}
+	require.NotEmpty(t, told)
+	assert.Equal(t, "restart", told[0])
 }

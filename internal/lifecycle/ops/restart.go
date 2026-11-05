@@ -9,6 +9,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
+	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 )
 
 // RestartOptions names the services `morzer restart` re-creates.
@@ -68,7 +69,9 @@ func Restart(ctx context.Context, d *Deps, opts RestartOptions) (Result, error) 
 		Type:        domain.OpTypeRestart,
 		Description: "restart " + strings.Join(opts.Services, ", "),
 		To:          rel.Version(),
-		Steps:       restartSteps(d, inst, rel, opts.Services),
+		// The description is not journalled; without this a record would
+		// not say which services were restarted.
+		Flags: map[string]string{"services": strings.Join(opts.Services, ",")},
 	}
 
 	var result engine.Result
@@ -82,7 +85,17 @@ func Restart(ctx context.Context, d *Deps, opts RestartOptions) (Result, error) 
 		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
 		}
-		var err error
+		// Read again under the lock: a `config set` that finished while
+		// this waited would otherwise be undone by re-creating the services
+		// with the values it replaced.
+		inst, err := d.loadInstallation(ctx)
+		if err != nil {
+			return err
+		}
+		if err := d.refuseUnstartedServices(ctx, inst, rel, opts.Services); err != nil {
+			return err
+		}
+		op.Steps = restartSteps(d, inst, rel, opts.Services)
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err
 	})
@@ -108,6 +121,23 @@ func restartSteps(d *Deps, inst domain.Installation, rel domain.Release, service
 	health := stepHealthChecks(d, inst, rel)
 	health.OnFailure = engine.Abort
 	return []engine.Step{
+		{
+			ID:          "preflight",
+			Description: "check the bundled images are loaded",
+			Idempotent:  true,
+			OnFailure:   engine.Abort,
+			Timeout:     time.Minute,
+			Execute: func(ctx context.Context, st *engine.State) error {
+				// A bundled image reaches Compose through a local alias,
+				// which is a mutable tag: missing, the re-create would pull
+				// whatever the vendor's registry holds under it. Refused as
+				// apply's preflight refuses it.
+				report := preflight.NewRunner(d.Bus).Run(ctx, []preflight.Check{
+					preflight.BundledImages(rel.Manifest.BundledImageRefs(), d.imagePresence()),
+				})
+				return report.Err()
+			},
+		},
 		{
 			ID:          "recreate-services",
 			Description: "re-create " + strings.Join(services, ", "),
