@@ -1,7 +1,8 @@
 # RFC 0050 — Restarting a service, and an interactive exec
 
-- **Status:** 📝 Draft — proposed 2026-11-05; §11's `OPEN` rows await the
-  author's ruling, and so does reopening RFC 0021 decisions 8 and 12.
+- **Status:** 📝 Draft — proposed 2026-11-05, and ruled by the author
+  2026-11-05: RFC 0021 decisions 8 and 12 reopened, and §11's `OPEN` rows
+  as recommended. Ready to build.
 - **Scope:** Two commands RFC 0021 left out on purpose. `morzer restart
   <service>…` re-creates named services from the installed release, under
   the deployment lock, and journals it. `morzer exec --interactive` gives
@@ -40,8 +41,10 @@ method. The command is still required. No timeout applies, and the journal
 records the argv, redacted, as it does for `exec` today.
 
 Both reopen decisions RFC 0021 made without grades, which count as `LOCKED`:
-decision 8 (no `restart`) and decision 12 (no interactive form). Neither
-moves until the author says so, and §11 asks.
+decision 8 (no `restart`) and decision 12 (no interactive form). The author
+reopened both on 2026-11-05 and ruled §11's three questions as recommended:
+`restart` re-creates (decision 1), `exec -i` still needs a command (decision
+2), and `restart` is journalled, not attested (decision 3).
 
 ## 2. Motivation
 
@@ -260,20 +263,21 @@ through journalling it.
 
 ## 10. Unresolved questions
 
-- Decisions 1–3, and reopening RFC 0021 decisions 8 and 12, for the author.
+None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
+1–3 on 2026-11-05.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **What `restart` does.** Recommended: re-create the named services from the installed release, forced and without dependencies (`d.recreate`), so the container is the one the release defines, as RFC 0021 §8 asked. Alternative: `Runtime.Restart`, a plain `compose restart`, which keeps the container and whatever was changed in it by hand. |
-| 2 | `OPEN` | **Whether `exec -i` has a bare shell form.** Recommended: no; the command is required and everything after `--` is the container's argv (RFC 0021 decision 13). Alternative: `morzer exec -i <service>` with no command runs `/bin/sh`. |
-| 3 | `OPEN` | **Whether `restart` attests.** Recommended: no; it is journalled, and RFC 0025 attests what moves a version or a configuration, which a restart does not. Alternative: attest it as a sixth operation kind, so an auditor's record shows every time a service was bounced. |
+| 1 | `ASSUMED` | **What `restart` does.** Recommended: re-create the named services from the installed release, forced and without dependencies (`d.recreate`), so the container is the one the release defines, as RFC 0021 §8 asked. Alternative: `Runtime.Restart`, a plain `compose restart`, which keeps the container and whatever was changed in it by hand. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 2 | `ASSUMED` | **Whether `exec -i` has a bare shell form.** Recommended: no; the command is required and everything after `--` is the container's argv (RFC 0021 decision 13). Alternative: `morzer exec -i <service>` with no command runs `/bin/sh`. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
+| 3 | `ASSUMED` | **Whether `restart` attests.** Recommended: no; it is journalled, and RFC 0025 attests what moves a version or a configuration, which a restart does not. Alternative: attest it as a sixth operation kind, so an auditor's record shows every time a service was bounced. Was `OPEN`; ruled by the author 2026-11-05: as recommended. |
 | 4 | `ASSUMED` | `restart` is an operation: journalled as `restart`, under the deployment lock, refused while the installation is stopped, followed by the release's health checks, and failed (with nothing to compensate) when they fail. One or more services by name; none, an unknown one, or one the release does not start is refused before anything runs. |
 | 5 | `ASSUMED` | `exec -i` attaches stdin and asks for a TTY exactly when stdin and stdout are terminals; there is no `-t`. No timeout, no lock, `--json` refused, and the journal records the redacted argv with `interactive: true` and never the output. `exec` without `-i` is unchanged. |
 | 6 | `ASSUMED` | A new port method, `Runtime.ExecInteractive`, rather than a wider `Exec`, answering RFC 0021 §10. A runtime without it returns `domain.ErrUnsupported`, refused by name. |
 | 7 | `ASSUMED` | With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. The manager ignores `SIGINT` while a session runs. |
-| 8 | `ASSUMED` | Reopens RFC 0021 decision 8 for `restart` alone (`port-forward` and log storage stay out) and decision 12 for `exec -i` alone. Both were ungraded, so they move only when the author rules here. |
+| 8 | `ASSUMED` | Reopens RFC 0021 decision 8 for `restart` alone (`port-forward` and log storage stay out) and decision 12 for `exec -i` alone. Both were ungraded, so they move only when the author rules here. Ruled by the author 2026-11-05: both reopened. |
 
 ## 12. Phasing
 
