@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -191,4 +192,26 @@ func TestARestartsHealthChecksAreToldItIsARestart(t *testing.T) {
 	}
 	require.NotEmpty(t, told)
 	assert.Equal(t, "restart", told[0])
+}
+
+// A dry run plans the three steps and changes nothing: no re-create, and no
+// record, since a plan is not something that happened.
+func TestARestartDryRunPlansAndChangesNothing(t *testing.T) {
+	h := restartHarness(t)
+	before := len(h.Runtime.UpOptions)
+
+	res, err := ops.Restart(context.Background(), h.Deps,
+		ops.RestartOptions{Options: ops.Options{DryRun: true}, Services: []string{"app"}})
+	require.NoError(t, err)
+	assert.Equal(t, "would re-create app from 1.2.0", res.Summary)
+	assert.Len(t, h.Runtime.UpOptions, before)
+	assert.Empty(t, restartRecords(t, h))
+
+	plans := h.Events.OfKind(events.KindPlan)
+	require.NotEmpty(t, plans)
+	var ids []string
+	for _, step := range plans[len(plans)-1].Plan {
+		ids = append(ids, step.ID)
+	}
+	assert.Equal(t, []string{"preflight", "recreate-services", "health-checks"}, ids)
 }
