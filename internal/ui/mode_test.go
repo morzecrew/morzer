@@ -21,17 +21,6 @@ func env(pairs map[string]string) func(string) (string, bool) {
 	}
 }
 
-// tty is a character device, which is what ResolveMode checks for.
-func tty(t *testing.T) *os.File {
-	t.Helper()
-	f, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Skipf("cannot open %s: %v", os.DevNull, err)
-	}
-	t.Cleanup(func() { _ = f.Close() })
-	return f
-}
-
 // notATTY is a regular file, which is what a pipe or a redirect looks like.
 func notATTY(t *testing.T) *os.File {
 	t.Helper()

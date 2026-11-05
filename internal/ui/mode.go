@@ -11,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // Mode is the resolved output style. It is decided once at startup and never
@@ -115,19 +117,13 @@ func ResolveMode(opts ModeOptions) Mode {
 	return ModeRich
 }
 
-// isTTY reports whether f is a character device.
+// isTTY reports whether f is a terminal, by asking the terminal driver.
 //
-// Implemented with a stat rather than a dependency: the mode bits answer the
-// question, and this is the only place the manager needs to ask it.
+// Not by the mode bits: a character device is not always a terminal, and
+// /dev/null is one that is not. Taken for one, `exec -i app -- cat </dev/null`
+// asked Compose for a TTY, which it then refused.
 func isTTY(f *os.File) bool {
-	if f == nil {
-		return false
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return f != nil && term.IsTerminal(int(f.Fd()))
 }
 
 // UseColor reports whether styled output is appropriate.

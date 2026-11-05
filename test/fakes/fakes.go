@@ -125,6 +125,12 @@ type Runtime struct {
 	ExecResults map[string]ports.ExitResult
 	ExecArgv    [][]string
 
+	// Sessions records each interactive exec, and SessionCode is what one
+	// exits with. A session copies its stdin to its stdout, so a test can
+	// tell the streams were the caller's.
+	Sessions    []Session
+	SessionCode int
+
 	// OneShotResults maps a service name to its exit result, and OneShots
 	// records what each run was handed.
 	OneShotResults map[string]ports.ExitResult
@@ -544,6 +550,31 @@ func (r *Runtime) Exec(ctx context.Context, cfg ports.RuntimeConfig, service str
 		return res, nil
 	}
 	return ports.ExitResult{ExitCode: 0}, nil
+}
+
+// Session is one interactive exec the fake ran.
+type Session struct {
+	Service string
+	Argv    []string
+	TTY     bool
+}
+
+func (r *Runtime) ExecInteractive(
+	ctx context.Context, cfg ports.RuntimeConfig, service string, argv []string, streams ports.ExecIO,
+) (int, error) {
+	if err := r.record("ExecInteractive"); err != nil {
+		return -1, err
+	}
+	r.mu.Lock()
+	r.Sessions = append(r.Sessions, Session{Service: service, Argv: argv, TTY: streams.TTY})
+	code := r.SessionCode
+	r.mu.Unlock()
+	if streams.Stdin != nil && streams.Stdout != nil {
+		if _, err := io.Copy(streams.Stdout, streams.Stdin); err != nil {
+			return -1, err
+		}
+	}
+	return code, nil
 }
 
 // Stats reports whatever the test arranged, and counts the samples.
