@@ -17,7 +17,9 @@ import (
 // prunes can overlap; a statement the other one removed is not an error.
 func pruneStatements(ctx context.Context, d *Deps, inst domain.Installation) {
 	limit := inst.Policy.RetainAttestations
-	if limit == 0 {
+	// Below zero only by a hand edit that validation refuses; a slice bound
+	// past the list would panic after the operation has run.
+	if limit <= 0 {
 		return
 	}
 	dir := d.Paths.AttestationsDir()
@@ -69,6 +71,11 @@ func (d *Deps) statementsToKeep(
 	}
 	if !inst.Backup.HasTargets() {
 		return keep, nil
+	}
+	if d.Objects == nil {
+		// A build with no object store pushes nothing (attestationTargets),
+		// and cannot tell what a target holds.
+		return nil, domain.Internal(nil, "this build cannot read the backup targets")
 	}
 	state, err := d.attestationPushState(ctx, inst)
 	if err != nil {

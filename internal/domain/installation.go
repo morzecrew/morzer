@@ -1181,6 +1181,9 @@ func (i Installation) Validate() error {
 	if i.Policy.RetainPreUpdateBackups < 0 {
 		v.add("policy.retain_pre_update_backups", "must not be negative")
 	}
+	if i.Policy.RetainAttestations < 0 {
+		v.add("policy.retain_attestations", "must not be negative")
+	}
 	if d := i.Update.RandomizedDelay; d != nil {
 		if err := ValidateUpdateRandomizedDelay(*d); err != nil {
 			v.add("update.randomized_delay", "%s", AsError(err).Message)
