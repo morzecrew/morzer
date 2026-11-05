@@ -5,7 +5,7 @@
   as recommended. **P1 built 2026-11-05** in #279; the entries its build and
   review wrote in [logs/restart-service.md](../logs/restart-service.md) are decisions 9–12.
   **P2 built 2026-11-05** in #281; the entries in
-  [logs/exec-interactive.md](../logs/exec-interactive.md) are decisions 13–16, ruled by the author 2026-11-05.
+  [logs/exec-interactive.md](../logs/exec-interactive.md) are decisions 13–17, ruled by the author 2026-11-05.
 - **Scope:** Two commands RFC 0021 left out on purpose. `morzer restart
   <service>…` re-creates named services from the installed release, under
   the deployment lock, and journals it. `morzer exec --interactive` gives
@@ -298,13 +298,17 @@ with nobody to journal it, as it would leave any child.
   journal's argv is redacted as before.
 - **A TTY session ties up the manager process for as long as it runs.** It
   holds no lock, so nothing else waits on it.
-- *(2026-11-05, accepted by the author)* **A session that ignores SIGTERM is
-  killed after 10 seconds, and the kill reaches `docker` alone.** On a
-  current Docker the CLI tells its Compose plugin over the plugin socket when
-  it gets SIGTERM, and waits for it, so a session ends cleanly; the
-  acceptance run's SIGTERM step ends with 130, not the 137 of a kill. The
-  fallback kill reaches only `docker`, as killing any child does, and a
-  plugin still running then is left to the operating system.
+- *(2026-11-05, accepted by the author)* **When a session does not end on
+  SIGTERM, `docker` is killed after 10 seconds, and the kill reaches
+  `docker` alone.** When its stdout is not a terminal, the CLI tells its
+  Compose plugin over the plugin socket that it got SIGTERM, and waits for
+  it, so the session ends cleanly: the acceptance run's SIGTERM step, with
+  its output on `/dev/null`, ends with 130, not the 137 of a kill. When
+  stdout is a terminal the CLI does not tell the plugin, leaving it to the
+  signals the terminal sends the whole group, so a SIGTERM sent to the
+  manager alone always ends in the kill (decision 17). Either way the kill
+  reaches only `docker`, as killing any child does, and a plugin still
+  running then is left to the operating system.
 
 ## 10. Unresolved questions
 
@@ -321,7 +325,7 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 | 4 | `ASSUMED` | `restart` is an operation: journalled as `restart`, under the deployment lock, refused while the installation is stopped, followed by the release's health checks, and failed (with nothing to compensate) when they fail. One or more services by name; none, an unknown one, or one the release does not start is refused before anything runs. |
 | 5 | `ASSUMED` | `exec -i` attaches stdin and asks for a TTY exactly when stdin and stdout are terminals; there is no `-t`. No timeout, no lock, `--json` refused, and the journal records the redacted argv with `interactive: true` and never the output. `exec` without `-i` is unchanged. |
 | 6 | `ASSUMED` | A new port method, `Runtime.ExecInteractive`, rather than a wider `Exec`, answering RFC 0021 §10. A runtime without it returns `domain.ErrUnsupported`, refused by name. |
-| 7 | `ASSUMED` | With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. For the session's length the manager catches, not ignores, `SIGINT`, `SIGQUIT` and `SIGTSTP`, as `morzer shell` does, since an ignored signal is inherited by `compose`; the session runs under `context.WithoutCancel`, so the root handler's cancellation does not kill it, and it is journalled when it ends. A `SIGTERM` to the manager is forwarded to `compose`, which ends the session; it is journalled, and the manager exits with the command's status. |
+| 7 | `ASSUMED` | *(Superseded in part: its `SIGTSTP` by decision 16, and its `SIGTERM` at a terminal by decision 17.)* With a TTY the Compose adapter hands `compose exec` the terminal and forwards no bytes; without one it copies the streams. For the session's length the manager catches, not ignores, `SIGINT`, `SIGQUIT` and `SIGTSTP`, as `morzer shell` does, since an ignored signal is inherited by `compose`; the session runs under `context.WithoutCancel`, so the root handler's cancellation does not kill it, and it is journalled when it ends. A `SIGTERM` to the manager is forwarded to `compose`, which ends the session; it is journalled, and the manager exits with the command's status. |
 | 8 | `ASSUMED` | Reopens RFC 0021 decision 8 for `restart` alone (`port-forward` and log storage stay out) and decision 12 for `exec -i` alone. Both were ungraded, so they move only when the author rules here. Ruled by the author 2026-11-05: both reopened. |
 | 9 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* **Refines decision 4.** Both of the restart's steps abort on failure, so a restart whose health checks fail is journalled as failed, not compensated: nothing was put back. See [logs/restart-service.md](../logs/restart-service.md) (decision 4, attempt 1, 13:00). |
 | 10 | `ASSUMED` | *(2026-11-05, from the build; accepted 2026-11-05)* A restart has no `--resume`. Its steps are idempotent, so an interrupted one is cleared with `morzer status --clear-intervention`, as `config`'s is, and run again. See [logs/restart-service.md](../logs/restart-service.md) (unlisted, attempt 1, 13:00). |
@@ -331,6 +335,7 @@ None. The author reopened RFC 0021 decisions 8 and 12 and ruled decisions
 | 14 | `ASSUMED` | *(2026-11-05, from the build; ruled by the author 2026-11-05)* **Refines decision 7.** The session's `compose` stays in the manager's process group, unlike every other command the adapter starts in a group of its own: a process outside the terminal's foreground group is stopped when it reads the terminal and never receives Ctrl-C. Its cancellation signals `compose` alone, not the group, which holds the manager too. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 1, 15:05). |
 | 15 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** The hold on the signals is taken only once the command starts, and given back when it ends; the checks before it stay the root handler's and cancellable, so a Ctrl-C while the service is checked stops the command from starting. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, the hold). |
 | 16 | `ASSUMED` | *(2026-11-05, from the review; ruled by the author 2026-11-05)* **Refines decision 7.** `SIGINT` and `SIGQUIT` are caught and dropped; `SIGTSTP` is left at its default, since a caught Ctrl-Z without a TTY suspended `compose` and left the manager waiting, so the shell never got the terminal back. With a TTY it is a byte for the container's terminal either way. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 2, 19:57, `SIGTSTP`). |
+| 17 | `ASSUMED` | *(2026-11-05, from the review of #282; ruled by the author 2026-11-05)* **Refines decision 7.** A `SIGTERM` to the manager ends a session only when `compose`'s stdout is not a terminal. At a terminal, Docker's CLI does not pass a termination signal to its Compose plugin, leaving it to the signals the terminal sends the whole group, so the `SIGTERM` the manager forwards to `docker` ends nothing: `docker` is killed after 10 seconds, the session is journalled with the kill's 137, and the plugin is left running. A hangup or a shutdown signals the plugin itself, so only a signal sent to the manager by PID meets this. Accepted as what `docker compose exec` does when `docker` alone is signalled, rather than worked around. See [logs/exec-interactive.md](../logs/exec-interactive.md) (decision 7, attempt 3, 22:58). |
 
 ## 12. Phasing
 

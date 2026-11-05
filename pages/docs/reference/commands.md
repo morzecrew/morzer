@@ -555,7 +555,9 @@ the session. With one, `compose` holds the terminal in raw mode, so Ctrl-C reach
 the container's terminal and interrupts the command there, as it would at a
 terminal inside it. `morzer` leaves Ctrl-Z to the shell rather than catching it,
 so a session without a TTY is suspended as any foreground job is. A `SIGTERM`
-sent to `morzer` ends the session too. The command is still named after `--`, there is
+sent to `morzer` ends the session too when its output is not a terminal. At a
+terminal Docker does not pass it on, so `morzer` stops `docker` after 10 seconds
+and the command can still be running in the container. The command is still named after `--`, there is
 no `--json`, and the journal records the session with `interactive: true`, the
 argv scrubbed as for any `exec`, and none of what passed through it.
 

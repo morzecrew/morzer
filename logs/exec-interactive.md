@@ -100,3 +100,26 @@ evidence: internal/cli/inspect.go:540-565
 action: departed
 proposal: ASSUMED — as decision 7 for `SIGINT` and `SIGQUIT`, caught and dropped; `SIGTSTP` is left at its default, so Ctrl-Z suspends the session and the manager together and `fg` resumes both. With a TTY it is a byte for the container's terminal either way.
 ```
+
+From #282's review.
+
+The `SIGTERM` the manager forwards reaches `docker`, and Docker's CLI passes a
+termination signal on to its Compose plugin only when its stdout is not a
+terminal; at a terminal it leaves the plugin to the signals the terminal sends
+the whole foreground group (`cmd/docker/docker.go`, `tryTerminatePlugin`, in
+docker/cli v28.5.2 and v29.0.0). The acceptance run's step had its output on
+`/dev/null`. Run against Docker 29.7.2 with stdout on a pty, a `SIGTERM` to
+`docker compose exec`'s `docker` left `docker` and the plugin both running;
+through a pipe, both ended.
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-05T22:58:00Z
+attempt: 3
+claim: a SIGTERM to the manager does not end a session whose stdout is a terminal, since Docker's CLI does not pass it to the Compose plugin; `docker` is killed after 10 seconds and the plugin is left running
+evidence: internal/adapters/runtime/compose/interactive.go:41-42
+action: departed
+proposal: ASSUMED — refines decision 7. A SIGTERM to the manager ends a session only when `compose`'s stdout is not a terminal. At a terminal, `docker` is killed after 10 seconds, the session is journalled with the kill's 137, and the plugin is left running; a hangup or a shutdown signals the plugin itself, so only a signal sent to the manager by PID meets this. Accepted as Docker's own behaviour rather than worked around.
+```
