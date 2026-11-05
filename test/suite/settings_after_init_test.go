@@ -277,3 +277,33 @@ func TestRetentionIsSetAfterInit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, entry.Value, "unset reads as following the release")
 }
+
+// A domain change whose re-create fails puts the rendered file back before the
+// undo re-creates the services, so they mount the old file and not the new one.
+func TestAFailedDomainChangeRecreatesAgainstTheOldFile(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the new domain does not start")
+	var ups int
+	var mounted string
+	h.Runtime.OnCall = func(method string) {
+		if method != "Up" {
+			return
+		}
+		if ups++; ups == 1 {
+			delete(h.Runtime.Fail, "Up")
+			return
+		}
+		mounted = renderedApplication(t, h)
+	}
+
+	_, err := setSetting(t, h, false, map[string]string{"installation.domains": "new.example"})
+	require.Error(t, err)
+
+	require.Equal(t, 2, ups, "the failed re-create was not undone with one of its own")
+	assert.Contains(t, mounted, "- demo.example", "the undo re-created the services against the new file")
+	assert.NotContains(t, mounted, "new.example")
+	assert.Equal(t, "demo.example", h.Runtime.UpConfigs[len(h.Runtime.UpConfigs)-1].Env["DEMO_DOMAIN"])
+}

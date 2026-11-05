@@ -271,3 +271,53 @@ func findCheck(t *testing.T, report ops.DoctorReport, id string) (found checkRes
 }
 
 type checkResult struct{ Status, Message, Remedy string }
+
+// A parameter can reach a service only through a rendered file bind-mounted
+// into it. That changes the file and not the Compose definition, and a plain
+// `up` leaves the container running with the old contents, so the services
+// `config set` names are re-created whatever carries the value (#239).
+func TestConfigSetForcesTheRecreateItReports(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	before := len(h.Runtime.UpOptions)
+
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, result.Summary, "re-created")
+
+	require.Len(t, h.Runtime.UpOptions, before+1)
+	up := h.Runtime.UpOptions[before]
+	assert.Equal(t, []string{"app"}, up.Services)
+	assert.True(t, up.ForceRecreate, "a service reading the value from a rendered file kept the old one")
+}
+
+// A re-create that fails is undone with the values it replaced. The engine
+// compensates the failed step first, while the installation and the rendered
+// files still hold the new values, so the undo has to put those back itself
+// rather than re-create with whatever it finds.
+func TestAFailedConfigSetRecreatesWithTheOldValue(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the new value does not start")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			delete(h.Runtime.Fail, "Up")
+		}
+	}
+
+	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.Error(t, err)
+
+	last := h.Runtime.UpConfigs[len(h.Runtime.UpConfigs)-1]
+	assert.NotEqual(t, "debug", last.Env["DEMO_PARAM_LOG_LEVEL"], "the undo re-created the services with the rejected value")
+	assert.True(t, h.Runtime.UpOptions[len(h.Runtime.UpOptions)-1].ForceRecreate)
+	assert.NotContains(t, renderedApplication(t, h), "log_level: debug")
+}
