@@ -13,8 +13,11 @@ base="https://github.com/getsops/sops/releases/download/v${version}"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-curl -fsSL -o "$work/sops" "${base}/sops-v${version}.linux.amd64"
-curl -fsSL -o "$work/checksums.txt" "${base}/sops-v${version}.checksums.txt"
+# Retried: the release download answers 504 for minutes at a time, and every
+# job that runs the suite starts here.
+fetch() { curl -fsSL --retry 5 --retry-delay 10 -o "$1" "$2"; }
+fetch "$work/sops" "${base}/sops-v${version}.linux.amd64"
+fetch "$work/checksums.txt" "${base}/sops-v${version}.checksums.txt"
 
 expected=$(grep "sops-v${version}.linux.amd64\$" "$work/checksums.txt" | awk '{print $1}')
 if [ -z "$expected" ]; then
