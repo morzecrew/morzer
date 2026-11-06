@@ -3806,7 +3806,10 @@ the session. With one, <code>compose</code> holds the terminal in raw mode, so C
 the container's terminal and interrupts the command there, as it would at a
 terminal inside it. <code>morzer</code> leaves Ctrl-Z to the shell rather than catching it,
 so a session without a <abbr title="Teletypewriter (an interactive terminal)">TTY</abbr> is suspended as any foreground job is. A <code>SIGTERM</code>
-sent to <code>morzer</code> ends the session too. The command is still named after <code>--</code>, there is
+sent to <code>morzer</code> ends the session too when its output is not a terminal. At a
+terminal Docker does not pass it on, so unless the command ends first, <code>morzer</code>
+kills <code>docker</code> after 10 seconds, and the command can still be running in the
+container. The command is still named after <code>--</code>, there is
 no <code>--json</code>, and the journal records the session with <code>interactive: true</code>, the
 argv scrubbed as for any <code>exec</code>, and none of what passed through it.</p>
 <p>A service that is not running is refused by name, with the state it is in, and
