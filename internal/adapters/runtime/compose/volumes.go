@@ -329,6 +329,21 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	// replacing exists to prevent -- and it would do it silently.
 	const replace = `cd /dst && rm -rf -- ..?* .[!.]* * 2>/dev/null && exec tar -C /dst -xf -`
 
+	// A writer an earlier restore left behind goes first. A manager killed on
+	// its own (SIGKILL, the OOM killer) does not take the docker CLI it started
+	// with it, and that CLI goes on streaming the tar into its helper; a resume
+	// writing beside it would interleave two extractions in one volume. The
+	// volume is about to be replaced, so stopping the first loses nothing. The
+	// error is not read: no such container is the usual answer, and a removal
+	// that failed leaves the name taken, so the run below is refused rather than
+	// writing beside it.
+	_, _ = r.runner.Run(ctx, exec.Command{
+		Argv:          []string{r.docker, "rm", "--force", restoreHelperName(volume)},
+		Timeout:       30 * time.Second,
+		Redact:        r.redact,
+		CaptureOutput: true,
+	})
+
 	cmd := r.helperCommand(cfg, volume, false, "sh", "-c", replace)
 	cmd.Stdin = in
 
@@ -636,15 +651,20 @@ func (r *Runtime) helperCommand(
 		mount = volume + ":/src:ro"
 	}
 
-	full := append([]string{
+	full := []string{
 		r.docker, "run", "--rm", "--interactive",
 		// The helper reads a volume and writes a tar. It has no reason
 		// to reach a network, and taking it away means a compromised
 		// helper image cannot exfiltrate what it was given to copy.
 		"--network", "none",
 		"--volume", mount,
-		r.HelperImage(),
-	}, argv...)
+	}
+	if !readOnly {
+		// Named after its volume, so a second writer on the same volume
+		// cannot start while the first runs. See RestoreVolume.
+		full = append(full, "--name", restoreHelperName(volume))
+	}
+	full = append(append(full, r.HelperImage()), argv...)
 
 	// Zero timeout: the caller's context governs. A hundred-gigabyte
 	// volume takes as long as it takes, and a fixed limit here would be a
@@ -653,6 +673,11 @@ func (r *Runtime) helperCommand(
 	cmd.CaptureOutput = false
 	return cmd
 }
+
+// restoreHelperName is the container that writes a volume during a restore.
+// Docker allows the same characters in a volume's name as in a container's, so
+// any volume names a valid container.
+func restoreHelperName(volume string) string { return "morzer-restore-" + volume }
 
 // requireHelper refuses before running anything when the image cannot be
 // trusted to be the same image next time, or is not on this machine.

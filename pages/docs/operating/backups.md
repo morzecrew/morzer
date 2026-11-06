@@ -422,7 +422,8 @@ What runs again depends on where the restore stopped:
   smoke test. Nothing is restored twice, and the backup is not read again.
 - **While the volumes were being written**, it writes them again from the
   start. Each volume is wiped and extracted, so a half-written one is
-  replaced.
+  replaced. A killed manager can leave its helper container still writing a
+  volume; the resume stops it before writing that volume again.
 - **At the release's restore hook**, the resume is refused. Its step
   overwrites a database through the release's own hook, no automatic check
   can tell how far that got, and guessing is the one thing this tool will not

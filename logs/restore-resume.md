@@ -165,3 +165,22 @@ The branch's diff against `main`, every file it touches.
   reboot ends both, and the acceptance step kills both as a reboot does.
 - **Checked by sabotage:** undoing each change to `ops`, the gate and the
   backup adapter, one at a time, turns a test red.
+
+## Review, 2026-11-06
+
+The residue the self-audit left open is closed. A manager killed on its own
+leaves its helper writing the volume, and a resume wrote the same volume beside
+it. The volume step's restartability rests on nothing else writing the volume,
+and the RFC does not say who makes that true.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-06T12:35:00Z
+attempt: 2
+claim: a resume of restore-volumes after a manager killed on its own writes the volume beside the helper the killed run left extracting into it
+evidence: internal/adapters/runtime/compose/volumes.go:309-362
+action: decided
+proposal: ASSUMED — the compose runtime names the container that writes a volume after that volume, and removes one an earlier run left behind before writing; a removal that fails leaves the name taken, so the restore is refused rather than written beside it.
+```
