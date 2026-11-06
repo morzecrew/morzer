@@ -620,6 +620,41 @@ func TestResumeSkipsACompletedNonIdempotentStep(t *testing.T) {
 	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
 }
 
+// A resume runs the completed idempotent steps before its resume point again.
+// Interrupted in one of those, it leaves a journal whose resume point is now
+// earlier than a completed non-idempotent step -- an update's migration, say
+// -- and the next resume must still credit that step rather than run it
+// again (RFC 0051 decision 15).
+func TestASecondResumeKeepsTheCreditOfStepsAfterItsResumePoint(t *testing.T) {
+	eng, store, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepInterrupted, Idempotent: true},
+			{ID: "b", Status: domain.StepSucceeded, Idempotent: false},
+			{ID: "c", Status: domain.StepSucceeded, Idempotent: true},
+			{ID: "d", Status: domain.StepPending, Idempotent: true},
+		},
+	}
+
+	notIdempotent := step(tr, "b", false, true)
+	notIdempotent.Idempotent = false
+
+	result, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), notIdempotent, step(tr, "c", false, true), step(tr, "d", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "c", "d"}, tr.executed,
+		"a completed non-idempotent step after the resume point ran again; a completed idempotent one must still re-run")
+	assert.Equal(t, domain.StepSucceeded, store.last().Steps[1].Status,
+		"the journal dropped the credit the resume kept")
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+}
+
 // The step at the resume point is the one resume re-runs, and the one whose
 // effect may be half-applied: the process died while it was journaled as
 // running. Re-applying is only safe when the step declares it.
@@ -755,6 +790,34 @@ func TestResumeHonoursTheJournaledIdempotencyDeclaration(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
 	assert.Empty(t, tr.executed, "nothing must run when resume is refused")
+}
+
+// The same holds for a step that finished: its completed effect is the old
+// implementation's, so the journaled declaration keeps its credit alongside
+// the current one, before the resume point and after it.
+func TestResumeKeepsTheCreditOfAStepJournaledAsNotIdempotent(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			// Journaled by a manager whose "a" and "c" were not safe to
+			// repeat; this build's claim idempotency.
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: false},
+			{ID: "b", Status: domain.StepInterrupted, Idempotent: true},
+			{ID: "c", Status: domain.StepSucceeded, Idempotent: false},
+		},
+	}
+
+	_, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true), step(tr, "c", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"b"}, tr.executed,
+		"a step the journal recorded as not safe to repeat ran again because this build calls it idempotent")
 }
 
 // A step exceeding its own budget while the operation is live is a step

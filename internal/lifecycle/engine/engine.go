@@ -157,7 +157,17 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 		// their effects are declared safe to repeat, and re-running is
 		// what rebuilds the in-memory step state later steps consume,
 		// which the journal does not carry across processes.
-		if i < startAt && !step.Idempotent {
+		//
+		// Wherever the step sits, not only before startAt: re-running
+		// those idempotent steps can itself be interrupted, and the next
+		// resume point then falls before work this one credited (RFC 0051
+		// decision 15). A fresh run's steps are all pending.
+		//
+		// Idempotent on both sides, as resumePoint asks of the step it
+		// resumes: the effect on record is the journaling manager's, and
+		// a build that reclassified the step cannot vouch for it.
+		repeatable := step.Idempotent && rec.Steps[i].Idempotent
+		if !repeatable && finished(rec.Steps[i].Status) {
 			continue
 		}
 
@@ -627,13 +637,24 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 	}
 
 	// Carry the prior run's step outcomes forward so the journal shows one
-	// continuous operation rather than two partial ones.
+	// continuous operation rather than two partial ones. Every completed
+	// step, not only those before idx: one after it finished in an earlier
+	// run, and dropping its record here is what would let the run above
+	// repeat it.
 	rec.ID = prior.ID
 	rec.StartedAt = prior.StartedAt
-	for i := 0; i < idx && i < len(rec.Steps) && i < len(prior.Steps); i++ {
-		rec.Steps[i] = prior.Steps[i]
+	for i := range prior.Steps {
+		if finished(prior.Steps[i].Status) {
+			rec.Steps[i] = prior.Steps[i]
+		}
 	}
 	return idx, nil
+}
+
+// finished reports whether a journaled step completed, as FirstIncompleteStep
+// counts it.
+func finished(s domain.StepStatus) bool {
+	return s == domain.StepSucceeded || s == domain.StepSkipped
 }
 
 // journal writes a record, treating a write failure as non-fatal.
