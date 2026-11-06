@@ -9,8 +9,9 @@
   notion of a step that may be started again but keeps its credit once done,
   splitting the restore of volumes from the release's restore hook, what the
   journal records for a resume, the unfinished-operation gate's remedy, and
-  whether a release can declare its restore hook safe to run again. Not
-  covered: resuming inside one volume or one hook run, a restore from a
+  whether a release can declare its restore hook safe to run again. It also
+  fixes the engine's resume, for every operation, losing the credit of
+  completed steps when a resume is itself interrupted. Not covered: resuming inside one volume or one hook run, a restore from a
   backup that is no longer on this machine, and what a backup taken during
   an unfinished restore captures. Contract changes: `Step` and `StepRecord`
   gain `Restartable`; `ports.RestoreOptions` gains the part of the backup a
@@ -168,11 +169,16 @@ A resume takes `--force` and `--confirm <installation-id>`, as a fresh
 restore does (decision 2): it may run a destructive step again, and the
 typed identifier costs a resume nothing it did not cost the restore.
 
-A resume continues whatever ran since the interruption. `stop-services` runs
-again on every resume, so a product `apply` brought up in between is taken
-down before anything is written (decision 6). It is refused, naming
-`morzer start` or `morzer stop`, when the installation was stopped or started
-since: the step list depends on it (decision 9).
+A resume is refused, naming a fresh restore, when any operation but a
+`backup` has been journalled since the restore began, or when the installed
+release is not the one the restore's record names (decision 9). An `apply`
+in between may have written to volumes the restore had already put back, and
+a resume that then ran the hook again would leave the volumes and the
+database from different moments. An `update` or a `rollback` would run
+another release's hook over data checked for this one, and a `stop` or a
+`start` changes the step list. So `morzer apply` abandons the restore, as the
+docs already say. An interrupted restore does not block those operations
+today, and this does not make it.
 
 ### 5.2 A restartable step
 
@@ -188,13 +194,27 @@ be idempotent or restartable, both in the code and in the journalled record
 data steps. Its step list also differs (§5.3), so the engine refuses to
 resume it, as it refuses any list that changed.
 
+A resume keeps the credit of every step that finished, wherever it sits.
+Today `resumePoint` carries the prior run's outcomes forward only for the
+steps before the resume point (`engine.go:633`), and the run skips a
+completed step only there (`engine.go:160`). A resume that is itself
+interrupted while running an earlier idempotent step again loses the credit
+of every step after it, so the next resume runs a completed step that is not
+idempotent: an engine test with the journal
+`[a idempotent interrupted, b succeeded, c pending]` runs `b` again. That is
+true of every resumable operation now, not only of a restore: an `update`
+resumed twice can run a completed migration again. The fix is the engine's:
+carry every completed step's record forward, and skip a completed step that
+is not idempotent wherever it sits (decision 15). It lands first, on its own
+(§12).
+
 ### 5.3 The restore's steps
 
 | Step | Today | Proposed | Why |
 | --- | --- | --- | --- |
 | `verify-backup` | idempotent | restartable | Done once, it need not be done again. A resume after the data went back must not fail because the backup has since been pruned. |
 | `check-compatibility` | idempotent | restartable | As above. |
-| `stop-services` | idempotent | idempotent | Runs on every resume, so nothing started in between is running under the restore. It also rebuilds the runtime configuration the later steps read. |
+| `stop-services` | idempotent | idempotent | Runs on every resume, so nothing a half-done re-apply started is running under the restore. It also rebuilds the runtime configuration the later steps read. |
 | `restore-volumes` | (inside `restore-data`) | restartable | The manager wipes each volume and extracts it again, so starting again replaces whatever was half-written. |
 | `restore-data` | not idempotent | restartable only per decision 1 | The release's hook. Nothing tells how far it got. |
 | `reapply-release` | idempotent | idempotent | Unchanged. |
@@ -235,16 +255,16 @@ other operation, and a release that declares it needs a manager floor of
 - **The gate.** `NoUnfinishedOperation` names `morzer restore --resume --force
   --confirm <installation-id>`, as it names `apply --resume` (decision 10).
 - **The hint.** `restoreLeftBehind`'s hint on an interrupted restore names
-  the same command, and keeps `morzer apply` as the road that leaves the
-  restore unfinished. A restore interrupted inside a hook that is not
+  the same command, and keeps `morzer apply` as the road that abandons the
+  restore, saying that a resume is refused after it. A restore interrupted inside a hook that is not
   restartable says that a resume would be refused and why.
 - **After intervention.** A restore that failed and needed intervention
   resumes once the operator has repaired the cause and cleared it, which
   journals it `failed`, as every resumable operation does. It resumes only
   from a step that may be started again (decision 11).
-- **The backup.** Retention keeps the backup an unfinished restore names, so
-  a backup taken in the meantime cannot prune it before the resume
-  (decision 3).
+- **The backup.** Retention keeps the backup an unfinished restore names,
+  including one waiting on intervention, so a backup taken in the meantime
+  cannot prune it before the resume (decision 3).
 
 ### 5.6 Alternatives considered
 
@@ -265,7 +285,8 @@ other operation, and a release that declares it needs a manager floor of
 
 - Engine: a restartable step interrupted runs again; one completed is
   skipped; a journalled record without `Restartable` refuses the resume
-  whatever the code now says.
+  whatever the code now says; a resume interrupted while running an earlier
+  idempotent step again keeps the credit of the completed steps after it.
 - Suite, against the fakes:
   - interrupted in `reapply-release`: a resume skips both data steps and
     finishes with the smoke test;
@@ -274,10 +295,12 @@ other operation, and a release that declares it needs a manager floor of
     and runs the hook again with it;
   - the record's backup, components and cross-installation flag are used;
     `--backup` beside `--resume` is refused;
-  - a stop or start in between refuses the resume;
+  - an `apply`, an `update`, a `stop` or a `start` in between refuses the
+    resume, and a `backup` does not;
   - the gate's remedy names `restore --resume`;
   - after `--clear-intervention`, a failed restartable step resumes;
-  - decision 3's retention, as ruled.
+  - decision 3's retention, as ruled, including a restore waiting on
+    intervention.
 - Acceptance, against real Docker: a restore killed while it writes a
   volume, then `--resume`, and the file read back.
 
@@ -303,9 +326,9 @@ other operation, and a release that declares it needs a manager floor of
 
 ## 9. Risks
 
-- **A resume after `apply` replaces what the product wrote since.** That is
-  what finishing a restore means. The hint says the resume takes the product
-  down again.
+- **An `apply` abandons a restore it meant only to look past.** The operator
+  restores again from the start. The interrupted restore's hint says so before
+  they run it.
 - **A vendor declares a hook restartable that is not.** The data it
   half-restored is restored over. That is the vendor's declaration, as the
   hook itself is.
@@ -322,21 +345,24 @@ None. The author ruled decisions 1–3 on 2026-11-06.
 | --- | --- | --- |
 | 1 | `ASSUMED` | **Whether a resume runs the release's restore hook again.** Recommended: only when the release declares `restartable: true` on `operations.restore`; otherwise a resume interrupted inside the hook is refused, as today. Alternative A: never; a resume only continues around the hook, and P2 does not exist. Alternative B: always; a restore hook replaces a database by nature, so running it again over a half restore is within its job. Was `OPEN`; ruled by the author 2026-11-06: as recommended. |
 | 2 | `ASSUMED` | **Whether a resume is confirmed again.** Recommended: yes; `--resume` takes `--force` and `--confirm <installation-id>`, as a fresh restore does, since it may run a destructive step again. Alternative: the restore's own confirmation stands, journalled as `force: true`, and `--resume` alone continues it. Was `OPEN`; ruled by the author 2026-11-06: as recommended. |
-| 3 | `ASSUMED` | **Whether retention keeps the backup an unfinished restore names.** Recommended: yes; `Prune` skips the backup named by the restore record `--resume` would continue (the most recent restore, when it is `running`, `interrupted` or `failed`), so at most one backup outlives the policy, until a later restore finishes. Alternative: no; a resume whose backup was pruned is refused at the step that reads it, and the operator restores afresh. Was `OPEN`; ruled by the author 2026-11-06: as recommended. |
+| 3 | `ASSUMED` | **Whether retention keeps the backup an unfinished restore names.** Recommended: yes; `Prune` skips the backup named by the restore record `--resume` would continue (the most recent restore, when it is `running`, `interrupted` or `failed`), so at most one backup outlives the policy, until a later restore finishes. Alternative: no; a resume whose backup was pruned is refused at the step that reads it, and the operator restores afresh. Was `OPEN`; ruled by the author 2026-11-06: as recommended. *(2026-11-06, from the review: a restore waiting on intervention is kept too, since clearing it makes it resumable.)* |
 | 4 | `ASSUMED` | `morzer restore --resume` continues the most recent restore record that is `running`, `interrupted` or `failed`, under the deployment lock and through the engine's resume, as `stop --resume` does. |
 | 5 | `ASSUMED` | `engine.Step` and `domain.StepRecord` gain `Restartable`: a step that did not finish may be run again from its start, and one that finished keeps its credit. `resumePoint` accepts a started step when it is idempotent or restartable in both the code and the journalled record. |
 | 6 | `ASSUMED` | The restore's steps as §5.3: `verify-backup` and `check-compatibility` restartable; `stop-services` idempotent and run on every resume; `restore-data` split into `restore-volumes` (restartable) then `restore-data` (the hook; decision 1); both need intervention on failure. |
 | 7 | `ASSUMED` | `ports.RestoreOptions` gains the part a call restores, volumes or the rest. Each call verifies and stages only what it restores, and both check the backup's installation. |
 | 8 | `ASSUMED` | The record carries what a resume reuses: `backup_id` as today, plus `components` and `allow_cross_installation`. `--backup`, `--component` and `--allow-cross-installation` beside `--resume` are refused. `--identity` is accepted and never journalled. |
-| 9 | `ASSUMED` | A resume is refused, naming `morzer start` or `morzer stop`, when the installation was stopped or started since the restore began. |
-| 10 | `ASSUMED` | The gate's remedy for a restore names `morzer restore --resume --force --confirm <installation-id>`. `restoreLeftBehind`'s hint names it too, and keeps `morzer apply` as the road that leaves the restore unfinished. |
+| 9 | `ASSUMED` | A resume is refused, naming a fresh restore, when any operation but a `backup` has been journalled since the restore began, or when the installed release is not the one its record names, checked under the lock. `morzer apply` therefore abandons the restore. |
+| 10 | `ASSUMED` | The gate's remedy for a restore names `morzer restore --resume --force --confirm <installation-id>`. `restoreLeftBehind`'s hint names it too, and keeps `morzer apply` as the road that abandons the restore (decision 9). |
 | 11 | `ASSUMED` | A restore that needed intervention resumes once cleared, since `--clear-intervention` journals it `failed`, and only from a step that may be started again. |
 | 12 | `ASSUMED` | `restartable` is a field of `operations.restore` alone; `release verify` refuses it elsewhere; a release declaring it needs `min_manager_version` 0.13.0 (`RestartableRestoreMinManagerVersion`), on the assumption that 0.13.0 is the next release. |
-| 13 | `ASSUMED` | A resumed restore attests and notifies as a resumed `apply` does: under the interrupted run's id, so its statement replaces the interrupted run's. |
+| 13 | `ASSUMED` | A resumed restore attests as a resumed `apply` does, under the interrupted run's id, so its statement replaces the interrupted run's. It notifies as a resumed `apply` does too, under the id of the invocation (`ops.go:534`), which is not the journal's. |
 | 14 | `ASSUMED` | A fresh `restore` still runs over an unfinished one, as today; it starts a new record, and the old one is left for `--clear-intervention`. |
+| 15 | `ASSUMED` | *(2026-11-06, from the review)* A resume keeps the credit of every completed step: `resumePoint` carries forward every completed step's record, not only those before the resume point, and the run skips a completed step that is not idempotent wherever it sits. A fix to every resumable operation, landed before P1. |
 
 ## 12. Phasing
 
+- **P0 — credit across repeated resumes.** Decision 15: the engine fix and
+  its test, for every resumable operation. One PR.
 - **P1 — `restore --resume`.** Decisions 2–11, 13 and 14: the engine's
   `Restartable`, the split, the port, the record, the gate and the hint, the
   docs. The hook stays refused. One PR.
