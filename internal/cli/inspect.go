@@ -536,7 +536,10 @@ func (a *App) execInteractive(ctx context.Context, opts ops.ExecOptions) error {
 // as `morzer shell` found; the terminal sends them to `compose` itself. SIGTSTP
 // is left alone, so Ctrl-Z stops the session and the manager together and the
 // shell gets the terminal back. A SIGTERM, which no terminal sends, ends the
-// session through `compose`, and the record is written either way.
+// session through `compose` when its stdout is not a terminal; at one, Docker
+// does not pass it on, and `docker` is killed after the adapter's grace if the
+// command has not ended by then (RFC 0050 decision 17). The record is written
+// either way.
 func holdSession(ctx context.Context) (context.Context, func()) {
 	session, end := context.WithCancel(context.WithoutCancel(ctx))
 	keys := make(chan os.Signal, 8)

@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** and **0050** have work anybody can pick up: 0027, 0029, 0031, 0037 and 0039 have each shipped
+only **0023** has work anybody can pick up: 0027, 0029, 0031, 0037 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -97,9 +97,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
-- **[0050 — Restarting a service, and an interactive exec](0050-restarting-a-service-and-an-interactive-exec.md).**
-  🚧 P1, `restart`, has shipped. P2, an interactive `exec`, is ruled and
-  ready to build.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -191,7 +188,7 @@ number in the filename in sync.
 | [0047](0047-exporting-status-and-doctor-to-prometheus.md) | Exporting status and doctor to Prometheus | ✅ Complete | Exporting what `status` and `doctor` know as Prometheus metrics, through the node exporter's textfile directory, so a monitored machine can alert on an installation. |
 | [0048](0048-a-configuration-target-that-lands-on-an-existing-file.md) | A configuration target that lands on an existing file | ✅ Complete | What `update` does with a file already at a path the new release renders for the first time: show it in the plan, keep a copy or refuse, and hold an unattended update. |
 | [0049](0049-pruning-the-attestations-a-machine-keeps.md) | Pruning the attestations a machine keeps | ✅ Complete | Bounding the signed statements under the attestation directory, which nothing prunes: what the limit counts, which statements are never removed, and whether the targets' copies go too. |
-| [0050](0050-restarting-a-service-and-an-interactive-exec.md) | Restarting a service, and an interactive exec | 🚧 In progress | Two commands RFC 0021 left out: `restart` for one service, and an `exec` with stdin and a TTY, with what each does to the deployment, the journal and the runtime port. |
+| [0050](0050-restarting-a-service-and-an-interactive-exec.md) | Restarting a service, and an interactive exec | ✅ Complete | Two commands RFC 0021 left out: `restart` for one service, and an `exec` with stdin and a TTY, with what each does to the deployment, the journal and the runtime port. |
 
 ## Status legend
 
