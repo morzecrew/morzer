@@ -12,6 +12,7 @@
 #
 #   init → apply → (services stopped, as after a reboot) → apply --startup
 #        → status → doctor → backup → restore
+#        → (restore killed writing a volume, then --resume)
 #        → (update killed mid-flight, refused, then --resume) → rollback → doctor
 #
 # Everything the manager touches is real: real Compose, real containers, a real
@@ -692,6 +693,54 @@ info "data restored"
 
 step "restore refuses without the typed confirmation"
 expect_exit 2 "${MORZER}" --root "${ROOT}" restore --force --confirm wrong-id
+
+# A restore killed while it writes a volume, the way a reboot kills it: the
+# manager and the helper container extracting into the volume both die, and the
+# volume is left half-written. The filler makes the write long enough for the
+# kill to land inside it. What is asserted is RFC 0051's promise for the
+# volumes: --resume wipes the volume and writes it again from the start, and
+# everything the backup held reads back.
+step "a restore killed while it writes a volume is finished with --resume"
+"${MORZER}" --root "${ROOT}" exec app -- sh -c \
+	'echo resume-marker > /var/lib/demo/uploads/resume-marker &&
+	 head -c 134217728 /dev/urandom > /var/lib/demo/uploads/filler'
+filler_sum=$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)
+"${MORZER}" --root "${ROOT}" backup >/dev/null
+"${MORZER}" --root "${ROOT}" exec app -- rm -f /var/lib/demo/uploads/resume-marker
+journal="${ROOT}/var/lib/demo/manager/operations.jsonl"
+# Only what this restore journals: the one above wrote the same step.
+journalled=$(wc -l <"${journal}")
+"${MORZER}" --root "${ROOT}" restore --force --confirm "${installation}" >/dev/null 2>&1 &
+restore_pid=$!
+helper=""
+for _ in $(seq 1 600); do
+	if tail -n +"$((journalled + 1))" "${journal}" 2>/dev/null |
+		grep -q '"id":"restore-volumes","status":"running"'; then
+		# The services are down by now, so whatever mounts the volume is
+		# the helper writing it.
+		helper=$(docker ps -q --filter volume=demo_uploads | head -1)
+		[ -n "${helper}" ] && break
+	fi
+	sleep 0.05
+done
+[ -n "${helper}" ] ||
+	fail "the restore never started writing a volume, so the kill had nowhere to land"
+kill -9 "${restore_pid}" 2>/dev/null || true
+docker kill "${helper}" >/dev/null 2>&1 || true
+wait "${restore_pid}" 2>/dev/null || true
+tail -1 "${journal}" | jq -e '.type == "restore" and .status == "running" and
+	(.steps[] | select(.id == "restore-volumes") | .status == "running")' >/dev/null ||
+	fail "the killed restore did not leave restore-volumes running in the journal"
+info "killed mid-volume; the journal holds the wreck"
+
+"${MORZER}" --root "${ROOT}" restore --resume --force --confirm "${installation}"
+assert_running 2
+[ "$("${MORZER}" --root "${ROOT}" exec app -- cat /var/lib/demo/uploads/resume-marker)" = "resume-marker" ] ||
+	fail "the resumed restore did not bring the volume's file back"
+[ "$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)" = "${filler_sum}" ] ||
+	fail "the resumed restore left the half-written volume behind"
+"${MORZER}" --root "${ROOT}" exec app -- rm -f /var/lib/demo/uploads/filler /var/lib/demo/uploads/resume-marker
+info "resumed; the volume reads back whole"
 
 # ----------------------------------------------------------------------------
 # A crash mid-update: SIGKILL, the artifact every other test tier only

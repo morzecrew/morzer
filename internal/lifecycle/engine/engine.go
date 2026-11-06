@@ -118,7 +118,9 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 		Steps:          make([]domain.StepRecord, len(op.Steps)),
 	}
 	for i, s := range op.Steps {
-		rec.Steps[i] = domain.StepRecord{ID: s.ID, Status: domain.StepPending, Idempotent: s.Idempotent}
+		rec.Steps[i] = domain.StepRecord{
+			ID: s.ID, Status: domain.StepPending, Idempotent: s.Idempotent, Restartable: s.Restartable,
+		}
 	}
 
 	// A dry run plans and prints; it must not touch the journal, because a
@@ -627,8 +629,12 @@ func (e *Engine) resumePoint(op Operation, opts Options, rec *domain.OperationRe
 	// run now, and the journaled record for the code that half-ran then. A
 	// manager upgrade that reclassified a step as idempotent must not
 	// retroactively bless the old implementation's half-applied effect.
-	if prev := prior.Steps[idx]; prev.Status != domain.StepPending &&
-		(!op.Steps[idx].Idempotent || !prev.Idempotent) {
+	//
+	// Restartable answers the same question for a step that is not
+	// idempotent: each side may say either (RFC 0051 decision 5).
+	code, prev := op.Steps[idx], prior.Steps[idx]
+	again := (code.Idempotent || code.Restartable) && (prev.Idempotent || prev.Restartable)
+	if prev.Status != domain.StepPending && !again {
 		return 0, domain.Usage(
 			"cannot resume: step %q was %s when the operation stopped and is not safe to repeat",
 			op.Steps[idx].ID, prev.Status).

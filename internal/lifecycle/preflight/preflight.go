@@ -602,14 +602,26 @@ func NoUnfinishedOperation(records []domain.OperationRecord) Check {
 					"operation %s (%s) requires manual intervention", rec.ID, rec.Type)
 			}
 			// --resume is advertised only for the operations named
-			// below; advertising it for a crashed backup or restore
-			// would send the operator down a road that does not exist.
+			// below; advertising it for a crashed backup would send
+			// the operator down a road that does not exist.
 			remedy := "investigate with `morzer doctor`, then acknowledge the record " +
 				"with `morzer status --clear-intervention`"
 			switch rec.Type {
 			case domain.OpTypeApply, domain.OpTypeUpdate, domain.OpTypeStop, domain.OpTypeStart:
 				remedy = fmt.Sprintf("resume it with `morzer %s --resume`, "+
 					"or investigate with `morzer doctor`", rec.Type)
+			case domain.OpTypeRestore:
+				// Only when the journal lets a resume start where the
+				// restore stopped: one stopped in its restore hook would
+				// be refused (RFC 0051 decision 10).
+				if idx, ok := rec.FirstIncompleteStep(); ok && rec.Steps[idx].StartsAgain() {
+					id := rec.InstallationID
+					if id == "" {
+						id = "<installation-id>"
+					}
+					remedy = fmt.Sprintf("resume it with `morzer restore --resume --force --confirm %s`, "+
+						"or investigate with `morzer doctor`", id)
+				}
 			case domain.OpTypeRotateSigningKey:
 				// Resumed rather than acknowledged: acknowledging a
 				// rotation killed after it recorded the new key leaves

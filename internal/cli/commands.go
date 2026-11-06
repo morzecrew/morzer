@@ -1055,10 +1055,14 @@ func newRestoreCommand(app *App) *cobra.Command {
 			"to it since is gone, rather than left beside data restored to an\n" +
 			"earlier moment. Writing into a volume is refused while a service that\n" +
 			"mounts it is running, which is why the services are stopped first.\n\n" +
-			"Destructive: requires --force and --confirm <installation-id>.",
+			"An interrupted restore is finished with --resume, from the step that was\n" +
+			"cut off and with the backup and components it was started with. One that\n" +
+			"stopped at the release's restore hook cannot be resumed.\n\n" +
+			"Destructive: requires --force and --confirm <installation-id>, a resume too.",
 		Example: "  morzer backup list\n" +
 			"  morzer restore --backup 20261030T065625Z --force --confirm inst_01…\n" +
-			"  morzer restore --component database --force --confirm inst_01…",
+			"  morzer restore --component database --force --confirm inst_01…\n" +
+			"  morzer restore --resume --force --confirm inst_01…",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := app.attachBackupEngine(cmd.Context()); err != nil {

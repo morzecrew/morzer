@@ -242,6 +242,16 @@ type StepRecord struct {
 	Status     StepStatus `json:"status"`
 	DurationMS int64      `json:"duration_ms"`
 	Idempotent bool       `json:"idempotent,omitempty"`
-	Message    string     `json:"message,omitempty"`
-	Error      string     `json:"error,omitempty"`
+	// Restartable is the journaling manager's word that the step may be
+	// started again when it did not finish (RFC 0051 decision 5).
+	Restartable bool   `json:"restartable,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// StartsAgain reports whether a resume may start this step, as far as the
+// journal can say: it never started, or the manager that ran it called it safe
+// to run again. The engine asks the running code the same question.
+func (s StepRecord) StartsAgain() bool {
+	return s.Status == StepPending || s.Idempotent || s.Restartable
 }

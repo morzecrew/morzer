@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`morzer restore --resume` finishes an interrupted restore.** It continues
+  from the step that was cut off, with the backup and components the restore
+  was started with, and asks for `--force --confirm` again. A restore cut off
+  after its data went back restores nothing again; one cut off while writing
+  volumes writes them again. One stopped at the release's restore hook, or
+  followed by anything but a backup, is refused and is restored again from the
+  start. Retention keeps the backup an unfinished restore reads.
+
 - **`morzer version --check` says whether a newer manager is published.** It
   asks GitHub, skipping drafts and prereleases, says whether the running
   manager is still supported, and prints the command that upgrades it. Asking
