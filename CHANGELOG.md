@@ -58,7 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A second `--resume` no longer repeats a step that finished.** A resume
   runs the earlier steps that are safe to repeat again, and one interrupted
   there left the next `--resume` to run a completed step that is not, such
-  as an update's migration or its pre-update backup. It is now kept as done.
+  as an update's migration or its pre-update backup. It is now kept as done,
+  and so is a step the manager that started the operation recorded as unsafe
+  to repeat, whatever a newer manager says of it.
 
 - **`/dev/null` is not taken for a terminal.** Redirected from it, `init`
   offered its interactive form and `secret edit` opened an editor, because the

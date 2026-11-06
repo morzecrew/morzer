@@ -31,3 +31,25 @@ Decisions the plan needs that the RFC does not settle: none load-bearing. A
 step credited after the resume point is not compensated when this run
 fails, as a step credited before it is not today: compensation unwinds what
 this run did.
+
+From #284's review.
+
+Decision 15 skips a completed step "that is not idempotent", read off the
+current build alone. A manager upgrade that reclassified a step as
+idempotent would then run again a completed effect the journal recorded as
+not safe to repeat, and `main` already did so before the resume point.
+`resumePoint` asks both sides of the step it resumes; the skip now does too.
+Every journal carries the declaration: `StepRecord.Idempotent` is in
+v0.1.0.
+
+```divergence
+decision: 15
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-06T07:58:00Z
+attempt: 2
+claim: a completed step journaled as not idempotent ran again on a resume because the current build declares it idempotent
+evidence: internal/lifecycle/engine/engine.go:166-172
+action: departed
+proposal: ASSUMED — refines decision 15. A resume skips a completed step unless it is idempotent both in the code and in the journalled record, as resumePoint already asks of the step it resumes.
+```

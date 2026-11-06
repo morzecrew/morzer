@@ -162,7 +162,12 @@ func (e *Engine) Run(ctx context.Context, op Operation, opts Options) (Result, e
 		// those idempotent steps can itself be interrupted, and the next
 		// resume point then falls before work this one credited (RFC 0051
 		// decision 15). A fresh run's steps are all pending.
-		if !step.Idempotent && finished(rec.Steps[i].Status) {
+		//
+		// Idempotent on both sides, as resumePoint asks of the step it
+		// resumes: the effect on record is the journaling manager's, and
+		// a build that reclassified the step cannot vouch for it.
+		repeatable := step.Idempotent && rec.Steps[i].Idempotent
+		if !repeatable && finished(rec.Steps[i].Status) {
 			continue
 		}
 

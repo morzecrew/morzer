@@ -792,6 +792,34 @@ func TestResumeHonoursTheJournaledIdempotencyDeclaration(t *testing.T) {
 	assert.Empty(t, tr.executed, "nothing must run when resume is refused")
 }
 
+// The same holds for a step that finished: its completed effect is the old
+// implementation's, so the journaled declaration keeps its credit alongside
+// the current one, before the resume point and after it.
+func TestResumeKeepsTheCreditOfAStepJournaledAsNotIdempotent(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			// Journaled by a manager whose "a" and "c" were not safe to
+			// repeat; this build's claim idempotency.
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: false},
+			{ID: "b", Status: domain.StepInterrupted, Idempotent: true},
+			{ID: "c", Status: domain.StepSucceeded, Idempotent: false},
+		},
+	}
+
+	_, err := eng.Run(context.Background(),
+		operation(step(tr, "a", false, true), step(tr, "b", false, true), step(tr, "c", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"b"}, tr.executed,
+		"a step the journal recorded as not safe to repeat ran again because this build calls it idempotent")
+}
+
 // A step exceeding its own budget while the operation is live is a step
 // failure: the OnFailure policy applies and compensation runs. Treating it as
 // an interruption -- which skips compensation -- left a rollback whose
