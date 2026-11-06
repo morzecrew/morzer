@@ -128,7 +128,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0051**. Before creating an RFC, glance at the table
+The next free number is **0052**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -189,6 +189,7 @@ number in the filename in sync.
 | [0048](0048-a-configuration-target-that-lands-on-an-existing-file.md) | A configuration target that lands on an existing file | ✅ Complete | What `update` does with a file already at a path the new release renders for the first time: show it in the plan, keep a copy or refuse, and hold an unattended update. |
 | [0049](0049-pruning-the-attestations-a-machine-keeps.md) | Pruning the attestations a machine keeps | ✅ Complete | Bounding the signed statements under the attestation directory, which nothing prunes: what the limit counts, which statements are never removed, and whether the targets' copies go too. |
 | [0050](0050-restarting-a-service-and-an-interactive-exec.md) | Restarting a service, and an interactive exec | ✅ Complete | Two commands RFC 0021 left out: `restart` for one service, and an `exec` with stdin and a TTY, with what each does to the deployment, the journal and the runtime port. |
+| [0051](0051-resuming-an-interrupted-restore.md) | Resuming an interrupted restore | 📝 Draft | Continuing a restore that was interrupted or cleared from its first unfinished step, without restoring again what already went back, and when a release's restore hook may run twice. |
 
 ## Status legend
 
