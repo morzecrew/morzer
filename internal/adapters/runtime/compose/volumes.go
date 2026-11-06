@@ -333,26 +333,50 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	// its own (SIGKILL, the OOM killer) does not take the docker CLI it started
 	// with it, and that CLI goes on streaming the tar into its helper; a resume
 	// writing beside it would interleave two extractions in one volume. The
-	// volume is about to be replaced, so stopping the first loses nothing. The
-	// error is not read: no such container is the usual answer, and a removal
-	// that failed leaves the name taken, so the run below is refused rather than
-	// writing beside it.
-	_, _ = r.runner.Run(ctx, exec.Command{
-		Argv:          []string{r.docker, "rm", "--force", restoreHelperName(volume)},
-		Timeout:       30 * time.Second,
-		Redact:        r.redact,
-		CaptureOutput: true,
-	})
+	// volume is about to be replaced, so stopping the first loses nothing. No
+	// such container is the usual answer. A removal that failed leaves the name
+	// taken, so the run below is refused rather than writing beside it, and
+	// that refusal is reported as the removal's.
+	name := restoreHelperName(volume)
+	notRemoved := r.removeContainer(ctx, name)
 
 	cmd := r.helperCommand(cfg, volume, false, "sh", "-c", replace)
 	cmd.Stdin = in
 
 	if _, err := r.runner.Run(ctx, cmd); err != nil {
+		if notRemoved != "" {
+			return wrapExit(err, "cannot restore volume "+volume+": the helper an earlier restore "+
+				"left writing it could not be removed: "+notRemoved,
+				"remove it with `docker rm --force "+name+"`, then restore again")
+		}
 		return wrapExit(err, "cannot restore volume "+volume,
 			"the volume may now be partially written; it holds what the backup "+
 				"contained up to the point of failure")
 	}
 	return nil
+}
+
+// removeContainer force-removes a container and returns why it could not, or
+// "" when it is gone or never existed.
+func (r *Runtime) removeContainer(ctx context.Context, name string) string {
+	res, err := r.runner.Run(ctx, exec.Command{
+		Argv:          []string{r.docker, "rm", "--force", name},
+		Timeout:       30 * time.Second,
+		Redact:        r.redact,
+		CaptureOutput: true,
+	})
+	if err == nil {
+		return ""
+	}
+	var exitErr *exec.ExitError
+	if !asExit(err, &exitErr) {
+		return err.Error()
+	}
+	stderr := res.Stderr + exitErr.Stderr
+	if strings.Contains(strings.ToLower(stderr), "no such container") {
+		return ""
+	}
+	return firstLine(stderr)
 }
 
 // VolumeSize reports an upper bound on the bytes a capture of this volume

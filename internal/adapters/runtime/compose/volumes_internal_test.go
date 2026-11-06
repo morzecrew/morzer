@@ -346,6 +346,30 @@ func TestARestoreStopsTheWriterAnEarlierRunLeftBehind(t *testing.T) {
 		"a writer an earlier run left behind is not removed before this one starts:\n"+runner.CommandLines())
 }
 
+// A writer that could not be removed keeps its name, and the run that follows is
+// refused over it before writing anything. The failure says so and names the
+// command that clears it, not that this run half-wrote the volume.
+func TestARestoreThatCannotRemoveTheEarlierWriterSaysSo(t *testing.T) {
+	r, runner := helperLab(t)
+	runner.OnExit("docker rm", 1,
+		"Error response from daemon: removal of container morzer-restore-demo_uploads is already in progress")
+	runner.OnExit("docker run", 125,
+		`docker: Error response from daemon: Conflict. The container name "/morzer-restore-demo_uploads" is already in use`)
+
+	src := filepath.Join(t.TempDir(), "uploads.tar")
+	require.NoError(t, os.WriteFile(src, []byte("tar"), 0o600))
+
+	err := r.RestoreVolume(context.Background(), ports.RuntimeConfig{Product: "demo"}, "demo_uploads", src)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already in progress",
+		"the failure hides why the earlier writer is still there")
+	hint := domain.AsError(err).Hint
+	assert.Contains(t, hint, "docker rm --force morzer-restore-demo_uploads")
+	assert.NotContains(t, hint, "partially written",
+		"the hint blames a write this run never started")
+}
+
 // The offline refusal, at the point it is made: before `docker run`, so an
 // air-gapped machine gets the pull command rather than a registry error from
 // inside a backup.
