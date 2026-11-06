@@ -833,6 +833,9 @@ const (
 	flagCrossInstallation = "allow_cross_installation"
 )
 
+// restoreFlags journals what a resume needs to restore the same thing again:
+// the backup, the components and the cross-installation flag (RFC 0051
+// decision 8).
 func restoreFlags(backupID string, opts RestoreOptions) map[string]string {
 	flags := map[string]string{flagBackupID: backupID, "force": "true"}
 	if len(opts.Components) > 0 {
