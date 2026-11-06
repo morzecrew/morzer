@@ -2,7 +2,6 @@ package suite
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,11 +25,7 @@ func restoreHarness(t *testing.T) (*harness, domain.Installation, ports.BackupRe
 	// Ids in the order they are minted, as a running clock mints them: the
 	// harness's clock is frozen, and the journal's newest-first order falls
 	// back on the id within a second.
-	minted := 0
-	h.Deps.NewOpID = func(time.Time) string {
-		minted++
-		return fmt.Sprintf("op_%06d", minted)
-	}
+	h.Deps.Now = steppingClock()
 	inst := h.install()
 	h.setHookEnv()
 	applyBaseline(t, h)
