@@ -4103,6 +4103,13 @@ right answer instead — it restores the original id, so the guard never fires.<
 <p>Restore declares that it requires manual intervention on failure: a half-restored
 database is a state no automatic action can repair, so a failure here exits
 <a href="../exit-codes/">12</a> rather than pretending compensation succeeded.</p>
+<p><code>--resume</code> finishes an interrupted restore from the step that was cut off, with
+the backup and the components it was started with: <code>--backup</code>, <code>--component</code>
+and <code>--allow-cross-installation</code> are refused beside it, and <code>--force</code> and
+<code>--confirm</code> are asked again. It writes the volumes again if they were being
+written, and is refused if the restore stopped at the release's restore hook or
+anything but a backup has run since. See
+<a href="../../operating/backups/#resuming-an-interrupted-restore">resuming an interrupted restore</a>.</p>
 <h2 id="notify">notify<a class="headerlink" href="#notify" title="Permanent link">&para;</a></h2>
 <h3 id="notify-target">notify target<a class="headerlink" href="#notify-target" title="Permanent link">&para;</a></h3>
 <p>Manages the webhooks this deployment reports to. See

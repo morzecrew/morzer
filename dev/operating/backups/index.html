@@ -966,6 +966,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#resuming-an-interrupted-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resuming an interrupted restore
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#restoring-another-machines-backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2406,6 +2417,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#resuming-an-interrupted-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resuming an interrupted restore
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#restoring-another-machines-backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2876,8 +2898,8 @@ morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class=
   reflex; an identifier you have to go and look up cannot.</li>
 </ul>
 <p>What it does, in order: verify the backup, <strong>stop the services</strong> so nothing is
-writing, run the release's restore hook, re-apply the release over the restored
-data, and run the smoke test.</p>
+writing, put back the volumes, run the release's restore hook, re-apply the
+release over the restored data, and run the smoke test.</p>
 <p>Stopping first is the part that matters. Restored data underneath containers
 still holding stale state in memory is a combination that corrupts quietly.</p>
 <div class="admonition warning">
@@ -2888,22 +2910,51 @@ failure exits <a href="../../reference/exit-codes/">12</a> rather than pretendin
 compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
 you clear it with <code>morzer status --clear-intervention</code>.</p>
 </div>
-<div class="admonition note">
-<p class="admonition-title">Ctrl-C during a restore leaves the product stopped</p>
-<p>An interruption is taken literally: the operation stops where it is and
-nothing is brought back up, because a long automatic recovery is not what
-"stop" means. Since the services are stopped before anything is written,
-ctrl-C in the first moments leaves a deployment that is down and a database
-that is untouched.</p>
-<p>The refusal says so, and there are two roads forward:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>apply<span class="w">     </span><span class="c1"># start the current release again, restore abandoned</span>
-morzer<span class="w"> </span>restore<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w">   </span><span class="c1"># try again</span>
+<h3 id="resuming-an-interrupted-restore">Resuming an interrupted restore<a class="headerlink" href="#resuming-an-interrupted-restore" title="Permanent link">&para;</a></h3>
+<p>A restore cut off by ctrl-C, a killed process or a reboot is finished with
+<code>--resume</code>, which continues from the step that was cut off:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--resume<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;
 </code></pre></div>
-<p>Restore is deliberately not resumable. Its middle step overwrites a database
-through the release's own hook, no automatic check can tell how far that got,
-and guessing is the one thing this tool will not do. <code>morzer status</code> shows
-where the interrupted operation stopped.</p>
-</div>
+<p>It restores the backup and the components the restore was started with, so
+<code>--backup</code>, <code>--component</code> and <code>--allow-cross-installation</code> are refused beside
+it. <code>--force</code> and <code>--confirm</code> are asked again, since a resume may write the
+volumes again. Pass <code>--identity</code> again if the restore needed it: the key's
+path is never written down.</p>
+<p>What runs again depends on where the restore stopped:</p>
+<ul>
+<li><strong>After the data went back</strong>, the resume brings the release up and runs the
+  smoke test. Nothing is restored twice, and the backup is not read again.</li>
+<li><strong>While the volumes were being written</strong>, it writes them again from the
+  start. Each volume is wiped and extracted, so a half-written one is
+  replaced. A killed manager can leave its helper container still writing a
+  volume; the resume stops it before writing that volume again.</li>
+<li><strong>At the release's restore hook</strong>, the resume is refused. Its step
+  overwrites a database through the release's own hook, no automatic check
+  can tell how far that got, and guessing is the one thing this tool will not
+  do. Restore again from the start.</li>
+</ul>
+<p>Retention keeps the backup an unfinished restore reads, so a backup taken in
+the meantime cannot prune it.</p>
+<p>An interruption is taken literally: nothing is brought back up, because a long
+automatic recovery is not what "stop" means. A restore cut off after it
+stopped the services leaves the product down, and the refusal it prints names
+the two roads forward:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>restore<span class="w"> </span>--resume<span class="w"> </span>--force<span class="w"> </span>--confirm<span class="w"> </span>&lt;installation-id&gt;<span class="w">   </span><span class="c1"># finish it</span>
+morzer<span class="w"> </span>apply<span class="w">     </span><span class="c1"># start the current release again, restore abandoned</span>
+</code></pre></div>
+<p>(<code>morzer start</code> instead of <code>apply</code> when the product was stopped with
+<code>morzer stop</code>.) <code>morzer status</code> shows where the restore stopped.</p>
+<p><code>apply</code> abandons the restore for good: a resume is refused once anything but a
+backup has run since the restore began. An <code>apply</code> may have written to the
+volumes the restore already put back, an <code>update</code> or a <code>rollback</code> would run
+another release's hook over data checked for this one, and a <code>stop</code> or a
+<code>start</code> changes what the restore would finish. After any of them, restore
+again from the start.</p>
+<p>A restore that crashed rather than being interrupted blocks <code>apply</code> and
+<code>update</code> until it is finished or cleared, and their refusal names the same
+<code>--resume</code>. A restore whose volumes or hook failed is different: it has
+already brought the product back up and needs a person, as above, and then a
+fresh restore.</p>
 <h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
 <p>Refused by default. Backups are stamped with the installation they came from,
 and restoring one deployment's data over another is almost always a mistake.</p>
