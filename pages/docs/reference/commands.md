@@ -794,6 +794,14 @@ Restore declares that it requires manual intervention on failure: a half-restore
 database is a state no automatic action can repair, so a failure here exits
 [12](exit-codes.md) rather than pretending compensation succeeded.
 
+`--resume` finishes an interrupted restore from the step that was cut off, with
+the backup and the components it was started with: `--backup`, `--component`
+and `--allow-cross-installation` are refused beside it, and `--force` and
+`--confirm` are asked again. It writes the volumes again if they were being
+written, and is refused if the restore stopped at the release's restore hook or
+anything but a backup has run since. See
+[resuming an interrupted restore](../operating/backups.md#resuming-an-interrupted-restore).
+
 ## notify
 
 ### notify target

@@ -848,9 +848,17 @@ func (e *Engine) Verify(ctx context.Context, ref ports.BackupRef) error {
 	if err != nil {
 		return err
 	}
+	return verifyComponents(dir, manifest, func(ports.Component) bool { return true })
+}
 
+// verifyComponents checks the components a filter selects against the
+// manifest's sizes and checksums.
+func verifyComponents(dir string, manifest ports.BackupManifest, include func(ports.Component) bool) error {
 	var problems []string
 	for _, c := range manifest.Components {
+		if !include(c.Component) {
+			continue
+		}
 		path := filepath.Join(dir, c.Path)
 
 		info, err := os.Stat(path)
@@ -884,7 +892,8 @@ func (e *Engine) Verify(ctx context.Context, ref ports.BackupRef) error {
 	return nil
 }
 
-// Restore runs the release's restore hook against a verified backup.
+// Restore puts back the volumes of a verified backup and then runs the
+// release's restore hook against it, or the one part opts.Part names.
 func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.RestoreOptions) error {
 	if err := e.sweepStagedPlaintext(); err != nil {
 		return err
@@ -901,7 +910,16 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 
 	// Verify before restoring, always. Restoring a corrupt backup over a
 	// working system is the worst outcome available here.
-	if err := e.Verify(ctx, ports.BackupRef{ID: manifest.ID, Path: dir}); err != nil {
+	//
+	// What this call restores, not the whole backup: the volumes and the
+	// hook are separate steps, the step before both verified everything,
+	// and a resume that reaches the hook should not read a hundred
+	// gigabytes of volumes again to do it (RFC 0051 decision 7).
+	restores := func(c ports.Component) bool {
+		return opts.Part.Includes(c) &&
+			(c != ports.ComponentVolumes || componentSelected(opts.Components, c))
+	}
+	if err := verifyComponents(dir, manifest, restores); err != nil {
 		return err
 	}
 
@@ -926,7 +944,7 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	// -- and the one an operator reaches for *because* something is wrong
 	// with the backup. Refusing it would take away the remedy on the
 	// strength of a component they deliberately excluded.
-	if componentSelected(opts.Components, ports.ComponentVolumes) {
+	if restores(ports.ComponentVolumes) {
 		if err := manifest.CheckVolumeRecords(); err != nil {
 			return err
 		}
@@ -957,11 +975,13 @@ func (e *Engine) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	// Volumes before the hook. A volume that will not go back stops the
 	// operation while the database is still the one that was there; once
 	// the hook has begun overwriting a database, nothing can put it back.
-	if err := e.restoreVolumes(ctx, staged, manifest, opts); err != nil {
-		return err
+	if opts.Part != ports.RestoreHook {
+		if err := e.restoreVolumes(ctx, staged, manifest, opts); err != nil {
+			return err
+		}
 	}
 
-	if !hasHook {
+	if !hasHook || opts.Part == ports.RestoreVolumes {
 		return nil
 	}
 
@@ -989,6 +1009,11 @@ func (e *Engine) stage(
 	var encrypted []ports.ComponentRecord
 	for _, c := range manifest.Components {
 		if c.Encryption != ports.EncryptionAge {
+			continue
+		}
+		// This call's part alone: the volumes and the hook are restored
+		// by separate steps, and each stages what it reads.
+		if !opts.Part.Includes(c.Component) {
 			continue
 		}
 		// Everything else is staged whatever the scope says, because the
@@ -1103,7 +1128,9 @@ func (e *Engine) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 
 	var removed []ports.BackupRef
 	for i, prune := range policy.Prunes(reasons) {
-		if !prune {
+		// Kept beyond the policy, not counted against it: the backup an
+		// unfinished restore reads again when it resumes.
+		if !prune || refs[i].ID == policy.KeepID {
 			continue
 		}
 		ref := refs[i]

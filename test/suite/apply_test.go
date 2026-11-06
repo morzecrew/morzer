@@ -605,7 +605,7 @@ func TestBackupCreatesVerifiesAndPrunes(t *testing.T) {
 // deliberately skips compensation: the operator pressed ctrl-C, and a long
 // automatic bring-up is not what "stop" means. What that leaves is a deployment
 // that is down -- a fine outcome to have chosen and a terrible one to have to
-// infer from silence, especially since restore is not resumable.
+// infer from silence.
 func TestAnInterruptedRestoreSaysWhatItLeftBehind(t *testing.T) {
 	h := newHarness(t)
 	inst := h.install()
@@ -638,6 +638,8 @@ func TestAnInterruptedRestoreSaysWhatItLeftBehind(t *testing.T) {
 		"the refusal does not say the product is down, which is the state it left")
 	assert.Contains(t, hint, "morzer apply",
 		"...nor how to bring it back")
+	assert.Contains(t, hint, "morzer restore --resume --force --confirm "+inst.ID,
+		"...nor how to finish the restore")
 }
 
 func TestRestoreRequiresForceAndTypedConfirmation(t *testing.T) {

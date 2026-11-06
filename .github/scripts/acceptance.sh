@@ -12,6 +12,7 @@
 #
 #   init → apply → (services stopped, as after a reboot) → apply --startup
 #        → status → doctor → backup → restore
+#        → (restore killed writing a volume, then --resume)
 #        → (update killed mid-flight, refused, then --resume) → rollback → doctor
 #
 # Everything the manager touches is real: real Compose, real containers, a real
@@ -92,6 +93,10 @@ cleanup() {
 	fi
 
 	step "cleaning up"
+	# The docker CLI the resume step holds stopped, should that step fail.
+	if [ -n "${orphan:-}" ]; then
+		kill -9 "${orphan}" 2>/dev/null || true
+	fi
 	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p web down -v --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p owner down --remove-orphans >/dev/null 2>&1 || true
@@ -692,6 +697,76 @@ info "data restored"
 
 step "restore refuses without the typed confirmation"
 expect_exit 2 "${MORZER}" --root "${ROOT}" restore --force --confirm wrong-id
+
+# A restore killed while it writes a volume, the way the OOM killer kills it:
+# the manager dies and the docker CLI it started does not, so the helper goes on
+# extracting into a half-written volume. Stopping that CLI holds the helper open,
+# so it is still there when the resume starts. The filler makes the write long
+# enough for the kill to land inside it. What is asserted is RFC 0051's promise
+# for the volumes: --resume stops the writer the killed run left behind, wipes
+# the volume and writes it again from the start, and everything the backup held
+# reads back.
+step "a restore killed while it writes a volume is finished with --resume"
+"${MORZER}" --root "${ROOT}" exec app -- sh -c \
+	'echo resume-marker > /var/lib/demo/uploads/resume-marker &&
+	 head -c 134217728 /dev/urandom > /var/lib/demo/uploads/filler'
+filler_sum=$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)
+"${MORZER}" --root "${ROOT}" backup >/dev/null
+"${MORZER}" --root "${ROOT}" exec app -- rm -f /var/lib/demo/uploads/resume-marker
+journal="${ROOT}/var/lib/demo/manager/operations.jsonl"
+"${MORZER}" --root "${ROOT}" restore --force --confirm "${installation}" >/dev/null 2>&1 &
+restore_pid=$!
+# The docker CLI streaming the tar is caught part-way through it, while its
+# helper runs: the writer a killed manager leaves behind. Stopped and let go
+# again until both hold, since a whole volume streams in well under a second,
+# and early enough that it is still streaming once the manager is gone.
+# The services are down by now, so whatever mounts the volume is the helper.
+# The pattern is anchored to the docker CLI, so no shell whose command line
+# names the volume is stopped in its place.
+orphan="" helper=""
+for _ in $(seq 1 3000); do
+	cli=$(pgrep -f -- '^[^ ]*docker run .*demo_uploads:/dst' | head -1 || true)
+	if [ -n "${cli}" ] && kill -STOP "${cli}" 2>/dev/null; then
+		streamed=$(awk '/^pos:/ {print $2}' "/proc/${cli}/fdinfo/0" 2>/dev/null || true)
+		size=$(stat -L -c %s "/proc/${cli}/fd/0" 2>/dev/null || true)
+		running=$(docker ps -q --filter volume=demo_uploads | head -1)
+		if [ -n "${running}" ] && [ "${streamed:-0}" -gt 0 ] && [ "$((${streamed:-0} * 2))" -lt "${size:-0}" ]; then
+			orphan=${cli} helper=${running}
+			break
+		fi
+		kill -CONT "${cli}" 2>/dev/null || true
+	fi
+	sleep 0.01
+done
+[ -n "${orphan}" ] ||
+	fail "the restore never stopped part-way through writing a volume, so the kill had nowhere to land"
+# Let go while the manager dies, and stopped again once it is gone: the kill
+# orphans the CLI's process group, and the kernel hangs up on a stopped member
+# of an orphaned group, which the CLI does not survive.
+kill -CONT "${orphan}"
+kill -9 "${restore_pid}" 2>/dev/null || true
+wait "${restore_pid}" 2>/dev/null || true
+kill -STOP "${orphan}" 2>/dev/null ||
+	fail "the docker CLI ended with the manager, so the resume has no earlier writer to meet"
+[ -n "$(docker ps -q --filter id="${helper}")" ] ||
+	fail "the helper did not outlive the manager, so the resume has no earlier writer to meet"
+tail -1 "${journal}" | jq -e '.type == "restore" and .status == "running" and
+	(.steps[] | select(.id == "restore-volumes") | .status == "running")' >/dev/null ||
+	fail "the killed restore did not leave restore-volumes running in the journal"
+info "killed mid-volume; the journal holds the wreck"
+
+"${MORZER}" --root "${ROOT}" restore --resume --force --confirm "${installation}"
+running_on=$(docker ps -q --filter id="${helper}")
+kill -9 "${orphan}" 2>/dev/null || true
+[ -z "${running_on}" ] ||
+	fail "the resumed restore wrote the volume beside the writer the killed run left behind"
+assert_running 2
+[ "$("${MORZER}" --root "${ROOT}" exec app -- cat /var/lib/demo/uploads/resume-marker)" = "resume-marker" ] ||
+	fail "the resumed restore did not bring the volume's file back"
+[ "$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)" = "${filler_sum}" ] ||
+	fail "the resumed restore left the half-written volume behind"
+"${MORZER}" --root "${ROOT}" exec app -- rm -f /var/lib/demo/uploads/filler /var/lib/demo/uploads/resume-marker
+info "resumed; the volume reads back whole"
 
 # ----------------------------------------------------------------------------
 # A crash mid-update: SIGKILL, the artifact every other test tier only

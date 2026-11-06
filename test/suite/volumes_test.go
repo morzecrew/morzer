@@ -137,7 +137,8 @@ func newVolumeFixtureWithHook(
 	if hook != nil {
 		hooks = hook
 		rel.Manifest.Operations = map[string]domain.OperationSteps{
-			domain.OpBackup: {{Kind: domain.OperationKindHook, Command: []string{"hooks/backup"}}},
+			domain.OpBackup:  {{Kind: domain.OperationKindHook, Command: []string{"hooks/backup"}}},
+			domain.OpRestore: {{Kind: domain.OperationKindHook, Command: []string{"hooks/restore"}}},
 		}
 	}
 
@@ -518,6 +519,50 @@ func TestAVolumeIsRestoredOnceItsServicesAreStopped(t *testing.T) {
 	assert.Equal(t, "the-quarterly-report.pdf", f.runtime.VolumeContents["demo_uploads"],
 		"the volume was not put back, so the restore reported success and "+
 			"changed nothing")
+}
+
+// A restore runs its volumes and its hook as two steps, so that a resume can
+// start the volumes again without asking the same of the hook (RFC 0051
+// decision 7). Each call puts back its own part, and reads only its own: a
+// resume that reaches the hook does not verify the volumes again, and a
+// damaged volume is refused by the part that writes it.
+func TestEachPartOfARestorePutsBackOnlyItsOwn(t *testing.T) {
+	hook := &recordingHooks{}
+	f := newVolumeFixtureWithHook(t, domain.BackupSpec{}, true, hook, nil)
+	ctx := context.Background()
+
+	ref, err := f.engine.Create(ctx, ports.Scope{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, hook.ran, "the backup hook did not run")
+
+	require.NoError(t, f.runtime.Stop(ctx, ports.RuntimeConfig{}, nil, 0))
+	f.runtime.VolumeContents["demo_uploads"] = "written-since-the-backup"
+	opts := ports.RestoreOptions{IdentityFile: f.identity, TargetInstallationID: "inst-volumes"}
+
+	opts.Part = ports.RestoreHook
+	require.NoError(t, f.engine.Restore(ctx, ref, opts))
+	assert.Equal(t, 2, hook.ran, "the hook part did not run the restore hook")
+	assert.Equal(t, "written-since-the-backup", f.runtime.VolumeContents["demo_uploads"],
+		"the hook part wrote a volume")
+
+	opts.Part = ports.RestoreVolumes
+	require.NoError(t, f.engine.Restore(ctx, ref, opts))
+	assert.Equal(t, 2, hook.ran, "the volumes part ran the restore hook")
+	assert.Equal(t, "the-quarterly-report.pdf", f.runtime.VolumeContents["demo_uploads"],
+		"the volumes part did not put the volume back")
+
+	manifest, err := f.engine.Inspect(ctx, ref)
+	require.NoError(t, err)
+	uploads := volumeRecord(t, manifest, "uploads")
+	require.NoError(t, os.WriteFile(filepath.Join(ref.Path, uploads.Path), []byte("damaged"), 0o600))
+
+	opts.Part = ports.RestoreHook
+	require.NoError(t, f.engine.Restore(ctx, ref, opts),
+		"the hook part read the volumes it does not restore")
+	opts.Part = ports.RestoreVolumes
+	err = f.engine.Restore(ctx, ref, opts)
+	require.Error(t, err, "the volumes part restored a volume that fails its checksum")
+	assert.Contains(t, err.Error(), uploads.Path)
 }
 
 // stripVolumeMetadata removes a volume component's `volume` object from a

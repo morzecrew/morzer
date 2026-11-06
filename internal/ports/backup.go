@@ -374,6 +374,38 @@ type RestoreOptions struct {
 	// Without it an encrypted backup would be readable only by the host
 	// that no longer exists.
 	IdentityFile string
+
+	// Part is the part of the backup this call restores; the zero value
+	// restores all of it. A restore runs its volumes and its hook as two
+	// steps, so that a resume can start the volumes again without asking
+	// the hook to do the same (RFC 0051 decision 7).
+	Part RestorePart
+}
+
+// RestorePart names the part of a backup one restore call puts back.
+type RestorePart string
+
+const (
+	// RestoreEverything is the volumes, then the release's restore hook.
+	RestoreEverything RestorePart = ""
+
+	// RestoreVolumes is the volumes alone, which the manager writes itself.
+	RestoreVolumes RestorePart = "volumes"
+
+	// RestoreHook is everything else, which the release's restore hook
+	// reads.
+	RestoreHook RestorePart = "hook"
+)
+
+// Includes reports whether a component belongs to this part.
+func (p RestorePart) Includes(c Component) bool {
+	switch p {
+	case RestoreVolumes:
+		return c == ComponentVolumes
+	case RestoreHook:
+		return c != ComponentVolumes
+	}
+	return true
 }
 
 // RetentionPolicy governs pruning.
@@ -381,6 +413,12 @@ type RetentionPolicy struct {
 	// Keep is the number of backups to retain. The most recent backup is
 	// never pruned, whatever Keep says.
 	Keep int
+
+	// KeepID is a backup the local engine never prunes: the one an
+	// unfinished restore names, which its resume reads again (RFC 0051
+	// decision 3). A target's pruning leaves it empty, since a restore
+	// reads only this machine's backups.
+	KeepID string
 
 	// KeepPreUpdate is how many of the newest pre-update backups are kept
 	// whatever Keep says. The newest is never pruned, whatever this says:

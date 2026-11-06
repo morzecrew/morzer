@@ -52,6 +52,14 @@ type Step struct {
 	// non-idempotent step, so this flag is a safety assertion, not a hint.
 	Idempotent bool
 
+	// Restartable declares that a run of this step that did not finish may
+	// be started again from the beginning, and that one that finished must
+	// not be (RFC 0051 decision 5). Idempotent cannot say that: a completed
+	// idempotent step runs again on every resume. A restore's volumes are
+	// the case: wiped and extracted again, they replace a half-write, and
+	// once written they are not written twice.
+	Restartable bool
+
 	// Timeout bounds this step. Zero means the operation's budget governs.
 	Timeout time.Duration
 

@@ -387,8 +387,8 @@ Destructive, and it asks for two things:
   reflex; an identifier you have to go and look up cannot.
 
 What it does, in order: verify the backup, **stop the services** so nothing is
-writing, run the release's restore hook, re-apply the release over the restored
-data, and run the smoke test.
+writing, put back the volumes, run the release's restore hook, re-apply the
+release over the restored data, and run the smoke test.
 
 Stopping first is the part that matters. Restored data underneath containers
 still holding stale state in memory is a combination that corrupts quietly.
@@ -401,25 +401,62 @@ still holding stale state in memory is a combination that corrupts quietly.
     compensation succeeded — and keeps surfacing in `status` and `doctor` until
     you clear it with `morzer status --clear-intervention`.
 
-!!! note "Ctrl-C during a restore leaves the product stopped"
+### Resuming an interrupted restore
 
-    An interruption is taken literally: the operation stops where it is and
-    nothing is brought back up, because a long automatic recovery is not what
-    "stop" means. Since the services are stopped before anything is written,
-    ctrl-C in the first moments leaves a deployment that is down and a database
-    that is untouched.
+A restore cut off by ctrl-C, a killed process or a reboot is finished with
+`--resume`, which continues from the step that was cut off:
 
-    The refusal says so, and there are two roads forward:
+```sh
+morzer restore --resume --force --confirm <installation-id>
+```
 
-    ```sh
-    morzer apply     # start the current release again, restore abandoned
-    morzer restore --force --confirm <installation-id>   # try again
-    ```
+It restores the backup and the components the restore was started with, so
+`--backup`, `--component` and `--allow-cross-installation` are refused beside
+it. `--force` and `--confirm` are asked again, since a resume may write the
+volumes again. Pass `--identity` again if the restore needed it: the key's
+path is never written down.
 
-    Restore is deliberately not resumable. Its middle step overwrites a database
-    through the release's own hook, no automatic check can tell how far that got,
-    and guessing is the one thing this tool will not do. `morzer status` shows
-    where the interrupted operation stopped.
+What runs again depends on where the restore stopped:
+
+- **After the data went back**, the resume brings the release up and runs the
+  smoke test. Nothing is restored twice, and the backup is not read again.
+- **While the volumes were being written**, it writes them again from the
+  start. Each volume is wiped and extracted, so a half-written one is
+  replaced. A killed manager can leave its helper container still writing a
+  volume; the resume stops it before writing that volume again.
+- **At the release's restore hook**, the resume is refused. Its step
+  overwrites a database through the release's own hook, no automatic check
+  can tell how far that got, and guessing is the one thing this tool will not
+  do. Restore again from the start.
+
+Retention keeps the backup an unfinished restore reads, so a backup taken in
+the meantime cannot prune it.
+
+An interruption is taken literally: nothing is brought back up, because a long
+automatic recovery is not what "stop" means. A restore cut off after it
+stopped the services leaves the product down, and the refusal it prints names
+the two roads forward:
+
+```sh
+morzer restore --resume --force --confirm <installation-id>   # finish it
+morzer apply     # start the current release again, restore abandoned
+```
+
+(`morzer start` instead of `apply` when the product was stopped with
+`morzer stop`.) `morzer status` shows where the restore stopped.
+
+`apply` abandons the restore for good: a resume is refused once anything but a
+backup has run since the restore began. An `apply` may have written to the
+volumes the restore already put back, an `update` or a `rollback` would run
+another release's hook over data checked for this one, and a `stop` or a
+`start` changes what the restore would finish. After any of them, restore
+again from the start.
+
+A restore that crashed rather than being interrupted blocks `apply` and
+`update` until it is finished or cleared, and their refusal names the same
+`--resume`. A restore whose volumes or hook failed is different: it has
+already brought the product back up and needs a person, as above, and then a
+fresh restore.
 
 ### Restoring another machine's backup
 

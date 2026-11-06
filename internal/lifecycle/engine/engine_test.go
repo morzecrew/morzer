@@ -820,6 +820,106 @@ func TestResumeKeepsTheCreditOfAStepJournaledAsNotIdempotent(t *testing.T) {
 		"a step the journal recorded as not safe to repeat ran again because this build calls it idempotent")
 }
 
+// restartable builds a step that may be started again when it did not finish,
+// and keeps its credit once it did (RFC 0051 decision 5).
+func restartable(tr *tracker, id string) Step {
+	s := step(tr, id, false, true)
+	s.Idempotent, s.Restartable = false, true
+	return s
+}
+
+// A restartable step cut off part-way runs again from its start, and the
+// journal says what it is, so the next resume can ask.
+func TestResumeStartsAnInterruptedRestartableStepAgain(t *testing.T) {
+	eng, store, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeRestore, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+			{ID: "b", Status: domain.StepInterrupted, Restartable: true},
+			{ID: "c", Status: domain.StepPending, Idempotent: true},
+		},
+	}
+	op := operation(step(tr, "a", false, true), restartable(tr, "b"), step(tr, "c", false, true))
+	op.Type = domain.OpTypeRestore
+
+	result, err := eng.Run(context.Background(), op, Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b", "c"}, tr.executed)
+	assert.Equal(t, domain.StatusSucceeded, result.Record.Status)
+	assert.True(t, store.last().Steps[1].Restartable, "the journal does not record the step as restartable")
+}
+
+// Once it finished, a restartable step is not run again: that is what it
+// says that Idempotent does not.
+func TestResumeKeepsTheCreditOfAFinishedRestartableStep(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	prior := domain.OperationRecord{
+		ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusInterrupted,
+		StartedAt: domain.NewTime(time.Now()),
+		Steps: []domain.StepRecord{
+			{ID: "a", Status: domain.StepSucceeded, Restartable: true},
+			{ID: "b", Status: domain.StepInterrupted, Idempotent: true},
+		},
+	}
+
+	_, err := eng.Run(context.Background(),
+		operation(restartable(tr, "a"), step(tr, "b", false, true)),
+		Options{Resume: true, Prior: &prior})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"b"}, tr.executed)
+}
+
+// Both sides must say a started step may be started again, as for
+// idempotency: a journal written before Restartable existed, or by a manager
+// that did not call the step so, refuses whatever this build says. Each side
+// may say it either way.
+func TestResumeHonoursTheJournaledRestartableDeclaration(t *testing.T) {
+	cases := []struct {
+		name    string
+		journal domain.StepRecord
+		allowed bool
+	}{
+		{"journaled as neither", domain.StepRecord{ID: "b", Status: domain.StepRunning}, false},
+		{"journaled as restartable", domain.StepRecord{ID: "b", Status: domain.StepRunning, Restartable: true}, true},
+		{"journaled as idempotent", domain.StepRecord{ID: "b", Status: domain.StepRunning, Idempotent: true}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			eng, _, _ := newEngine()
+			tr := &tracker{}
+			prior := domain.OperationRecord{
+				ID: "op_test", Type: domain.OpTypeApply, Status: domain.StatusRunning,
+				StartedAt: domain.NewTime(time.Now()),
+				Steps: []domain.StepRecord{
+					{ID: "a", Status: domain.StepSucceeded, Idempotent: true},
+					tc.journal,
+				},
+			}
+
+			_, err := eng.Run(context.Background(),
+				operation(step(tr, "a", false, true), restartable(tr, "b")),
+				Options{Resume: true, Prior: &prior})
+
+			if !tc.allowed {
+				require.Error(t, err)
+				assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
+				assert.Empty(t, tr.executed, "nothing must run when resume is refused")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, []string{"a", "b"}, tr.executed)
+		})
+	}
+}
+
 // A step exceeding its own budget while the operation is live is a step
 // failure: the OnFailure policy applies and compensation runs. Treating it as
 // an interruption -- which skips compensation -- left a rollback whose

@@ -329,15 +329,54 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	// replacing exists to prevent -- and it would do it silently.
 	const replace = `cd /dst && rm -rf -- ..?* .[!.]* * 2>/dev/null && exec tar -C /dst -xf -`
 
+	// A writer an earlier restore left behind goes first. A manager killed on
+	// its own (SIGKILL, the OOM killer) does not take the docker CLI it started
+	// with it, and that CLI goes on streaming the tar into its helper; a resume
+	// writing beside it would interleave two extractions in one volume. The
+	// volume is about to be replaced, so stopping the first loses nothing. No
+	// such container is the usual answer. A removal that failed leaves the name
+	// taken, so the run below is refused rather than writing beside it, and
+	// that refusal is reported as the removal's.
+	name := restoreHelperName(volume)
+	notRemoved := r.removeContainer(ctx, name)
+
 	cmd := r.helperCommand(cfg, volume, false, "sh", "-c", replace)
 	cmd.Stdin = in
 
 	if _, err := r.runner.Run(ctx, cmd); err != nil {
+		if notRemoved != "" {
+			return wrapExit(err, "cannot restore volume "+volume+": the helper an earlier restore "+
+				"left writing it could not be removed: "+notRemoved,
+				"remove it with `docker rm --force "+name+"`, then restore again")
+		}
 		return wrapExit(err, "cannot restore volume "+volume,
 			"the volume may now be partially written; it holds what the backup "+
 				"contained up to the point of failure")
 	}
 	return nil
+}
+
+// removeContainer force-removes a container and returns why it could not, or
+// "" when it is gone or never existed.
+func (r *Runtime) removeContainer(ctx context.Context, name string) string {
+	res, err := r.runner.Run(ctx, exec.Command{
+		Argv:          []string{r.docker, "rm", "--force", name},
+		Timeout:       30 * time.Second,
+		Redact:        r.redact,
+		CaptureOutput: true,
+	})
+	if err == nil {
+		return ""
+	}
+	var exitErr *exec.ExitError
+	if !asExit(err, &exitErr) {
+		return err.Error()
+	}
+	stderr := res.Stderr + exitErr.Stderr
+	if strings.Contains(strings.ToLower(stderr), "no such container") {
+		return ""
+	}
+	return firstLine(stderr)
 }
 
 // VolumeSize reports an upper bound on the bytes a capture of this volume
@@ -636,15 +675,20 @@ func (r *Runtime) helperCommand(
 		mount = volume + ":/src:ro"
 	}
 
-	full := append([]string{
+	full := []string{
 		r.docker, "run", "--rm", "--interactive",
 		// The helper reads a volume and writes a tar. It has no reason
 		// to reach a network, and taking it away means a compromised
 		// helper image cannot exfiltrate what it was given to copy.
 		"--network", "none",
 		"--volume", mount,
-		r.HelperImage(),
-	}, argv...)
+	}
+	if !readOnly {
+		// Named after its volume, so a second writer on the same volume
+		// cannot start while the first runs. See RestoreVolume.
+		full = append(full, "--name", restoreHelperName(volume))
+	}
+	full = append(append(full, r.HelperImage()), argv...)
 
 	// Zero timeout: the caller's context governs. A hundred-gigabyte
 	// volume takes as long as it takes, and a fixed limit here would be a
@@ -653,6 +697,11 @@ func (r *Runtime) helperCommand(
 	cmd.CaptureOutput = false
 	return cmd
 }
+
+// restoreHelperName is the container that writes a volume during a restore.
+// Docker allows the same characters in a volume's name as in a container's, so
+// any volume names a valid container.
+func restoreHelperName(volume string) string { return "morzer-restore-" + volume }
 
 // requireHelper refuses before running anything when the image cannot be
 // trusted to be the same image next time, or is not on this machine.

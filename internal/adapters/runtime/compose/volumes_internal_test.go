@@ -314,6 +314,62 @@ func TestAVolumeIsRestoredThroughAWritableMount(t *testing.T) {
 	assert.Contains(t, argv, "tar -C /dst -xf -")
 }
 
+// A manager killed on its own leaves the docker CLI it started streaming the
+// tar, and the helper extracting it. A restore that wrote the same volume beside
+// it would interleave two extractions, so the writer is named after its volume
+// and one an earlier run left behind is removed before this one starts.
+func TestARestoreStopsTheWriterAnEarlierRunLeftBehind(t *testing.T) {
+	r, runner := helperLab(t)
+	// The common case: nothing was left behind.
+	runner.OnExit("docker rm", 1, "Error response from daemon: No such container: morzer-restore-demo_uploads")
+
+	src := filepath.Join(t.TempDir(), "uploads.tar")
+	require.NoError(t, os.WriteFile(src, []byte("tar"), 0o600))
+
+	require.NoError(t, r.RestoreVolume(context.Background(), ports.RuntimeConfig{Product: "demo"},
+		"demo_uploads", src), "a restore with nothing left behind to remove was refused")
+
+	removed, wrote := -1, -1
+	for i, c := range runner.Calls() {
+		line := strings.Join(c.Argv, " ")
+		if strings.Contains(line, "docker rm --force morzer-restore-demo_uploads") {
+			removed = i
+		}
+		if strings.Contains(line, "docker run") {
+			wrote = i
+		}
+	}
+	require.NotEqual(t, -1, wrote, "the restore wrote nothing:\n"+runner.CommandLines())
+	assert.Contains(t, helperArgv(t, runner), "--name morzer-restore-demo_uploads",
+		"the writer is unnamed, so a second one can start beside it")
+	assert.True(t, removed != -1 && removed < wrote,
+		"a writer an earlier run left behind is not removed before this one starts:\n"+runner.CommandLines())
+}
+
+// A writer that could not be removed keeps its name, and the run that follows is
+// refused over it before writing anything. The failure says so and names the
+// command that clears it, not that this run half-wrote the volume.
+func TestARestoreThatCannotRemoveTheEarlierWriterSaysSo(t *testing.T) {
+	r, runner := helperLab(t)
+	runner.OnExit("docker rm", 1,
+		"Error response from daemon: removal of container morzer-restore-demo_uploads is already in progress")
+	runner.OnExit("docker run", 125,
+		`docker: Error response from daemon: Conflict. The container name "/morzer-restore-demo_uploads" is already in use`)
+
+	src := filepath.Join(t.TempDir(), "uploads.tar")
+	require.NoError(t, os.WriteFile(src, []byte("tar"), 0o600))
+
+	err := r.RestoreVolume(context.Background(), ports.RuntimeConfig{Product: "demo"}, "demo_uploads", src)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already in progress",
+		"the failure hides why the earlier writer is still there")
+	hint := domain.AsError(err).Hint
+	assert.Contains(t, hint, "docker rm --force morzer-restore-demo_uploads")
+	assert.NotContains(t, hint, "partially written",
+		"the hint blames a write this run never started")
+}
+
 // The offline refusal, at the point it is made: before `docker run`, so an
 // air-gapped machine gets the pull command rather than a registry error from
 // inside a backup.

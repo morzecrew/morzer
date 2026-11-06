@@ -190,6 +190,14 @@ type Backup struct {
 	// push step untestable at this level -- which is the level where "a
 	// failed push fails the backup" actually lives.
 	Root string
+
+	// Restores records the part each Restore call was asked for, in order.
+	Restores []ports.RestorePart
+
+	// OnRestore runs inside each Restore call, after the backup is found,
+	// and its error is the call's. A test interrupts a restore part-way
+	// with it.
+	OnRestore func(ctx context.Context, opts ports.RestoreOptions) error
 }
 
 func NewBackup() *Backup {
@@ -393,6 +401,10 @@ func (b *Backup) Restore(ctx context.Context, ref ports.BackupRef, opts ports.Re
 	if _, ok := b.backups[ref.ID]; !ok {
 		return domain.BackupError(domain.ErrNotFound, "no backup with id %q", ref.ID)
 	}
+	b.Restores = append(b.Restores, opts.Part)
+	if b.OnRestore != nil {
+		return b.OnRestore(ctx, opts)
+	}
 	return nil
 }
 
@@ -417,7 +429,7 @@ func (b *Backup) Prune(ctx context.Context, policy ports.RetentionPolicy) ([]por
 	var kept []string
 	for i, prune := range policy.Prunes(reasons) {
 		id := b.order[i]
-		if !prune {
+		if !prune || id == policy.KeepID {
 			kept = append(kept, id)
 			continue
 		}

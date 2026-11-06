@@ -537,11 +537,16 @@ func stepPruneBackups(d *Deps, inst domain.Installation, rel domain.Release) eng
 		OnFailure:   engine.Continue,
 		Timeout:     5 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			keep, err := d.unfinishedRestoreBackup(ctx)
+			if err != nil {
+				return err
+			}
 			removed, err := d.Backup.Prune(ctx, ports.RetentionPolicy{
 				Keep: inst.RetentionBackups(rel.Manifest),
 				// The newest pre-update backups are exempt, so the
 				// update they guard can still be undone.
 				KeepPreUpdate: inst.RetentionPreUpdateBackups(),
+				KeepID:        keep,
 			})
 			if err != nil {
 				return err
@@ -552,6 +557,33 @@ func stepPruneBackups(d *Deps, inst domain.Installation, rel domain.Release) eng
 			return nil
 		},
 	}
+}
+
+// unfinishedRestoreBackup names the backup the most recent restore read, when
+// that restore did not finish: running, interrupted, failed, or waiting on
+// intervention, which clearing makes failed. A resume reads it again, so
+// retention keeps it (RFC 0051 decision 3).
+//
+// A journal that cannot be read fails the pruning rather than guessing that no
+// restore needs a backup.
+func (d *Deps) unfinishedRestoreBackup(ctx context.Context) (string, error) {
+	all, err := d.State.Operations(ctx, ports.Filter{})
+	if err != nil {
+		return "", domain.AsError(err).
+			WithHint("retention needs the journal to keep the backup an unfinished restore reads")
+	}
+	for _, rec := range all {
+		if rec.Type != domain.OpTypeRestore {
+			continue
+		}
+		switch rec.Status {
+		case domain.StatusRunning, domain.StatusInterrupted, domain.StatusFailed,
+			domain.StatusManualIntervention:
+			return rec.Flags[flagBackupID], nil
+		}
+		break
+	}
+	return "", nil
 }
 
 // removeBackup deletes one backup, bypassing the retention policy's refusal to
@@ -611,6 +643,18 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 		return Result{}, err
 	}
 
+	// A resume continues the restore its record names, with the backup and
+	// the scope that restore was started with (RFC 0051 decision 8). A flag
+	// naming another would be a different restore.
+	if opts.Resume {
+		if err := refuseRestoreScopeOnResume(opts); err != nil {
+			return Result{}, err
+		}
+	}
+
+	// Asked again of a resume: it may run a destructive step again, and the
+	// typed identifier costs it nothing it did not cost the restore (RFC
+	// 0051 decision 2).
 	if !opts.Force {
 		return Result{}, domain.Usage("restore is destructive and requires --force").
 			WithHint("it replaces the current database and files with the backup's contents")
@@ -633,8 +677,22 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 		return Result{}, err
 	}
 
-	ref, err := d.resolveBackupRef(ctx, opts.BackupID)
-	if err != nil {
+	var (
+		prior *domain.OperationRecord
+		ref   ports.BackupRef
+	)
+	if opts.Resume {
+		if prior, err = d.findResumable(ctx, domain.OpTypeRestore); err != nil {
+			return Result{}, err
+		}
+		if opts, err = resumedRestore(opts, *prior); err != nil {
+			return Result{}, err
+		}
+		// The id alone, not looked up: a resume past the data steps does
+		// not read the backup, and one that does is refused at the step
+		// that reads it, as a fresh restore would be.
+		ref = ports.BackupRef{ID: opts.BackupID}
+	} else if ref, err = d.resolveBackupRef(ctx, opts.BackupID); err != nil {
 		return Result{}, err
 	}
 
@@ -644,14 +702,25 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 		Type:        domain.OpTypeRestore,
 		Description: "restore " + inst.Product + " from " + ref.ID,
 		To:          rel.Version(),
-		Flags:       map[string]string{"backup_id": ref.ID, "force": "true"},
+		Flags:       restoreFlags(ref.ID, opts),
 		Steps:       restoreSteps(d, inst, rel, ref, opts),
 	}
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeRestore, opts.Options, func(ctx context.Context) error {
+		var err error
+		if opts.Resume {
+			if prior, err = d.refreshResumable(ctx, domain.OpTypeRestore, prior); err != nil {
+				return err
+			}
+		}
 		if err := d.refuseMovedRelease(ctx, current); err != nil {
 			return err
+		}
+		if prior != nil {
+			if err := d.refuseStaleRestore(ctx, *prior, current, inst.ID); err != nil {
+				return err
+			}
 		}
 		// The steps again from the record as it stands under the lock: a
 		// `stop` that landed while this waited decides whether the
@@ -662,7 +731,7 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 		}
 		inst.Stopped = now.Stopped
 		op.Steps = restoreSteps(d, inst, rel, ref, opts)
-		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
+		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		return err
 	})
 
@@ -683,7 +752,7 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 	}
 
 	if runErr != nil {
-		return out, restoreLeftBehind(result.Record, runErr, inst.Stopped != nil)
+		return out, restoreLeftBehind(result.Record, runErr, inst.ID, inst.Stopped != nil)
 	}
 	out.Summary = fmt.Sprintf("restored %s from backup %s", inst.Product, ref.ID)
 	if inst.Stopped != nil {
@@ -700,12 +769,13 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 // that is down -- which is a fine outcome to have chosen and a terrible one to
 // have to infer from silence.
 //
-// It is a hint rather than an automatic recovery on purpose. Restore is not
-// resumable: its middle step overwrites a database, no automatic action can
-// tell how far a hook got, and guessing a repair is the failure mode the design
-// forbids. The two roads forward are the operator's to choose.
-func restoreLeftBehind(rec domain.OperationRecord, err error, stopped bool) error {
-	if rec.Status != domain.StatusInterrupted || !servicesLeftStopped(rec) {
+// It is a hint rather than an automatic recovery on purpose: the roads forward
+// are the operator's to choose. A resume continues from the step that was cut
+// off, unless that step is the release's restore hook, which nothing can tell
+// how far it got (RFC 0051 decision 10). `apply` starts the release over what
+// is there and abandons the restore, which no resume continues after it.
+func restoreLeftBehind(rec domain.OperationRecord, err error, installationID string, stopped bool) error {
+	if rec.Status != domain.StatusInterrupted {
 		return err
 	}
 	// `start` rather than `apply` when an operator had it stopped: `apply`
@@ -714,10 +784,23 @@ func restoreLeftBehind(rec domain.OperationRecord, err error, stopped bool) erro
 	if stopped {
 		command = "`morzer start`"
 	}
-	recovery := "the services were stopped before the restore began, and an interrupted " +
-		"operation is not brought back up automatically. Run " + command + " to " +
-		"start the current release again, or re-run the restore to try once more. " +
-		"`morzer status` shows which."
+	recovery := fmt.Sprintf("Finish it with `morzer restore --resume --force --confirm %s`. "+
+		"%s starts the current release instead and abandons the restore, which cannot "+
+		"be resumed after it.", installationID, command)
+	// "Stopped at", not "inside": a ctrl-C between two steps journals the
+	// next one interrupted before it starts, and the resume refuses it all
+	// the same.
+	if idx, ok := rec.FirstIncompleteStep(); ok && !rec.Steps[idx].StartsAgain() {
+		recovery = fmt.Sprintf("It stopped at %q, which is not safe to start again, so "+
+			"`morzer restore --resume` would be refused. Restore again from the start with %s, "+
+			"or run %s to start the current release over what is there.",
+			rec.Steps[idx].ID, freshRestoreCommand(rec, installationID), command)
+	}
+	if servicesLeftStopped(rec) {
+		recovery = "the services were stopped before the restore began, and an interrupted " +
+			"operation is not brought back up automatically. " + recovery
+	}
+	recovery += " `morzer status` shows where it stopped."
 
 	// Appended rather than assigned: WithHint replaces, and whatever the
 	// interrupted step said about itself is the other half of what the
@@ -726,6 +809,115 @@ func restoreLeftBehind(rec domain.OperationRecord, err error, stopped bool) erro
 		return domain.AsError(err).WithHint("%s %s", existing, recovery)
 	}
 	return domain.AsError(err).WithHint("%s", recovery)
+}
+
+// freshRestoreCommand is the command that restores again from the start what a
+// restore record restored.
+func freshRestoreCommand(rec domain.OperationRecord, installationID string) string {
+	command := "morzer restore --backup " + rec.Flags[flagBackupID]
+	if components := rec.Flags[flagComponents]; components != "" {
+		command += " --component " + components
+	}
+	if rec.Flags[flagCrossInstallation] == "true" {
+		command += " --allow-cross-installation"
+	}
+	return "`" + command + " --force --confirm " + installationID + "`"
+}
+
+// The flags a restore journals: what it restored, and what a resume reads to
+// restore the same (RFC 0051 decision 8). `--identity` is not among them: a
+// key's path is the operator's to supply each time.
+const (
+	flagBackupID          = "backup_id"
+	flagComponents        = "components"
+	flagCrossInstallation = "allow_cross_installation"
+)
+
+// restoreFlags journals what a resume needs to restore the same thing again:
+// the backup, the components and the cross-installation flag (RFC 0051
+// decision 8).
+func restoreFlags(backupID string, opts RestoreOptions) map[string]string {
+	flags := map[string]string{flagBackupID: backupID, "force": "true"}
+	if len(opts.Components) > 0 {
+		names := make([]string, len(opts.Components))
+		for i, c := range opts.Components {
+			names[i] = string(c)
+		}
+		flags[flagComponents] = strings.Join(names, ",")
+	}
+	if opts.AllowCrossInstallation {
+		flags[flagCrossInstallation] = "true"
+	}
+	return flags
+}
+
+// refuseRestoreScopeOnResume refuses the flags that would name a different
+// restore than the one being resumed (RFC 0051 decision 8).
+func refuseRestoreScopeOnResume(opts RestoreOptions) error {
+	var named []string
+	if opts.BackupID != "" {
+		named = append(named, "--backup")
+	}
+	if len(opts.Components) > 0 {
+		named = append(named, "--component")
+	}
+	if opts.AllowCrossInstallation {
+		named = append(named, "--allow-cross-installation")
+	}
+	if len(named) == 0 {
+		return nil
+	}
+	return domain.Usage("%s cannot be given with --resume", strings.Join(named, " and ")).
+		WithHint("a resume restores the backup, and the components, the restore was started with")
+}
+
+// resumedRestore reads what the restore being resumed restored from its
+// record.
+func resumedRestore(opts RestoreOptions, prior domain.OperationRecord) (RestoreOptions, error) {
+	opts.BackupID = prior.Flags[flagBackupID]
+	if opts.BackupID == "" {
+		return opts, domain.Usage("restore %s does not record which backup it restored", prior.ID).
+			WithHint("restore again from the start with `morzer restore --backup <id>`")
+	}
+	if components := prior.Flags[flagComponents]; components != "" {
+		for name := range strings.SplitSeq(components, ",") {
+			opts.Components = append(opts.Components, ports.Component(name))
+		}
+	}
+	opts.AllowCrossInstallation = prior.Flags[flagCrossInstallation] == "true"
+	return opts, nil
+}
+
+// refuseStaleRestore refuses to resume a restore something has since built on
+// (RFC 0051 decision 9). An `apply` may have written to volumes the restore had
+// already put back, and the hook run again over them would leave the volumes
+// and the database from different moments. An `update` or a `rollback` would
+// run another release's hook over data checked for this one, and a `stop` or a
+// `start` changes the steps. A backup changes nothing a restore wrote.
+func (d *Deps) refuseStaleRestore(
+	ctx context.Context, prior domain.OperationRecord, current domain.ReleaseRecord, installationID string,
+) error {
+	fresh := "restore again from the start with " + freshRestoreCommand(prior, installationID)
+	all, err := d.State.Operations(ctx, ports.Filter{})
+	if err != nil {
+		return err
+	}
+	// Newest first, so everything before the restore's own record ran
+	// after it began.
+	for _, rec := range all {
+		if rec.ID == prior.ID {
+			break
+		}
+		if rec.Type != domain.OpTypeBackup {
+			return domain.Usage("restore %s cannot be resumed: %s %s ran after it began",
+				prior.ID, rec.Type, rec.ID).WithHint("%s", fresh)
+		}
+	}
+	if !current.Version.Equal(prior.To) {
+		return domain.Usage("restore %s cannot be resumed: it restored onto %s, and %s is installed",
+			prior.ID, prior.To, describeRelease(current)).WithHint("%s", fresh)
+	}
+	return nil
 }
 
 // servicesLeftStopped reports whether the stop succeeded and nothing has since
@@ -758,6 +950,7 @@ func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref por
 		stepVerifyBackupBeforeRestore(d, ref),
 		stepCheckRestoreCompatibility(d, rel, ref),
 		stepStopServices(d, inst, rel),
+		stepRestoreVolumes(d, inst, ref, opts),
 		stepRunRestore(d, inst, ref, opts),
 	}
 	// Restoring during a maintenance window is the natural use, and the
@@ -774,11 +967,15 @@ func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref por
 // Discovering a corrupt backup after the product has been taken down is the
 // worst possible ordering: the system would be off, the data unrestored, and
 // the operator with no path forward.
+//
+// Restartable rather than idempotent: done once, it need not be done again,
+// and a resume after the data went back must not fail because the backup has
+// since gone (RFC 0051 decision 6).
 func stepVerifyBackupBeforeRestore(d *Deps, ref ports.BackupRef) engine.Step {
 	return engine.Step{
 		ID:          "verify-backup",
 		Description: "verify backup integrity",
-		Idempotent:  true,
+		Restartable: true,
 		OnFailure:   engine.Abort,
 		Timeout:     30 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
@@ -788,12 +985,12 @@ func stepVerifyBackupBeforeRestore(d *Deps, ref ports.BackupRef) engine.Step {
 }
 
 // stepCheckRestoreCompatibility refuses a backup the installed release cannot
-// read.
+// read. Restartable, as verifying the backup is.
 func stepCheckRestoreCompatibility(d *Deps, rel domain.Release, ref ports.BackupRef) engine.Step {
 	return engine.Step{
 		ID:          "check-compatibility",
 		Description: "check release compatibility",
-		Idempotent:  true,
+		Restartable: true,
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
@@ -860,7 +1057,29 @@ func stepStopServices(d *Deps, inst domain.Installation, rel domain.Release) eng
 	}
 }
 
-// stepRunRestore executes the release's restore hook.
+// stepRestoreVolumes puts back the volumes, which the manager writes itself.
+//
+// Restartable: each volume is wiped and extracted again, so a run started again
+// replaces whatever an interrupted one half-wrote, and once the step finished a
+// resume does not write them twice (RFC 0051 decision 6). A failure needs a
+// person all the same, as the hook's does: a volume half-written is in the
+// state a database half-written is.
+func stepRestoreVolumes(d *Deps, inst domain.Installation, ref ports.BackupRef, opts RestoreOptions) engine.Step {
+	return engine.Step{
+		ID:                            "restore-volumes",
+		Description:                   "restore volumes",
+		Restartable:                   true,
+		OnFailure:                     engine.Compensate,
+		RequiresInterventionOnFailure: true,
+		Timeout:                       3 * time.Hour,
+		Execute: func(ctx context.Context, st *engine.State) error {
+			return d.Backup.Restore(ctx, ref, restorePart(inst, opts, ports.RestoreVolumes))
+		},
+	}
+}
+
+// stepRunRestore executes the release's restore hook, over the volumes the step
+// before put back.
 //
 // Deliberately not compensable. Once the hook has begun overwriting a
 // database, no automatic action can put back what was there, and pretending
@@ -877,18 +1096,23 @@ func stepRunRestore(d *Deps, inst domain.Installation, ref ports.BackupRef, opts
 		RequiresInterventionOnFailure: true,
 		Timeout:                       3 * time.Hour,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			return d.Backup.Restore(ctx, ref, ports.RestoreOptions{
-				Components: opts.Components,
-				// Not opts.Force. Force authorises destroying
-				// this machine's data and is required for every
-				// restore; using it here too meant the
-				// cross-installation guard was checked only
-				// after the one thing that disabled it.
-				Force:                opts.AllowCrossInstallation,
-				TargetInstallationID: inst.ID,
-				IdentityFile:         opts.IdentityFile,
-			})
+			return d.Backup.Restore(ctx, ref, restorePart(inst, opts, ports.RestoreHook))
 		},
+	}
+}
+
+// restorePart is what one restore step asks the backup engine for.
+func restorePart(inst domain.Installation, opts RestoreOptions, part ports.RestorePart) ports.RestoreOptions {
+	return ports.RestoreOptions{
+		Components: opts.Components,
+		// Not opts.Force. Force authorises destroying this machine's
+		// data and is required for every restore; using it here too
+		// meant the cross-installation guard was checked only after the
+		// one thing that disabled it.
+		Force:                opts.AllowCrossInstallation,
+		TargetInstallationID: inst.ID,
+		IdentityFile:         opts.IdentityFile,
+		Part:                 part,
 	}
 }
 
