@@ -97,8 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   product up and broken never reached an error-level notify target.
 
 - **A product whose every container is unhealthy counts as running.** `apply`
-  took its own published ports for a conflict and refused, and `status` and
-  `doctor` skipped the health checks that would have said why.
+  took its own published ports for a conflict and refused, a domain or
+  profile change re-created nothing, and `status` and `doctor` skipped the
+  health checks that would have said why.
 
 - **A failed `update --profile` comes back under the recorded profile.** The
   previous release was brought back under the one-run profile, which it need
