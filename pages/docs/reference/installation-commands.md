@@ -342,6 +342,11 @@ step, and plannable with `--dry-run`.
 A plan is confirmed like the removal itself, because `--dry-run` refuses
 whatever the operation would refuse. Pass it the same flags.
 
+The containers are taken down through the current release's Compose files. When
+those cannot do it, because the release cannot be read or its files no longer
+interpolate, they are taken down by the project's name instead, and the removal
+says so.
+
 #### What goes and what stays
 
 | What | Default | `--purge` |
