@@ -2507,6 +2507,18 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 <td>The rendered configuration file.</td>
 </tr>
 <tr>
+<td><code>&lt;PRODUCT&gt;_DOMAIN</code></td>
+<td>The canonical domain, as a <a href="../variables/">Compose file</a> reads it. Absent when the installation has none.</td>
+</tr>
+<tr>
+<td><code>&lt;PRODUCT&gt;_DOMAINS</code></td>
+<td>Every domain, comma-separated, the canonical first. Absent when there is none.</td>
+</tr>
+<tr>
+<td><code>&lt;PRODUCT&gt;_URL</code></td>
+<td>The public address <code>status</code> shows, as a template's <code>.Installation.URL</code>: the canonical domain with <code>https://</code>, or the URL it was given as. Absent with no domain.</td>
+</tr>
+<tr>
 <td><code>&lt;PRODUCT&gt;_LOG_LEVEL</code></td>
 <td>The manager's current log level.</td>
 </tr>
@@ -2522,6 +2534,10 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 </table>
 <p><code>DRY_RUN</code> is <strong>always present</strong>, including as <code>0</code>. A hook that tested for the
 variable's existence rather than its value would otherwise mutate during a plan.</p>
+<p>The domains are the installation's as they stand when the hook runs, so after
+<a href="../parameters/#changing-the-domains"><code>config set installation.domains</code></a> the next
+hook sees the new ones. Managers before 0.13.0 set none of the three: a release
+whose hooks need them declares <code>min_manager_version: "0.13.0"</code>.</p>
 <h3 id="what-the-runtime-adds">What the runtime adds<a class="headerlink" href="#what-the-runtime-adds" title="Permanent link">&para;</a></h3>
 <p>The table above is what every installation gets. A runtime contributes its own
 variables on top, and which ones depends on the runtime the installation is
@@ -2561,9 +2577,9 @@ product prefix.</p>
   service cannot report <code>schema_version</code>. Declare
   <a href="../manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates"><code>database_schema_produces</code></a>
   instead: when the service succeeds, that is the schema the manager records.</li>
-<li><strong>Parameters and the runtime's variables.</strong> A service receives parameters the
-  way the release's Compose file passes them, as it does when it runs as part of
-  the deployment.</li>
+<li><strong>Parameters, the domains and the runtime's variables.</strong> A service receives
+  parameters and the domain the way the release's Compose file passes them, as
+  it does when it runs as part of the deployment.</li>
 </ul>
 <p>The values are passed on the <code>docker compose run</code> command line, which other
 users on the machine can read. None of them is a secret.</p>
