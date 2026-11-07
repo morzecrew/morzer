@@ -555,6 +555,10 @@ func stepRemoveUnits(d *Deps) engine.Step {
 // project name alone, from an empty directory, where Compose finds what is left
 // by its labels (decision 10). An installation whose release was never recorded
 // was never applied, so nothing of it is running.
+//
+// By name too when the release's files cannot take it down: a file that no
+// longer interpolates fails `down` as it failed `apply`, and a broken release
+// must not be what keeps an operator from removing it (#299).
 func stepTakeDownProject(
 	d *Deps, inst domain.Installation, deployed bool, rel domain.Release, relErr error, purge bool,
 ) engine.Step {
@@ -580,40 +584,40 @@ func stepTakeDownProject(
 			return !deployed, nil
 		},
 		Execute: func(ctx context.Context, st *engine.State) error {
-			var cfg ports.RuntimeConfig
-			if relErr == nil {
-				var err error
-				if cfg, err = d.runtimeConfig(rel, inst, ""); err != nil {
-					return err
-				}
-			} else {
-				empty, err := os.MkdirTemp("", "morzer-remove-")
-				if err != nil {
-					return domain.Internal(err, "cannot create an empty project directory")
-				}
-				defer func() { _ = os.RemoveAll(empty) }()
-				cfg = ports.RuntimeConfig{
-					Product:    inst.Product,
-					Options:    inst.RuntimeOptions,
-					WorkingDir: empty,
-				}
-				// Every converge records the options, so only an
-				// installation that has not converged since they were
-				// recorded gets here without them -- and then the
-				// release that named its project is the one that cannot
-				// be read.
-				if inst.RuntimeOptions == nil {
-					st.Warn("this installation records no runtime options, so its project is "+
-						"taken to be named %s; if its release named another, that project "+
-						"is left running", inst.Product)
-				}
-			}
+			down := ports.DownOptions{Volumes: purge, RemoveOrphans: true, Timeout: 2 * time.Minute}
 			st.Detail("%s", how())
-			return d.Runtime.Down(ctx, cfg, ports.DownOptions{
-				Volumes:       purge,
-				RemoveOrphans: true,
-				Timeout:       2 * time.Minute,
-			})
+			if relErr == nil {
+				cfg, err := d.runtimeConfig(rel, inst, "")
+				if err == nil {
+					err = d.Runtime.Down(ctx, cfg, down)
+				}
+				if err == nil {
+					return nil
+				}
+				st.Warn("cannot take the project down through its release's files (%s); "+
+					"taking it down by project name", domain.AsError(err).Message)
+			}
+
+			empty, err := os.MkdirTemp("", "morzer-remove-")
+			if err != nil {
+				return domain.Internal(err, "cannot create an empty project directory")
+			}
+			defer func() { _ = os.RemoveAll(empty) }()
+			// Every converge records the options, so only an
+			// installation that has not converged since they were
+			// recorded gets here without them -- and then the
+			// release that named its project is the one that cannot
+			// be read.
+			if inst.RuntimeOptions == nil {
+				st.Warn("this installation records no runtime options, so its project is "+
+					"taken to be named %s; if its release named another, that project "+
+					"is left running", inst.Product)
+			}
+			return d.Runtime.Down(ctx, ports.RuntimeConfig{
+				Product:    inst.Product,
+				Options:    inst.RuntimeOptions,
+				WorkingDir: empty,
+			}, down)
 		},
 		PlanDetail: func(context.Context, *engine.State) (string, string) {
 			if !deployed {

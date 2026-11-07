@@ -302,6 +302,7 @@ differently on any of them.
 | 14 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* Under the lock, a removal with `--backup` re-reads the installation, and refuses when its backup targets changed since it planned. It pushes to the targets it planned for or not at all. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:36, targets under the lock). |
 | 15 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* When the record a removal resumes shows its backup steps finished, those steps report already satisfied rather than run, and neither the release nor a backup engine is required. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 1, 20:36, the resume). |
 | 16 | `ASSUMED` | *(2026-11-04, from the review; accepted 2026-11-04)* A removal with `--backup` records a digest of its backup targets in its journal record, and a resume past the backup is refused when the targets configured now differ. A fresh removal then takes a new backup to them. See [logs/remove-backup.md](../logs/remove-backup.md) (unlisted, attempt 2, 21:00). |
+| 17 | `ASSUMED` | *(2026-11-07, ruled by the author in #299)* **Refines decision 10.** When the release can be read but its files cannot take the project down, as when a file no longer interpolates and failed `apply` the same way, the project is taken down by name from an empty directory, as for a release that cannot be read, and the removal warns why. A broken release must not be what keeps an operator from removing it. |
 
 ## 12. Phasing
 

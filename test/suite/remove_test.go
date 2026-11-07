@@ -279,6 +279,26 @@ func TestAnUnreadableReleaseIsTakenDownByName(t *testing.T) {
 	assert.Equal(t, "demo", cfg.Product)
 }
 
+// A release whose Compose files no longer interpolate cannot be taken down
+// through them, as it could not be applied, and the removal falls back to the
+// project's name, as it does for a release that cannot be read (#299).
+func TestAReleaseThatCannotBeTakenDownIsTakenDownByName(t *testing.T) {
+	h, inst := removable(t)
+	h.Runtime.Fail["Down"] = domain.RuntimeError(nil, "injected: required variable DOTDASH_IMAGE_XRAY is missing a value")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Down" {
+			delete(h.Runtime.Fail, "Down")
+		}
+	}
+
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+
+	require.Len(t, h.Runtime.DownConfigs, 1, "the fallback did not take the project down")
+	cfg := h.Runtime.DownConfigs[0]
+	assert.Empty(t, cfg.Files, "the fallback named the files that could not be taken down")
+	assert.Equal(t, "demo", cfg.Product)
+}
+
 // A removal that fails part way is finished by running it again, or resuming
 // it, and the record it has not yet forgotten still asks for the same
 // confirmation (decision 5).
