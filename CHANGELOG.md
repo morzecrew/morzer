@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resumes and runs it again, where `restore --resume` refused. It needs
   `min_manager_version` 0.14.0.
 
+### Changed
+
+- **`secret edit <name>` opens the value itself.** One name opens that
+  secret's value as plain text, so a certificate or a list of clients is
+  edited line by line, where in YAML a second line folded into the first.
+  Several names, or none, keep the YAML mapping.
+
 ### Fixed
 
 - **A restore that fails leaves the product down, and resumes.** A failure

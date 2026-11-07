@@ -196,18 +196,21 @@ func TestSecretEditWithNoChangesTouchesNothing(t *testing.T) {
 func TestSecretEditNamesOnlyWhatWasAskedFor(t *testing.T) {
 	app, _, root := editApp(t, map[string]string{
 		"db_password": "in-scope",
+		"api_token":   "also-in-scope",
 		"session_key": "out-of-scope",
 	})
 
 	// The file the editor opens is what a scoped session shows. A secret the
-	// operator did not name should not be in front of them at all.
+	// operator did not name should not be in front of them at all. Two
+	// names, since one opens as its value alone.
 	captured := filepath.Join(root, "captured.yaml")
 	require.NoError(t, app.editSecretsWith(context.Background(),
-		[]string{"db_password"}, scriptedEditor(`cp "$0" `+captured)))
+		[]string{"db_password", "api_token"}, scriptedEditor(`cp "$0" `+captured)))
 
 	data, err := os.ReadFile(captured)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "db_password")
+	assert.Contains(t, string(data), "api_token")
 	assert.NotContains(t, string(data), "out-of-scope")
 }
 
@@ -235,4 +238,45 @@ func TestEditorCommandPrefersVisual(t *testing.T) {
 	got, err = editorCommand()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"vi"}, got)
+}
+
+// One name opens its value alone, byte for byte (#301). A second line is a
+// second line, where in YAML the obvious edit folded it into the first.
+func TestSecretEditOfOneOpensItsValueAsText(t *testing.T) {
+	app, store, _ := editApp(t, map[string]string{"vless_clients": "e353 laptop", "other": "untouched"})
+	seen := filepath.Join(t.TempDir(), "seen")
+
+	err := app.editSecretsWith(context.Background(), []string{"vless_clients"},
+		scriptedEditor(`cp "$0" `+seen+` && printf '\n0b8f phone\n' >> "$0"`))
+
+	require.NoError(t, err)
+	shown, err := os.ReadFile(seen)
+	require.NoError(t, err)
+	assert.Equal(t, "e353 laptop", string(shown), "the editor was shown more than the value")
+	after := loaded(t, store)
+	assert.Equal(t, "e353 laptop\n0b8f phone", after["vless_clients"])
+	assert.Equal(t, "untouched", after["other"])
+}
+
+// The newline most editors add on save is taken back off a value that had none,
+// so saving a password unchanged leaves it unchanged.
+func TestSecretEditOfOneIgnoresTheNewlineAnEditorAdds(t *testing.T) {
+	app, store, _ := editApp(t, map[string]string{"db_password": "s3cret"})
+
+	err := app.editSecretsWith(context.Background(), []string{"db_password"},
+		scriptedEditor(`printf '\n' >> "$0"`))
+
+	require.NoError(t, err)
+	assert.Equal(t, "s3cret", loaded(t, store)["db_password"])
+}
+
+func TestSecretEditOfOneRefusesAnEmptyValue(t *testing.T) {
+	app, store, _ := editApp(t, map[string]string{"db_password": "s3cret"})
+
+	err := app.editSecretsWith(context.Background(), []string{"db_password"},
+		scriptedEditor(`: > "$0"`))
+
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "morzer secret remove db_password")
+	assert.Equal(t, "s3cret", loaded(t, store)["db_password"])
 }
