@@ -94,8 +94,14 @@
         "doctor_schedule": {
           "type": "string"
         },
+        "metrics_textfile": {
+          "type": "string"
+        },
         "require_signature": {
           "type": "boolean"
+        },
+        "retain_attestations": {
+          "type": "integer"
         },
         "retain_backups": {
           "type": "integer"
@@ -187,6 +193,9 @@
           "type": "string"
         },
         "check": {
+          "type": "boolean"
+        },
+        "manager_check": {
           "type": "boolean"
         },
         "randomized_delay": {
