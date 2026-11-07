@@ -354,6 +354,11 @@ func (e *Engine) handleFailure(
 	if failedIdx >= 0 && failedIdx < len(op.Steps) {
 		policy = op.Steps[failedIdx].OnFailure
 	}
+	// A step that passed the point of no return and then failed has done
+	// what compensation cannot take back as surely as one that finished.
+	if noReturnIdx < 0 && failedIdx >= 0 && failedIdx < len(op.Steps) && st.pointOfNoReturn() != "" {
+		noReturnIdx = failedIdx
+	}
 
 	// A step that declared itself unrepairable is the case that needs a
 	// human. Detect it before compensating, because compensation of
@@ -407,10 +412,14 @@ func (e *Engine) handleFailure(
 	// needs a person, whatever the failed step's policy.
 	pastNoReturn := func(undone []string) {
 		rec.Status = domain.StatusManualIntervention
-		rec.Error = domain.ManualIntervention(failure,
-			"%s failed at step %q, after step %q made it impossible to roll back: %s%s",
-			op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID, st.pointOfNoReturn(),
-			alsoUndone(undone)).
+		format := "%s failed at step %q, after step %q made it impossible to roll back: %s%s"
+		args := []any{op.Type, stepIDAt(op, failedIdx), op.Steps[noReturnIdx].ID,
+			st.pointOfNoReturn(), alsoUndone(undone)}
+		if noReturnIdx == failedIdx {
+			format = "%s failed at step %q, past the point it cannot be rolled back over: %s%s"
+			args = []any{op.Type, stepIDAt(op, failedIdx), st.pointOfNoReturn(), alsoUndone(undone)}
+		}
+		rec.Error = domain.ManualIntervention(failure, format, args...).
 			WithOp(op.ID, stepIDAt(op, failedIdx)).
 			WithHint("the steps before it were left as they are rather than rolled back. Run " +
 				"`morzer doctor`, repair the cause, and clear the flag with " +

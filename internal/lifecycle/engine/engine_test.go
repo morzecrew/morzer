@@ -322,6 +322,29 @@ func TestAnAbortPastThePointOfNoReturnNeedsAPerson(t *testing.T) {
 	assert.Contains(t, err.Error(), `after step "migrate"`)
 }
 
+// A step that passes the point and then fails closes the way back as surely as
+// one that finished: nothing before it is undone. A restore's data steps do
+// this, so a failed restore does not start the product over half-written data.
+func TestAStepThatFailsPastThePointOfNoReturnIsNotRolledBack(t *testing.T) {
+	eng, _, _ := newEngine()
+	tr := &tracker{}
+
+	pivot := step(tr, "restore-volumes", false, false)
+	pivot.Execute = func(ctx context.Context, st *State) error {
+		st.PassPointOfNoReturn("the restore has begun writing the data")
+		return errors.New("injected: the disk filled")
+	}
+
+	result, err := eng.Run(context.Background(),
+		operation(step(tr, "stop-services", false, true), pivot), Options{})
+	require.Error(t, err)
+
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+	assert.Empty(t, tr.compensated, "a step before the point was undone")
+	assert.Contains(t, err.Error(), `failed at step "restore-volumes", past the point it cannot be rolled back over`)
+	assert.Contains(t, err.Error(), "the restore has begun writing the data")
+}
+
 // A rollback that fails is the failure that decides what an operator does
 // next, so every intervention names it -- not only the one reached because the
 // rollback failed. Here the failed step needs a person anyway, or the way back

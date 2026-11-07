@@ -775,6 +775,9 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 // how far it got (RFC 0051 decision 10). `apply` starts the release over what
 // is there and abandons the restore, which no resume continues after it.
 func restoreLeftBehind(rec domain.OperationRecord, err error, installationID string, stopped bool) error {
+	if rec.Status == domain.StatusManualIntervention {
+		return restoreNeedsAPerson(rec, err, installationID)
+	}
 	if rec.Status != domain.StatusInterrupted {
 		return err
 	}
@@ -805,6 +808,25 @@ func restoreLeftBehind(rec domain.OperationRecord, err error, installationID str
 	// Appended rather than assigned: WithHint replaces, and whatever the
 	// interrupted step said about itself is the other half of what the
 	// operator needs.
+	if existing := domain.AsError(err).Hint; existing != "" {
+		return domain.AsError(err).WithHint("%s %s", existing, recovery)
+	}
+	return domain.AsError(err).WithHint("%s", recovery)
+}
+
+// restoreNeedsAPerson says how a restore that failed past the point of no
+// return goes on. It left the services as they were rather than starting them
+// over what it wrote (overTheData), and once cleared it resumes from the step
+// that failed, unless that step is not safe to start again (RFC 0051 decision
+// 11). Appended to the engine's hint, which says to clear it.
+func restoreNeedsAPerson(rec domain.OperationRecord, err error, installationID string) error {
+	recovery := fmt.Sprintf("Once it is cleared, `morzer restore --resume --force --confirm %s` "+
+		"finishes it.", installationID)
+	if idx, ok := rec.FirstIncompleteStep(); ok && !rec.Steps[idx].StartsAgain() {
+		recovery = fmt.Sprintf("It failed at %q, which is not safe to start again, so once it is "+
+			"cleared a resume would be refused: restore again from the start with %s.",
+			rec.Steps[idx].ID, freshRestoreCommand(rec, installationID))
+	}
 	if existing := domain.AsError(err).Hint; existing != "" {
 		return domain.AsError(err).WithHint("%s %s", existing, recovery)
 	}
@@ -950,8 +972,8 @@ func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref por
 		stepVerifyBackupBeforeRestore(d, ref),
 		stepCheckRestoreCompatibility(d, rel, ref),
 		stepStopServices(d, inst, rel),
-		stepRestoreVolumes(d, inst, ref, opts),
-		stepRunRestore(d, inst, rel, ref, opts),
+		overTheData(stepRestoreVolumes(d, inst, ref, opts)),
+		overTheData(stepRunRestore(d, inst, rel, ref, opts)),
 	}
 	// Restoring during a maintenance window is the natural use, and the
 	// product stays down until `start` applies over the restored data
@@ -959,7 +981,23 @@ func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref por
 	if inst.Stopped != nil {
 		return steps
 	}
-	return append(steps, stepReapply(d, inst, rel), stepRestoreSmokeTest(d, inst, rel))
+	return append(steps, overTheData(stepReapply(d, inst, rel)), overTheData(stepRestoreSmokeTest(d, inst, rel)))
+}
+
+// overTheData passes the point of no return as a step begins, for every step
+// from the first that writes the data. A failure from there leaves the services
+// stopped and the restore needing a person, rather than undoing `stop-services`
+// to start them over what the restore half-wrote, and once cleared the restore
+// resumes from the step that failed (RFC 0051 decision 11). Each such step
+// passes it, not only the first, because a resume skips the steps before it.
+func overTheData(step engine.Step) engine.Step {
+	execute := step.Execute
+	step.Execute = func(ctx context.Context, st *engine.State) error {
+		st.PassPointOfNoReturn("the restore has begun writing this installation's data, " +
+			"and starting the services again would run them over what it left")
+		return execute(ctx, st)
+	}
+	return step
 }
 
 // stepVerifyBackupBeforeRestore checks the backup before anything is stopped.

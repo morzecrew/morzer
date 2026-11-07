@@ -414,6 +414,130 @@ func TestAClearedRestoreResumes(t *testing.T) {
 		h.Backup.Restores)
 }
 
+// A data step that fails leaves the product down rather than starting it over
+// data the restore half-wrote, and the restore, once cleared, resumes from that
+// step (RFC 0051 decision 11). The services were started again by the undo of
+// `stop-services`, which also left a record no resume could continue.
+func TestAFailedDataStepLeavesTheProductDownAndResumes(t *testing.T) {
+	h, inst, _ := restoreHarness(t)
+	h.Backup.OnRestore = func(_ context.Context, o ports.RestoreOptions) error {
+		if o.Part == ports.RestoreVolumes {
+			return domain.BackupError(nil, "injected: the disk filled")
+		}
+		return nil
+	}
+	calls := len(h.Runtime.Calls)
+
+	failed, err := ops.Restore(context.Background(), h.Deps, ops.RestoreOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+	h.Backup.OnRestore = nil
+
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, failed.Record.Status)
+	assert.Contains(t, domain.AsError(err).Hint, "morzer restore --resume --force --confirm "+inst.ID)
+	assert.NotContains(t, h.callsSince(calls), "Up", "the product was started over half-restored data")
+	for _, s := range failed.Record.Steps {
+		if s.ID == "stop-services" {
+			assert.Equal(t, domain.StepSucceeded, s.Status, "stop-services was undone")
+		}
+	}
+
+	_, err = ops.ClearIntervention(context.Background(), h.Deps, failed.Record.ID)
+	require.NoError(t, err)
+	resumed, err := resumeRestore(h, inst)
+
+	require.NoError(t, err)
+	assert.Equal(t, failed.Record.ID, resumed.Record.ID)
+	assert.Equal(t,
+		[]ports.RestorePart{ports.RestoreVolumes, ports.RestoreVolumes, ports.RestoreHook},
+		h.Backup.Restores)
+}
+
+// A hook that fails is not resumed, as one cut off is not, and the hint names
+// the fresh restore instead; the product is left down all the same.
+func TestAFailedRestoreHookNamesAFreshRestore(t *testing.T) {
+	h, inst, ref := restoreHarness(t)
+	h.Backup.OnRestore = func(_ context.Context, o ports.RestoreOptions) error {
+		if o.Part == ports.RestoreHook {
+			return domain.BackupError(nil, "injected: the database refused the dump")
+		}
+		return nil
+	}
+	calls := len(h.Runtime.Calls)
+
+	failed, err := ops.Restore(context.Background(), h.Deps, ops.RestoreOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+	h.Backup.OnRestore = nil
+
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, failed.Record.Status)
+	assert.NotContains(t, h.callsSince(calls), "Up", "the product was started over half-restored data")
+	hint := domain.AsError(err).Hint
+	assert.Contains(t, hint, "a resume would be refused")
+	assert.Contains(t, hint, "morzer restore --backup "+ref.ID+" --force --confirm "+inst.ID)
+}
+
+// A re-apply that fails after the data went back cannot be rolled back over
+// either: it needs a person, and its resume brings the release up without
+// restoring the data again. It was reported as "earlier changes were rolled
+// back", which was untrue of the data, and no resume could continue it.
+func TestAFailedReapplyAfterTheDataWentBackResumes(t *testing.T) {
+	h, inst, _ := restoreHarness(t)
+	// The re-apply's up fails; any later one would succeed.
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the release does not start")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			delete(h.Runtime.Fail, "Up")
+		}
+	}
+
+	failed, err := ops.Restore(context.Background(), h.Deps, ops.RestoreOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+	h.Runtime.OnCall = nil
+
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, failed.Record.Status)
+	assert.NotContains(t, err.Error(), "rolled back")
+	assert.Contains(t, domain.AsError(err).Hint, "morzer restore --resume --force --confirm "+inst.ID)
+
+	_, err = ops.ClearIntervention(context.Background(), h.Deps, failed.Record.ID)
+	require.NoError(t, err)
+	resumed, err := resumeRestore(h, inst)
+
+	require.NoError(t, err)
+	assert.Equal(t, failed.Record.ID, resumed.Record.ID)
+	assert.Equal(t, []ports.RestorePart{ports.RestoreVolumes, ports.RestoreHook}, h.Backup.Restores,
+		"the resume restored the data again")
+}
+
+// A resume that starts at the re-apply skips the data steps, and still does not
+// roll back over them when the re-apply fails: the step passes the point itself.
+func TestAResumedReapplyThatFailsCanBeResumedAgain(t *testing.T) {
+	h, inst, _ := restoreHarness(t)
+	_, _ = interruptReapply(t, h, inst)
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the release does not start")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			delete(h.Runtime.Fail, "Up")
+		}
+	}
+
+	failed, err := resumeRestore(h, inst)
+	h.Runtime.OnCall = nil
+
+	require.Error(t, err)
+	assert.Equal(t, domain.StatusManualIntervention, failed.Record.Status)
+	_, err = ops.ClearIntervention(context.Background(), h.Deps, failed.Record.ID)
+	require.NoError(t, err)
+	resumed, err := resumeRestore(h, inst)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, resumed.Record.Status)
+	assert.Equal(t, []ports.RestorePart{ports.RestoreVolumes, ports.RestoreHook}, h.Backup.Restores)
+}
+
 // Retention keeps the backup an unfinished restore reads, including one waiting
 // on intervention.
 func TestRetentionKeepsTheBackupAnUnfinishedRestoreReads(t *testing.T) {
