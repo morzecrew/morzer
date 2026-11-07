@@ -351,6 +351,7 @@ equivalent to:
 | 17 | An empty value in an edited file is refused rather than stored or treated as a deletion. It is almost always a half-finished edit, and guessing which of two destructive readings was meant is worse than asking. |
 | 18 | A rotation warning names `secret set` when the release declares no generator for that secret. Pointing at `secret rotate` there would point at a command that cannot work. |
 | 19 | A render directory that is not tmpfs is a warning, never a refusal. A container without a tmpfs mount is a legitimate way to run this, and refusing to operate would help nobody who is already running it. |
+| 20 | *(2026-11-07, ruled by the author in #301)* **Refines decision 4.** `secret edit` with exactly one name opens that secret's value alone, as plain text, byte for byte, in the same tmpfs session; with no name or several it keeps the mapping. A newline at the end is taken back off a value that had none, since editors add one on save, and an emptied file changes nothing. In the mapping a multi-line value needed a `|` block, and the obvious edit, a second line under the first, folded into one with no warning. The envelope stays out of the file either way, which is what decision 4 protects. |
 
 ## 11. Phasing
 

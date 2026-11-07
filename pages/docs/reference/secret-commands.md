@@ -94,6 +94,7 @@ outage.
 ```sh
 morzer secret edit             # every secret
 morzer secret edit db_password session_key
+morzer secret edit vless_clients   # one secret, as its value alone
 ```
 
 Decrypts into a temporary file on tmpfs, opens `$VISUAL` or `$EDITOR`, and
@@ -114,6 +115,14 @@ declare a dependency on a secret you changed are restarted**.
 
 The encryption metadata is never in the file, so the envelope cannot be
 corrupted by editing it.
+
+**One name opens that secret's value alone,** as plain text, byte for byte,
+with no YAML around it. A multi-line value, such as a certificate or a list of
+clients, is edited line by line as it is stored, where in the mapping it would
+need a `|` block and a second line typed under the first would fold into it.
+What the editor leaves is saved, except for one thing: a value that had no
+newline at its end does not gain the one most editors add when they save.
+Emptying the file changes nothing; `morzer secret remove` removes a secret.
 
 ### Where the plaintext lives, and for how long
 
