@@ -309,17 +309,31 @@ func TestTheWizardOffersTheProfilesTheBundleDeclares(t *testing.T) {
 	bundle := testdataBundle(t)
 
 	// Product supplied, so the first question is the profile: "2" selects
-	// the second of the manifest's profiles in sorted order.
-	app, shown := wizardApp(t, "1", "", "3")
+	// the first of the manifest's profiles in sorted order, after none.
+	app, shown := wizardApp(t, "2", "", "3")
 
 	got, err := runInitWizard(context.Background(), app, ops.InitOptions{
 		Product: "demo", ReleasePath: bundle,
 	})
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, got.Profile, "no profile was collected")
+	assert.Equal(t, "embedded", got.Profile)
 	assert.Contains(t, shown.String(), "Deployment profile")
-	assert.Contains(t, shown.String(), got.Profile)
+	assert.Contains(t, shown.String(), "external-db")
+}
+
+// TestTheWizardOffersNoProfileFirst, because a profile can be an optional extra
+// that opens a host port, and the first option is the one enter chooses.
+func TestTheWizardOffersNoProfileFirst(t *testing.T) {
+	app, shown := wizardApp(t, "1", "", "3")
+
+	got, err := runInitWizard(context.Background(), app, ops.InitOptions{
+		Product: "demo", ReleasePath: testdataBundle(t),
+	})
+	require.NoError(t, err)
+
+	assert.Empty(t, got.Profile, "the first option chose a profile")
+	assert.Contains(t, shown.String(), "1. none, the base files")
 }
 
 func TestDefaultRecoveryKeyPath(t *testing.T) {

@@ -150,11 +150,16 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 			Validate(func(s string) error { return domain.ValidateProductName(s) }))
 	}
 
+	// None first, and so the default: a profile may be an optional extra
+	// rather than one of several topologies, and one that opens a host port
+	// should not be what pressing enter chooses (#286).
 	if opts.Profile == "" && len(profiles) > 0 {
+		options := append([]huh.Option[string]{huh.NewOption("none, the base files", "")},
+			huh.NewOptions(profiles...)...)
 		fields = append(fields, huh.NewSelect[string]().
 			Title("Deployment profile").
-			Description("The topology this release declares.").
-			Options(huh.NewOptions(profiles...)...).
+			Description("The topologies this release declares.").
+			Options(options...).
 			Value(&opts.Profile))
 	}
 

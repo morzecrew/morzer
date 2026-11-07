@@ -211,6 +211,12 @@ type Options struct {
 	// Profile overrides the installation's deployment profile.
 	Profile string
 
+	// ForceRecreate replaces every container when the services start, even
+	// one whose definition did not change. Set by a profile change alone: a
+	// service that reads `.Profile` through a rendered file bind-mounted
+	// into it keeps the old contents across a plain `up` (#239).
+	ForceRecreate bool
+
 	// SourceRef is where the release being installed came from. Set by
 	// `update`, which introduces one; `init` records its own when it stages
 	// the release. `apply` re-converges what is already installed and
@@ -918,6 +924,57 @@ func (d *Deps) persistRuntimeBaseline(ctx context.Context, baseline map[string]s
 func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Release) error {
 	declared := rel.Manifest.DeclaredRuntimes()
 	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
+}
+
+// refuseUndeclaredProfile refuses, before an operation begins, a release that
+// does not declare the installation's profile or the one `--profile` asks for.
+// Inside a step it would fail the render, after a backup and a staging.
+//
+// The stored profile whatever the flag says (#286): a run under an override
+// leaves the next plain `apply`, the boot unit's included, rendering the stored
+// one against a release with no profile of that name.
+func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, override string) error {
+	decl, ok := rel.Manifest.DeclaredRuntimes()[inst.RuntimeName()]
+	if !ok {
+		return nil // runtimeConfig refuses an undeclared runtime with its own error
+	}
+	declares := "it declares none"
+	if names := slices.Sorted(maps.Keys(decl.Profiles)); len(names) > 0 {
+		declares = "it declares " + strings.Join(names, ", ")
+	}
+	if _, ok := decl.Profiles[inst.Profile]; inst.Profile != "" && !ok {
+		return domain.IncompatibleError(nil,
+			"release %s does not declare the profile %q this installation uses", rel.Version(), inst.Profile).
+			WithHint("%s. Change the installation's first, with `morzer config set installation.profile=<name>` "+
+				"to one both releases declare, or `morzer config unset installation.profile` for the base files",
+				declares)
+	}
+	if _, ok := decl.Profiles[override]; override != "" && !ok {
+		return domain.IncompatibleError(nil,
+			"release %s does not declare the profile %q", rel.Version(), override).
+			WithHint("%s", declares)
+	}
+	return nil
+}
+
+// warnOneRunProfile says that a `--profile` other than the installation's lasts
+// this run (#286). Never persisted: rehearsing a topology once is what the flag
+// is for.
+func (d *Deps) warnOneRunProfile(inst domain.Installation, override string) {
+	if override == "" || override == inst.Profile {
+		return
+	}
+	d.warnf("--profile %s is for this run only: the installation keeps %s, which the next "+
+		"`morzer apply` renders. `morzer config set installation.profile=%s` keeps it",
+		override, profileName(inst.Profile), override)
+}
+
+// profileName names a profile in a sentence, the empty one included.
+func profileName(profile string) string {
+	if profile == "" {
+		return "the base files"
+	}
+	return "the profile " + profile
 }
 
 // resolveRuntimeOptions returns options as the runtime will actually read them.

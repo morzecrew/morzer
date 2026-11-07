@@ -71,6 +71,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 	if err := d.refuseRuntimeOptionChange(inst, rel); err != nil {
 		return Result{}, err
 	}
+	d.warnOneRunProfile(inst, opts.Profile)
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -1064,6 +1065,7 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
 				RemoveOrphans: true,
+				ForceRecreate: opts.ForceRecreate,
 			})
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {

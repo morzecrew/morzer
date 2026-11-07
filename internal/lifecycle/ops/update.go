@@ -123,6 +123,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err := d.refuseRuntimeOptionChange(inst, staged); err != nil {
 		return Result{}, err
 	}
+	if err := refuseUndeclaredProfile(inst, staged, opts.Profile); err != nil {
+		return Result{}, err
+	}
+	d.warnOneRunProfile(inst, opts.Profile)
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -467,7 +471,7 @@ func updateSteps(
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, inst, from, opts.Profile))
+		steps = append(steps, stepRestorePoint(d, inst, from, opts.Profile, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
@@ -1026,7 +1030,12 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 // the channel staged -- and the restore was skipped with it. Placed before
 // staging, so it is compensated after everything else: the configuration and
 // secrets are back by then (restorePreviousRuntime).
-func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseRecord, profile string) engine.Step {
+//
+// force re-creates every container as they come back, which a profile change
+// needs: the containers it started read the new profile's rendered files.
+func stepRestorePoint(
+	d *Deps, inst domain.Installation, from domain.ReleaseRecord, profile string, force bool,
+) engine.Step {
 	return engine.Step{
 		ID:          "restore-point",
 		Description: "keep " + from.Version.String() + " to bring back on failure",
@@ -1034,7 +1043,7 @@ func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseReco
 		OnFailure:   engine.Abort,
 		Execute:     func(context.Context, *engine.State) error { return nil },
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			return d.restorePreviousRuntime(ctx, st, inst, from, profile)
+			return d.restorePreviousRuntime(ctx, st, inst, from, profile, force)
 		},
 	}
 }
@@ -1112,6 +1121,7 @@ func stepPruneReleases(d *Deps) engine.Step {
 // at requires-manual-intervention with both failures in its error.
 func (d *Deps) restorePreviousRuntime(
 	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, profile string,
+	force bool,
 ) error {
 	if _, touched := st.Get(keyServicesTouched); !touched {
 		if _, kept := st.Get(keySecretsKept); kept {
@@ -1139,11 +1149,12 @@ func (d *Deps) restorePreviousRuntime(
 		Wait:          true,
 		WaitTimeout:   5 * time.Minute,
 		RemoveOrphans: true,
+		ForceRecreate: force,
 	}); err != nil {
 		return err
 	}
 
-	specs, err := d.checkSpecs(inst, previous, st.OpID, domain.OpTypeUpdate)
+	specs, err := d.checkSpecs(inst, previous, st.OpID, st.OpType)
 	if err != nil {
 		return err
 	}

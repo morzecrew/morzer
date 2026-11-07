@@ -98,6 +98,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	if err := d.refuseRuntimeOptionChange(inst, previousRel); err != nil {
 		return Result{}, err
 	}
+	if err := refuseUndeclaredProfile(inst, previousRel, ""); err != nil {
+		return Result{}, err
+	}
 
 	report := RollbackReport{
 		From:          current.Version,

@@ -151,9 +151,10 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"A dotted name is an installation setting rather than a release\n" +
 			"parameter — `update.check`, `update.channel`. Those are the operator's\n" +
 			"arrangement with the manager, change nothing that is running, and are\n" +
-			"listed by `morzer config settings`. The exception is\n" +
+			"listed by `morzer config settings`. The exceptions are\n" +
 			"`installation.domains`, which renders the configuration and re-creates\n" +
-			"every running service.",
+			"every running service, and `installation.profile`, which applies the\n" +
+			"release under the new profile when the product is running.",
 		Example: "  morzer config set http_port=8443\n" +
 			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
 			"  morzer config set update.check=true            # an installation setting",
@@ -252,7 +253,8 @@ func newConfigSettingsCommand(app *App) *cobra.Command {
 		Short: "Show the installation settings and their values",
 		Long: "Installation settings are the operator's arrangement with the manager,\n" +
 			"as opposed to the parameters a release declares. They change nothing\n" +
-			"that is running, except `installation.domains`.\n\n" +
+			"that is running, except `installation.domains` and\n" +
+			"`installation.profile`.\n\n" +
 			"Set one with `morzer config set update.check=true`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

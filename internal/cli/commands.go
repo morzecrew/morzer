@@ -250,7 +250,7 @@ func newApplyCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVar(&startup, "startup", false,
 		"boot-time mode: skip pulls when images are local, skip migrations when the schema is current")
-	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
+	f.StringVar(&profile, "profile", "", "override the installation's deployment profile for this run")
 
 	return cmd
 }
@@ -430,7 +430,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"generate the secrets the new release adds with a generator; false leaves them to you")
 	f.StringVar(&digest, "digest", "",
 		"expected bundle content digest; a mismatch refuses the update")
-	f.StringVar(&profile, "profile", "", "override the installation's deployment profile")
+	f.StringVar(&profile, "profile", "", "override the installation's deployment profile for this run")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&allowOlder, "allow-older", false,
 		"install a release older than the one running, which is otherwise refused; recorded in the journal")
