@@ -3110,7 +3110,10 @@ systemd unit are both paths into the release from here — and a manifest whose
 shape changed per runtime could only be validated by asking which runtime it
 was, which is the coupling the manager does not have.</p>
 <p>An unknown profile is an error rather than a silent fall back to the base files.
-Deploying the wrong topology quietly is worse than refusing.</p>
+Deploying the wrong topology quietly is worse than refusing. For the same
+reason an update or rollback to a release that no longer declares an
+installation's profile is refused before it starts; the operator
+<a href="../parameters/#changing-the-profile">changes the profile</a> first.</p>
 <h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
 <p>The manager carries <code>options</code> and never reads them. It checks the shape — a key
 is a lower-case identifier, a value is one line of at most 200 characters,

@@ -1715,6 +1715,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#changing-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Changing the profile
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#config-diff" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2262,6 +2273,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#changing-the-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Changing the profile
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#config-diff" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2562,7 +2584,8 @@ log_level            enum       info             release
 <p>A parameter is declared by the vendor and reaches the deployment. An
 <strong>installation setting</strong> is your arrangement with the manager — whether it may
 contact a registry, which reference it follows — and changes nothing that is
-running. The one exception is <code>installation.domains</code>, below.</p>
+running. The two exceptions are <code>installation.domains</code> and
+<code>installation.profile</code>, below.</p>
 <p>They share <code>morzer config</code> because that is where you look to change a value, and
 they cannot collide: a parameter name is lowercase letters, digits and
 underscores, so a dotted name is always a setting.</p>
@@ -2650,6 +2673,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td><code>installation.domains</code></td>
 <td>The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an <code>https://</code> URL. A change renders the configuration and re-creates every running service.</td>
 </tr>
+<tr>
+<td><code>installation.profile</code></td>
+<td>The <a href="../manifest/#runtimes">deployment profile</a> the release is rendered and started with, one the installed release declares. Absent, or empty, is the base files. A change on a running product applies the release under it.</td>
+</tr>
 </tbody>
 </table>
 <p><code>backup.schedule</code> is the same value <code>morzer init --backup-schedule</code> takes, and
@@ -2682,6 +2709,27 @@ domains back, and <code>--dry-run</code> shows the steps without running them.</
 re-created: <code>morzer start</code> brings every service up with the new value.</p>
 <p>morzer issues no certificate for a new domain. Whatever terminates TLS, the
 release's proxy or yours, needs one before the name is served.</p>
+<h3 id="changing-the-profile">Changing the profile<a class="headerlink" href="#changing-the-profile" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>installation.profile<span class="o">=</span>embedded
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>installation.profile<span class="w">     </span><span class="c1"># the base files, as an install without --profile</span>
+</code></pre></div>
+<p>The profile chooses which of the release's files are deployed, so a change can
+add services and remove others. On a running product it applies the release
+under the new profile, as <code>morzer apply</code> does, and re-creates <strong>every
+container</strong>, including any whose definition is unchanged, since a service can
+read <code>.Profile</code> from a rendered file. Services the new profile does not declare
+are removed. It runs as one <code>config</code> operation in <code>morzer history</code>: a step that
+fails brings back the old profile, its files and its services, and <code>--dry-run</code>
+shows the steps without running them.</p>
+<p>While the product is stopped, or nothing is running, the change is recorded and
+rendered, and the next <code>morzer start</code> or <code>morzer apply</code> deploys it. A runtime
+that cannot say what is running refuses the change.</p>
+<p>A name the installed release does not declare is refused. <code>apply --profile</code> and
+<code>update --profile</code> still choose a profile for one run and leave the recorded one
+as it is; each says so when the two differ. An update or rollback to a release
+that does not declare the recorded profile is refused before it starts, even
+with <code>--profile</code>: change the profile first, to one both releases declare, or
+unset it.</p>
 <h3 id="config-diff"><code>config diff</code><a class="headerlink" href="#config-diff" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w">            </span><span class="c1"># each file that differs, then a summary on stderr</span>
 morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w"> </span>--json<span class="w">     </span><span class="c1"># release, targets, redacted, drift, unreadable, services, services_compared</span>

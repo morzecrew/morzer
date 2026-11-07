@@ -3285,7 +3285,7 @@ run <code>apply</code> afterwards.</p>
 </tr>
 <tr>
 <td><code>--repair</code></td>
-<td>Restore missing directories on an existing installation. It restores a layout; <code>morzer config set installation.domains</code> is how the domains change afterwards. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
+<td>Restore missing directories on an existing installation. It restores a layout; <code>morzer config set installation.domains</code> and <code>installation.profile</code> are how the domains and the profile change afterwards. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
 </tr>
 <tr>
 <td><code>--mode</code></td>
@@ -3295,7 +3295,7 @@ run <code>apply</code> afterwards.</p>
 </table>
 <h3 id="the-interactive-first-run">The interactive first run<a class="headerlink" href="#the-interactive-first-run" title="Permanent link">&para;</a></h3>
 <p>At a terminal, with something required still missing, <code>init</code> asks for it —
-product name, deployment profile (offering what the release declares), domains,
+product name, deployment profile (offering none first, then what the release declares), domains,
 and the recovery key, with an option to generate one on the spot.</p>
 <p>It is a front-end over the flags and never a second path. It fills the same
 options the flags do, and prints the command line that would have produced the
@@ -3341,7 +3341,7 @@ rather than repeating the work.</p>
 <tbody>
 <tr>
 <td><code>--profile</code></td>
-<td>Override the installation's deployment profile.</td>
+<td>Override the installation's deployment profile for this run; <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps one.</td>
 </tr>
 <tr>
 <td><code>--startup</code></td>
@@ -3380,7 +3380,7 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 </tr>
 <tr>
 <td><code>--profile</code></td>
-<td>Override the installation's deployment profile.</td>
+<td>Override the installation's deployment profile for this run; <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps one.</td>
 </tr>
 <tr>
 <td><code>--skip-backup</code></td>
