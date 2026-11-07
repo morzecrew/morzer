@@ -709,6 +709,7 @@ anything.
 | `database_schema_min` | int | Oldest schema this release can read. |
 | `database_schema_max` | int | Newest schema this release can read. |
 | `database_schema_produces` | int | What this release's migrations leave the database at. Optional; see below. |
+| `database` | `none` | The release keeps no database. Optional; see [below](#a-release-with-no-database). Needs `min_manager_version` 0.13.0. |
 | `rollback_safe` | bool | Whether this release's migrations can be undone by returning to the previous one. |
 | `min_manager_version` | semver | Oldest manager that may install this release. |
 | `upgrade_from` | constraint | Which currently-installed versions this may be installed over, e.g. `">=1.0.0 <2.0.0"`. |
@@ -748,6 +749,27 @@ is recorded as what the database is at. It is how `rollback`, `update` and the
 unattended gate learn the schema at all; without it they skip their schema
 checks, and `release verify` warns. A schema a hook reports always wins over the
 declaration.
+
+### A release with no database
+
+```yaml
+compatibility:
+  rollback_safe: true
+  database: none
+  min_manager_version: "0.13.0"
+```
+
+A product that keeps no database has no migrations and no schema to declare.
+`database: none` says so, and the unattended gate then has no schema to ask
+about: `rollback_safe`, a required signature and the pre-update backup still
+apply. Leaving `database_schema_produces` out still means the release is never
+installed unattended. The manager does not infer "no database" from a release
+with no `migrate` step, because an application can migrate its own database
+when it starts.
+
+`release verify` refuses `database: none` beside any `database_schema_*` field
+or an `operations.migrate` step, and below `min_manager_version` 0.13.0, the
+first manager that reads it.
 
 ## retention
 
