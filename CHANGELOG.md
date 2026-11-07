@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed `update --profile` comes back under the recorded profile.** The
+  previous release was brought back under the one-run profile, which it need
+  not declare, and the update then needed a person.
+
 - **A second `--resume` no longer repeats a step that finished.** A resume
   runs the earlier steps that are safe to repeat again, and one interrupted
   there left the next `--resume` to run a completed step that is not, such

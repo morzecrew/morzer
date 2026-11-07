@@ -863,7 +863,7 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 	}
 	if plan.profile && len(plan.services) > 0 {
 		plan.converged, plan.under = true, profileName(after.Profile)
-		keep := stepRestorePoint(d, before, current, "", true)
+		keep := stepRestorePoint(d, before, current, true)
 		keep.Description = "keep " + profileName(before.Profile) + " to bring back on failure"
 		plan.steps = append(plan.steps, keep)
 		// Apply's checks abort, since in `apply` nothing before them

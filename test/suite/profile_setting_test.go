@@ -377,3 +377,28 @@ func TestAProfileChangedWhileWaitingForTheLockRefuses(t *testing.T) {
 	}
 }
 
+// A failed update run under a one-run `--profile` brings the previous release
+// back under the recorded profile. The previous release need not declare the
+// override, and restoring under it was refused, which left the update needing
+// a person.
+func TestAFailedUpdateUnderAnOverrideRestoresTheRecordedProfile(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	src := patchManifest(t, stageRecoverableUpgradeSource(t, h), externalDBProfile, withExtraProfile)
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the new release does not start")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Up" {
+			delete(h.Runtime.Fail, "Up")
+		}
+	}
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Options: ops.Options{Profile: "extra"}})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "unknown deployment profile")
+	assert.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+	cfg, _ := lastUp(t, h)
+	assert.Contains(t, composeFiles(cfg), "compose.embedded.yaml")
+}

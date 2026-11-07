@@ -474,7 +474,7 @@ func updateSteps(
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, inst, from, opts.Profile, false))
+		steps = append(steps, stepRestorePoint(d, inst, from, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
@@ -1034,11 +1034,12 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 // staging, so it is compensated after everything else: the configuration and
 // secrets are back by then (restorePreviousRuntime).
 //
+// The services come back under the recorded profile, never a one-run
+// `--profile`: the previous release need not declare that one (#286).
+//
 // force re-creates every container as they come back, which a profile change
 // needs: the containers it started read the new profile's rendered files.
-func stepRestorePoint(
-	d *Deps, inst domain.Installation, from domain.ReleaseRecord, profile string, force bool,
-) engine.Step {
+func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseRecord, force bool) engine.Step {
 	return engine.Step{
 		ID:          "restore-point",
 		Description: "keep " + from.Version.String() + " to bring back on failure",
@@ -1046,7 +1047,7 @@ func stepRestorePoint(
 		OnFailure:   engine.Abort,
 		Execute:     func(context.Context, *engine.State) error { return nil },
 		Compensate: func(ctx context.Context, st *engine.State) error {
-			return d.restorePreviousRuntime(ctx, st, inst, from, profile, force)
+			return d.restorePreviousRuntime(ctx, st, inst, from, force)
 		},
 	}
 }
@@ -1123,8 +1124,7 @@ func stepPruneReleases(d *Deps) engine.Step {
 // An error here is a compensation that did not complete, which ends the update
 // at requires-manual-intervention with both failures in its error.
 func (d *Deps) restorePreviousRuntime(
-	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, profile string,
-	force bool,
+	ctx context.Context, st *engine.State, inst domain.Installation, from domain.ReleaseRecord, force bool,
 ) error {
 	if _, touched := st.Get(keyServicesTouched); !touched {
 		if _, kept := st.Get(keySecretsKept); kept {
@@ -1144,7 +1144,7 @@ func (d *Deps) restorePreviousRuntime(
 	if err != nil {
 		return err
 	}
-	cfg, err := d.runtimeConfig(previous, inst, profile)
+	cfg, err := d.runtimeConfig(previous, inst, "")
 	if err != nil {
 		return err
 	}
