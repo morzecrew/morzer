@@ -951,7 +951,7 @@ func restoreSteps(d *Deps, inst domain.Installation, rel domain.Release, ref por
 		stepCheckRestoreCompatibility(d, rel, ref),
 		stepStopServices(d, inst, rel),
 		stepRestoreVolumes(d, inst, ref, opts),
-		stepRunRestore(d, inst, ref, opts),
+		stepRunRestore(d, inst, rel, ref, opts),
 	}
 	// Restoring during a maintenance window is the natural use, and the
 	// product stays down until `start` applies over the restored data
@@ -1085,11 +1085,20 @@ func stepRestoreVolumes(d *Deps, inst domain.Installation, ref ports.BackupRef, 
 // database, no automatic action can put back what was there, and pretending
 // otherwise would be the "guess a repair" failure mode the design forbids. A
 // failure here escalates to requires-manual-intervention.
-func stepRunRestore(d *Deps, inst domain.Installation, ref ports.BackupRef, opts RestoreOptions) engine.Step {
+//
+// Restartable only when the release declares it of its hook (RFC 0051 decision
+// 1): the vendor knows whether the hook replaces what it restores, and the
+// manager cannot tell. The journal records the answer, so a resume reads the
+// promise the run that was cut off made (decision 5).
+func stepRunRestore(
+	d *Deps, inst domain.Installation, rel domain.Release, ref ports.BackupRef, opts RestoreOptions,
+) engine.Step {
+	hook, _ := rel.Manifest.Operation(domain.OpRestore)
 	return engine.Step{
 		ID:          "restore-data",
 		Description: "restore database and files",
 		Idempotent:  false,
+		Restartable: hook.Restartable,
 		OnFailure:   engine.Compensate,
 		// Once the hook has begun overwriting a database, no automatic
 		// action can put back what was there.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // RFC 0051 P1: `morzer restore --resume` continues a restore from the step
@@ -30,6 +32,36 @@ func restoreHarness(t *testing.T) (*harness, domain.Installation, ports.BackupRe
 	h.setHookEnv()
 	applyBaseline(t, h)
 	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{Reason: "manual"})
+	require.NoError(t, err)
+	refs, err := h.Backup.List(context.Background())
+	require.NoError(t, err)
+	return h, inst, refs[0]
+}
+
+// restartableRestoreHarness is restoreHarness under a release that declares its
+// restore hook restartable (RFC 0051 P2).
+func restartableRestoreHarness(t *testing.T) (*harness, domain.Installation, ports.BackupRef) {
+	t.Helper()
+	h := newHarness(t)
+	h.Deps.Now = steppingClock()
+	path := filepath.Join(h.Release.Root, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	patched := string(raw)
+	for from, to := range map[string]string{
+		"    command: [\"hooks/restore\"]\n": "    command: [\"hooks/restore\"]\n    restartable: true\n",
+		`min_manager_version: "0.0.0"`:       `min_manager_version: "` + domain.RestartableRestoreMinManagerVersion + `"`,
+	} {
+		require.Contains(t, patched, from, "the fixture no longer declares what this patches")
+		patched = strings.Replace(patched, from, to, 1)
+	}
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	h.Release, err = release.Load(h.Release.Root)
+	require.NoError(t, err)
+	inst := h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	_, err = ops.Backup(context.Background(), h.Deps, ops.BackupOptions{Reason: "manual"})
 	require.NoError(t, err)
 	refs, err := h.Backup.List(context.Background())
 	require.NoError(t, err)
@@ -172,6 +204,33 @@ func TestARestoreInterruptedInItsHookIsNotResumed(t *testing.T) {
 	assert.Len(t, h.Backup.Restores, runs, "a refused resume restored something")
 }
 
+// A release that declares its restore hook restartable has said it may run
+// again from the start, so a restore cut off in the hook resumes and runs it
+// again (RFC 0051 decision 1). The journal records the promise, which is what
+// the resume reads (decision 5), and the hint names the resume.
+func TestARestoreInterruptedInARestartableHookResumes(t *testing.T) {
+	h, inst, _ := restartableRestoreHarness(t)
+	interrupted, err := interruptRestore(t, h, inst, ports.RestoreHook, ops.RestoreOptions{})
+	assert.Contains(t, domain.AsError(err).Hint, "morzer restore --resume --force --confirm "+inst.ID)
+	assert.NotContains(t, domain.AsError(err).Hint, "would be refused")
+	var data domain.StepRecord
+	for _, s := range interrupted.Record.Steps {
+		if s.ID == "restore-data" {
+			data = s
+		}
+	}
+	assert.True(t, data.Restartable, "the journal does not record the hook as restartable")
+
+	resumed, err := resumeRestore(h, inst)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, resumed.Record.Status)
+	assert.Equal(t, interrupted.Record.ID, resumed.Record.ID)
+	assert.Equal(t,
+		[]ports.RestorePart{ports.RestoreVolumes, ports.RestoreHook, ports.RestoreHook},
+		h.Backup.Restores, "the resume did not run the hook again, or wrote the volumes twice")
+}
+
 // The backup, the components and the cross-installation flag come from the
 // record, and a flag that would name another restore is refused.
 func TestAResumeRestoresWhatTheRestoreWasStartedWith(t *testing.T) {
@@ -302,6 +361,12 @@ func TestTheGateNamesTheResumeOfAnUnfinishedRestore(t *testing.T) {
 			{ID: "restore-volumes", Status: domain.StepSucceeded, Restartable: true},
 			{ID: "restore-data", Status: domain.StepRunning},
 		}, false},
+		// A release that declared its hook restartable, as the journal
+		// recorded it (RFC 0051 decision 5).
+		"in a restartable hook": {[]domain.StepRecord{
+			{ID: "restore-volumes", Status: domain.StepSucceeded, Restartable: true},
+			{ID: "restore-data", Status: domain.StepRunning, Restartable: true},
+		}, true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t)

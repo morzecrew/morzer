@@ -572,6 +572,13 @@ type OperationSpec struct {
 	Service string        `yaml:"service" json:"service,omitempty"`
 	Command []string      `yaml:"command" json:"command,omitempty"`
 	Timeout Duration      `yaml:"timeout" json:"timeout,omitempty"`
+
+	// Restartable is the vendor's word that the restore hook, cut off
+	// part way, may be run again from the start: it replaces what it
+	// restores rather than adding to it. `restore --resume` then runs it
+	// again instead of refusing. `restore` alone may declare it (RFC 0051
+	// decisions 1 and 12); the default, false, changes nothing anywhere.
+	Restartable bool `yaml:"restartable" json:"restartable,omitempty"`
 }
 
 // OperationSteps is one named operation: a single step, or, for `migrate`
@@ -628,6 +635,11 @@ func (o OperationSteps) MarshalJSON() ([]byte, error) {
 // `compatibility.min_manager_version`, so an older manager refuses it as too
 // old rather than as a malformed operation.
 const MigrateStepsMinManagerVersion = "0.4.0"
+
+// RestartableRestoreMinManagerVersion is the manager release that reads
+// `operations.restore.restartable`, which an older one refuses as an unknown
+// field (RFC 0051 decision 12).
+const RestartableRestoreMinManagerVersion = "0.14.0"
 
 // Named manifest operations the lifecycle layer looks up by convention.
 const (
@@ -1422,7 +1434,20 @@ func (m *Manifest) Validate() error {
 				v.add(field+".kind", "must be %q; only %s runs a %q",
 					OperationKindHook, OpMigrate, OperationKindRuntimeService)
 			}
+			// Only true is refused: false is the default, and reads the
+			// same as leaving the field out.
+			if op.Restartable && name != OpRestore {
+				v.add(field+".restartable", "may be declared only on %s, whose hook a "+
+					"`restore --resume` runs again", OpRestore)
+			}
 		}
+	}
+	if minimum := MustParseVersion(RestartableRestoreMinManagerVersion); slices.ContainsFunc(
+		m.Operations[OpRestore], func(op OperationSpec) bool { return op.Restartable }) &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because operations.%s declares restartable and an older "+
+				"manager cannot read it", minimum, OpRestore)
 	}
 	// A list is what an older manager cannot decode, which is the point
 	// (OperationSteps), and the preamble pass turns that into "this needs
