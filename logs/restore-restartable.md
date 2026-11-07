@@ -106,3 +106,23 @@ regenerated schema, docs and the changelog.
     resume through a restartable hook. The suite does.
   - Whether a hook really is restartable is the vendor's word, which the
     manager cannot check. The docs say what the promise means.
+
+## Review, 2026-11-07
+
+Attempt 1's departure on decision 12 was wrong. It accepted `restartable:
+false` anywhere and at any floor because the value changes nothing, but the
+floor is not about the value. A manager before 0.14.0 decodes the manifest
+strictly and refuses the key, whatever it holds. A release writing
+`restartable: false` at a 0.13.0 floor passed `release verify` and was refused
+by the manager it named.
+
+```divergence
+decision: 12
+grade: ASSUMED
+kind: resolved
+at: 2026-11-07T19:30:41Z
+attempt: 2
+claim: attempt 1's departure is withdrawn: the field is told from its absence, refused on any operation but `restore` whatever its value, and its presence on `restore` needs the floor, as decision 12 says
+evidence: `git show v0.13.0:internal/release/load.go | grep -n DisallowUnknownField` prints `200:		yaml.DisallowUnknownField(),`
+action: decided
+```
