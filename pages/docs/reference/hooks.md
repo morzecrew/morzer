@@ -32,7 +32,7 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_PRODUCT` | The product name itself. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
-| `<PRODUCT>_OPERATION_TYPE` | `apply`, `start`, `update`, `rollback`, `restart`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `restart` runs only the health checks. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
+| `<PRODUCT>_OPERATION_TYPE` | `apply`, `start`, `update`, `rollback`, `restart`, `config`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `restart` runs only the health checks. `config` is a [profile change](parameters.md#changing-the-profile), which runs apply's hooks under the new profile. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
 | `<PRODUCT>_PHASE` | Where in the lifecycle this invocation sits — see below. |
 | `<PRODUCT>_RELEASE_VERSION` | Version of the release the hook belongs to. |
 | `<PRODUCT>_RELEASE_DIR` | Absolute path to the release root. Same as the working directory. |
@@ -102,8 +102,8 @@ A [preflight check](manifest.md#preflight) runs on the host under this ABI, with
 checks. So it gets the table above with these differences:
 
 - `OPERATION_TYPE` is the operation running the check, `apply`, `start`,
-  `update` or `rollback`, or `doctor`, which runs it with no operation and so no
-  `OPERATION_ID`.
+  `update`, `rollback` or `config`, or `doctor`, which runs it with no
+  operation and so no `OPERATION_ID`.
 - `RELEASE_VERSION`, `RELEASE_DIR` and the parameters are the release being
   checked: the new one during an `update`, the previous one during a
   `rollback`.

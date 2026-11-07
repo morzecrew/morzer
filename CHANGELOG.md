@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`config set installation.profile` changes the deployment profile.** On a
   running product it applies the release under the new profile and removes
   the services that profile drops; a failure brings the old one back. A plain
-  `apply`, the boot unit and unattended updates keep it.
+  `apply`, the boot unit and unattended updates keep it. Its hooks see
+  `OPERATION_TYPE` `config`.
 
 ### Changed
 
