@@ -158,6 +158,16 @@ func TestInitTakesTheProductNameFromARegistryReference(t *testing.T) {
 	assert.Equal(t, int32(1), downloads.Load(), "the bundle was downloaded more than once")
 }
 
+// `file:///abs/bundle` is a path written as a URL, and is read at the path it
+// parses to: passed on as typed, it was not a directory or an archive.
+func TestInitTakesTheProductNameFromAFileURL(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init", "--release", "file://"+r.Bundle, "--no-recovery-recipient", "--install-units=false").ExitCode(0)
+
+	r.Run("status").ExitCode(0).OutputContains("demo")
+}
+
 func TestInitWithoutAProductNameAndWithoutABundle(t *testing.T) {
 	r := clitest.New(t)
 

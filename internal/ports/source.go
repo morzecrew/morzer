@@ -202,9 +202,10 @@ type ResolvedRelease struct {
 	Digest  string
 	Size    int64
 
-	// Name is the release's metadata.name, which `init` names an
-	// installation after when it is not told one (#297).
-	Name string
+	// Manifest is the one the resolution read, so `init` can name an
+	// installation after a remote release and offer its profiles without
+	// fetching it twice (#297).
+	Manifest domain.Manifest
 }
 
 // Verifier checks a fetched bundle against an expectation before anything in

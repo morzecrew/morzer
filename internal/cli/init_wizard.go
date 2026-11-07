@@ -14,7 +14,6 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
-	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/internal/ui"
 )
 
@@ -128,7 +127,7 @@ func (a *App) accessibleForms() bool {
 // Everything already supplied on the command line is left alone: the wizard
 // fills gaps, it does not re-ask questions the operator has answered.
 func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.InitOptions, error) {
-	profiles := profilesFrom(opts.ReleasePath)
+	profiles := app.profilesFrom(ctx, opts.ReleasePath)
 
 	var (
 		domainsInput = strings.Join(opts.Domains, ", ")
@@ -294,12 +293,14 @@ func defaultRecoveryKeyPath(product string) string {
 }
 
 // profilesFrom reads the deployment profiles a bundle declares, so the wizard
-// offers what exists rather than asking the operator to remember it.
-func profilesFrom(releasePath string) []string {
+// offers what exists rather than asking the operator to remember it. Through
+// releaseManifest, so a registry reference offers its profiles too: read as a
+// path, it offered none, and staging took the base files (#297).
+func (a *App) profilesFrom(ctx context.Context, releasePath string) []string {
 	if releasePath == "" {
 		return nil
 	}
-	manifest, err := release.ManifestAt(releasePath)
+	manifest, err := a.releaseManifest(ctx, releasePath)
 	if err != nil {
 		return nil
 	}

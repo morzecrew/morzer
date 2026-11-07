@@ -63,11 +63,11 @@ func newInitCommand(app *App) *cobra.Command {
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {
-				name, err := app.releaseName(cmd.Context(), releasePath)
+				manifest, err := app.releaseManifest(cmd.Context(), releasePath)
 				if err != nil {
 					return err
 				}
-				product = name
+				product = manifest.Metadata.Name
 			}
 			// A repair is about an installation that exists, so it
 			// finds it the way every other command does: the one this
@@ -1288,28 +1288,27 @@ func readAll(r io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// releaseName is the product name a release declares, for an `init` told none.
+// releaseManifest is the manifest `--release` names, for an `init` told no
+// product and for the wizard's profiles.
 //
-// A bundle on disk is read where it is: a directory or an archive, through
-// ManifestAt, because joining `manifest.yaml` onto whichever `--release` named
-// failed for an archive. A reference goes through the release source, as
-// staging does, and the source keeps what it downloaded for the staging that
-// follows. Read as a path, `oci://` became `oci:/…/manifest.yaml` (#297).
-func (a *App) releaseName(ctx context.Context, releasePath string) (string, error) {
+// A bundle on disk is read where it is, at the location the reference parsed
+// to, so `file:///abs/bundle` works as a plain path does: a directory or an
+// archive, through ManifestAt, because joining `manifest.yaml` onto whichever
+// `--release` named failed for an archive. A reference goes through the
+// release source, as staging does, and the source keeps what it downloaded for
+// the staging that follows. Read as a path, `oci://` became
+// `oci:/…/manifest.yaml` (#297).
+func (a *App) releaseManifest(ctx context.Context, releasePath string) (domain.Manifest, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
-		return "", err
+		return domain.Manifest{}, err
 	}
 	if ref.IsLocal() {
-		manifest, err := release.ManifestAt(releasePath)
-		if err != nil {
-			return "", err
-		}
-		return manifest.Metadata.Name, nil
+		return release.ManifestAt(ref.Location)
 	}
 	resolved, err := a.Deps.Source.Resolve(ctx, ref)
 	if err != nil {
-		return "", err
+		return domain.Manifest{}, err
 	}
-	return resolved.Name, nil
+	return resolved.Manifest, nil
 }
