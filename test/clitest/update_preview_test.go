@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
@@ -60,6 +61,18 @@ func TestAPlannedUpdateShowsWhatItRisks(t *testing.T) {
 	r.Run("update", r.Bundle, "--dry-run").ExitCode(0).
 		OutputContains("1.2.0 declares rollback_safe: true; the database schema is not checked").
 		NoOutputContains("without a restore")
+
+	// A release that keeps no database has no schema to leave unchecked.
+	dbless := r.BundleAt("1.2.2")
+	manifest := filepath.Join(dbless, "manifest.yaml")
+	rewrite(t, manifest, "  migrate:\n    kind: hook\n    command: [\"hooks/migrate\"]\n    timeout: 10m\n", "")
+	rewrite(t, manifest, "  database_schema_min: 10\n  database_schema_max: 12\n", "  database: none\n")
+	rewrite(t, manifest, `min_manager_version: "0.0.0"`, `min_manager_version: "`+domain.NoDatabaseMinManagerVersion+`"`)
+	r.Run("update", dbless, "--dry-run").ExitCode(0).
+		OutputContains("1.2.2 declares rollback_safe: true and keeps no database, so `morzer rollback` returns to 1.2.0 without a restore").
+		NoOutputContains("not checked")
+	r.Run("update", dbless, "--dry-run", "--json").ExitCode(0).
+		FieldEquals("data.preview.rollback.no_database", true)
 }
 
 // An update that drops a parameter the installed release requires leaves a

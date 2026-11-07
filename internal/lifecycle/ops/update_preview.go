@@ -37,6 +37,10 @@ type UpdateRollback struct {
 	// not a finding.
 	SchemaChecked bool `json:"schema_checked"`
 
+	// NoDatabase says the new release declares it keeps no database, so
+	// there is no schema to check rather than one left unchecked.
+	NoDatabase bool `json:"no_database,omitempty"`
+
 	// DroppedParameters are the parameters the installed release requires
 	// and the new one does not declare. The update retires their values,
 	// `config set` takes no name the new release does not declare, and so
@@ -65,6 +69,7 @@ func previewUpdate(fallback *fallbackRelease, inst domain.Installation, running,
 		RollbackAssessment: domain.AssessRollback(target, fallback.Compatibility, target.DatabaseSchemaProduces),
 		To:                 fallback.Version.String(),
 		SchemaChecked:      target.DatabaseSchemaProduces > 0 && fallback.Compatibility.DatabaseSchemaMax > 0,
+		NoDatabase:         target.Database == domain.DatabaseNone,
 	}
 	// What rollback's preflight will read: the values the update leaves.
 	kept := withoutParameters(inst, domain.Parameters(inst.Parameters).ValidateAgainst(next.Manifest.Parameters))

@@ -38,8 +38,8 @@ An update installs itself only if **all** of these hold:
 | --- | --- |
 | The compatibility check passes | The same gate your own `update` runs |
 | The release declares `rollback_safe: true` | The incoming manifest |
-| The release declares `database_schema_produces` | The incoming manifest; **absent means never** |
-| The installed release can read that schema | Its `database_schema_max` |
+| The release declares `database_schema_produces`, or [`database: none`](../reference/manifest.md#a-release-with-no-database) | The incoming manifest; **absent means never** |
+| The installed release can read that schema, when the release declares one | Its `database_schema_max`; a release with `database: none` has no schema to read |
 | `policy.require_signature` is set, with a key | This installation |
 | The pre-update backup is not disabled | This installation |
 
@@ -279,7 +279,9 @@ provenance of.
 
 Declaring `database_schema_produces` is what opts your releases into this. See
 [the manifest reference](../reference/manifest.md#database_schema_produces-is-what-opts-a-release-into-unattended-updates)
-and [publishing](../authoring/publishing.md).
+and [publishing](../authoring/publishing.md). A product that keeps no database
+declares [`database: none`](../reference/manifest.md#a-release-with-no-database)
+instead.
 
 Omitting it is a valid choice, and it costs your customers nothing: their
 machines still fetch, verify and stage your releases, and still tell them one is

@@ -85,6 +85,22 @@ func TestTheAutoApplyGate(t *testing.T) {
 			because: "database_schema_produces",
 		},
 		{
+			// No migrations, so no schema: the schema half has nothing to
+			// ask (RFC 0016 decision 33).
+			name:    "a release that declares it keeps no database",
+			current: current,
+			target:  domain.Compatibility{Database: domain.DatabaseNone, RollbackSafe: true},
+			inst:    signedInstallation,
+			ok:      true,
+		},
+		{
+			name:    "a release with no database whose containers cannot be rolled back",
+			current: current,
+			target:  domain.Compatibility{Database: domain.DatabaseNone},
+			inst:    signedInstallation,
+			because: "rollback_safe",
+		},
+		{
 			name:    "a release whose migrations cannot be undone",
 			current: current,
 			target:  compat(14, false),
@@ -489,6 +505,44 @@ func TestAnUnattendedTickInstallsWhatDeclaresItselfRecoverable(t *testing.T) {
 	candidate, err := h.Deps.State.UpdateCandidate(ctx)
 	require.NoError(t, err)
 	assert.True(t, candidate.IsZero(), "the installed candidate is still recorded as waiting")
+}
+
+// TestAnUnattendedTickInstallsAReleaseWithNoDatabase, which could pass the gate
+// only by declaring a schema it does not have (#289).
+func TestAnUnattendedTickInstallsAReleaseWithNoDatabase(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		patched := string(raw)
+		for from, to := range map[string]string{
+			"  migrate:\n    kind: hook\n    command: [\"hooks/migrate\"]\n    timeout: 10m\n": "",
+			"  database_schema_min: 12\n":      "",
+			"  database_schema_max: 14\n":      "",
+			"  database_schema_produces: 14\n": "  database: none\n",
+			// It checks the schema a migration left, which a release
+			// with no database has no business doing.
+			"    - {name: db, type: command, command: [\"hooks/check-db\"], timeout: 15s}\n": "",
+			`min_manager_version: "0.0.0"`: `min_manager_version: "` + domain.NoDatabaseMinManagerVersion + `"`,
+		} {
+			require.Contains(t, patched, from, "the fixture no longer declares what this patches")
+			patched = strings.Replace(patched, from, to, 1)
+		}
+		require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	ctx := context.Background()
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	assert.True(t, res.Applied, "refused: %s", res.Assessment.Why())
+
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.3.0", current.Version.String())
 }
 
 // TestAutoApplyOffLeavesEverythingStaged.

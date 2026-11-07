@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a smoke test can check the product answers on its public name. None is set
   for an installation with no domain.
 
+- **A release can declare it keeps no database.** `compatibility.database:
+  none` lets one with no migrations install unattended without declaring a
+  schema it does not have. It needs `min_manager_version` 0.13.0.
+
 ### Changed
 
 - **`apply --profile` and `update --profile` say they last one run.** When

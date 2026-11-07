@@ -1564,6 +1564,36 @@ func (m *Manifest) Validate() error {
 				"must not be negative, and is %d", f.value)
 		}
 	}
+	switch m.Compatibility.Database {
+	case "":
+	case DatabaseNone:
+		// A schema number or a migrate step beside it contradicts it, and
+		// which of the two the vendor meant is theirs to say.
+		for _, f := range []struct {
+			name  string
+			value int
+		}{
+			{"database_schema_min", m.Compatibility.DatabaseSchemaMin},
+			{"database_schema_max", m.Compatibility.DatabaseSchemaMax},
+			{"database_schema_produces", m.Compatibility.DatabaseSchemaProduces},
+		} {
+			if f.value != 0 {
+				v.add("compatibility."+f.name,
+					"must not be declared beside database: none, which says the release keeps no database")
+			}
+		}
+		if len(m.OperationSteps(OpMigrate)) > 0 {
+			v.add("operations.migrate",
+				"must not be declared beside compatibility.database: none, which says the release keeps no database")
+		}
+		if minimum := MustParseVersion(NoDatabaseMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+			v.add("compatibility.min_manager_version",
+				"must be at least %s, because the release declares compatibility.database and an "+
+					"older manager cannot read it", minimum)
+		}
+	default:
+		v.add("compatibility.database", "must be none, or absent, and is %q", m.Compatibility.Database)
+	}
 	if m.Compatibility.DatabaseSchemaMin > 0 && m.Compatibility.DatabaseSchemaMax > 0 &&
 		m.Compatibility.DatabaseSchemaMin > m.Compatibility.DatabaseSchemaMax {
 		v.add("compatibility", "database_schema_min (%d) exceeds database_schema_max (%d)",

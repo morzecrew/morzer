@@ -344,10 +344,30 @@ type Compatibility struct {
 	// direction that is safe.
 	DatabaseSchemaProduces int `yaml:"database_schema_produces" json:"database_schema_produces,omitempty"`
 
+	// Database says the release keeps no database, as DatabaseNone: no
+	// migrations, no schema, and so nothing for the schema half of the
+	// unattended gate to ask (RFC 0016 decision 33). Absent says nothing,
+	// and an absent database_schema_produces still means not
+	// auto-applicable: a product that migrates at startup must not pass
+	// the gate by declaring no migrate step.
+	Database DatabaseKind `yaml:"database,omitempty" json:"database,omitempty"`
+
 	RollbackSafe      bool       `yaml:"rollback_safe" json:"rollback_safe"`
 	MinManagerVersion Version    `yaml:"min_manager_version" json:"min_manager_version"`
 	UpgradeFrom       Constraint `yaml:"upgrade_from" json:"upgrade_from"`
 }
+
+// DatabaseKind is what a release says of its database. DatabaseNone is the
+// only value.
+type DatabaseKind string
+
+// DatabaseNone is a release that keeps no database.
+const DatabaseNone DatabaseKind = "none"
+
+// NoDatabaseMinManagerVersion is the manager release that reads
+// `compatibility.database`. An older one refuses the field as unknown, so a
+// release declaring it declares this as its floor.
+const NoDatabaseMinManagerVersion = "0.13.0"
 
 // CompatibilityReport is the result of checking a candidate release against
 // the current installation. It reports every problem at once: an operator
@@ -524,7 +544,7 @@ func AssessUnattended(current, target Compatibility, inst Installation) Unattend
 		return a
 	}
 
-	if target.DatabaseSchemaProduces <= 0 {
+	if target.DatabaseSchemaProduces <= 0 && target.Database != DatabaseNone {
 		// Absent *or* nonsensical, and they get the same answer. Schema
 		// numbering starts at 1 wherever it is used here, so a release
 		// that declares nothing has said nothing about what its
@@ -536,6 +556,8 @@ func AssessUnattended(current, target Compatibility, inst Installation) Unattend
 		a.refuse("the release declares no usable compatibility.database_schema_produces, " +
 			"so what its migrations leave behind is unknown")
 	} else {
+		// A release with no database produces no schema, which leaves
+		// rollback_safe for the prediction to ask.
 		predicted := AssessRollback(target, current, target.DatabaseSchemaProduces)
 		if predicted.RestoreRequired {
 			a.refuse("%s", predicted.Reason)
