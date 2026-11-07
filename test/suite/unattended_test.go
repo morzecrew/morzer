@@ -521,7 +521,10 @@ func TestAnUnattendedTickInstallsAReleaseWithNoDatabase(t *testing.T) {
 			"  database_schema_min: 12\n":      "",
 			"  database_schema_max: 14\n":      "",
 			"  database_schema_produces: 14\n": "  database: none\n",
-			`min_manager_version: "0.0.0"`:     `min_manager_version: "` + domain.NoDatabaseMinManagerVersion + `"`,
+			// It checks the schema a migration left, which a release
+			// with no database has no business doing.
+			"    - {name: db, type: command, command: [\"hooks/check-db\"], timeout: 15s}\n": "",
+			`min_manager_version: "0.0.0"`: `min_manager_version: "` + domain.NoDatabaseMinManagerVersion + `"`,
 		} {
 			require.Contains(t, patched, from, "the fixture no longer declares what this patches")
 			patched = strings.Replace(patched, from, to, 1)
