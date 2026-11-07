@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `apply`, the boot unit and unattended updates keep it. Its hooks see
   `OPERATION_TYPE` `config`.
 
+- **Hooks are told the domains.** `<PRODUCT>_DOMAIN`, `<PRODUCT>_DOMAINS`
+  and `<PRODUCT>_URL` carry what Compose files and templates already get, so
+  a smoke test can check the product answers on its public name. None is set
+  for an installation with no domain.
+
 ### Changed
 
 - **`apply --profile` and `update --profile` say they last one run.** When

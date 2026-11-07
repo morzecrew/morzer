@@ -62,6 +62,13 @@ type HookEnv struct {
 	ReleaseDir      string
 	PreviousVersion domain.Version
 
+	// Domains are the installation's public names, the canonical first,
+	// and URL its public address: what a Compose file reads as DOMAIN and a
+	// template as `.Installation.Domains` and `.URL`. A smoke test asking
+	// whether the product answers on its name needs them (#288).
+	Domains []string
+	URL     string
+
 	DataDir    string
 	BackupDir  string
 	SecretsDir string
@@ -131,6 +138,11 @@ func HookEnvVars(e HookEnv) map[string]string {
 	set("SECRETS_DIR", e.SecretsDir)
 	set("CONFIG_FILE", e.ConfigFile)
 	set("LOG_LEVEL", e.LogLevel)
+	if len(e.Domains) > 0 {
+		set("DOMAIN", e.Domains[0])
+		set("DOMAINS", strings.Join(e.Domains, ","))
+	}
+	set("URL", e.URL)
 
 	for name, value := range e.Parameters {
 		set("PARAM_"+strings.ToUpper(name), value)
@@ -156,9 +168,14 @@ func HookEnvVars(e HookEnv) map[string]string {
 // the result descriptor is not open in there, parameters reach a service the
 // way the vendor's Compose file wires them, and the runtime's own variables
 // describe the host's view of the project.
+//
+// The domains are left out too, though they mean the same in there: the set a
+// container receives is RFC 0018 decision 18's, and a service reads the domain
+// through its Compose file already.
 func ServiceEnvVars(e HookEnv) map[string]string {
 	e.ReleaseDir, e.DataDir, e.BackupDir, e.SecretsDir, e.ConfigFile = "", "", "", "", ""
 	e.Parameters, e.Extra = nil, nil
+	e.Domains, e.URL = nil, ""
 	out := HookEnvVars(e)
 	delete(out, e.Var("RESULT_FD"))
 	return out

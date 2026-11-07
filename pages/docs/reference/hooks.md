@@ -41,12 +41,20 @@ the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
 | `<PRODUCT>_BACKUP_DIR` | Where a backup hook writes, and a restore hook reads. Its contents are an ABI — see [below](#what-is-in-backup_dir). |
 | `<PRODUCT>_SECRETS_DIR` | The tmpfs directory secrets are rendered to. |
 | `<PRODUCT>_CONFIG_FILE` | The rendered configuration file. |
+| `<PRODUCT>_DOMAIN` | The canonical domain, as a [Compose file](variables.md) reads it. Absent when the installation has none. |
+| `<PRODUCT>_DOMAINS` | Every domain, comma-separated, the canonical first. Absent when there is none. |
+| `<PRODUCT>_URL` | The public address `status` shows, as a template's `.Installation.URL`: the canonical domain with `https://`, or the URL it was given as. Absent with no domain. |
 | `<PRODUCT>_LOG_LEVEL` | The manager's current log level. |
 | `<PRODUCT>_DRY_RUN` | `1` during a plan, `0` otherwise. |
 | `<PRODUCT>_RESULT_FD` | The descriptor to write the structured result to. Always `3`. |
 
 `DRY_RUN` is **always present**, including as `0`. A hook that tested for the
 variable's existence rather than its value would otherwise mutate during a plan.
+
+The domains are the installation's as they stand when the hook runs, so after
+[`config set installation.domains`](parameters.md#changing-the-domains) the next
+hook sees the new ones. Managers before 0.13.0 set none of the three: a release
+whose hooks need them declares `min_manager_version: "0.13.0"`.
 
 ### What the runtime adds
 
@@ -81,9 +89,9 @@ Left out:
   service cannot report `schema_version`. Declare
   [`database_schema_produces`](manifest.md#database_schema_produces-is-what-opts-a-release-into-unattended-updates)
   instead: when the service succeeds, that is the schema the manager records.
-- **Parameters and the runtime's variables.** A service receives parameters the
-  way the release's Compose file passes them, as it does when it runs as part of
-  the deployment.
+- **Parameters, the domains and the runtime's variables.** A service receives
+  parameters and the domain the way the release's Compose file passes them, as
+  it does when it runs as part of the deployment.
 
 The values are passed on the `docker compose run` command line, which other
 users on the machine can read. None of them is a secret.

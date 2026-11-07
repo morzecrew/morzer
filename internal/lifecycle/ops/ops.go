@@ -700,6 +700,8 @@ func (d *Deps) hookEnv(
 		ReleaseVersion:  rel.Version(),
 		ReleaseDir:      rel.Root,
 		PreviousVersion: previous,
+		Domains:         inst.Domains,
+		URL:             inst.PublicURL(),
 		DataDir:         d.Paths.DataDir(),
 		BackupDir:       d.Paths.BackupsDir(),
 		SecretsDir:      d.Paths.SecretsRenderDir(),

@@ -254,6 +254,20 @@ func TestBackupHooksGetTheRuntimesOwnVariables(t *testing.T) {
 	}
 }
 
+// Backup and restore hooks are told the domains as every other hook is (#288),
+// from the environment this engine builds itself.
+func TestBackupHooksAreToldTheDomains(t *testing.T) {
+	e := New(Config{
+		Paths:        domain.PathsUnder(t.TempDir(), "demo"),
+		Installation: domain.Installation{Product: "demo", ID: "inst_01", Domains: []string{"a.test", "b.test"}},
+	})
+
+	vars := ports.HookEnvVars(e.hookEnv(ports.PhaseRestore, "/backups/one"))
+	if vars["DEMO_DOMAINS"] != "a.test,b.test" || vars["DEMO_URL"] != "https://a.test" {
+		t.Errorf("a restore hook is told %q and %q", vars["DEMO_DOMAINS"], vars["DEMO_URL"])
+	}
+}
+
 // hookVarRuntime is a ports.Runtime that answers only the capability under
 // test. Embedding the interface rather than a fake keeps every other method
 // nil: a test that reached one would panic rather than pass on a stub.
