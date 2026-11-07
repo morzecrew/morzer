@@ -1165,6 +1165,8 @@ func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv 
 		Phase:          phase,
 		ReleaseVersion: e.release.Version(),
 		ReleaseDir:     e.release.Root,
+		Domains:        e.installation.Domains,
+		URL:            e.installation.PublicURL(),
 		DataDir:        e.paths.DataDir(),
 		BackupDir:      backupDir,
 		SecretsDir:     e.paths.SecretsRenderDir(),

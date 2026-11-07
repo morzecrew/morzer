@@ -596,6 +596,8 @@ func checkHookEnv(rep *report, pages []page) {
 		ReleaseVersion:  version,
 		ReleaseDir:      "dir",
 		PreviousVersion: version,
+		Domains:         []string{"example.com"},
+		URL:             "https://example.com",
 		DataDir:         "data",
 		BackupDir:       "backup",
 		SecretsDir:      "secrets",
