@@ -351,8 +351,15 @@ func (d *Deps) readRuntime(ctx context.Context, inst domain.Installation, rel do
 	return out
 }
 
+// isUp reports whether a container is running, healthy or not. An unhealthy
+// one is up: it answers a probe, holds its ports and reads the secrets, and
+// counting it as down skipped the probe that would have said why (#292).
+// ServiceState.Running, which an unhealthy container fails, is the question
+// whether a service is well.
+func isUp(s ports.ServiceState) bool { return s.State == "running" }
+
 func anyRunning(services []ports.ServiceState) bool {
-	return slices.ContainsFunc(services, ports.ServiceState.Running)
+	return slices.ContainsFunc(services, isUp)
 }
 
 func (d *Deps) fillBackupStatus(ctx context.Context, out *Status, inst domain.Installation) {

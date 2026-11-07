@@ -178,6 +178,27 @@ func TestADomainChangeRendersAndRecreatesEveryRunningService(t *testing.T) {
 	assert.Equal(t, []string{"record-settings", "render-configuration", "recreate-services"}, steps)
 }
 
+// A product whose every container is unhealthy is still running, and a domain
+// change re-creates its services. Counted as nothing running, the change was
+// recorded and rendered and the containers kept the old value (#292).
+func TestADomainChangeRecreatesServicesRunningUnhealthy(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	h.Runtime.Services = map[string]ports.ServiceState{
+		"app": {Name: "app", State: "running", Health: ports.HealthUnhealthy},
+		"db":  {Name: "db", State: "running", Health: ports.HealthUnhealthy},
+	}
+	ups := len(h.Runtime.UpOptions)
+
+	result, err := setSetting(t, h, false, map[string]string{"installation.domains": "new.example"})
+	require.NoError(t, err)
+	assert.Contains(t, result.Summary, "re-created app, db")
+	require.Len(t, h.Runtime.UpOptions, ups+1, "the running services were not re-created")
+	assert.Equal(t, "new.example", h.Runtime.UpConfigs[ups].Env["DEMO_DOMAIN"])
+}
+
 // A render that fails puts the recorded domains back, so the record and the
 // files never disagree.
 func TestAFailedDomainRenderLeavesTheOldDomains(t *testing.T) {
