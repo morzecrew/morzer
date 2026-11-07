@@ -886,7 +886,7 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 }
 
 // runningServices names each service with a running container, once however
-// many replicas it has. A runtime that cannot answer is the error, which a
+// many replicas it has, an unhealthy one included: it reads the domain too. A runtime that cannot answer is the error, which a
 // domain change takes as nothing running, as `config set` does: nothing is
 // re-created.
 func (d *Deps) runningServices(
@@ -902,7 +902,7 @@ func (d *Deps) runningServices(
 	}
 	var out []string
 	for _, st := range states {
-		if st.Running() && !slices.Contains(out, st.Name) {
+		if isUp(st) && !slices.Contains(out, st.Name) {
 			out = append(out, st.Name)
 		}
 	}

@@ -180,8 +180,11 @@ func TestDoctorFailsOnAServiceRunningUnhealthy(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.Runtime.Services = map[string]ports.ServiceState{
-		"app": {Name: "app", State: "running", Health: ports.HealthUnhealthy},
-		"db":  {Name: "db", State: "running", Health: ports.HealthHealthy},
+		// Two replicas of one service, named once.
+		"app-1":  {Name: "app", Container: "app-1", State: "running", Health: ports.HealthUnhealthy},
+		"app-2":  {Name: "app", Container: "app-2", State: "running", Health: ports.HealthUnhealthy},
+		"db":     {Name: "db", State: "running", Health: ports.HealthHealthy},
+		"worker": {Name: "worker", State: "exited", ExitCode: 137},
 	}
 
 	report, err := ops.Doctor(context.Background(), h.Deps)
@@ -189,7 +192,7 @@ func TestDoctorFailsOnAServiceRunningUnhealthy(t *testing.T) {
 
 	found := findResult(t, report, "runtime.services")
 	assert.Equal(t, "fail", found.Status)
-	assert.Equal(t, "service(s) running, unhealthy: app", found.Message)
+	assert.Equal(t, "service(s) running, unhealthy: app; not running: worker (exited)", found.Message)
 	assert.Equal(t, events.CheckFail, report.Worst)
 }
 
