@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-07
+
+An operator can finish an interrupted restore with `restore --resume`, re-create
+a service with `morzer restart`, give a command this terminal with `exec -i`,
+and keep a deployment profile with `config set installation.profile`. The
+manager can say it is out of date and replace itself with `morzer self-update`,
+which checks the release's signature against a key compiled into the binary.
+Prometheus can alert on an installation, `installation remove --backup` backs
+up first, and a machine can bound the attestations it keeps. `doctor` now fails
+when a running product is unhealthy.
+
+Upgrading moves installation state from schema 15 to 17, so a 0.12.0 manager
+refuses a machine 0.13.0 has run on. Operators, scripts and authors may notice:
+
+- `update` refuses a release older than the one installed, which it only
+  warned about before; `update --allow-older` installs one on purpose, and is
+  journalled. A followed channel is refused a release older than the newest it
+  delivered.
+
+- `doctor` exits 3 when a service runs unhealthy or a release health check
+  fails, where it warned and exited 0, so an error-level notify target now
+  hears a product that is up and broken.
+
+- An `update` or `rollback` whose release does not declare the installation's
+  profile is refused before it starts, even with `--profile`. A `--profile`
+  that differs from the recorded one warns that it lasts the run.
+
+- Hooks gain `<PRODUCT>_DOMAIN`, `<PRODUCT>_DOMAINS` and `<PRODUCT>_URL`, and
+  `OPERATION_TYPE` gains `config`, for a profile change. A command health
+  check is told the operation running it, where it was always told `apply`.
+
+- A bundle declaring `compatibility.database: none` needs
+  `compatibility.min_manager_version: "0.13.0"`.
+
+- At a terminal, `init` offers no profile first, so pressing enter takes the
+  base files. `status` prints how a stopped service exited, as `exited (137)`.
+
+Under `--json`, commands gain fields and no existing field changed meaning.
+
 ### Added
 
 - **`morzer restore --resume` finishes an interrupted restore.** It continues
@@ -1161,7 +1200,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.12.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/morzecrew/morzer/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/morzecrew/morzer/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/morzecrew/morzer/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/morzecrew/morzer/compare/v0.9.0...v0.10.0
