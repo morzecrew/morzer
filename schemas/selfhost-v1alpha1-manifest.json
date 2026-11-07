@@ -261,6 +261,10 @@
                 ],
                 "type": "string"
               },
+              "restartable": {
+                "description": "restore only: its hook, cut off part way, may be run again from the start, so `restore --resume` runs it again rather than refusing. Needs compatibility.min_manager_version 0.14.0 or later.",
+                "type": "boolean"
+              },
               "service": {
                 "type": "string"
               },
@@ -292,6 +296,10 @@
                     "runtime-service"
                   ],
                   "type": "string"
+                },
+                "restartable": {
+                  "description": "restore only: its hook, cut off part way, may be run again from the start, so `restore --resume` runs it again rather than refusing. Needs compatibility.min_manager_version 0.14.0 or later.",
+                  "type": "boolean"
                 },
                 "service": {
                   "type": "string"

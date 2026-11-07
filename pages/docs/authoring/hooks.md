@@ -116,6 +116,14 @@ from the operator:
 --8<-- "testdata/bundle/hooks/restore"
 ```
 
+A restore cut off inside the hook is not resumed by default: nothing tells the
+manager how far the hook got. Declare `restartable: true` on `operations.restore`
+when running the hook again from the start puts the data where one full run
+would, because it replaces what it restores, such as a database dropped and
+loaded again, rather than adding to it. `morzer restore --resume` then runs the
+hook again. The example bundle's hook extracts over what is there, so it does
+not declare it. The field needs `min_manager_version: "0.14.0"`.
+
 ## Health checks
 
 ```yaml

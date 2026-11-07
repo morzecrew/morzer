@@ -799,7 +799,9 @@ database is a state no automatic action can repair, so a failure here exits
 the backup and the components it was started with: `--backup`, `--component`
 and `--allow-cross-installation` are refused beside it, and `--force` and
 `--confirm` are asked again. It writes the volumes again if they were being
-written, and is refused if the restore stopped at the release's restore hook or
+written, and runs the release's restore hook again if it stopped there and the
+release declares the hook [`restartable`](manifest.md#operations). It is refused
+if it stopped at a restore hook the release does not declare restartable, or if
 anything but a backup has run since. See
 [resuming an interrupted restore](../operating/backups.md#resuming-an-interrupted-restore).
 

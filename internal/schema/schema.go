@@ -278,6 +278,17 @@ func operationsSchema(generated any) any {
 		return generated
 	}
 	step := list["items"]
+	// Per name in words, as which operation may list several is.
+	if spec, ok := step.(map[string]any); ok {
+		if fields, ok := spec["properties"].(map[string]any); ok {
+			if restartable, ok := fields["restartable"].(map[string]any); ok {
+				restartable["description"] = "restore only: its hook, cut off part way, may be run " +
+					"again from the start, so `restore --resume` runs it again rather than refusing. " +
+					"Needs compatibility.min_manager_version " +
+					domain.RestartableRestoreMinManagerVersion + " or later."
+			}
+		}
+	}
 	mapping["additionalProperties"] = map[string]any{
 		"description": "One step, or, for `migrate` only, a list of steps run in order.",
 		"oneOf": []any{
