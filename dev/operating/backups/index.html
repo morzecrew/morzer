@@ -2908,7 +2908,9 @@ still holding stale state in memory is a combination that corrupts quietly.</p>
 half-restored database is a state no automatic action can repair, so a
 failure exits <a href="../../reference/exit-codes/">12</a> rather than pretending
 compensation succeeded — and keeps surfacing in <code>status</code> and <code>doctor</code> until
-you clear it with <code>morzer status --clear-intervention</code>.</p>
+you clear it with <code>morzer status --clear-intervention</code>. The services stay
+as they were rather than being started over what the restore wrote, and
+once you clear it, <code>--resume</code> continues from the step that failed.</p>
 </div>
 <h3 id="resuming-an-interrupted-restore">Resuming an interrupted restore<a class="headerlink" href="#resuming-an-interrupted-restore" title="Permanent link">&para;</a></h3>
 <p>A restore cut off by ctrl-C, a killed process or a reboot is finished with
@@ -2954,9 +2956,11 @@ another release's hook over data checked for this one, and a <code>stop</code> o
 again from the start.</p>
 <p>A restore that crashed rather than being interrupted blocks <code>apply</code> and
 <code>update</code> until it is finished or cleared, and their refusal names the same
-<code>--resume</code>. A restore whose volumes or hook failed is different: it has
-already brought the product back up and needs a person, as above, and then a
-fresh restore.</p>
+<code>--resume</code>. A restore whose volumes, hook, re-apply or smoke test failed needs
+a person, as above, and leaves the product down. Once it is cleared, <code>--resume</code>
+continues from the step that failed. A failed restore hook is restored again
+from the start, unless the release declares it restartable, and the failure
+names the command.</p>
 <h3 id="restoring-another-machines-backup">Restoring another machine's backup<a class="headerlink" href="#restoring-another-machines-backup" title="Permanent link">&para;</a></h3>
 <p>Refused by default. Backups are stamped with the installation they came from,
 and restoring one deployment's data over another is almost always a mistake.</p>
