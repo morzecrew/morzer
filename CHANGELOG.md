@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`init --release oci://…` names the product from the bundle.** It read
+  the reference as a local path, `oci:/…/manifest.yaml`, and failed unless
+  `--product` was given. It now reads the name through the release source,
+  and the bundle is downloaded once for the name and the staging both.
+
 - **A restore that fails leaves the product down, and resumes.** A failure
   writing the data started the services again over what was half-restored,
   and the restore could not be resumed. They stay stopped now, and once

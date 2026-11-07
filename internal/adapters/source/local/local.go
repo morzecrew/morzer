@@ -79,6 +79,7 @@ func (s *Source) Resolve(ctx context.Context, ref ports.Ref) (ports.ResolvedRele
 	size, _ := atomicfs.DirSize(dir)
 	return ports.ResolvedRelease{
 		Ref:     ref,
+		Name:    rel.Name(),
 		Version: rel.Version(),
 		Digest:  rel.Digest,
 		Size:    size,

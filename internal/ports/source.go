@@ -72,8 +72,12 @@ type Ref struct {
 	Digest string
 }
 
+// IsLocal reports whether the reference is a path on this machine, which is
+// what ParseRef makes of anything without a scheme.
+func (r Ref) IsLocal() bool { return r.Scheme == "file" }
+
 func (r Ref) String() string {
-	if r.Scheme == "file" {
+	if r.IsLocal() {
 		return r.Location
 	}
 	return r.Scheme + "://" + strings.TrimPrefix(r.Location, "//")
@@ -197,6 +201,10 @@ type ResolvedRelease struct {
 	Version domain.Version
 	Digest  string
 	Size    int64
+
+	// Name is the release's metadata.name, which `init` names an
+	// installation after when it is not told one (#297).
+	Name string
 }
 
 // Verifier checks a fetched bundle against an expectation before anything in

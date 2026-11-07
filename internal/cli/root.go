@@ -1000,9 +1000,20 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 
 	// One registry, indexed by reference scheme. Adding a transport is a new
 	// adapter and one more argument here; nothing above this line changes.
-	sources, err := source.NewRegistry(local.New(), https.New(), oci.New())
-	if err != nil {
-		return err
+	//
+	// Kept across a rewire: no source depends on a product's paths, and a
+	// network one holds the bundle it downloaded for this command, so
+	// `init --release oci://…` reads the product's name and stages the
+	// bundle from one download (#297).
+	sources := ports.ReleaseSource(nil)
+	if a.Deps != nil && a.Deps.Source != nil {
+		sources = a.Deps.Source
+	} else {
+		registry, err := source.NewRegistry(local.New(), https.New(), oci.New())
+		if err != nil {
+			return err
+		}
+		sources = registry
 	}
 
 	// The same shape again, for the other direction: where a backup goes

@@ -63,14 +63,11 @@ func newInitCommand(app *App) *cobra.Command {
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			if product == "" && releasePath != "" {
-				// Through ManifestAt, because `--release` names a
-				// directory *or* an archive and this used to join
-				// `manifest.yaml` onto whichever it got.
-				manifest, err := release.ManifestAt(releasePath)
+				name, err := app.releaseName(cmd.Context(), releasePath)
 				if err != nil {
 					return err
 				}
-				product = manifest.Metadata.Name
+				product = name
 			}
 			// A repair is about an installation that exists, so it
 			// finds it the way every other command does: the one this
@@ -1289,4 +1286,30 @@ func readAll(r io.Reader) ([]byte, error) {
 		return nil, domain.Usage("the value on stdin is unreasonably large")
 	}
 	return data, nil
+}
+
+// releaseName is the product name a release declares, for an `init` told none.
+//
+// A bundle on disk is read where it is: a directory or an archive, through
+// ManifestAt, because joining `manifest.yaml` onto whichever `--release` named
+// failed for an archive. A reference goes through the release source, as
+// staging does, and the source keeps what it downloaded for the staging that
+// follows. Read as a path, `oci://` became `oci:/…/manifest.yaml` (#297).
+func (a *App) releaseName(ctx context.Context, releasePath string) (string, error) {
+	ref, err := ports.ParseRef(releasePath)
+	if err != nil {
+		return "", err
+	}
+	if ref.IsLocal() {
+		manifest, err := release.ManifestAt(releasePath)
+		if err != nil {
+			return "", err
+		}
+		return manifest.Metadata.Name, nil
+	}
+	resolved, err := a.Deps.Source.Resolve(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	return resolved.Name, nil
 }
