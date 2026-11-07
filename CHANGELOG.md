@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`installation remove` takes down a project whose release no longer
+  works.** When the release's Compose files could not take the project
+  down, as when they no longer interpolate, the removal failed and could not
+  remove the installation. It now takes the project down by name, and says so.
+
 - **A restore that fails leaves the product down, and resumes.** A failure
   writing the data started the services again over what was half-restored,
   and the restore could not be resumed. They stay stopped now, and once

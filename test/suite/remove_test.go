@@ -279,6 +279,61 @@ func TestAnUnreadableReleaseIsTakenDownByName(t *testing.T) {
 	assert.Equal(t, "demo", cfg.Product)
 }
 
+// A release whose Compose files no longer interpolate cannot be taken down
+// through them, as it could not be applied, and the removal falls back to the
+// project's name, as it does for a release that cannot be read (#299).
+func TestAReleaseThatCannotBeTakenDownIsTakenDownByName(t *testing.T) {
+	h, inst := removable(t)
+	h.Runtime.Fail["Down"] = domain.RuntimeError(nil, "injected: required variable DOTDASH_IMAGE_XRAY is missing a value")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Down" {
+			delete(h.Runtime.Fail, "Down")
+		}
+	}
+
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+
+	require.Len(t, h.Runtime.DownConfigs, 1, "the fallback did not take the project down")
+	cfg := h.Runtime.DownConfigs[0]
+	assert.Empty(t, cfg.Files, "the fallback named the files that could not be taken down")
+	assert.Equal(t, "demo", cfg.Product)
+}
+
+// The fallback names the project as the release does when the release can be
+// read, which an installation recorded before its options were has no record
+// of: by the product's name it would leave a project the release renamed.
+func TestTheFallbackNamesTheProjectAsTheReleaseDoes(t *testing.T) {
+	h, inst := removable(t)
+	inst.RuntimeOptions = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	h.Runtime.Fail["Down"] = domain.RuntimeError(nil, "injected: required variable is missing a value")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Down" {
+			delete(h.Runtime.Fail, "Down")
+		}
+	}
+
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+
+	require.Len(t, h.Runtime.DownConfigs, 1)
+	assert.Equal(t, "demo", h.Runtime.DownConfigs[0].Options["project"])
+}
+
+// A runtime this manager does not drive is refused, not taken down by name
+// through the one it does: that would be another adapter's project.
+func TestARemovalOfAnotherRuntimesInstallationTakesNothingDownByName(t *testing.T) {
+	h, inst := removable(t)
+	inst.Runtime = "quadlet"
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+
+	require.Error(t, err)
+	assert.Empty(t, h.Runtime.DownConfigs, "the project was taken down through another runtime's adapter")
+}
+
 // A removal that fails part way is finished by running it again, or resuming
 // it, and the record it has not yet forgotten still asks for the same
 // confirmation (decision 5).
