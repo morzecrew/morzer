@@ -299,6 +299,41 @@ func TestAReleaseThatCannotBeTakenDownIsTakenDownByName(t *testing.T) {
 	assert.Equal(t, "demo", cfg.Product)
 }
 
+// The fallback names the project as the release does when the release can be
+// read, which an installation recorded before its options were has no record
+// of: by the product's name it would leave a project the release renamed.
+func TestTheFallbackNamesTheProjectAsTheReleaseDoes(t *testing.T) {
+	h, inst := removable(t)
+	inst.RuntimeOptions = nil
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+	h.Runtime.Fail["Down"] = domain.RuntimeError(nil, "injected: required variable is missing a value")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Down" {
+			delete(h.Runtime.Fail, "Down")
+		}
+	}
+
+	removeIt(t, h, ops.RemoveOptions{ConfirmedInstallationID: inst.ID})
+
+	require.Len(t, h.Runtime.DownConfigs, 1)
+	assert.Equal(t, "demo", h.Runtime.DownConfigs[0].Options["project"])
+}
+
+// A runtime this manager does not drive is refused, not taken down by name
+// through the one it does: that would be another adapter's project.
+func TestARemovalOfAnotherRuntimesInstallationTakesNothingDownByName(t *testing.T) {
+	h, inst := removable(t)
+	inst.Runtime = "quadlet"
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	_, err := ops.Remove(context.Background(), h.Deps, ops.RemoveOptions{
+		Options: ops.Options{Force: true}, ConfirmedInstallationID: inst.ID,
+	})
+
+	require.Error(t, err)
+	assert.Empty(t, h.Runtime.DownConfigs, "the project was taken down through another runtime's adapter")
+}
+
 // A removal that fails part way is finished by running it again, or resuming
 // it, and the record it has not yet forgotten still asks for the same
 // confirmation (decision 5).

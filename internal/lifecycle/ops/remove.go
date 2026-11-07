@@ -586,16 +586,22 @@ func stepTakeDownProject(
 		Execute: func(ctx context.Context, st *engine.State) error {
 			down := ports.DownOptions{Volumes: purge, RemoveOrphans: true, Timeout: 2 * time.Minute}
 			st.Detail("%s", how())
+			options := inst.RuntimeOptions
 			if relErr == nil {
+				// A configuration refused stays refused: it is how a
+				// runtime this manager does not drive is told apart,
+				// and by name would take down another adapter's project.
 				cfg, err := d.runtimeConfig(rel, inst, "")
-				if err == nil {
-					err = d.Runtime.Down(ctx, cfg, down)
+				if err != nil {
+					return err
 				}
-				if err == nil {
+				if err = d.Runtime.Down(ctx, cfg, down); err == nil {
 					return nil
 				}
 				st.Warn("cannot take the project down through its release's files (%s); "+
 					"taking it down by project name", domain.AsError(err).Message)
+				// The release's, which named the project.
+				options = cfg.Options
 			}
 
 			empty, err := os.MkdirTemp("", "morzer-remove-")
@@ -608,14 +614,14 @@ func stepTakeDownProject(
 			// recorded gets here without them -- and then the
 			// release that named its project is the one that cannot
 			// be read.
-			if inst.RuntimeOptions == nil {
+			if relErr != nil && options == nil {
 				st.Warn("this installation records no runtime options, so its project is "+
 					"taken to be named %s; if its release named another, that project "+
 					"is left running", inst.Product)
 			}
 			return d.Runtime.Down(ctx, ports.RuntimeConfig{
 				Product:    inst.Product,
-				Options:    inst.RuntimeOptions,
+				Options:    options,
 				WorkingDir: empty,
 			}, down)
 		},
