@@ -184,3 +184,26 @@ evidence: internal/adapters/runtime/compose/volumes.go:309-362
 action: decided
 proposal: ASSUMED — the compose runtime names the container that writes a volume after that volume, and removes one an earlier run left behind before writing; a removal that fails leaves the name taken, so the restore is refused rather than written beside it.
 ```
+
+## Resolution, 2026-11-07
+
+The author resolved the question attempt 1 left open on decision 11, as
+recommended: a failed data step leaves the product down, and the restore
+resumes once cleared, which is decision 11 as written. Built with the
+reconciliation in #296.
+
+```divergence
+decision: 11
+grade: ASSUMED
+kind: resolved
+at: 2026-11-07T20:16:28Z
+attempt: 2
+claim: attempt 1's departure is withdrawn: from the first step that writes the data on, a step passes the point of no return as it begins, so a failure leaves `stop-services` as it was instead of starting the product over a half-restored installation, and the cleared record resumes from the failed step, as decision 11 says
+evidence: internal/lifecycle/ops/backup.go:993-1000
+action: decided
+```
+
+The engine had marked the point only for a step that passed it and then
+finished. A step that passes it and fails now counts the same
+(`internal/lifecycle/engine/engine.go:356-361`), which restore's data steps
+need and nothing else did: `stepMigrate` passes it only as it returns success.

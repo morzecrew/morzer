@@ -399,7 +399,9 @@ still holding stale state in memory is a combination that corrupts quietly.
     half-restored database is a state no automatic action can repair, so a
     failure exits [12](../reference/exit-codes.md) rather than pretending
     compensation succeeded — and keeps surfacing in `status` and `doctor` until
-    you clear it with `morzer status --clear-intervention`.
+    you clear it with `morzer status --clear-intervention`. The services stay
+    as they were rather than being started over what the restore wrote, and
+    once you clear it, `--resume` continues from the step that failed.
 
 ### Resuming an interrupted restore
 
@@ -456,9 +458,11 @@ again from the start.
 
 A restore that crashed rather than being interrupted blocks `apply` and
 `update` until it is finished or cleared, and their refusal names the same
-`--resume`. A restore whose volumes or hook failed is different: it has
-already brought the product back up and needs a person, as above, and then a
-fresh restore.
+`--resume`. A restore whose volumes, hook, re-apply or smoke test failed needs
+a person, as above, and leaves the product down. Once it is cleared, `--resume`
+continues from the step that failed. A failed restore hook is restored again
+from the start, unless the release declares it restartable, and the failure
+names the command.
 
 ### Restoring another machine's backup
 
