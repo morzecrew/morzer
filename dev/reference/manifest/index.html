@@ -1938,6 +1938,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#a-release-with-no-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A release with no database
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2667,6 +2678,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code>database_schema_produces</code> is what opts a release into unattended updates
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-release-with-no-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A release with no database
       </span>
     </span>
   </a>
@@ -4011,6 +4033,11 @@ anything.</p>
 <td>What this release's migrations leave the database at. Optional; see below.</td>
 </tr>
 <tr>
+<td><code>database</code></td>
+<td><code>none</code></td>
+<td>The release keeps no database. Optional; see <a href="#a-release-with-no-database">below</a>. Needs <code>min_manager_version</code> 0.13.0.</td>
+</tr>
+<tr>
 <td><code>rollback_safe</code></td>
 <td>bool</td>
 <td>Whether this release's migrations can be undone by returning to the previous one.</td>
@@ -4055,6 +4082,22 @@ is recorded as what the database is at. It is how <code>rollback</code>, <code>u
 unattended gate learn the schema at all; without it they skip their schema
 checks, and <code>release verify</code> warns. A schema a hook reports always wins over the
 declaration.</p>
+<h3 id="a-release-with-no-database">A release with no database<a class="headerlink" href="#a-release-with-no-database" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rollback_safe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">none</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.13.0"</span>
+</code></pre></div>
+<p>A product that keeps no database has no migrations and no schema to declare.
+<code>database: none</code> says so, and the unattended gate then has no schema to ask
+about: <code>rollback_safe</code>, a required signature and the pre-update backup still
+apply. A release that declares neither <code>database: none</code> nor
+<code>database_schema_produces</code> is still never installed unattended. The manager
+does not infer "no database" from a release with no <code>migrate</code> step, because an
+application can migrate its own database when it starts.</p>
+<p><code>release verify</code> refuses <code>database: none</code> beside any <code>database_schema_*</code> field
+or an <code>operations.migrate</code> step, and below <code>min_manager_version</code> 0.13.0, the
+first manager that reads it.</p>
 <h2 id="retention">retention<a class="headerlink" href="#retention" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

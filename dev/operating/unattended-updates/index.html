@@ -2382,12 +2382,12 @@ not.</p>
 <td>The incoming manifest</td>
 </tr>
 <tr>
-<td>The release declares <code>database_schema_produces</code></td>
+<td>The release declares <code>database_schema_produces</code>, or <a href="../../reference/manifest/#a-release-with-no-database"><code>database: none</code></a></td>
 <td>The incoming manifest; <strong>absent means never</strong></td>
 </tr>
 <tr>
-<td>The installed release can read that schema</td>
-<td>Its <code>database_schema_max</code></td>
+<td>The installed release can read that schema, when the release declares one</td>
+<td>Its <code>database_schema_max</code>; a release with <code>database: none</code> has no schema to read</td>
 </tr>
 <tr>
 <td><code>policy.require_signature</code> is set, with a key</td>
@@ -2598,7 +2598,9 @@ provenance of.</p>
 <h2 id="for-vendors">For vendors<a class="headerlink" href="#for-vendors" title="Permanent link">&para;</a></h2>
 <p>Declaring <code>database_schema_produces</code> is what opts your releases into this. See
 <a href="../../reference/manifest/#database_schema_produces-is-what-opts-a-release-into-unattended-updates">the manifest reference</a>
-and <a href="../../authoring/publishing/">publishing</a>.</p>
+and <a href="../../authoring/publishing/">publishing</a>. A product that keeps no database
+declares <a href="../../reference/manifest/#a-release-with-no-database"><code>database: none</code></a>
+instead.</p>
 <p>Omitting it is a valid choice, and it costs your customers nothing: their
 machines still fetch, verify and stage your releases, and still tell them one is
 waiting.</p>
