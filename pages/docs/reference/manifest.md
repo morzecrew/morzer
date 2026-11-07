@@ -762,10 +762,10 @@ compatibility:
 A product that keeps no database has no migrations and no schema to declare.
 `database: none` says so, and the unattended gate then has no schema to ask
 about: `rollback_safe`, a required signature and the pre-update backup still
-apply. Leaving `database_schema_produces` out still means the release is never
-installed unattended. The manager does not infer "no database" from a release
-with no `migrate` step, because an application can migrate its own database
-when it starts.
+apply. A release that declares neither `database: none` nor
+`database_schema_produces` is still never installed unattended. The manager
+does not infer "no database" from a release with no `migrate` step, because an
+application can migrate its own database when it starts.
 
 `release verify` refuses `database: none` beside any `database_schema_*` field
 or an `operations.migrate` step, and below `min_manager_version` 0.13.0, the

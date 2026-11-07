@@ -39,7 +39,7 @@ An update installs itself only if **all** of these hold:
 | The compatibility check passes | The same gate your own `update` runs |
 | The release declares `rollback_safe: true` | The incoming manifest |
 | The release declares `database_schema_produces`, or [`database: none`](../reference/manifest.md#a-release-with-no-database) | The incoming manifest; **absent means never** |
-| The installed release can read that schema | Its `database_schema_max` |
+| The installed release can read that schema, when the release declares one | Its `database_schema_max`; a release with `database: none` has no schema to read |
 | `policy.require_signature` is set, with a key | This installation |
 | The pre-update backup is not disabled | This installation |
 
