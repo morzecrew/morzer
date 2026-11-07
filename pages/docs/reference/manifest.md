@@ -416,7 +416,7 @@ would never run.
 | `command` | list | For `hook`: argv, release-relative. Not allowed for `runtime-service`. |
 | `service` | string | For `runtime-service`: the Compose service to run. Not allowed for `hook`. |
 | `timeout` | duration | Time budget. Default `10m`. |
-| `restartable` | bool | For `restore` only: the hook, cut off part way, may be run again from the start, so [`restore --resume`](commands.md#restore) runs it again instead of refusing. Default `false`. Needs `min_manager_version` 0.14.0. |
+| `restartable` | bool | For `restore` only: the hook, cut off part way, may be run again from the start, so [`restore --resume`](commands.md#restore) runs it again instead of refusing. Default `false`. Declared at all, `false` included, it needs `min_manager_version` 0.14.0: an older manager refuses the key. |
 
 The two kinds are not collapsed into one field because their failure semantics
 differ: a hook runs on the host and sees the host's filesystem, a runtime
