@@ -2449,7 +2449,9 @@ contract, and everything in it is deliberately conservative.</p>
 ship inside a product's own release, so the author always knows the name, and
 namespacing keeps two products' hooks from colliding.</p>
 <p>The prefix is <code>metadata.name</code> upper-cased with <code>-</code> and <code>.</code> replaced by <code>_</code>. For
-the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is <code>DEMO_DATA_DIR</code>.</p>
+the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is <code>DEMO_DATA_DIR</code>. It
+is the release's name whatever the installation is called, so an installation
+<code>init --product</code> named otherwise reads the names its hooks were written with.</p>
 <table>
 <thead>
 <tr>
@@ -2460,7 +2462,7 @@ the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
 <tbody>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PRODUCT</code></td>
-<td>The product name itself.</td>
+<td>The installation's name, which its paths and units take. The release's name, unless <code>init --product</code> gave it another.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_INSTALLATION_ID</code></td>

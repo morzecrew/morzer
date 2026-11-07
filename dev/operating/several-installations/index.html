@@ -2330,6 +2330,9 @@ never contend for anything the manager owns.</p>
 <p>What they do share is the host: one Docker daemon, one port space, one
 filesystem, one set of CPUs. morzer does not pretend otherwise. This page is
 about making that sharing legible rather than preventing it.</p>
+<p>Two installations of one release read its variables under the release's name,
+<code>DEMO_DATA_DIR</code> in both, each with its own paths in them, so the bundle needs no
+change to run twice.</p>
 <p>The daemon's image store is shared too. Two installations of one product, or
 two products built on one base image, hold the same images under the same
 names. <code>release prune</code> in one installation removes a pruned release's images

@@ -2194,9 +2194,11 @@ names. This is the complete list of all three.</p>
 </tr>
 </tbody>
 </table>
-<p><code>&lt;PRODUCT&gt;</code> is your product's own name, upper-cased, with <code>-</code> and <code>.</code> becoming
-<code>_</code>. For the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
-<code>DEMO_DATA_DIR</code>.</p>
+<p><code>&lt;PRODUCT&gt;</code> is your release's <code>metadata.name</code>, upper-cased, with <code>-</code> and <code>.</code>
+becoming <code>_</code>. For the example bundle, whose product is <code>demo</code>, <code>DATA_DIR</code> is
+<code>DEMO_DATA_DIR</code>. It is the release's name whatever the installation is called:
+a second installation of the same release, named <code>sandbox</code>, still reads
+<code>DEMO_DATA_DIR</code>, while its paths are <code>/var/lib/sandbox</code> and so on.</p>
 <p>All three are contracts. A rename breaks every bundle in the field, so
 <code>just docs-check</code> fails the build when a name exists in the code and not on this
 page — and when a name is on this page and not in the code.</p>
