@@ -38,7 +38,17 @@ func lastUp(t *testing.T, h *harness) (ports.RuntimeConfig, ports.UpOptions) {
 // patchedUpgradeSource is the 1.3.0 fixture with one edit to its manifest.
 func patchedUpgradeSource(t *testing.T, h *harness, from, to string) string {
 	t.Helper()
-	src := stageUpgradeSource(t, h)
+	return patchManifest(t, stageUpgradeSource(t, h), from, to)
+}
+
+// withExtraProfile declares a profile, extra, that 1.2.0 does not.
+const (
+	externalDBProfile = "      external-db: [compose/compose.external-db.yaml]\n"
+	withExtraProfile  = externalDBProfile + "      extra: [compose/compose.external-db.yaml]\n"
+)
+
+func patchManifest(t *testing.T, src, from, to string) string {
+	t.Helper()
 	path := filepath.Join(src, "manifest.yaml")
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -287,9 +297,7 @@ func TestARollbackToAReleaseWithoutTheProfileIsRefused(t *testing.T) {
 	h.install()
 	h.setHookEnv()
 	applyBaseline(t, h)
-	src := patchedUpgradeSource(t, h,
-		"      external-db: [compose/compose.external-db.yaml]\n",
-		"      external-db: [compose/compose.external-db.yaml]\n      extra: [compose/compose.external-db.yaml]\n")
+	src := patchedUpgradeSource(t, h, externalDBProfile, withExtraProfile)
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
 	require.NoError(t, err)
 	_, err = setSetting(t, h, false, map[string]string{"installation.profile": "extra"})
@@ -303,3 +311,17 @@ func TestARollbackToAReleaseWithoutTheProfileIsRefused(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.3.0", current.Version.String())
 }
+
+// A profile change a fatal preflight check refuses leaves the old profile
+// recorded: the checks run after the record, and an aborted step undoes nothing.
+func TestAProfileChangeRefusedAtPreflightKeepsTheOldProfile(t *testing.T) {
+	h := preflightHarness(t, kernelChecks(true))
+	h.kernel(true)
+	applyBaseline(t, h)
+	h.kernel(false)
+
+	_, err := setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
+	require.Error(t, err)
+	assert.Equal(t, "embedded", installation(t, h).Profile, "a refused profile change stayed recorded")
+}
+
