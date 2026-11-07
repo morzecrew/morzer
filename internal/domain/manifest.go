@@ -577,9 +577,16 @@ type OperationSpec struct {
 	// part way, may be run again from the start: it replaces what it
 	// restores rather than adding to it. `restore --resume` then runs it
 	// again instead of refusing. `restore` alone may declare it (RFC 0051
-	// decisions 1 and 12); the default, false, changes nothing anywhere.
-	Restartable bool `yaml:"restartable" json:"restartable,omitempty"`
+	// decisions 1 and 12).
+	//
+	// A pointer, because declared is not the same as absent: a manager
+	// before RestartableRestoreMinManagerVersion refuses the key whatever
+	// it holds, so `restartable: false` needs the floor too.
+	Restartable *bool `yaml:"restartable" json:"restartable,omitempty"`
 }
+
+// IsRestartable is whether the step declares itself restartable.
+func (o OperationSpec) IsRestartable() bool { return o.Restartable != nil && *o.Restartable }
 
 // OperationSteps is one named operation: a single step, or, for `migrate`
 // alone, several run in order.
@@ -1434,20 +1441,19 @@ func (m *Manifest) Validate() error {
 				v.add(field+".kind", "must be %q; only %s runs a %q",
 					OperationKindHook, OpMigrate, OperationKindRuntimeService)
 			}
-			// Only true is refused: false is the default, and reads the
-			// same as leaving the field out.
-			if op.Restartable && name != OpRestore {
+			// Either value: an older manager refuses the key itself.
+			if op.Restartable != nil && name != OpRestore {
 				v.add(field+".restartable", "may be declared only on %s, whose hook a "+
 					"`restore --resume` runs again", OpRestore)
 			}
 		}
 	}
 	if minimum := MustParseVersion(RestartableRestoreMinManagerVersion); slices.ContainsFunc(
-		m.Operations[OpRestore], func(op OperationSpec) bool { return op.Restartable }) &&
+		m.Operations[OpRestore], func(op OperationSpec) bool { return op.Restartable != nil }) &&
 		m.Compatibility.MinManagerVersion.LessThan(minimum) {
 		v.add("compatibility.min_manager_version",
-			"must be at least %s, because operations.%s declares restartable and an older "+
-				"manager cannot read it", minimum, OpRestore)
+			"must be at least %s, because operations.%s declares restartable, which an older "+
+				"manager refuses as an unknown field", minimum, OpRestore)
 	}
 	// A list is what an older manager cannot decode, which is the point
 	// (OperationSteps), and the preamble pass turns that into "this needs

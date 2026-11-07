@@ -1098,7 +1098,7 @@ func stepRunRestore(
 		ID:          "restore-data",
 		Description: "restore database and files",
 		Idempotent:  false,
-		Restartable: hook.Restartable,
+		Restartable: hook.IsRestartable(),
 		OnFailure:   engine.Compensate,
 		// Once the hook has begun overwriting a database, no automatic
 		// action can put back what was there.
