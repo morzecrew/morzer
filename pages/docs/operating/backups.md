@@ -427,7 +427,9 @@ What runs again depends on where the restore stopped:
 - **At the release's restore hook**, the resume is refused. Its step
   overwrites a database through the release's own hook, no automatic check
   can tell how far that got, and guessing is the one thing this tool will not
-  do. Restore again from the start.
+  do. Restore again from the start. The exception is a release that declares
+  its hook [`restartable`](../reference/manifest.md#operations): the resume runs
+  the hook again.
 
 Retention keeps the backup an unfinished restore reads, so a backup taken in
 the meantime cannot prune it.
