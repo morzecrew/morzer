@@ -1,7 +1,12 @@
 # RFC 0051 — Resuming an interrupted restore
 
-- **Status:** 📝 Draft — proposed 2026-11-06, and ruled by the author
-  2026-11-06: §11's `OPEN` rows as recommended. Ready to build.
+- **Status:** ✅ Complete — proposed 2026-11-06, and ruled by the author
+  2026-11-06: §11's `OPEN` rows as recommended. **Built 2026-11-06 and
+  2026-11-07**: P0 in #284, P1 in #285 and P2 in #295. The entries in
+  [logs/resume-keeps-credit.md](../logs/resume-keeps-credit.md),
+  [logs/restore-resume.md](../logs/restore-resume.md) and
+  [logs/restore-restartable.md](../logs/restore-restartable.md) are decisions
+  16–22, accepted by the author 2026-11-07.
 - **Scope:** `morzer restore --resume`: continuing a restore that was
   interrupted (Ctrl-C, a killed process, a reboot) or that needed
   intervention and was cleared, from its first incomplete step, without
@@ -358,6 +363,13 @@ None. The author ruled decisions 1–3 on 2026-11-06.
 | 13 | `ASSUMED` | A resumed restore attests as a resumed `apply` does, under the interrupted run's id, so its statement replaces the interrupted run's. It notifies as a resumed `apply` does too, under the id of the invocation (`ops.go:534`), which is not the journal's. |
 | 14 | `ASSUMED` | A fresh `restore` still runs over an unfinished one, as today; it starts a new record, and the old one is left for `--clear-intervention`. |
 | 15 | `ASSUMED` | *(2026-11-06, from the review)* A resume keeps the credit of every completed step: `resumePoint` carries forward every completed step's record, not only those before the resume point, and the run skips a completed step that is not idempotent wherever it sits. A fix to every resumable operation, landed before P1. |
+| 16 | `ASSUMED` | *(2026-11-06, from the build; accepted 2026-11-07)* **Refines decision 15.** A resume skips a completed step unless it is idempotent both in the code and in the journalled record, as `resumePoint` already asks of the step it resumes. A step the manager that started the operation recorded as unsafe to repeat is kept as done, whatever a newer manager says of it. See [logs/resume-keeps-credit.md](../logs/resume-keeps-credit.md) (decision 15, attempt 2, 07:58). |
+| 17 | `ASSUMED` | *(2026-11-06, from the build; accepted 2026-11-07)* **Refines decision 10.** The gate names `morzer restore --resume --force --confirm <installation-id>` only when the journal calls the step the restore stopped at safe to start again, or that step never started. Otherwise it keeps the remedy it gave before. See [logs/restore-resume.md](../logs/restore-resume.md) (decision 10, attempt 1, 09:26). |
+| 18 | `ASSUMED` | *(2026-11-06, from the build; accepted 2026-11-07)* `ports.RetentionPolicy` gains `KeepID`, a backup the local engine never prunes, so retention keeps the backup an unfinished restore reads. The ops layer sets it from the unfinished restore; a target's pruning leaves it unset, since a restore reads only this machine's backups. See [logs/restore-resume.md](../logs/restore-resume.md) (unlisted, attempt 1, 09:27, `KeepID`). |
+| 19 | `ASSUMED` | *(2026-11-06, from the build; accepted 2026-11-07)* A restore that a ctrl-C stops between the volumes and the hook is journalled as interrupted at the hook, as the engine journals any operation stopped between steps, and, unless the release declares its hook restartable (decision 22), its resume is refused: refusing is the safe side. The hint says the restore stopped at the hook rather than inside it. Telling the two apart belongs to the engine, for every operation, and not to this RFC. See [logs/restore-resume.md](../logs/restore-resume.md) (unlisted, attempt 1, 09:28, ctrl-C between steps). |
+| 20 | `ASSUMED` | *(2026-11-06, from the build; accepted 2026-11-07)* **Refines decision 11.** A restore that crashed resumes once cleared. One whose data step failed has already compensated and brought the product back up, so it is restored again from the start. Whether a failed data step should instead leave the product down, so that its resume can continue, is left open for the author. See [logs/restore-resume.md](../logs/restore-resume.md) (decision 11, attempt 1, 10:45). |
+| 21 | `ASSUMED` | *(2026-11-06, from the review; accepted 2026-11-07)* The Compose runtime names the container that writes a volume after that volume, `morzer-restore-<volume>`, and removes one an earlier run left behind before writing. A removal that fails leaves the name taken, so the restore is refused rather than written beside a writer a killed manager left running. See [logs/restore-resume.md](../logs/restore-resume.md) (unlisted, attempt 2, 12:35, the helper's name). |
+| 22 | `ASSUMED` | *(2026-11-07, from the build and the review; accepted 2026-11-07)* **Refines decision 12.** The floor is 0.14.0, the next release, since 0.13.0 shipped first. The field is told from its absence: it is refused on any operation but `restore` whatever it holds, and declared on `restore`, `false` included, it needs the floor, because an older manager's strict decoder refuses the key. The build's first reading, refusing only `true`, was withdrawn in review. See [logs/restore-restartable.md](../logs/restore-restartable.md) (decision 12, attempt 1, 19:02; attempt 2, 19:30). |
 
 ## 12. Phasing
 
