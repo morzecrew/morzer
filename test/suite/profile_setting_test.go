@@ -341,3 +341,39 @@ func TestAProfileChangeTheRuntimeCannotAnswerForIsRefused(t *testing.T) {
 	assert.Contains(t, renderedApplication(t, h), "profile: embedded")
 }
 
+// A profile change that lands while an apply, update or rollback waits for the
+// lock refuses it: its steps were built for the profile it read before.
+func TestAProfileChangedWhileWaitingForTheLockRefuses(t *testing.T) {
+	ctx := context.Background()
+	for name, run := range map[string]func(h *harness) error{
+		"apply": func(h *harness) error { _, err := ops.Apply(ctx, h.Deps, ops.Options{}); return err },
+		"update": func(h *harness) error {
+			_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+			return err
+		},
+		"rollback": func(h *harness) error { _, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{}); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.install()
+			h.setHookEnv()
+			applyBaseline(t, h)
+			if name == "rollback" {
+				_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+				require.NoError(t, err)
+			}
+			h.Locker.BeforeAcquire = func() {
+				h.Locker.BeforeAcquire = nil
+				inst := installation(t, h)
+				inst.Profile = "external-db"
+				require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+			}
+
+			err := run(h)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "profile changed while waiting for the deployment lock, "+
+				"from the profile embedded to the profile external-db")
+		})
+	}
+}
+
