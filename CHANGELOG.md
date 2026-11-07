@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   works.** When the release's Compose files could not take the project
   down, as when they no longer interpolate, the removal failed and could not
   remove the installation. It now takes the project down by name, and says so.
+
 - **A first `apply` that fails takes down the containers it started,**
   whether `up` itself failed or a later step such as the health check did.
   Left, they restarted over the rendered files the rollback removed, and
