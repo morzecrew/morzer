@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -450,4 +452,35 @@ func TestTheWizardDoesNotAskTheProfileOnARepair(t *testing.T) {
 
 	assert.Empty(t, got.Profile)
 	assert.NotContains(t, shown.String(), "Deployment profile")
+}
+
+// resolvingSource is a release source that answers Resolve alone, with the
+// manifest the test hands it. Embedding the interface leaves every other
+// method nil, so a test that reached one would panic rather than pass.
+type resolvingSource struct {
+	ports.ReleaseSource
+	manifest domain.Manifest
+}
+
+func (s resolvingSource) Resolve(context.Context, ports.Ref) (ports.ResolvedRelease, error) {
+	return ports.ResolvedRelease{Manifest: s.manifest}, nil
+}
+
+// TestTheWizardOffersTheProfilesOfARegistryReference, read through the release
+// source: read as a path, a reference offered none, and the release was staged
+// with its base files (#297).
+func TestTheWizardOffersTheProfilesOfARegistryReference(t *testing.T) {
+	app, shown := wizardApp(t, "2", "", "3")
+	app.Deps.Source = resolvingSource{manifest: domain.Manifest{Runtimes: domain.Runtimes{"compose": {
+		Files:    []string{"compose.yaml"},
+		Profiles: map[string][]string{"xdns": {"xdns.yaml"}},
+	}}}}
+
+	got, err := runInitWizard(context.Background(), app, ops.InitOptions{
+		Product: "dotdash", ReleasePath: "oci://registry.example/dotdash:stable",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "xdns", got.Profile)
+	assert.Contains(t, shown.String(), "Deployment profile")
 }

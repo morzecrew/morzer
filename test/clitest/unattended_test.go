@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	gominisign "github.com/jedisct1/go-minisign"
@@ -78,6 +79,12 @@ func TestAnUnattendedTickTakesThePreUpdateBackup(t *testing.T) {
 // layer. A registry that answered more would be testing itself.
 func serveChannel(t *testing.T, archivePath string) string {
 	t.Helper()
+	return serveChannelCounting(t, archivePath, nil)
+}
+
+// serveChannelCounting is serveChannel, counting each download of the bundle.
+func serveChannelCounting(t *testing.T, archivePath string, downloads *atomic.Int32) string {
+	t.Helper()
 
 	archive, err := os.ReadFile(archivePath)
 	if err != nil {
@@ -121,6 +128,9 @@ func serveChannel(t *testing.T, archivePath string) string {
 			if !ok {
 				http.NotFound(w, req)
 				return
+			}
+			if downloads != nil && len(blob) == len(archive) {
+				downloads.Add(1)
 			}
 			w.Header().Set("Content-Length", strconv.Itoa(len(blob)))
 			_, _ = w.Write(blob)

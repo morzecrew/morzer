@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`init --release oci://…` names the product from the bundle.** It read
+  the reference as a local path, `oci:/…/manifest.yaml`, and failed unless
+  `--product` was given. It now reads the name through the release source,
+  and the bundle is downloaded once for the name and the staging both.
 - **`installation remove` takes down a project whose release no longer
   works.** When the release's Compose files could not take the project
   down, as when they no longer interpolate, the removal failed and could not
