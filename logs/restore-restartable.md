@@ -64,3 +64,45 @@ evidence: internal/domain/manifest.go:570-575
 action: departed
 proposal: ASSUMED — refines decision 12. `release verify` refuses `restartable: true` on any operation but `restore`; `false` is the default and is accepted everywhere, as it changes nothing. The floor applies only to `true`.
 ```
+
+## Build, 2026-11-07
+
+0.13.0 was released before this was built, with #286, #288, #289 and #292
+taken first. Decision 12 named 0.13.0 as the floor on the assumption that it
+would be the next release, and it no longer is.
+
+```divergence
+decision: 12
+grade: ASSUMED
+class: discovery
+at: 2026-11-07T19:02:25Z
+attempt: 1
+claim: decision 12 sets the floor at 0.13.0 on the assumption that 0.13.0 is the next release, and 0.13.0 shipped without `restartable`, so a release declaring it at 0.13.0 would reach a manager that refuses the field
+evidence: `git ls-remote --tags origin v0.13.0` prints `9c2bbce5d27730f8b9db4d1e3159ad6aa87b767b	refs/tags/v0.13.0`
+action: departed
+proposal: ASSUMED — refines decision 12. `RestartableRestoreMinManagerVersion` is 0.14.0, the next release.
+```
+
+The rest of the plan was built as written: the field on `OperationSpec`, its
+refusals in `Validate`, the schema text, and `stepRunRestore` reading the
+release (`internal/lifecycle/ops/backup.go`). The engine, the gate and the
+hint needed no change, as the plan said: they go by what the journal records.
+
+## Self-audit, 2026-11-07
+
+Scope: the branch against `9c2bbce5`, three commits, code, tests, the
+regenerated schema, docs and the changelog.
+
+- **Sabotage:** four mutations, each run against the test written for it,
+  and each went red:
+  - the step ignoring the declaration;
+  - the step restartable whatever the release says, which P1's refusal test
+    catches;
+  - `restartable` accepted on another operation;
+  - the floor left out.
+- **Residue:**
+  - The acceptance stack's bundle does not declare it, and its resume step cuts
+    the restore off while it writes volumes, so real Docker does not run a
+    resume through a restartable hook. The suite does.
+  - Whether a hook really is restartable is the vendor's word, which the
+    manager cannot check. The docs say what the promise means.
