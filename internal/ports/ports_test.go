@@ -386,6 +386,34 @@ func TestHookEnvVarsOmitsWhatIsNotSet(t *testing.T) {
 	}
 }
 
+// TestHookEnvVarsCarriesTheDomains as Compose and the templates do: the
+// canonical first, every one, and the public URL, and none of them with no
+// domain. A migration service keeps RFC 0018 decision 18's set.
+func TestHookEnvVarsCarriesTheDomains(t *testing.T) {
+	env := ports.HookEnv{
+		Product: "demo", Domains: []string{"a.test", "b.test"}, URL: "https://a.test",
+	}
+	vars := ports.HookEnvVars(env)
+	for name, want := range map[string]string{
+		"DEMO_DOMAIN": "a.test", "DEMO_DOMAINS": "a.test,b.test", "DEMO_URL": "https://a.test",
+	} {
+		if vars[name] != want {
+			t.Errorf("%s = %q, want %q", name, vars[name], want)
+		}
+	}
+
+	service := ports.ServiceEnvVars(env)
+	none := ports.HookEnvVars(ports.HookEnv{Product: "demo"})
+	for _, name := range []string{"DEMO_DOMAIN", "DEMO_DOMAINS", "DEMO_URL"} {
+		if _, ok := none[name]; ok {
+			t.Errorf("%s is set for an installation with no domain", name)
+		}
+		if _, ok := service[name]; ok {
+			t.Errorf("%s reached a migration service", name)
+		}
+	}
+}
+
 // The two service-state predicates are conservative in opposite directions, and
 // that is the point rather than an inconsistency.
 //

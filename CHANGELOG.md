@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `apply`, the boot unit and unattended updates keep it. Its hooks see
   `OPERATION_TYPE` `config`.
 
+- **Hooks are told the domains.** `<PRODUCT>_DOMAIN`, `<PRODUCT>_DOMAINS`
+  and `<PRODUCT>_URL` carry what Compose files and templates already get, so
+  a smoke test can check the product answers on its public name. None is set
+  for an installation with no domain.
+
 - **A release can declare it keeps no database.** `compatibility.database:
   none` lets one with no migrations install unattended without declaring a
   schema it does not have. It needs `min_manager_version` 0.13.0.
