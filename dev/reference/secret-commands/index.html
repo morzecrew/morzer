@@ -2533,6 +2533,7 @@ outage.</p>
 <h2 id="secret-edit">secret edit<a class="headerlink" href="#secret-edit" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>edit<span class="w">             </span><span class="c1"># every secret</span>
 morzer<span class="w"> </span>secret<span class="w"> </span>edit<span class="w"> </span>db_password<span class="w"> </span>session_key
+morzer<span class="w"> </span>secret<span class="w"> </span>edit<span class="w"> </span>vless_clients<span class="w">   </span><span class="c1"># one secret, as its value alone</span>
 </code></pre></div>
 <p>Decrypts into a temporary file on tmpfs, opens <code>$VISUAL</code> or <code>$EDITOR</code>, and
 re-encrypts what changed. Rotating a related group of credentials is one logical
@@ -2547,6 +2548,13 @@ add one. Leaving without changes changes nothing, and <strong>only the services 
 declare a dependency on a secret you changed are restarted</strong>.</p>
 <p>The encryption metadata is never in the file, so the envelope cannot be
 corrupted by editing it.</p>
+<p><strong>One name opens that secret's value alone,</strong> as plain text, byte for byte,
+with no <abbr title="YAML Ain't Markup Language">YAML</abbr> around it. A multi-line value, such as a certificate or a list of
+clients, is edited line by line as it is stored, where in the mapping it would
+need a <code>|</code> block and a second line typed under the first would fold into it.
+What the editor leaves is saved, except for one thing: a value that had no
+newline at its end does not gain the one most editors add when they save.
+Emptying the file changes nothing; <code>morzer secret remove</code> removes a secret.</p>
 <h3 id="where-the-plaintext-lives-and-for-how-long">Where the plaintext lives, and for how long<a class="headerlink" href="#where-the-plaintext-lives-and-for-how-long" title="Permanent link">&para;</a></h3>
 <p>This is the one place in the manager where a decrypted secret is written to a
 filesystem. What bounds it:</p>
