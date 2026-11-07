@@ -3593,6 +3593,11 @@ would never run.</p>
 <td>duration</td>
 <td>Time budget. Default <code>10m</code>.</td>
 </tr>
+<tr>
+<td><code>restartable</code></td>
+<td>bool</td>
+<td>For <code>restore</code> only: the hook, cut off part way, may be run again from the start, so <a href="../commands/#restore"><code>restore --resume</code></a> runs it again instead of refusing. Default <code>false</code>. Declared at all, <code>false</code> included, it needs <code>min_manager_version</code> 0.14.0: an older manager refuses the key.</td>
+</tr>
 </tbody>
 </table>
 <p>The two kinds are not collapsed into one field because their failure semantics

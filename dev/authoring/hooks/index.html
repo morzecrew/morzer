@@ -2460,6 +2460,13 @@ mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span>
 
 <span class="nb">printf</span><span class="w"> </span><span class="s1">'{"message":"restore complete"}'</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="s2">"</span><span class="si">${</span><span class="nv">DEMO_RESULT_FD</span><span class="k">:-</span><span class="nv">3</span><span class="si">}</span><span class="s2">"</span>
 </code></pre></div>
+<p>A restore cut off inside the hook is not resumed by default: nothing tells the
+manager how far the hook got. Declare <code>restartable: true</code> on <code>operations.restore</code>
+when running the hook again from the start puts the data where one full run
+would, because it replaces what it restores, such as a database dropped and
+loaded again, rather than adding to it. <code>morzer restore --resume</code> then runs the
+hook again. The example bundle's hook extracts over what is there, so it does
+not declare it. The field needs <code>min_manager_version: "0.14.0"</code>.</p>
 <h2 id="health-checks">Health checks<a class="headerlink" href="#health-checks" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nt">health</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">checks</span><span class="p">:</span>

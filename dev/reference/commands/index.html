@@ -4111,7 +4111,9 @@ database is a state no automatic action can repair, so a failure here exits
 the backup and the components it was started with: <code>--backup</code>, <code>--component</code>
 and <code>--allow-cross-installation</code> are refused beside it, and <code>--force</code> and
 <code>--confirm</code> are asked again. It writes the volumes again if they were being
-written, and is refused if the restore stopped at the release's restore hook or
+written, and runs the release's restore hook again if it stopped there and the
+release declares the hook <a href="../manifest/#operations"><code>restartable</code></a>. It is refused
+if it stopped at a restore hook the release does not declare restartable, or if
 anything but a backup has run since. See
 <a href="../../operating/backups/#resuming-an-interrupted-restore">resuming an interrupted restore</a>.</p>
 <h2 id="notify">notify<a class="headerlink" href="#notify" title="Permanent link">&para;</a></h2>
