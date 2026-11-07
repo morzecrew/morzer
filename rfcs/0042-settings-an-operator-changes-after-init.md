@@ -3,7 +3,11 @@
 - **Status:** ✅ Complete — proposed, and ruled by the author 2026-10-31: §11's
   `OPEN` rows as recommended, except that a domain change re-creates every
   running service (decision 4). **Built 2026-10-31** as P1 in #233. The five
-  entries the build wrote in [logs/settings-after-init.md](../logs/settings-after-init.md) are decisions 10–14
+  entries the build wrote in [logs/settings-after-init.md](../logs/settings-after-init.md) are decisions 10–14.
+  Reopened by the author 2026-11-07 for the profile (#286): decisions 15–19,
+  **built 2026-11-07** in #287. The entries in
+  [logs/installation-profile.md](../logs/installation-profile.md) are decisions
+  20–27, accepted by the author 2026-11-07.
 - **Scope:** Three values `init` fixes that nothing changes afterwards: whether
   a release signature is required, the installation's domains, and the release
   and backup retention counts. Each becomes changeable on a running
@@ -293,6 +297,14 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 17 | `ASSUMED` | *(2026-11-07, ruled by the author)* An `update` or `rollback` to a release that does not declare the recorded profile is refused before any step, whatever `--profile` says, and names `config set installation.profile` as the way through. Falling back to the base files would be the silent change of topology the manifest rules out. A profile renamed between releases then takes two changes. Alternative: a `--profile` the target declares carries the update through and becomes the recorded profile. |
 | 18 | `ASSUMED` | *(2026-11-07, ruled by the author in #286)* A `--profile` that differs from the recorded profile warns that it lasts the run and names the `config set` command that keeps it. It is never recorded: rehearsing another topology once is what the flag is for. |
 | 19 | `ASSUMED` | *(2026-11-07, ruled by the author in #286)* The `init` wizard offers no profile, the base files, first and as the default. A profile can be an optional extra that opens a host port, and the first option is the one enter chooses. |
+| 20 | `ASSUMED` | *(2026-11-07, from the build; accepted 2026-11-07)* **Refines decision 16.** A profile change's converge re-creates every container, and so does its restore point when a failure brings the old profile's services back: a service that reads `.Profile` through a rendered file bind-mounted into it keeps the old contents across a plain `up` (#239). A plain `apply` and `update` are unchanged. See [logs/installation-profile.md](../logs/installation-profile.md) (unlisted, attempt 1, 00:45, the forced re-create). |
+| 21 | `ASSUMED` | *(2026-11-07, from the build; accepted 2026-11-07)* **Refines decision 15.** With no release installed, there is nothing to check a name against: a named profile is refused and `unset` is accepted. See [logs/installation-profile.md](../logs/installation-profile.md) (unlisted, attempt 1, 00:45, no release installed). |
+| 22 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 16.** In a profile change, apply's steps that abort before anything is deployed, `preflight` and `load-secrets`, compensate instead, which puts the recorded profile back. `record-state` still aborts: it fails with the new profile's services up under the new profile's record. See [logs/installation-profile.md](../logs/installation-profile.md) (unlisted, attempt 1, 01:33, preflight). |
+| 23 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 16.** A profile change is refused when the runtime cannot say what is running, since counted as nothing running it would record a topology it never deployed. A domain change keeps taking that as nothing running (decision 9). See [logs/installation-profile.md](../logs/installation-profile.md) (unlisted, attempt 1, 01:33, status). |
+| 24 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 17.** Under the lock, `apply`, `update` and `rollback` refuse when the recorded profile is no longer the one they read, as they refuse a release that moved: their steps were built for the profile read before the lock. See [logs/installation-profile.md](../logs/installation-profile.md) (decision 17, attempt 1, 01:33). |
+| 25 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 18.** A failed update's restore brings the previous release back under the recorded profile, whatever `--profile` the update ran with. The previous release need not declare the override, and restoring under it left the update needing a person. See [logs/installation-profile.md](../logs/installation-profile.md) (decision 18, attempt 1, 01:33). |
+| 26 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 19.** The wizard does not ask for the profile on `init --repair`, where an empty answer keeps the recorded one and "none" would be untrue; `config set installation.profile` changes it. See [logs/installation-profile.md](../logs/installation-profile.md) (decision 19, attempt 1, 01:33). |
+| 27 | `ASSUMED` | *(2026-11-07, from the review; accepted 2026-11-07)* **Refines decision 16.** `config` joins `OPERATION_TYPE`'s documented values, as `start` and `restart` did when they began running hooks: a profile change's hooks see the operation that runs them, as the journal records it, rather than `apply`. See [logs/installation-profile.md](../logs/installation-profile.md) (unlisted, attempt 1, 01:33, the hook ABI). |
 
 ## 12. Phasing
 

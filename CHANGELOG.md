@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resumes and runs it again, where `restore --resume` refused. It needs
   `min_manager_version` 0.14.0.
 
+### Fixed
+
+- **A restore that fails leaves the product down, and resumes.** A failure
+  writing the data started the services again over what was half-restored,
+  and the restore could not be resumed. They stay stopped now, and once
+  cleared, `restore --resume` continues from the failed step.
+
 ## [0.13.0] - 2026-11-07
 
 An operator can finish an interrupted restore with `restore --resume`, re-create
