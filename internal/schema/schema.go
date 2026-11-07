@@ -384,6 +384,14 @@ var scalarSchemas = map[reflect.Type]map[string]any{
 			"not this host's. Needs compatibility.min_manager_version " +
 			domain.SecretOwnerMinManagerVersion + " or later.",
 	},
+	reflect.TypeOf(domain.DatabaseKind("")): {
+		"type": "string",
+		"enum": []string{string(domain.DatabaseNone)},
+		"description": "none: the release keeps no database, so it has no migrate step and no " +
+			"database_schema_* field, and the unattended gate has no schema to ask of it. Absent " +
+			"says nothing. Needs compatibility.min_manager_version " +
+			domain.NoDatabaseMinManagerVersion + " or later.",
+	},
 	reflect.TypeOf(domain.FileMode(0)): {
 		"type":        "string",
 		"pattern":     `^0?[0-7]{3,4}$`,

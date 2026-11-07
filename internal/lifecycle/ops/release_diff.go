@@ -157,6 +157,9 @@ func compatibility(c domain.Compatibility) map[string]string {
 	if !c.MinManagerVersion.IsZero() {
 		out["min_manager_version"] = c.MinManagerVersion.String()
 	}
+	if c.Database != "" {
+		out["database"] = string(c.Database)
+	}
 	for name, n := range map[string]int{
 		"database_schema_min":      c.DatabaseSchemaMin,
 		"database_schema_max":      c.DatabaseSchemaMax,

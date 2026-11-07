@@ -596,6 +596,9 @@ func (a *App) printUpdatePreview(result ops.Result) {
 		case rb.SchemaChecked:
 			fmt.Fprintf(w, "\nrollback: once %s is installed, `morzer rollback` returns to %s without a restore, "+
 				"as far as the releases declare\n", to, rb.To)
+		case rb.NoDatabase:
+			fmt.Fprintf(w, "\nrollback: %s declares rollback_safe: true and keeps no database, so "+
+				"`morzer rollback` returns to %s without a restore\n", to, rb.To)
 		default:
 			fmt.Fprintf(w, "\nrollback: %s declares rollback_safe: true; the database schema is not checked, "+
 				"since the releases do not declare the schema %s produces and %s reads\n", to, to, rb.To)

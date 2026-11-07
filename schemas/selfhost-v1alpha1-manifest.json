@@ -54,6 +54,13 @@
     "compatibility": {
       "additionalProperties": false,
       "properties": {
+        "database": {
+          "description": "none: the release keeps no database, so it has no migrate step and no database_schema_* field, and the unattended gate has no schema to ask of it. Absent says nothing. Needs compatibility.min_manager_version 0.13.0 or later.",
+          "enum": [
+            "none"
+          ],
+          "type": "string"
+        },
         "database_schema_max": {
           "type": "integer"
         },
