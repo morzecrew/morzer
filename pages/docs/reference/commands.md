@@ -134,13 +134,13 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--require-signature` | Refuse any release that is not signed by one of those keys. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
-| `--repair` | Restore missing directories on an existing installation. It restores a layout; `morzer config set installation.domains` is how the domains change afterwards. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
+| `--repair` | Restore missing directories on an existing installation. It restores a layout; `morzer config set installation.domains` and `installation.profile` are how the domains and the profile change afterwards. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
 | `--mode` | What this machine is for: `dev` for a sandbox, or production (the default). Fixed at creation and never changeable — see [unattended updates](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
 
 ### The interactive first run
 
 At a terminal, with something required still missing, `init` asks for it —
-product name, deployment profile (offering what the release declares), domains,
+product name, deployment profile (offering none first, then what the release declares), domains,
 and the recovery key, with an option to generate one on the spot.
 
 It is a front-end over the flags and never a second path. It fills the same
@@ -188,7 +188,7 @@ rather than repeating the work.
 
 | Flag | Meaning |
 | --- | --- |
-| `--profile` | Override the installation's deployment profile. |
+| `--profile` | Override the installation's deployment profile for this run; [`config set installation.profile`](parameters.md#changing-the-profile) keeps one. |
 | `--startup` | Boot-time mode: skip pulls when images are local, skip migrations when the schema is current. |
 
 `--startup` is what the systemd unit uses. It exists so a machine rebooting
@@ -211,7 +211,7 @@ morzer update --to 1.3.0
 | `--to` | Install a version already in the release store, instead of a bundle path. |
 | `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
-| `--profile` | Override the installation's deployment profile. |
+| `--profile` | Override the installation's deployment profile for this run; [`config set installation.profile`](parameters.md#changing-the-profile) keeps one. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
 | `--generate-secrets` | Generate the secrets the new release adds with a `generator`. Default `true`; `false` is recorded in the journal, and `--resume` keeps it. |
 | `--check` | Report whether a newer release exists, without installing anything. |

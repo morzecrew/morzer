@@ -98,6 +98,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 	if err := d.refuseRuntimeOptionChange(inst, previousRel); err != nil {
 		return Result{}, err
 	}
+	if err := refuseUndeclaredProfile(inst, previousRel, ""); err != nil {
+		return Result{}, err
+	}
 
 	report := RollbackReport{
 		From:          current.Version,
@@ -160,6 +163,9 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 			return err
 		}
 		if err := d.refuseMovedRelease(ctx, current); err != nil {
+			return err
+		}
+		if err := d.refuseChangedProfile(ctx, inst); err != nil {
 			return err
 		}
 		// Without --to, the target came from the previous pointer, which

@@ -12,7 +12,9 @@
   the runtime or its options changeable: those are immutable by RFC 0016, 0023
   and 0027, and stay so. It does not touch the trusted signing keys, which
   `release trust` already changes (RFC 0004 decision 24), or the profile, which
-  `update --profile` already overrides. It issues no TLS certificates for a new
+  `update --profile` already overrides. *(2026-11-07: reopened by the author
+  for the profile, which the override sets for one run only; see decisions
+  15–19 and #286.)* It issues no TLS certificates for a new
   domain. No installation schema bump: every field already exists.
 - **Related:** [`internal/lifecycle/ops/settings.go`](../internal/lifecycle/ops/settings.go)
   (the settings registry);
@@ -286,6 +288,11 @@ None. The author ruled §11's `OPEN` rows 2026-10-31.
 | 12 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 6.** A host name is dot-separated labels of letters, digits and inner hyphens, at most 63 characters each and 253 in all, or an IP address. A port or a path needs the `https://` form, a URL carries no user name, and duplicates compare without case, as DNS does. See [logs/settings-after-init.md](../logs/settings-after-init.md) (decision 6, attempt 1). |
 | 13 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* **Refines decision 9.** With no release installed, a domain change records the installation and nothing else, and the next `update` renders it. See [logs/settings-after-init.md](../logs/settings-after-init.md) (decision 9, attempt 1). |
 | 14 | `ASSUMED` | *(2026-10-31, from the build; accepted 2026-11-01)* A journalled setting change notifies as `config set` does. One that rendered the configuration attests as `config set` does; the signature record alone, which renders nothing, does not. See [logs/settings-after-init.md](../logs/settings-after-init.md) (unlisted, attempt 1, 20:18). |
+| 15 | `ASSUMED` | *(2026-11-07, ruled by the author in #286)* **Reopens §1's exclusion of the profile.** `apply --profile` and `update --profile` last one run, and the next plain `apply`, the boot unit's or an unattended update's, renders the profile `init` recorded and removes what the override added. `installation.profile` becomes a setting: a name the installed release declares for this installation's runtime, refused otherwise as `init --profile` refuses it; empty or `unset` is the base files. A change runs as a journalled `config` operation, as a domain change does (decision 9). |
+| 16 | `ASSUMED` | *(2026-11-07, ruled by the author)* **What a profile change converges.** On a running product: record the installation, keep the old profile's services as a restore point, then apply's steps under the new profile, which start its services and remove the old one's. A step that fails brings back the old profile and its services. Under a stop, or with nothing running, it records and renders, as a domain change does, and `start` or the next `apply` deploys it. Alternative: record and render only, and say the next `apply` deploys it. |
+| 17 | `ASSUMED` | *(2026-11-07, ruled by the author)* An `update` or `rollback` to a release that does not declare the recorded profile is refused before any step, whatever `--profile` says, and names `config set installation.profile` as the way through. Falling back to the base files would be the silent change of topology the manifest rules out. A profile renamed between releases then takes two changes. Alternative: a `--profile` the target declares carries the update through and becomes the recorded profile. |
+| 18 | `ASSUMED` | *(2026-11-07, ruled by the author in #286)* A `--profile` that differs from the recorded profile warns that it lasts the run and names the `config set` command that keeps it. It is never recorded: rehearsing another topology once is what the flag is for. |
+| 19 | `ASSUMED` | *(2026-11-07, ruled by the author in #286)* The `init` wizard offers no profile, the base files, first and as the default. A profile can be an optional extra that opens a host port, and the first option is the one enter chooses. |
 
 ## 12. Phasing
 

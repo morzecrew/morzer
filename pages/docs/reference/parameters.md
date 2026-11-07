@@ -162,7 +162,8 @@ log_level            enum       info             release
 A parameter is declared by the vendor and reaches the deployment. An
 **installation setting** is your arrangement with the manager — whether it may
 contact a registry, which reference it follows — and changes nothing that is
-running. The one exception is `installation.domains`, below.
+running. The two exceptions are `installation.domains` and
+`installation.profile`, below.
 
 They share `morzer config` because that is where you look to change a value, and
 they cannot collide: a parameter name is lowercase letters, digits and
@@ -194,6 +195,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `retention.attestations` | How many of the newest [attestations](attestations.md#keeping-fewer-of-them) this machine keeps; at least `1`. Absent keeps them all, and no release sets it. A statement a backup target does not have yet is never removed. |
 | `release.require_signature` | Refuse any release not signed by a key [`release trust`](release-commands.md#release-trust) lists. `true` needs a trusted key; `false` is refused while `update.auto_apply` is on, and is journalled. See [unattended updates](../operating/unattended-updates.md#turning-it-on). |
 | `installation.domains` | The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an `https://` URL. A change renders the configuration and re-creates every running service. |
+| `installation.profile` | The [deployment profile](manifest.md#runtimes) the release is rendered and started with, one the installed release declares. Absent, or empty, is the base files. A change on a running product applies the release under it. |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
@@ -234,6 +236,33 @@ re-created: `morzer start` brings every service up with the new value.
 
 morzer issues no certificate for a new domain. Whatever terminates TLS, the
 release's proxy or yours, needs one before the name is served.
+
+### Changing the profile
+
+```sh
+morzer config set installation.profile=embedded
+morzer config unset installation.profile     # the base files, as an install without --profile
+```
+
+The profile chooses which of the release's files are deployed, so a change can
+add services and remove others. On a running product it applies the release
+under the new profile, as `morzer apply` does, and re-creates **every
+container**, including any whose definition is unchanged, since a service can
+read `.Profile` from a rendered file. Services the new profile does not declare
+are removed. It runs as one `config` operation in `morzer history`: a step that
+fails brings back the old profile, its files and its services, and `--dry-run`
+shows the steps without running them.
+
+While the product is stopped, or nothing is running, the change is recorded and
+rendered, and the next `morzer start` or `morzer apply` deploys it. A runtime
+that cannot say what is running refuses the change.
+
+A name the installed release does not declare is refused. `apply --profile` and
+`update --profile` still choose a profile for one run and leave the recorded one
+as it is; each says so when the two differ. An update or rollback to a release
+that does not declare the recorded profile is refused before it starts, even
+with `--profile`: change the profile first, to one both releases declare, or
+unset it.
 
 ### `config diff`
 

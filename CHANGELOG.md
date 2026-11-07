@@ -61,7 +61,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sh` work inside a service. Ctrl-C belongs to the command, and the session
   is journalled without what passed through it.
 
+- **`config set installation.profile` changes the deployment profile.** On a
+  running product it applies the release under the new profile and removes
+  the services that profile drops; a failure brings the old one back. A plain
+  `apply`, the boot unit and unattended updates keep it. Its hooks see
+  `OPERATION_TYPE` `config`.
+
+### Changed
+
+- **`apply --profile` and `update --profile` say they last one run.** When
+  the flag differs from the recorded profile, a warning names the
+  `config set` command that keeps it.
+
+- **An update or rollback is refused when its release lacks the profile.**
+  It failed partway, after the backup, at the render. Now nothing starts,
+  even with `--profile`, and the message says how to change the profile.
+
+- **The `init` wizard offers no profile first.** Pressing enter takes the
+  base files rather than the first profile the release declares.
+
 ### Fixed
+
+- **A failed `update --profile` comes back under the recorded profile.** The
+  previous release was brought back under the one-run profile, which it need
+  not declare, and the update then needed a person.
 
 - **A second `--resume` no longer repeats a step that finished.** A resume
   runs the earlier steps that are safe to repeat again, and one interrupted

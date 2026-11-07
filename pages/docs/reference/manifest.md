@@ -119,7 +119,10 @@ shape changed per runtime could only be validated by asking which runtime it
 was, which is the coupling the manager does not have.
 
 An unknown profile is an error rather than a silent fall back to the base files.
-Deploying the wrong topology quietly is worse than refusing.
+Deploying the wrong topology quietly is worse than refusing. For the same
+reason an update or rollback to a release that no longer declares an
+installation's profile is refused before it starts; the operator
+[changes the profile](parameters.md#changing-the-profile) first.
 
 ### Options
 

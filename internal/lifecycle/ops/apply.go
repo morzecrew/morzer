@@ -71,6 +71,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 	if err := d.refuseRuntimeOptionChange(inst, rel); err != nil {
 		return Result{}, err
 	}
+	d.warnOneRunProfile(inst, opts.Profile)
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -114,6 +115,9 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 			if err := refuseWhileStopped(now, "`morzer apply`"); err != nil {
 				return err
 			}
+		}
+		if err := d.refuseChangedProfile(ctx, inst); err != nil {
+			return err
 		}
 		// Under the lock, because it is a read-modify-write of a record
 		// `config set` and `init --repair` also write.
@@ -1064,6 +1068,7 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
 				RemoveOrphans: true,
+				ForceRecreate: opts.ForceRecreate,
 			})
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {
@@ -1407,6 +1412,24 @@ func (d *Deps) refuseMovedRelease(ctx context.Context, planned domain.ReleaseRec
 		return err
 	}
 	return refuseMoved("installed", planned, current)
+}
+
+// refuseChangedProfile is refuseMovedRelease for the profile: a `config set
+// installation.profile` that landed while this waited for the lock. The steps
+// were built for the profile read before it, and would deploy that one under
+// a record that names the other.
+func (d *Deps) refuseChangedProfile(ctx context.Context, planned domain.Installation) error {
+	now, err := d.State.LoadInstallation(ctx)
+	if err != nil {
+		return err
+	}
+	if now.Profile == planned.Profile {
+		return nil
+	}
+	return domain.Usage(
+		"the installation's profile changed while waiting for the deployment lock, from %s to %s",
+		profileName(planned.Profile), profileName(now.Profile)).
+		WithHint("run the same command again to plan against %s", profileName(now.Profile))
 }
 
 // refuseMoved compares a release record a plan read before the lock with the

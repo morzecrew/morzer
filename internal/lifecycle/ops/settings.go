@@ -334,6 +334,23 @@ var settings = map[string]setting{
 		// Rendered as an installation created without a domain is.
 		Clear: func(i *domain.Installation) { i.Domains = nil },
 	},
+	// What `apply --profile` overrides for one run, kept (#286).
+	"installation.profile": {
+		Description: "the deployment profile the release is rendered and started with, empty for the base files; " +
+			"a change applies the release under it when the product is running",
+		Read: func(i domain.Installation) string { return i.Profile },
+		Apply: func(ctx context.Context, d *Deps, i *domain.Installation, raw string) error {
+			profile := strings.TrimSpace(raw)
+			if profile != "" {
+				if err := d.checkProfileDeclared(ctx, *i, profile); err != nil {
+					return err
+				}
+			}
+			i.Profile = profile
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Profile = "" },
+	},
 	"retention.releases": {
 		Description: "how many releases the store keeps beside the current, previous and staged ones; " +
 			"at least 1, and unset follows the release",
@@ -457,6 +474,27 @@ func (d *Deps) checkSchedule(ctx context.Context, schedule string) error {
 		return nil
 	}
 	return d.Supervisor.ValidateSchedule(ctx, schedule)
+}
+
+// checkProfileDeclared refuses a profile the installed release does not declare
+// for this installation's runtime, with the error the render would give.
+// `init --profile` refuses the same name.
+func (d *Deps) checkProfileDeclared(ctx context.Context, inst domain.Installation, profile string) error {
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil {
+		return err
+	}
+	if current.IsZero() {
+		return domain.InstallationError(nil,
+			"no release is installed, so no profile is declared to choose from").
+			WithHint("`morzer config unset installation.profile` returns to the base files")
+	}
+	rel, err := release.Load(current.Root)
+	if err != nil {
+		return err
+	}
+	_, err = rel.RuntimeFilePaths(inst.RuntimeName(), profile)
+	return err
 }
 
 // checkChannelIsFollowable refuses a reference this manager could never watch.
@@ -746,7 +784,8 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 // journalled reports whether a change runs as an operation rather than a
 // write: see SetSettings.
 func journalled(before, after domain.Installation) bool {
-	return !slices.Equal(before.Domains, after.Domains) || signatureDropped(before, after)
+	return !slices.Equal(before.Domains, after.Domains) || before.Profile != after.Profile ||
+		signatureDropped(before, after)
 }
 
 func signatureDropped(before, after domain.Installation) bool {
@@ -766,14 +805,21 @@ func settingsFlags(before, after domain.Installation) map[string]string {
 type settingsPlan struct {
 	steps []engine.Step
 
-	// domains is whether the domain list changed. render is whether a
-	// release is installed to render it for, rel that release.
+	// domains is whether the domain list changed, profile whether the
+	// profile did. render is whether a release is installed to render them
+	// for, rel that release.
 	domains bool
+	profile bool
 	render  bool
 	rel     domain.Release
 
 	stopped  bool
 	services []string
+
+	// converged is whether a profile change applies the release, under the
+	// profile named.
+	converged bool
+	under     string
 }
 
 // planSettings is RFC 0042 §5.2's three steps: record the installation, render
@@ -784,9 +830,17 @@ type settingsPlan struct {
 // Forced, because no release declares which services read the domain, and a
 // plain `up` re-creates only those whose Compose definition changed. One that
 // reads the domain from a rendered file would keep the old value.
+//
+// A profile change on a running product is apply's steps under the new profile
+// instead, since it adds and removes services, which re-creating the running
+// ones cannot (#286). Every container is re-created, for the reason above. The
+// restore point before them brings the old profile's services back if a step
+// fails, after the configuration compensator has put its files back.
 func (d *Deps) planSettings(ctx context.Context, before, after domain.Installation) (settingsPlan, error) {
 	plan := settingsPlan{steps: []engine.Step{stepRecordSettings(d, before, after)}}
-	if plan.domains = !slices.Equal(before.Domains, after.Domains); !plan.domains {
+	plan.domains = !slices.Equal(before.Domains, after.Domains)
+	plan.profile = before.Profile != after.Profile
+	if !plan.domains && !plan.profile {
 		return plan, nil
 	}
 	current, err := d.State.CurrentRelease(ctx)
@@ -797,27 +851,54 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 		return plan, err
 	}
 	plan.render = true
-	plan.steps = append(plan.steps, stepRenderConfiguration(d, after, plan.rel, Options{}))
-	if plan.stopped = after.Stopped != nil; plan.stopped {
+	if plan.stopped = after.Stopped != nil; !plan.stopped {
+		// The deployment as it stands, under the profile it runs. A
+		// runtime that cannot answer refuses a profile change, which
+		// counted as nothing running would record a topology it never
+		// deployed.
+		var err error
+		if plan.services, err = d.runningServices(ctx, before, plan.rel); err != nil && plan.profile {
+			return plan, err
+		}
+	}
+	if plan.profile && len(plan.services) > 0 {
+		plan.converged, plan.under = true, profileName(after.Profile)
+		keep := stepRestorePoint(d, before, current, true)
+		keep.Description = "keep " + profileName(before.Profile) + " to bring back on failure"
+		plan.steps = append(plan.steps, keep)
+		// Apply's checks abort, since in `apply` nothing before them
+		// needs undoing. Here the profile is already recorded. Not
+		// record-state, which fails with the new profile's services up
+		// under the new profile's record.
+		for _, step := range applySteps(d, after, plan.rel, Options{ForceRecreate: true}) {
+			if step.OnFailure == engine.Abort && step.ID != "record-state" {
+				step.OnFailure = engine.Compensate
+			}
+			plan.steps = append(plan.steps, step)
+		}
 		return plan, nil
 	}
-	if plan.services = d.runningServices(ctx, after, plan.rel); len(plan.services) > 0 {
+	plan.steps = append(plan.steps, stepRenderConfiguration(d, after, plan.rel, Options{}))
+	if !plan.profile && len(plan.services) > 0 {
 		plan.steps = append(plan.steps, stepRecreateServices(d, before, after, plan.rel, plan.services))
 	}
 	return plan, nil
 }
 
 // runningServices names each service with a running container, once however
-// many replicas it has. A runtime that cannot answer counts as nothing
-// running, as it does for `config set`: nothing is re-created.
-func (d *Deps) runningServices(ctx context.Context, inst domain.Installation, rel domain.Release) []string {
+// many replicas it has. A runtime that cannot answer is the error, which a
+// domain change takes as nothing running, as `config set` does: nothing is
+// re-created.
+func (d *Deps) runningServices(
+	ctx context.Context, inst domain.Installation, rel domain.Release,
+) ([]string, error) {
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	states, err := d.Runtime.Status(ctx, cfg)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []string
 	for _, st := range states {
@@ -826,11 +907,11 @@ func (d *Deps) runningServices(ctx context.Context, inst domain.Installation, re
 		}
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
 // settingsSummary says what a change did, in the tense it happened in, and for
-// a domain change what it reached.
+// a domain or profile change what it reached.
 func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
 	names := strings.Join(changed, ", ")
 	tense := func(done, planned string) string {
@@ -840,7 +921,7 @@ func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
 		return done
 	}
 	switch {
-	case !plan.domains:
+	case !plan.domains && !plan.profile:
 		return tense("set ", "would set ") + names
 	case !plan.render:
 		return tense("set ", "would set ") + names + "; no release is installed, so there is nothing to render"
@@ -848,6 +929,9 @@ func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
 		return tense("set ", "would set ") + names + tense(" and rendered", " and render") +
 			" the configuration; the product is stopped, so its services " +
 			tense("see", "would see") + " it on `morzer start`"
+	case plan.converged:
+		return tense("set ", "would set ") + names + tense(" and applied ", " and apply ") +
+			plan.rel.Name() + " " + plan.rel.Version().String() + " under " + plan.under
 	case len(plan.services) > 0:
 		return tense("set ", "would set ") + names + tense(", rendered", ", render") +
 			" the configuration and " + tense("re-created ", "re-create ") + strings.Join(plan.services, ", ")
