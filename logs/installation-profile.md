@@ -144,3 +144,80 @@ added and 32 removed: code, tests, docs, the RFC rows and the changelog.
     moving a port), not a profile switch on real Docker.
   - Whether `update`'s own restore point should force the re-create is not
     examined here.
+
+## Review, 2026-11-07
+
+The review found six gaps in what the build decided. Each is fixed on this
+branch and logged here as a proposed row.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: apply's checks abort, which undoes nothing, so a profile change a fatal preflight check refused left the new profile recorded over the old services
+evidence: internal/lifecycle/ops/settings.go:868-878
+action: decided
+proposal: ASSUMED — in a profile change, apply's steps that abort before anything is deployed compensate instead, which puts the recorded profile back. `record-state` still aborts: it fails with the new profile's services running under the new profile's record.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: a runtime that cannot report status counted as nothing running, so a profile change recorded and rendered a topology it never deployed and said nothing was running
+evidence: internal/lifecycle/ops/settings.go:855-862
+action: decided
+proposal: ASSUMED — a profile change is refused when the runtime cannot say what is running. A domain change keeps taking that as nothing running (RFC 0042 decision 9).
+```
+
+```divergence
+decision: 17
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: apply, update and rollback read the profile before the deployment lock and build their steps from it, so a profile change that lands while one waits is deployed over, and the refusal decision 17 asks for is skipped
+evidence: internal/lifecycle/ops/apply.go:1417-1433
+action: departed
+proposal: ASSUMED — refines decision 17. Under the lock, apply, update and rollback refuse when the recorded profile is no longer the one they read, as they refuse a release that moved.
+```
+
+```divergence
+decision: 18
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: a failed update brought the previous release back under the one-run `--profile`, which the previous release need not declare, so the restore failed and the update needed a person
+evidence: internal/lifecycle/ops/update.go:1147
+action: departed
+proposal: ASSUMED — refines decision 18. A failed update's restore brings the previous release back under the recorded profile, whatever `--profile` the update ran with.
+```
+
+```divergence
+decision: 19
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: on `init --repair` an empty profile keeps the recorded one, so the wizard's "none, the base files" kept a profile it said it removed
+evidence: internal/cli/init_wizard.go:159
+action: departed
+proposal: ASSUMED — refines decision 19. The wizard does not ask the profile on a repair; `config set installation.profile` changes it.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-07T01:33:00Z
+attempt: 1
+claim: a profile change runs apply's hooks under the `config` operation, a value the hook ABI's `OPERATION_TYPE` did not list
+evidence: pages/docs/reference/hooks.md:35
+action: decided
+proposal: ASSUMED — `config` joins `OPERATION_TYPE`'s values, as `start` and `restart` did when they began running hooks. Hooks see the operation that runs them rather than `apply`.
+```
