@@ -1072,7 +1072,13 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			}
 			// No container of the project before this start: a first
 			// one, which takes down what it creates if it fails (#300).
-			if states, err := d.Runtime.Status(ctx, cfg); err == nil && len(states) == 0 {
+			// Unreadable, nothing starts: Verify reads the same status,
+			// and a start that could not tell would leave what it made.
+			states, err := d.Runtime.Status(ctx, cfg)
+			if err != nil {
+				return err
+			}
+			if len(states) == 0 {
 				st.Set(keyFirstStart, true)
 			}
 			// Before Up, not after: a failed Up may still have

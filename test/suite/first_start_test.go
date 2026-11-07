@@ -64,6 +64,26 @@ func TestAFailedStartOverExistingContainersLeavesThem(t *testing.T) {
 	assert.NotContains(t, h.callsSince(calls), "Down")
 }
 
+// A start that cannot read what the project has starts nothing. Started
+// anyway, it could not say whether it was the first, and a failed `up` would
+// leave what it created over the files the rollback removes.
+func TestAStartThatCannotReadTheProjectStartsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	calls := len(h.Runtime.Calls)
+	h.Runtime.OnCall = func(method string) {
+		if method == "Pull" {
+			h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "injected: the daemon stopped answering")
+		}
+	}
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.NotContains(t, h.callsSince(calls), "Up", "a start that could not tell whether it was the first went ahead")
+}
+
 // A directory where a configuration file belongs is what Docker leaves for a
 // bind mount whose file was missing, and the render says so.
 func TestARenderOverADirectorySaysWhatItIs(t *testing.T) {
