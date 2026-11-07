@@ -15,9 +15,11 @@ names. This is the complete list of all three.
 | Configuration templates | `{{ .Paths.Data }}` | [The render context](#the-render-context) |
 | Hooks | `$<PRODUCT>_DATA_DIR` | [The hook ABI](hooks.md) |
 
-`<PRODUCT>` is your product's own name, upper-cased, with `-` and `.` becoming
-`_`. For the example bundle, whose product is `demo`, `DATA_DIR` is
-`DEMO_DATA_DIR`.
+`<PRODUCT>` is your release's `metadata.name`, upper-cased, with `-` and `.`
+becoming `_`. For the example bundle, whose product is `demo`, `DATA_DIR` is
+`DEMO_DATA_DIR`. It is the release's name whatever the installation is called:
+a second installation of the same release, named `sandbox`, still reads
+`DEMO_DATA_DIR`, while its paths are `/var/lib/sandbox` and so on.
 
 All three are contracts. A rename breaks every bundle in the field, so
 `just docs-check` fails the build when a name exists in the code and not on this

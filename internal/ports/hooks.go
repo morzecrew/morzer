@@ -52,7 +52,16 @@ const HookOperationDoctor = "doctor"
 // The field set is the stable part of the ABI: adding a variable is a minor
 // change, removing or repurposing one is not.
 type HookEnv struct {
-	Product        string
+	// Product is the installation's name, which its paths and units take,
+	// and what PRODUCT says.
+	Product string
+
+	// Namespace is the prefix every variable takes: the release's
+	// metadata.name, which its files and hooks were written against, so an
+	// installation named otherwise reads them under the name their author
+	// used (#298). Empty takes Product.
+	Namespace string
+
 	InstallationID string
 	OperationID    string
 	OperationType  domain.OperationType
@@ -94,13 +103,18 @@ type HookEnv struct {
 	Extra map[string]string
 }
 
-// Prefix is the environment-variable namespace for this product.
+// Prefix is the environment-variable namespace: the release's name, or the
+// product's when no release names it.
 //
 // Variables are namespaced per product rather than under a fixed prefix because
 // hooks ship inside a product's own release: the author always knows the name,
 // and namespacing keeps two products' hooks from colliding.
 func (e HookEnv) Prefix() string {
-	p := strings.ToUpper(e.Product)
+	p := e.Namespace
+	if p == "" {
+		p = e.Product
+	}
+	p = strings.ToUpper(p)
 	p = strings.ReplaceAll(p, "-", "_")
 	p = strings.ReplaceAll(p, ".", "_")
 	if p == "" {

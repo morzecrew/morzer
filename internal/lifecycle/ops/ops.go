@@ -693,6 +693,7 @@ func (d *Deps) hookEnv(
 ) ports.HookEnv {
 	return ports.HookEnv{
 		Product:         inst.Product,
+		Namespace:       rel.Name(),
 		InstallationID:  inst.ID,
 		OperationID:     opID,
 		OperationType:   opType,
@@ -748,7 +749,7 @@ func (d *Deps) runtimeHookVars(rel domain.Release, inst domain.Installation) map
 	// a product name needed a character escaped.
 	named := make(map[string]string, len(supplied))
 	for suffix, value := range supplied {
-		named[ports.HookEnv{Product: inst.Product}.Var(suffix)] = value
+		named[envName(rel.Name(), suffix)] = value
 	}
 	return named
 }
@@ -1115,7 +1116,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 
 	env := make(map[string]string, len(values))
 	for suffix, value := range values {
-		env[envName(inst.Product, suffix)] = value
+		env[envName(rel.Name(), suffix)] = value
 	}
 
 	// Every declared parameter, as <PRODUCT>_PARAM_<NAME>, defaulted when
@@ -1129,7 +1130,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		return ports.RuntimeConfig{}, err
 	}
 	for name, value := range params {
-		env[envName(inst.Product, "PARAM_"+parameterVarName(name))] = value
+		env[envName(rel.Name(), "PARAM_"+parameterVarName(name))] = value
 	}
 
 	// Every image the manifest declares, as <PRODUCT>_IMAGE_<NAME>.
@@ -1151,7 +1152,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 	// the one place the two part company, because this is the only place
 	// the value is handed to something that has to look it up.
 	for name, spec := range rel.Manifest.Images {
-		env[envName(inst.Product, "IMAGE_"+imageVarName(name))] = spec.RuntimeRef()
+		env[envName(rel.Name(), "IMAGE_"+imageVarName(name))] = spec.RuntimeRef()
 	}
 
 	declared := rel.Manifest.DeclaredRuntimes()
@@ -1187,9 +1188,11 @@ func ReleaseVariables(product string, m domain.Manifest) map[string]bool {
 	return out
 }
 
-// envName builds a product-namespaced variable name, matching the hook ABI.
-func envName(product, key string) string {
-	return ports.HookEnv{Product: product}.Var(key)
+// envName builds a variable name under a release's namespace, matching the
+// hook ABI. The release's metadata.name, never the installation's: a release's
+// files read the names their author wrote (#298).
+func envName(release, key string) string {
+	return ports.HookEnv{Namespace: release}.Var(key)
 }
 
 // parameterVarName turns a parameter name into its variable suffix. Names are

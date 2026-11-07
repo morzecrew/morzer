@@ -78,6 +78,25 @@ func TestValidateReportsAnInvalidConfiguration(t *testing.T) {
 	}
 }
 
+// The step line shows the message alone, so Compose's own diagnostic is in it:
+// "compose configuration is invalid" named no cause for a variable nothing set
+// (#298). The last line, since Compose prints its warnings before the error.
+func TestValidateSaysWhatComposeObjected(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnError("config", &exec.ExitError{
+		ExitCode: 15,
+		Stderr: "WARN[0000] The \"DOTDASH_LOG\" variable is not set. Defaulting to a blank string.\n" +
+			"required variable DOTDASH_IMAGE_XRAY is missing a value: set by morzer\n",
+	})
+
+	_, err := r.Validate(context.Background(), cfg())
+
+	want := "compose configuration is invalid: required variable DOTDASH_IMAGE_XRAY is missing a value: set by morzer"
+	if got := domain.AsError(err).Message; got != want {
+		t.Errorf("message %q, want %q", got, want)
+	}
+}
+
 func TestValidateReportsOutputItCannotParse(t *testing.T) {
 	r, runner := newRuntime()
 	runner.OnOutput("config", "this is not json")

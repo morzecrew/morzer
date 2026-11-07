@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -134,6 +136,34 @@ func TestInitTakesTheProductNameFromTheBundle(t *testing.T) {
 	out := r.Run("init", "--release", r.Bundle, "--no-recovery-recipient",
 		"--install-units=false")
 	out.ExitCode(0)
+
+	r.Run("status").ExitCode(0).OutputContains("demo")
+}
+
+// A reference names the product as a bundle path does, read through the
+// release source and downloaded once for the name and the staging both. Read as
+// a path, `oci://` was `oci:/…/manifest.yaml`, and `--product` was required
+// (#297).
+func TestInitTakesTheProductNameFromARegistryReference(t *testing.T) {
+	r := clitest.New(t)
+	archive := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	r.Run("release", "build", r.Bundle).ExitCode(0)
+	r.Run("release", "archive", r.Bundle, "-o", archive).ExitCode(0)
+	var downloads atomic.Int32
+	ref := serveChannelCounting(t, archive, &downloads)
+
+	r.Run("init", "--release", ref, "--no-recovery-recipient", "--install-units=false").ExitCode(0)
+
+	r.Run("status").ExitCode(0).OutputContains("demo")
+	assert.Equal(t, int32(1), downloads.Load(), "the bundle was downloaded more than once")
+}
+
+// `file:///abs/bundle` is a path written as a URL, and is read at the path it
+// parses to: passed on as typed, it was not a directory or an archive.
+func TestInitTakesTheProductNameFromAFileURL(t *testing.T) {
+	r := clitest.New(t)
+
+	r.Run("init", "--release", "file://"+r.Bundle, "--no-recovery-recipient", "--install-units=false").ExitCode(0)
 
 	r.Run("status").ExitCode(0).OutputContains("demo")
 }

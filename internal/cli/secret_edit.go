@@ -48,7 +48,9 @@ func newSecretEditCommand(app *App) *cobra.Command {
 			"re-encrypts what changed. Rotating a related group of credentials is one\n" +
 			"logical change, and doing it as several `secret set` calls is several\n" +
 			"decrypt-modify-encrypt cycles and several chances to stop halfway.\n\n" +
-			"Named secrets only, or all of them when no name is given.\n\n" +
+			"Named secrets only, or all of them when no name is given. One name opens\n" +
+			"that secret's value alone, as plain text, so a multi-line value is\n" +
+			"edited as it is stored.\n\n" +
 			"The editor never sees the encryption metadata — only a plain name/value\n" +
 			"mapping — so the envelope cannot be corrupted by editing it.",
 		Args: cobra.ArbitraryArgs,
@@ -101,6 +103,27 @@ func (a *App) editSecretsWith(ctx context.Context, names, editor []string) error
 	// editors leave swap and backup files beside the one they were given,
 	// and those would hold the same plaintext.
 	defer func() { _ = atomicfs.RemoveWithOverwrite(dir) }()
+
+	// One secret opens as its value alone, byte for byte. In the mapping a
+	// multi-line value needs a block scalar, and the obvious edit, a second
+	// line under the first, is valid YAML that folds into one (#301).
+	if len(names) == 1 {
+		name := names[0]
+		path = filepath.Join(dir, name)
+		if err := atomicfs.WriteFile(path, []byte(before[name]), 0o600); err != nil {
+			return err
+		}
+		if err := runEditor(ctx, editor, path); err != nil {
+			return err
+		}
+		value, err := readEditedValue(path, name, before[name])
+		if err != nil {
+			return err
+		}
+		after := map[string]string{name: value}
+		a.registerSecretValues(after)
+		return a.applySecretEdits(ctx, before, after)
+	}
 
 	if err := writeEditFile(path, before); err != nil {
 		return err
@@ -201,6 +224,29 @@ func writeEditFile(path string, values map[string]string) error {
 }
 
 // readEditFile parses what the editor left behind.
+// readEditedValue is the value an editor left for one secret. A newline at the
+// end is taken back off a value that had none, since most editors add one on
+// save, and a password that gained it would no longer be the password.
+func readEditedValue(path, name, before string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", domain.SecretsError(err,
+			"the edited file is gone; no changes were made").
+			WithHint("some editors write to a new file and rename; if yours does, " +
+				"configure it not to, or use `morzer secret set`")
+	}
+	value := string(data)
+	if !strings.HasSuffix(before, "\n") {
+		value = strings.TrimSuffix(value, "\n")
+	}
+	if value == "" {
+		return "", domain.SecretsError(nil,
+			"secret %q was left empty, so nothing was changed", name).
+			WithHint("`morzer secret remove %s` removes it; an empty value is not a value", name)
+	}
+	return value, nil
+}
+
 func readEditFile(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

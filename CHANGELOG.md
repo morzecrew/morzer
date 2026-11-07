@@ -14,8 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resumes and runs it again, where `restore --resume` refused. It needs
   `min_manager_version` 0.14.0.
 
+### Changed
+
+- **`secret edit <name>` opens the value itself.** One name opens that
+  secret's value as plain text, so a certificate or a list of clients is
+  edited line by line, where in YAML a second line folded into the first.
+  Several names, or none, keep the YAML mapping.
+
 ### Fixed
 
+- **An installation named other than its release reads its variables.**
+  `init --product dd` for a release named `dotdash` handed it `DD_*` while
+  its files read `DOTDASH_*`. The prefix is the release's name, as the hook
+  reference says, and a Compose error quotes Compose's own diagnostic.
+- **`init --release oci://…` names the product from the bundle.** It read
+  the reference as a local path, `oci:/…/manifest.yaml`, and failed unless
+  `--product` was given. It now reads the name through the release source,
+  and the bundle is downloaded once for the name and the staging both.
+- **`installation remove` takes down a project whose release no longer
+  works.** When the release's Compose files could not take the project
+  down, as when they no longer interpolate, the removal failed and could not
+  remove the installation. It now takes the project down by name, and says so.
 - **A first `apply` that fails takes down the containers it started,**
   whether `up` itself failed or a later step such as the health check did.
   Left, they restarted over the rendered files the rollback removed, and

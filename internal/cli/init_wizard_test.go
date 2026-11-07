@@ -200,11 +200,12 @@ func TestSplitDomainsIgnoresSpacingAndEmpties(t *testing.T) {
 func TestProfilesComeFromTheBundle(t *testing.T) {
 	// Offering what the release declares, rather than asking an operator to
 	// remember it, is most of what the profile question is worth.
-	got := profilesFrom("../../testdata/bundle")
+	app := &App{}
+	got := app.profilesFrom(context.Background(), "../../testdata/bundle")
 	assert.Equal(t, []string{"embedded", "external-db"}, got)
 
-	assert.Empty(t, profilesFrom(""), "no bundle, no profiles to offer")
-	assert.Empty(t, profilesFrom(t.TempDir()), "an unreadable bundle is not an error here")
+	assert.Empty(t, app.profilesFrom(context.Background(), ""), "no bundle, no profiles to offer")
+	assert.Empty(t, app.profilesFrom(context.Background(), t.TempDir()), "an unreadable bundle is not an error here")
 }
 
 func TestShellQuoteLeavesOrdinaryValuesAlone(t *testing.T) {
