@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A first `apply` that fails takes down the containers it started,**
+  whether `up` itself failed or a later step such as the health check did.
+  Left, they restarted over the rendered files the rollback removed, and
+  Docker made a directory of each, which every later `apply` tripped on. A render
+  that finds a directory at a target now says so, and names the `rmdir`.
+
 - **A restore that fails leaves the product down, and resumes.** A failure
   writing the data started the services again over what was half-restored,
   and the restore could not be resumed. They stay stopped now, and once

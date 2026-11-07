@@ -645,6 +645,15 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 					// means removing it.
 					backups[target] = configBackup{created: true}
 				default:
+					// What Docker leaves for a bind mount whose file was
+					// missing when a container started (#300).
+					if info, statErr := os.Stat(target); statErr == nil && info.IsDir() {
+						return domain.InstallationError(nil,
+							"%s is a directory, where the release renders a file", target).
+							WithHint("Docker makes one for a bind mount whose file is missing when a "+
+								"container starts. Once nothing mounts it, which `morzer stop` sees to, "+
+								"remove it with `rmdir %s` and apply again", target)
+					}
 					// A file that exists and cannot be read would be
 					// replaced with no backup, and nothing could put
 					// it back: refused before it is touched.
@@ -1061,6 +1070,11 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
+			// No container of the project before this start: a first
+			// one, which takes down what it creates if it fails (#300).
+			if states, err := d.Runtime.Status(ctx, cfg); err == nil && len(states) == 0 {
+				st.Set(keyFirstStart, true)
+			}
 			// Before Up, not after: a failed Up may still have
 			// replaced some of the containers.
 			st.Set(keyServicesTouched, true)
@@ -1070,6 +1084,17 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 				RemoveOrphans: true,
 				ForceRecreate: opts.ForceRecreate,
 			})
+		},
+		Compensate: func(ctx context.Context, st *engine.State) error {
+			if _, first := st.Get(keyFirstStart); !first {
+				return nil
+			}
+			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+			if err != nil {
+				return err
+			}
+			st.Detail("taking down the containers this first start created")
+			return d.Runtime.Down(ctx, cfg, ports.DownOptions{RemoveOrphans: true, Timeout: 2 * time.Minute})
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
@@ -1107,6 +1132,13 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// been put back (restorePreviousRuntime).
 	}
 }
+
+// keyFirstStart says start-services began with no container of the project.
+// Its rollback then takes down what it created: left, the containers restart
+// over the rendered files the rollback removes, and Docker makes a directory of
+// each missing bind source, which every later apply trips on (#300). With
+// containers there before, they are what was there, and stay.
+const keyFirstStart = "first-start"
 
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.

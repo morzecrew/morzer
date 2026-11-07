@@ -363,6 +363,9 @@ func TestApplyCompensatesWhenHealthChecksFail(t *testing.T) {
 	h := newHarness(t)
 	h.install()
 	h.setHookEnv()
+	// Over containers already there, as every boot's apply is. A first
+	// start that fails takes down what it created (#300).
+	applyBaseline(t, h)
 
 	h.Health.Healthy = false
 

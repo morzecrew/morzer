@@ -61,6 +61,27 @@ services:
       - ${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw
 ```
 
+!!! tip "Mount a rendered file so Docker cannot invent it"
+
+    With the short syntax above, a container that starts while its bind
+    source is missing gets an empty **directory** created at that path, and the
+    next render finds a directory where its file belongs. The long syntax with
+    `create_host_path: false` makes Docker refuse to start the container
+    instead:
+
+    ```yaml
+    volumes:
+      - type: bind
+        source: ${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}
+        target: /etc/demo/application.yaml
+        read_only: true
+        bind: {create_host_path: false}
+    ```
+
+    A first `apply` that fails takes down the containers it started, so
+    they do not restart over the files its rollback removes. A render that
+    finds a directory at a target says so, and names the `rmdir`.
+
 !!! warning "Nothing from your shell reaches a Compose file"
 
     Setting `DEMO_ANYTHING` in the environment you run `morzer` from does not
