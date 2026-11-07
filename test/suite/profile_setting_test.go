@@ -325,3 +325,19 @@ func TestAProfileChangeRefusedAtPreflightKeepsTheOldProfile(t *testing.T) {
 	assert.Equal(t, "embedded", installation(t, h).Profile, "a refused profile change stayed recorded")
 }
 
+// A runtime that cannot say what runs refuses a profile change. Counted as
+// nothing running, it would record and render a topology it never deployed.
+func TestAProfileChangeTheRuntimeCannotAnswerForIsRefused(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	h.Runtime.Fail["Status"] = domain.RuntimeError(nil, "cannot connect to the Docker daemon")
+
+	_, err := setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot connect to the Docker daemon")
+	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Contains(t, renderedApplication(t, h), "profile: embedded")
+}
+

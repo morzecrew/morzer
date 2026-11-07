@@ -254,7 +254,8 @@ fails brings back the old profile, its files and its services, and `--dry-run`
 shows the steps without running them.
 
 While the product is stopped, or nothing is running, the change is recorded and
-rendered, and the next `morzer start` or `morzer apply` deploys it.
+rendered, and the next `morzer start` or `morzer apply` deploys it. A runtime
+that cannot say what is running refuses the change.
 
 A name the installed release does not declare is refused. `apply --profile` and
 `update --profile` still choose a profile for one run and leave the recorded one

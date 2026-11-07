@@ -852,8 +852,14 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 	}
 	plan.render = true
 	if plan.stopped = after.Stopped != nil; !plan.stopped {
-		// The deployment as it stands, under the profile it runs.
-		plan.services = d.runningServices(ctx, before, plan.rel)
+		// The deployment as it stands, under the profile it runs. A
+		// runtime that cannot answer refuses a profile change, which
+		// counted as nothing running would record a topology it never
+		// deployed.
+		var err error
+		if plan.services, err = d.runningServices(ctx, before, plan.rel); err != nil && plan.profile {
+			return plan, err
+		}
 	}
 	if plan.profile && len(plan.services) > 0 {
 		plan.converged, plan.under = true, profileName(after.Profile)
@@ -880,16 +886,19 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 }
 
 // runningServices names each service with a running container, once however
-// many replicas it has. A runtime that cannot answer counts as nothing
-// running, as it does for `config set`: nothing is re-created.
-func (d *Deps) runningServices(ctx context.Context, inst domain.Installation, rel domain.Release) []string {
+// many replicas it has. A runtime that cannot answer is the error, which a
+// domain change takes as nothing running, as `config set` does: nothing is
+// re-created.
+func (d *Deps) runningServices(
+	ctx context.Context, inst domain.Installation, rel domain.Release,
+) ([]string, error) {
 	cfg, err := d.runtimeConfig(rel, inst, "")
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	states, err := d.Runtime.Status(ctx, cfg)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []string
 	for _, st := range states {
@@ -898,7 +907,7 @@ func (d *Deps) runningServices(ctx context.Context, inst domain.Installation, re
 		}
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
 // settingsSummary says what a change did, in the tense it happened in, and for
