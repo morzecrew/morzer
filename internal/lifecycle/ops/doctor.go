@@ -1293,11 +1293,11 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 		ID:          "runtime.services",
 		Category:    preflight.CategoryRuntime,
 		Description: "all services are running",
-		// Fatal for one result only: a runtime that cannot be asked fails
-		// doctor, because nothing the release runs can be up and a monitor
-		// reading the exit code has to see it. Every other finding below
-		// returns a warning itself -- an operator may have stopped a
-		// service on purpose.
+		// Fatal for two results: a runtime that cannot be asked, because
+		// nothing the release runs can be up, and a service running
+		// unhealthy, because nobody gets there on purpose (#292). A monitor
+		// reading the exit code has to see both. A stopped service only
+		// warns: an operator may have stopped it on purpose.
 		Fatal: true,
 		Run: func(ctx context.Context) events.CheckResult {
 			cfg, err := d.runtimeConfig(rel, inst, "")
@@ -1326,14 +1326,28 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 					"the runtime reports no containers for this deployment")
 			}
 
-			var down []string
+			var down, unhealthy []string
 			for _, s := range services {
-				if s.State == "exited" && s.ExitCode == 0 {
+				switch {
+				case s.State == "exited" && s.ExitCode == 0:
 					continue // a completed one-shot job
-				}
-				if !s.Running() {
+				case s.State == "running" && s.Health == ports.HealthUnhealthy:
+					if !slices.Contains(unhealthy, s.Name) {
+						unhealthy = append(unhealthy, s.Name)
+					}
+				case !s.Running():
 					down = append(down, fmt.Sprintf("%s (%s)", s.Name, s.State))
 				}
+			}
+			if len(unhealthy) > 0 {
+				message := "service(s) running, unhealthy: " + strings.Join(unhealthy, ", ")
+				if len(down) > 0 {
+					message += "; not running: " + strings.Join(down, ", ")
+				}
+				return preflight.Fail(
+					"its healthcheck fails while it runs; inspect with `docker compose logs`, "+
+						"then `morzer restart <service>`",
+					"%s", message)
 			}
 			if len(down) > 0 {
 				return preflight.Warn(
@@ -1350,7 +1364,10 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 		ID:          "runtime.health",
 		Category:    preflight.CategoryRuntime,
 		Description: "health endpoints respond",
-		Fatal:       false,
+		// A product running and failing its health checks is broken, so
+		// a failing probe fails doctor and reaches an error-level notify
+		// target (#292). What it reports when it does not probe only warns.
+		Fatal: true,
 		Run: func(ctx context.Context) events.CheckResult {
 			if len(rel.Manifest.Health.Checks) == 0 {
 				return preflight.OK("the release declares no health checks")

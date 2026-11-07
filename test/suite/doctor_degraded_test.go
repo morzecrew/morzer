@@ -2,7 +2,9 @@ package suite
 
 import (
 	"context"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -163,9 +165,51 @@ func TestDoctorReportsAFailingHealthCheck(t *testing.T) {
 	report, err := ops.Doctor(context.Background(), h.Deps)
 	require.NoError(t, err)
 
+	// A failure, not a warning: a product running and failing its health
+	// checks is broken, and nobody gets there on purpose (#292).
 	found := findResult(t, report, "runtime.health")
-	assert.NotEqual(t, "ok", found.Status)
+	assert.Equal(t, "fail", found.Status)
+	assert.Equal(t, events.CheckFail, report.Worst)
 	assert.NotEmpty(t, found.Message, "a failing probe reported nothing")
+}
+
+// TestDoctorFailsOnAServiceRunningUnhealthy, which is up and broken rather than
+// down. It was reported as not running, "app (running)", and only warned, so a
+// product whose Docker healthcheck failed never notified at error level.
+func TestDoctorFailsOnAServiceRunningUnhealthy(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Runtime.Services = map[string]ports.ServiceState{
+		"app": {Name: "app", State: "running", Health: ports.HealthUnhealthy},
+		"db":  {Name: "db", State: "running", Health: ports.HealthHealthy},
+	}
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "runtime.services")
+	assert.Equal(t, "fail", found.Status)
+	assert.Equal(t, "service(s) running, unhealthy: app", found.Message)
+	assert.Equal(t, events.CheckFail, report.Worst)
+}
+
+// TestDoctorProbesHealthBesideAnUnhealthyService: a container that is running
+// is probed whatever Docker says of it, and "no services are running" was
+// untrue of one that is.
+func TestDoctorProbesHealthBesideAnUnhealthyService(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Runtime.Services = map[string]ports.ServiceState{
+		"app": {Name: "app", State: "running", Health: ports.HealthUnhealthy},
+	}
+	h.Health.Healthy = false
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	found := findResult(t, report, "runtime.health")
+	assert.NotContains(t, found.Message, "not probed")
+	assert.Equal(t, "fail", found.Status)
 }
 
 // TestDoctorReportsThatNoBackupExists is the finding an operator most wants
@@ -365,4 +409,29 @@ func TestStatusOnAMachineWhoseRuntimeIsUnreachable(t *testing.T) {
 	assert.Equal(t, "demo", status.Product)
 	require.NotEmpty(t, status.Problems, "the unreachable runtime is not reported")
 	assert.Contains(t, strings.Join(status.Problems, " "), "cannot connect")
+}
+
+// TestApplyDoesNotTakeAnUnhealthyProductsPortForAConflict. The port check is
+// skipped while the project runs, since its own listeners would be reported as
+// conflicts, and a product whose every container was unhealthy counted as not
+// running, so `apply` refused over the port the product itself held.
+func TestApplyDoesNotTakeAnUnhealthyProductsPortForAConflict(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	inst := h.install()
+	h.setHookEnv()
+	held, err := net.Listen("tcp", ":0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = held.Close() })
+	addr, ok := held.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	inst.Parameters = map[string]string{"http_port": strconv.Itoa(addr.Port)}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	h.Runtime.Services = map[string]ports.ServiceState{
+		"app": {Name: "app", State: "running", Health: ports.HealthUnhealthy},
+		"db":  {Name: "db", State: "running", Health: ports.HealthUnhealthy},
+	}
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err, "apply took the product's own port for a conflict")
 }
