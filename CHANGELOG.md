@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An installation named other than its release reads its variables.**
+  `init --product dd` for a release named `dotdash` handed it `DD_*` while
+  its files read `DOTDASH_*`. The prefix is the release's name, as the hook
+  reference says, and a Compose error quotes Compose's own diagnostic.
+
 - **A restore that fails leaves the product down, and resumes.** A failure
   writing the data started the services again over what was half-restored,
   and the restore could not be resumed. They stay stopped now, and once

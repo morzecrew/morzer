@@ -16,6 +16,10 @@ What they do share is the host: one Docker daemon, one port space, one
 filesystem, one set of CPUs. morzer does not pretend otherwise. This page is
 about making that sharing legible rather than preventing it.
 
+Two installations of one release read its variables under the release's name,
+`DEMO_DATA_DIR` in both, each with its own paths in them, so the bundle needs no
+change to run twice.
+
 The daemon's image store is shared too. Two installations of one product, or
 two products built on one base image, hold the same images under the same
 names. `release prune` in one installation removes a pruned release's images
