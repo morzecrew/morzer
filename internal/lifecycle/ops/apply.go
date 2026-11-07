@@ -673,6 +673,12 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			// Before the files go, after every later step's undo:
+			// left, what a first start created restarts over the files
+			// this removes (#300).
+			if err := d.downFirstStart(ctx, st); err != nil {
+				return err
+			}
 			kept := d.replacedDir(st.OpID)
 			if err := restoreConfigBackups(st); err != nil {
 				// In the message, not a hint: the engine reports only a
@@ -948,6 +954,9 @@ func (d *Deps) runMigrateStep(
 		if err != nil {
 			return 0, err
 		}
+		if err := d.noteFirstStart(ctx, st, cfg); err != nil {
+			return 0, err
+		}
 		// A one-shot starts what it depends on, and on an update
 		// recreates a dependency whose configuration changed, so a
 		// failure from here on has services to put back, as one after
@@ -1070,16 +1079,8 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
-			// No container of the project before this start: a first
-			// one, which takes down what it creates if it fails (#300).
-			// Unreadable, nothing starts: Verify reads the same status,
-			// and a start that could not tell would leave what it made.
-			states, err := d.Runtime.Status(ctx, cfg)
-			if err != nil {
+			if err := d.noteFirstStart(ctx, st, cfg); err != nil {
 				return err
-			}
-			if len(states) == 0 {
-				st.Set(keyFirstStart, true)
 			}
 			// Before Up, not after: a failed Up may still have
 			// replaced some of the containers.
@@ -1090,17 +1091,6 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 				RemoveOrphans: true,
 				ForceRecreate: opts.ForceRecreate,
 			})
-		},
-		Compensate: func(ctx context.Context, st *engine.State) error {
-			if _, first := st.Get(keyFirstStart); !first {
-				return nil
-			}
-			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
-			if err != nil {
-				return err
-			}
-			st.Detail("taking down the containers this first start created")
-			return d.Runtime.Down(ctx, cfg, ports.DownOptions{RemoveOrphans: true, Timeout: 2 * time.Minute})
 		},
 		Verify: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
@@ -1139,12 +1129,43 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 	}
 }
 
-// keyFirstStart says start-services began with no container of the project.
-// Its rollback then takes down what it created: left, the containers restart
-// over the rendered files the rollback removes, and Docker makes a directory of
-// each missing bind source, which every later apply trips on (#300). With
-// containers there before, they are what was there, and stay.
+// keyFirstStart says whether the project had no container before this
+// operation started one. True, the configuration's rollback takes down what
+// was started before it removes the files: left, the containers restart over
+// them, and Docker makes a directory of each missing bind source, which every
+// later apply trips on (#300). With containers there before, they are what was
+// there, and stay.
 const keyFirstStart = "first-start"
+
+// noteFirstStart records keyFirstStart once, before the first thing that can
+// start a container: a migration's one-shot starts what it depends on, ahead of
+// start-services, which would then find it. Unreadable, nothing starts, since a
+// start that could not tell would leave what it made.
+func (d *Deps) noteFirstStart(ctx context.Context, st *engine.State, cfg ports.RuntimeConfig) error {
+	if _, decided := st.Get(keyFirstStart); decided {
+		return nil
+	}
+	states, err := d.Runtime.Status(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	st.Set(keyFirstStart, len(states) == 0)
+	return nil
+}
+
+// downFirstStart takes down what a first start created, volumes kept.
+func (d *Deps) downFirstStart(ctx context.Context, st *engine.State) error {
+	v, _ := st.Get(keyFirstStart)
+	if first, _ := v.(bool); !first {
+		return nil
+	}
+	cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+	if err != nil {
+		return err
+	}
+	st.Detail("taking down the containers this first start created")
+	return d.Runtime.Down(ctx, cfg, ports.DownOptions{RemoveOrphans: true, Timeout: 2 * time.Minute})
+}
 
 // keyServicesTouched says start-services began replacing containers, so a
 // failed update has more to put back than files.

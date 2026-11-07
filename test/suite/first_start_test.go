@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
-	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // A first start that fails: `up` created the containers and they never became
@@ -46,6 +46,53 @@ func TestAFailedFirstStartTakesDownWhatItCreated(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, h.callsSince(calls), "Down", "the containers the first start created were left")
 	assert.NotContains(t, h.callsSince(calls), "Down(volumes)", "the rollback removed the volumes")
+}
+
+// withAMigrationService makes the release's migration a one-shot whose start
+// brings up a dependency, as `compose run` does, before start-services runs.
+func withAMigrationService(t *testing.T, h *harness) {
+	t.Helper()
+	withMigrateSteps(t, h.Release.Root, serviceMigration, nil)
+	rel, err := release.Load(h.Release.Root)
+	require.NoError(t, err)
+	h.Release = rel // so install records the patched bundle's digest
+	h.Runtime.OnCall = func(method string) {
+		if method == "RunOneShot" {
+			h.Runtime.Services["db"] = ports.ServiceState{Name: "db", State: "running"}
+		}
+	}
+}
+
+// What a migration started is part of the first start: start-services, which
+// then finds a container, would otherwise take it for one that was there.
+func TestAFirstStartAfterAMigrationServiceTakesDownWhatItCreated(t *testing.T) {
+	h := newHarness(t)
+	withAMigrationService(t, h)
+	h.install()
+	h.setHookEnv()
+	h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: xray never became healthy")
+	calls := len(h.Runtime.Calls)
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.Contains(t, h.callsSince(calls), "Down", "the dependency the migration started was left")
+}
+
+// A migration that fails after its one-shot started a dependency leaves it
+// running over the files the rollback removes, as a failed start did.
+func TestAFailedFirstMigrationTakesDownWhatItStarted(t *testing.T) {
+	h := newHarness(t)
+	withAMigrationService(t, h)
+	h.install()
+	h.setHookEnv()
+	h.Runtime.OneShotResults = map[string]ports.ExitResult{"app": {ExitCode: 3}}
+	calls := len(h.Runtime.Calls)
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.Contains(t, h.callsSince(calls), "Down", "the dependency the migration started was left")
 }
 
 // Over containers that already existed, the rollback leaves them, as before:
@@ -92,19 +139,12 @@ func TestARenderOverADirectorySaysWhatItIs(t *testing.T) {
 	h.setHookEnv()
 	target := filepath.Join(h.Root, "etc", "demo", "application.yaml")
 	require.NoError(t, os.MkdirAll(target, 0o755))
-	// The step's own failure, which is where its hint is shown: the
-	// operation's error says only that it was rolled back.
-	var failed *domain.Error
-	h.Deps.Bus.SubscribeFunc(func(e events.Event) {
-		if e.Kind == events.KindStepFinished && e.StepID == "render-configuration" && e.Err != nil {
-			failed = e.Err
-		}
-	})
 
 	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), target+" is a directory")
-	require.NotNil(t, failed, "render-configuration did not report its failure")
-	assert.Contains(t, failed.Hint, "rmdir "+target)
+	// On the operation's error, which a rollback wraps: it is what the
+	// operator reads last, and what JSON output and `history` keep.
+	assert.Contains(t, domain.AsError(err).Hint, "rmdir "+target)
 }
