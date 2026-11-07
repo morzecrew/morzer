@@ -3010,6 +3010,10 @@ step, and plannable with <code>--dry-run</code>.</p>
 </table>
 <p>A plan is confirmed like the removal itself, because <code>--dry-run</code> refuses
 whatever the operation would refuse. Pass it the same flags.</p>
+<p>The containers are taken down through the current release's Compose files. When
+those cannot do it, because the release cannot be read or its files no longer
+interpolate, they are taken down by the project's name instead, and the removal
+says so.</p>
 <h4 id="what-goes-and-what-stays">What goes and what stays<a class="headerlink" href="#what-goes-and-what-stays" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
