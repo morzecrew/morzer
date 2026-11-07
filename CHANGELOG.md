@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An installation named other than its release reads its variables.**
+  `init --product dd` for a release named `dotdash` handed it `DD_*` while
+  its files read `DOTDASH_*`. The prefix is the release's name, as the hook
+  reference says, and a Compose error quotes Compose's own diagnostic.
 - **`init --release oci://…` names the product from the bundle.** It read
   the reference as a local path, `oci:/…/manifest.yaml`, and failed unless
   `--product` was given. It now reads the name through the release source,

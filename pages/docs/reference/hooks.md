@@ -25,11 +25,13 @@ ship inside a product's own release, so the author always knows the name, and
 namespacing keeps two products' hooks from colliding.
 
 The prefix is `metadata.name` upper-cased with `-` and `.` replaced by `_`. For
-the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`.
+the example bundle, whose product is `demo`, `DATA_DIR` is `DEMO_DATA_DIR`. It
+is the release's name whatever the installation is called, so an installation
+`init --product` named otherwise reads the names its hooks were written with.
 
 | Variable | Meaning |
 | --- | --- |
-| `<PRODUCT>_PRODUCT` | The product name itself. |
+| `<PRODUCT>_PRODUCT` | The installation's name, which its paths and units take. The release's name, unless `init --product` gave it another. |
 | `<PRODUCT>_INSTALLATION_ID` | Identifies this deployment on this machine. |
 | `<PRODUCT>_OPERATION_ID` | The operation the hook is running inside. Appears in the journal and in error output. |
 | `<PRODUCT>_OPERATION_TYPE` | `apply`, `start`, `update`, `rollback`, `restart`, `config`, `backup`, `restore`: the operation running the hook. A first install is `apply`, as every re-apply is, a boot's included. `restart` runs only the health checks. `config` is a [profile change](parameters.md#changing-the-profile), which runs apply's hooks under the new profile. `init` is reserved: no hook runs under it. A [task's container](#a-task) sees `task`, and a [preflight check](#a-preflight-check) that `doctor` runs sees `doctor`. |
