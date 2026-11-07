@@ -74,3 +74,39 @@ evidence: internal/lifecycle/ops/update_preview.go:65-67
 action: decided
 proposal: ASSUMED — the preview and the unattended assessment say a release declaring `database: none` keeps no database, rather than that its schema was not checked.
 ```
+
+## Build, 2026-11-07
+
+The author's ruling is RFC 0016 decision 33, appended in this branch. The
+entry above was built as proposed: `UpdateRollback.NoDatabase`
+(`internal/lifecycle/ops/update_preview.go:72`) and its line in the plan
+(`internal/cli/commands.go:599`).
+
+One thing the plan did not foresee. `AssessUnattended` asks `rollback_safe`
+only inside the schema half, through `AssessRollback`. A release declaring
+`database: none` still goes through `AssessRollback` with no schema, so
+`rollback_safe: false` is refused. The test table has the case. This follows
+the plan and is not a departure, so no entry.
+
+## Self-audit, 2026-11-07
+
+Scope: the branch against `a45f78e7`, three commits, 16 files, 313 lines added
+and 3 removed: code, tests, the regenerated schema, docs, the RFC row and the
+changelog.
+
+- **Sabotage:** seven mutations, each run against the test written for it,
+  and each went red:
+  - the gate ignoring `none`;
+  - `none` skipping `rollback_safe`;
+  - each of the three `release verify` refusals: the migrate step, the
+    floor, an unknown value;
+  - the preview's flag;
+  - `release diff` leaving the field out.
+- **Residue:**
+  - A release that adds a database after declaring `none` moves to
+    `database_schema_*` like any first declaration. Its first update is then
+    judged against a previous release with no `database_schema_max`, so the
+    schema comparison is skipped, as it is today for any release that
+    declares one for the first time.
+  - The example bundle keeps its database, so the demos do not install a
+    release declaring `none`. The suite and the CLI tests do.
