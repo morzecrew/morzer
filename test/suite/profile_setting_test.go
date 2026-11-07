@@ -344,14 +344,16 @@ func TestAProfileChangeTheRuntimeCannotAnswerForIsRefused(t *testing.T) {
 // A profile change that lands while an apply, update or rollback waits for the
 // lock refuses it: its steps were built for the profile it read before.
 func TestAProfileChangedWhileWaitingForTheLockRefuses(t *testing.T) {
-	ctx := context.Background()
 	for name, run := range map[string]func(h *harness) error{
-		"apply": func(h *harness) error { _, err := ops.Apply(ctx, h.Deps, ops.Options{}); return err },
+		"apply": func(h *harness) error { _, err := ops.Apply(context.Background(), h.Deps, ops.Options{}); return err },
 		"update": func(h *harness) error {
-			_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
+			_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageUpgradeSource(t, h)})
 			return err
 		},
-		"rollback": func(h *harness) error { _, err := ops.Rollback(ctx, h.Deps, ops.RollbackOptions{}); return err },
+		"rollback": func(h *harness) error {
+			_, err := ops.Rollback(context.Background(), h.Deps, ops.RollbackOptions{})
+			return err
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t)
@@ -359,14 +361,14 @@ func TestAProfileChangedWhileWaitingForTheLockRefuses(t *testing.T) {
 			h.setHookEnv()
 			applyBaseline(t, h)
 			if name == "rollback" {
-				_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+				_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
 				require.NoError(t, err)
 			}
 			h.Locker.BeforeAcquire = func() {
 				h.Locker.BeforeAcquire = nil
 				inst := installation(t, h)
 				inst.Profile = "external-db"
-				require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+				require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
 			}
 
 			err := run(h)
