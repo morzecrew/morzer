@@ -436,3 +436,18 @@ func TestFilesUnderRecordsNestedPaths(t *testing.T) {
 		t.Errorf("a directory was recorded as a file: %v", got)
 	}
 }
+
+// TestTheWizardDoesNotAskTheProfileOnARepair, where an empty answer keeps the
+// recorded profile rather than choosing the base files. `config set
+// installation.profile` changes it.
+func TestTheWizardDoesNotAskTheProfileOnARepair(t *testing.T) {
+	app, shown := wizardApp(t, "", "3")
+
+	got, err := runInitWizard(context.Background(), app, ops.InitOptions{
+		Product: "demo", ReleasePath: testdataBundle(t), Repair: true,
+	})
+	require.NoError(t, err)
+
+	assert.Empty(t, got.Profile)
+	assert.NotContains(t, shown.String(), "Deployment profile")
+}

@@ -153,7 +153,10 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	// None first, and so the default: a profile may be an optional extra
 	// rather than one of several topologies, and one that opens a host port
 	// should not be what pressing enter chooses (#286).
-	if opts.Profile == "" && len(profiles) > 0 {
+	//
+	// Not on a repair, where an empty answer keeps the recorded profile and
+	// "none" would be untrue. `config set installation.profile` changes it.
+	if opts.Profile == "" && len(profiles) > 0 && !opts.Repair {
 		options := append([]huh.Option[string]{huh.NewOption("none, the base files", "")},
 			huh.NewOptions(profiles...)...)
 		fields = append(fields, huh.NewSelect[string]().
