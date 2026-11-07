@@ -73,6 +73,10 @@ func TestAProfileChangeAppliesTheReleaseUnderIt(t *testing.T) {
 	plan, err := setSetting(t, h, true, map[string]string{"installation.profile": "external-db"})
 	require.NoError(t, err)
 	assert.Equal(t, "would set installation.profile and apply demo 1.2.0 under the profile external-db", plan.Summary)
+	require.True(t, plan.Record.DryRun)
+	require.Greater(t, len(plan.Record.Steps), 2, "the plan does not show the converge")
+	assert.Equal(t, "restore-point", plan.Record.Steps[1].ID)
+	assert.Equal(t, "record-state", plan.Record.Steps[len(plan.Record.Steps)-1].ID)
 	assert.Equal(t, "embedded", installation(t, h).Profile, "a plan recorded the profile")
 	assert.Len(t, h.Runtime.UpOptions, ups, "a plan started a service")
 
