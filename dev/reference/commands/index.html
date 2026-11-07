@@ -3625,7 +3625,11 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tr>
 <tr>
 <td><code>runtime.services</code></td>
-<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is <a href="#stop">stopped</a> with <code>morzer stop</code>, it reports the stop as information, however old, and <code>runtime.health</code> does not probe.</td>
+<td>Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. Fails too when a service is running and its Docker healthcheck says unhealthy: the product is up and broken, which nobody chooses. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is <a href="#stop">stopped</a> with <code>morzer stop</code>, it reports the stop as information, however old, and <code>runtime.health</code> does not probe.</td>
+</tr>
+<tr>
+<td><code>runtime.health</code></td>
+<td>Fails when a health check the release declares does not pass while its services run, an unhealthy one included. With nothing running, or a runtime it cannot ask, it does not probe and only warns, as the service check above already says why.</td>
 </tr>
 </tbody>
 </table>
