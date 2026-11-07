@@ -121,11 +121,9 @@ func TestAFailedApplyIsRecordedAsCompensatedNotFailed(t *testing.T) {
 	if len(result.Record.Steps) == 0 {
 		t.Error("the record carries no steps, so nothing can say how far it got")
 	}
-	// The failing step is recorded failed, or compensated when it rolled
-	// itself back, as a first start does (#300); either way with its reason.
 	var failed int
 	for _, s := range result.Record.Steps {
-		if s.Status == domain.StepFailed || (s.Status == domain.StepCompensated && s.Error != "") {
+		if s.Status == domain.StepFailed {
 			failed++
 			if s.Error == "" {
 				t.Errorf("step %s failed with no recorded reason", s.ID)

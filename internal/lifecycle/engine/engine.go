@@ -446,7 +446,11 @@ func (e *Engine) handleFailure(
 			rec.Status = domain.StatusCompensated
 			rec.Error = domain.Compensated(failure,
 				"%s failed at step %q; earlier changes were rolled back", op.Type, stepIDAt(op, failedIdx)).
-				WithOp(op.ID, stepIDAt(op, failedIdx))
+				WithOp(op.ID, stepIDAt(op, failedIdx)).
+				// The step's remedy, which the rollback did not
+				// make moot: what the operator reads last, and what
+				// JSON output and `history` keep.
+				WithHintFrom(failure)
 		default:
 			rec.Status = domain.StatusManualIntervention
 			// Both failures, in the error the operator reads: the

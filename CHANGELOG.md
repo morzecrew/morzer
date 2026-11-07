@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a directory of each, which every later `apply` tripped on. A render that
   finds a directory at a target now says so, and names the `rmdir`.
 
+- **A rolled-back operation keeps the failed step's hint.** Its error said
+  only that the changes were rolled back, so the last line printed, JSON
+  output and `history` lost what to do about it.
+
 - **A restore that fails leaves the product down, and resumes.** A failure
   writing the data started the services again over what was half-restored,
   and the restore could not be resumed. They stay stopped now, and once
