@@ -11,6 +11,7 @@ package compose
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -246,7 +247,17 @@ func (r *Runtime) Validate(ctx context.Context, cfg ports.RuntimeConfig) (ports.
 
 	res, err := r.runner.Run(ctx, cmd)
 	if err != nil {
-		return ports.Rendered{}, wrapExit(err, "compose configuration is invalid",
+		// Compose's own diagnostic, in the message the step line shows: a
+		// variable nothing set was otherwise reported with no cause (#298).
+		// Its last line, since Compose prints warnings before the error.
+		message := "compose configuration is invalid"
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if last := lastLine(exitErr.Stderr); last != "" {
+				message += ": " + last
+			}
+		}
+		return ports.Rendered{}, wrapExit(err, message,
 			"run `docker compose config` against the release to see the full diagnostic")
 	}
 
@@ -1042,6 +1053,12 @@ func (r *Runtime) ProbeRegistry(ctx context.Context, imageRef string) error {
 	default:
 		return domain.RuntimeError(err, "%s", firstLine(exitErr.Stderr))
 	}
+}
+
+// lastLine is the last line of s with text on it, or empty.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 func firstLine(s string) string {

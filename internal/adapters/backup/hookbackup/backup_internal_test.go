@@ -268,6 +268,29 @@ func TestBackupHooksAreToldTheDomains(t *testing.T) {
 	}
 }
 
+// Backup and restore hooks read their variables under the release's name, as
+// every hook does, and are told the installation's own name as PRODUCT (#298).
+func TestBackupHooksReadTheReleasesPrefix(t *testing.T) {
+	e := New(Config{
+		Paths:        domain.PathsUnder(t.TempDir(), "sandbox"),
+		Installation: domain.Installation{Product: "sandbox", ID: "inst_01"},
+		Release:      domain.Release{Manifest: domain.Manifest{Metadata: domain.Metadata{Name: "demo"}}},
+		Runtime:      hookVarRuntime{project: "sandbox"},
+	})
+
+	env := e.hookEnv(ports.PhaseBackup, "/backups/one")
+	vars := ports.HookEnvVars(env)
+	if vars["DEMO_PRODUCT"] != "sandbox" {
+		t.Errorf("DEMO_PRODUCT is %q, want the installation's name", vars["DEMO_PRODUCT"])
+	}
+	if _, ok := vars["SANDBOX_PRODUCT"]; ok {
+		t.Error("a variable is under the installation's name")
+	}
+	if env.Extra["DEMO_COMPOSE_PROJECT"] != "sandbox" {
+		t.Errorf("the runtime's variable is %v, want DEMO_COMPOSE_PROJECT", env.Extra)
+	}
+}
+
 // hookVarRuntime is a ports.Runtime that answers only the capability under
 // test. Embedding the interface rather than a fake keeps every other method
 // nil: a test that reached one would panic rather than pass on a stub.

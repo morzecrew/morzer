@@ -1161,6 +1161,7 @@ func (e *Engine) resolve(ref ports.BackupRef) (string, error) {
 func (e *Engine) hookEnv(phase ports.HookPhase, backupDir string) ports.HookEnv {
 	return ports.HookEnv{
 		Product:        e.installation.Product,
+		Namespace:      e.release.Name(),
 		InstallationID: e.installation.ID,
 		Phase:          phase,
 		ReleaseVersion: e.release.Version(),
@@ -1198,7 +1199,7 @@ func (e *Engine) runtimeHookVars() map[string]string {
 	}
 	named := make(map[string]string, len(supplied))
 	for suffix, value := range supplied {
-		named[ports.HookEnv{Product: e.installation.Product}.Var(suffix)] = value
+		named[ports.HookEnv{Product: e.installation.Product, Namespace: e.release.Name()}.Var(suffix)] = value
 	}
 	return named
 }
