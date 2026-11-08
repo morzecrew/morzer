@@ -645,6 +645,15 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 					// means removing it.
 					backups[target] = configBackup{created: true}
 				default:
+					// What Docker leaves for a bind mount whose file was
+					// missing when a container started (#300).
+					if info, statErr := os.Stat(target); statErr == nil && info.IsDir() {
+						return domain.InstallationError(nil,
+							"%s is a directory, where the release renders a file", target).
+							WithHint("Docker makes one for a bind mount whose file is missing when a "+
+								"container starts. Once nothing mounts it, which `morzer stop` sees to, "+
+								"remove it with `rmdir %s` and apply again", target)
+					}
 					// A file that exists and cannot be read would be
 					// replaced with no backup, and nothing could put
 					// it back: refused before it is touched.
@@ -664,15 +673,28 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			return nil
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			// Before the files go, after every later step's undo:
+			// left, what a first start created restarts over the files
+			// this removes (#300).
+			downErr := d.downFirstStart(ctx, st)
+			if downErr != nil {
+				// Then it may still run, and restart over a file removed
+				// here as a directory: the files the render created stay,
+				// and nothing is started against them.
+				st.Set(keyConfigNotRestored, true)
+			}
 			kept := d.replacedDir(st.OpID)
-			if err := restoreConfigBackups(st); err != nil {
+			if err := restoreConfigBackups(st, downErr != nil); err != nil {
 				// In the message, not a hint: the engine reports only a
 				// compensator's message.
+				msg := domain.AsError(err).Message
 				if _, statErr := os.Stat(kept); statErr == nil {
-					return domain.InstallationError(nil, "%s; the files the update replaced where "+
-						"no release rendered one are kept under %s", domain.AsError(err).Message, kept)
+					msg += "; the files the update replaced where no release rendered one are kept under " + kept
 				}
-				return err
+				if downErr != nil {
+					msg = domain.AsError(downErr).Message + "; " + msg
+				}
+				return domain.InstallationError(nil, "%s", msg)
 			}
 			// Every file is back, so a copy would only be a second,
 			// stale one. Removed after the files, never before: until
@@ -681,7 +703,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err := os.RemoveAll(kept); err != nil {
 				st.Warn("could not remove the copies under %s, which are no longer needed: %v", kept, err)
 			}
-			return nil
+			return downErr
 		},
 	}
 }
@@ -693,8 +715,9 @@ const keyConfigBackups = "config-backups"
 // restoreConfigBackups puts back what the render replaced. The render step's
 // compensator, and recreate-services', which the engine undoes first and which
 // must not re-create the services against the new files. Idempotent, so the
-// second call writes the same bytes again.
-func restoreConfigBackups(st *engine.State) error {
+// second call writes the same bytes again. keepCreated leaves the files the
+// render created where there were none.
+func restoreConfigBackups(st *engine.State, keepCreated bool) error {
 	backups, ok := st.Get(keyConfigBackups)
 	if !ok {
 		return nil
@@ -715,6 +738,9 @@ func restoreConfigBackups(st *engine.State) error {
 		// wider mode let read it.
 		var err error
 		if backup.created {
+			if keepCreated {
+				continue
+			}
 			if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
 				err = nil
 			}
@@ -939,6 +965,9 @@ func (d *Deps) runMigrateStep(
 		if err != nil {
 			return 0, err
 		}
+		if err := d.noteFirstStart(ctx, st, cfg); err != nil {
+			return 0, err
+		}
 		// A one-shot starts what it depends on, and on an update
 		// recreates a dependency whose configuration changed, so a
 		// failure from here on has services to put back, as one after
@@ -1061,6 +1090,9 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			if err != nil {
 				return err
 			}
+			if err := d.noteFirstStart(ctx, st, cfg); err != nil {
+				return err
+			}
 			// Before Up, not after: a failed Up may still have
 			// replaced some of the containers.
 			st.Set(keyServicesTouched, true)
@@ -1106,6 +1138,44 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 		// compensator, which runs after configuration and secrets have
 		// been put back (restorePreviousRuntime).
 	}
+}
+
+// keyFirstStart says whether the project had no container before this
+// operation started one. True, the configuration's rollback takes down what
+// was started before it removes the files: left, the containers restart over
+// them, and Docker makes a directory of each missing bind source, which every
+// later apply trips on (#300). With containers there before, they are what was
+// there, and stay.
+const keyFirstStart = "first-start"
+
+// noteFirstStart records keyFirstStart once, before the first thing that can
+// start a container: a migration's one-shot starts what it depends on, ahead of
+// start-services, which would then find it. Unreadable, nothing starts, since a
+// start that could not tell would leave what it made.
+func (d *Deps) noteFirstStart(ctx context.Context, st *engine.State, cfg ports.RuntimeConfig) error {
+	if _, decided := st.Get(keyFirstStart); decided {
+		return nil
+	}
+	states, err := d.Runtime.Status(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	st.Set(keyFirstStart, len(states) == 0)
+	return nil
+}
+
+// downFirstStart takes down what a first start created, volumes kept.
+func (d *Deps) downFirstStart(ctx context.Context, st *engine.State) error {
+	v, _ := st.Get(keyFirstStart)
+	if first, _ := v.(bool); !first {
+		return nil
+	}
+	cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
+	if err != nil {
+		return err
+	}
+	st.Detail("taking down the containers this first start created")
+	return d.Runtime.Down(ctx, cfg, ports.DownOptions{RemoveOrphans: true, Timeout: 2 * time.Minute})
 }
 
 // keyServicesTouched says start-services began replacing containers, so a

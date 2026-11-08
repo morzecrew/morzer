@@ -423,7 +423,7 @@ func stepRecreateServices(
 			// recorded values nor the rendered files are back yet: a
 			// forced re-create now would mount the new files. The files
 			// go back here, and the services with the old values.
-			if err := restoreConfigBackups(st); err != nil {
+			if err := restoreConfigBackups(st, false); err != nil {
 				return err
 			}
 			return d.recreate(ctx, previous, rel, services)
