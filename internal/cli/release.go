@@ -292,6 +292,10 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			"Pass --signing-key to check the bundle's signature too. This is the\n" +
 			"command a bundle vendor runs in their own CI, so it needs no\n" +
 			"installation on the machine.\n\n" +
+			"A bundle that ships its public key as minisign.pub must be signed by\n" +
+			"that key. Without --signing-key, that proves only that the bundle and\n" +
+			"its key agree; with it, the shipped key must also be the given key that\n" +
+			"signed.\n\n" +
 			"--render-check additionally renders each template against a synthetic\n" +
 			"context. It is a smoke test, not a guarantee: the values are invented,\n" +
 			"so a template that branches on them exercises only the branch they\n" +
@@ -360,6 +364,12 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 					return err
 				}
 			}
+			// After the given keys: the vendor's own key is the stronger
+			// claim, and with it a shipped key that fails here is stale.
+			shippedKeyID, err := checkShippedKey(app, rel.Root)
+			if err != nil {
+				return err
+			}
 
 			if expectDigest != "" && !atomicfs.SameDigest(rel.Digest, expectDigest) {
 				return domain.ValidationError(domain.ErrDigestMismatch,
@@ -368,11 +378,12 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			}
 
 			if err := app.render(views.Verified{
-				Valid:       true,
-				Name:        rel.Name(),
-				VersionInfo: rel.Version(),
-				Digest:      rel.Digest,
-				RenderCheck: renderCheck,
+				Valid:        true,
+				Name:         rel.Name(),
+				VersionInfo:  rel.Version(),
+				Digest:       rel.Digest,
+				RenderCheck:  renderCheck,
+				ShippedKeyID: shippedKeyID,
 			}); err != nil {
 				return err
 			}
@@ -383,6 +394,14 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 			summary := "bundle is valid"
 			if renderCheck {
 				summary = "bundle is valid; templates render against a synthetic context"
+			}
+			// A key checked against the signature it came with proves
+			// only that the two agree. Said here because "valid" next to
+			// a key id reads as more.
+			if shippedKeyID != "" && len(signingKeys) == 0 {
+				summary += fmt.Sprintf("; its signature verifies against the key it ships, %s, "+
+					"which proves only that the two agree: pass --signing-key to check it is yours",
+					shippedKeyID)
 			}
 			app.finish(ops.Result{Summary: summary})
 			return nil
@@ -396,6 +415,22 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 		"also render each template against a synthetic context; a smoke test, "+
 			"not a promise about a real installation")
 	return cmd
+}
+
+// checkShippedKey checks the key a bundle ships against the bundle's own
+// signature, and returns its id, or "" when it ships none.
+//
+// It is the check a first-use `init` makes before trusting the key (RFC 0052),
+// run where the vendor can still fix the bundle. `verify`, `archive` and `push`
+// make it, after the signature is written; `build` runs before, when a key with
+// no signature is what a bundle is meant to have.
+func checkShippedKey(app *App, root string) (string, error) {
+	reader, ok := app.Deps.Verifier.(ports.ShippedKeyReader)
+	if !ok {
+		return "", nil
+	}
+	shipped, err := reader.ShippedKey(ports.BundlePath(root))
+	return shipped.ID, err
 }
 
 // checkBundleIntegrity runs the checks every command that blesses a bundle

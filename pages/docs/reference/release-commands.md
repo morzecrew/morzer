@@ -207,6 +207,15 @@ On a deployment host, the installation's trusted keys decide instead: set at
 `init`, and changed with [`release trust`](#release-trust). See
 [Verification](#verification).
 
+A bundle may ship its public key as `minisign.pub`. `verify` then checks the
+bundle's signature against that key too, with or without `--signing-key`, and
+refuses a bundle the key did not sign. It also refuses one that ships a key and
+no signature, because a bundle that ships its key declares that it is signed.
+Without `--signing-key`, the check proves only that the bundle and its key
+agree, and the summary says so. With it, the shipped key must be the given key
+that signed, which catches a stale `minisign.pub`. The report names the shipped
+key's id, and `--json` carries it as `shipped_key_id`.
+
 ## release pack
 
 ```sh
@@ -340,6 +349,7 @@ signing keys.
 | No `SHA256SUMS` | Refused. Archiving an unsummed tree produces a bundle the completeness rule cannot be applied to. |
 | `SHA256SUMS` does not match the tree | Refused, by the same check `verify` runs. |
 | `SHA256SUMS.minisig` older than `SHA256SUMS` | Refused. A signature over a tree that has since changed is the exact failure the chain exists to prevent. |
+| A `minisign.pub` that did not sign the bundle, or one shipped with no signature | Refused, as `verify` refuses it. A bundle that ships its key declares that it is signed, so the warning below does not apply to it. |
 | No signature at all | **Warned, not refused.** Whether a signature is required is the operator's policy (`policy.require_signature`), and an unsigned bundle is legitimate for a vendor whose customers do not require one. |
 | `-o` points inside the bundle | Refused. The archive would be a file the bundle contains and its own `SHA256SUMS` does not list. |
 | `-o` does not end in `.tar.zst` or `.tzst` | Refused. The archive is always zstd, and sources recognise one by that suffix: a `.tar.gz` would be a file no source reads. |
@@ -409,7 +419,8 @@ have `update --check` offer a version the bundle does not carry.
 
 Before anything is sent, the archive is extracted the way an installation
 extracts it, then checked as `verify` checks a bundle: providers, templates,
-`SHA256SUMS`, and the signature under `--signing-key`. Credentials are the ones
+`SHA256SUMS`, a shipped `minisign.pub`, and the signature under
+`--signing-key`. Credentials are the ones
 `docker login` stored; a loopback registry is reached over HTTP, as with
 `fetch`.
 
@@ -663,11 +674,16 @@ A signed bundle contains:
 release/
 ├── SHA256SUMS           # one line per file
 ├── SHA256SUMS.minisig   # detached minisign signature over it
+├── minisign.pub         # optional: the vendor's public key
 └── ...
 ```
 
 The signature travels **inside** the bundle so it survives being packed into an
-archive and unpacked again. A sibling file would not.
+archive and unpacked again. A sibling file would not. A shipped `minisign.pub`
+is listed in `SHA256SUMS` like any other file, so the signature covers it. No
+installation trusts it: [`release verify`](#release-verify), `archive` and
+`push` check that it signed the bundle, so the key a vendor ships is the one
+they sign with.
 
 The keys are set per installation, at `init`:
 

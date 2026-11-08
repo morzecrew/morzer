@@ -38,6 +38,10 @@ type Verified struct {
 	VersionInfo domain.Version `json:"version"`
 	Digest      string         `json:"digest"`
 	RenderCheck bool           `json:"render_check"`
+
+	// ShippedKeyID is the id of the key the bundle ships as minisign.pub,
+	// which its signature verified against. Absent when it ships none.
+	ShippedKeyID string `json:"shipped_key_id,omitempty"`
 }
 
 func init() {
@@ -162,7 +166,11 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 
 func verifiedDoc(d *ui.Doc, v Verified) *ui.Doc {
 	d.Title(v.Name + " " + v.VersionInfo.String())
-	d.Fields(2, []ui.Field{{Label: "digest", Value: v.Digest}})
+	fields := []ui.Field{{Label: "digest", Value: v.Digest}}
+	if v.ShippedKeyID != "" {
+		fields = append(fields, ui.Field{Label: "shipped key", Value: v.ShippedKeyID})
+	}
+	d.Fields(2, fields)
 	return d
 }
 

@@ -104,3 +104,17 @@ func (c *Chain) CheckKey(key string) error {
 	}
 	return nil
 }
+
+var _ ports.ShippedKeyReader = (*Chain)(nil)
+
+// ShippedKey asks the first member that can read a key a bundle ships. A chain
+// with no such member reads none, which is what the manager did before any
+// member could.
+func (c *Chain) ShippedKey(bundle ports.BundlePath) (ports.ShippedKey, error) {
+	for _, v := range c.verifiers {
+		if r, ok := v.(ports.ShippedKeyReader); ok {
+			return r.ShippedKey(bundle)
+		}
+	}
+	return ports.ShippedKey{}, nil
+}

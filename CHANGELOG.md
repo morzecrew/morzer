@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A bundle can ship its public key as `minisign.pub`.** `release verify`,
+  `archive` and `push` refuse one its signature does not verify against, or
+  one shipped unsigned, so a stale key is caught before it is published.
+  `verify --json` reports the key's id as `shipped_key_id`.
+
 ## [0.14.0] - 2026-11-08
 
 A release can declare its restore hook restartable, so `restore --resume`

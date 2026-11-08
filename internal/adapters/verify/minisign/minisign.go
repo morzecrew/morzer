@@ -23,10 +23,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	gominisign "github.com/jedisct1/go-minisign"
 
@@ -113,6 +115,24 @@ func (v *Verifier) VerifySigned(ctx context.Context, bundle ports.BundlePath, ex
 		return "", nil
 	}
 
+	signer, err := signedBy(keys, sigPath, sumsPath)
+	if err != nil || signer != "" {
+		return signer, err
+	}
+
+	// Deliberately does not say which key failed or how. A signature that
+	// does not verify is a signature that does not verify; the operator's
+	// next step is the same whichever key it was meant for.
+	return "", domain.ValidationError(domain.ErrValidation,
+		"the bundle's signature does not verify against any configured signing key").
+		WithHint("this bundle was not signed by a key this installation trusts. " +
+			"Do not install it; check where it came from, and check " +
+			"policy.signing_keys names the vendor's current key.")
+}
+
+// signedBy returns the id of the key, among keys, that the signature at sigPath
+// verifies against over sumsPath, or "" when it verifies against none of them.
+func signedBy(keys []gominisign.PublicKey, sigPath, sumsPath string) (string, error) {
 	signature, err := gominisign.NewSignatureFromFile(sigPath)
 	if err != nil {
 		return "", domain.ValidationError(err, "cannot read the signature at %s", sigPath).
@@ -133,15 +153,111 @@ func (v *Verifier) VerifySigned(ctx context.Context, bundle ports.BundlePath, ex
 			return keyID(key), nil
 		}
 	}
+	return "", nil
+}
 
-	// Deliberately does not say which key failed or how. A signature that
-	// does not verify is a signature that does not verify; the operator's
-	// next step is the same whichever key it was meant for.
-	return "", domain.ValidationError(domain.ErrValidation,
-		"the bundle's signature does not verify against any configured signing key").
-		WithHint("this bundle was not signed by a key this installation trusts. " +
-			"Do not install it; check where it came from, and check " +
-			"policy.signing_keys names the vendor's current key.")
+var _ ports.ShippedKeyReader = (*Verifier)(nil)
+
+// ShippedKey reads the key a bundle ships and checks the bundle's signature
+// against it.
+//
+// A bundle that ships a key declares that it is signed, so one with no
+// signature is refused rather than read as unsigned: either nobody signed it,
+// or the signature was removed on the way.
+func (v *Verifier) ShippedKey(bundle ports.BundlePath) (ports.ShippedKey, error) {
+	line, key, err := readKeyFile(filepath.Join(string(bundle), ports.PublicKeyFileName))
+	if err != nil || line == "" {
+		return ports.ShippedKey{}, err
+	}
+	shipped := ports.ShippedKey{Key: line, ID: keyID(key)}
+
+	sigPath, sumsPath, err := locate(string(bundle), "")
+	if err != nil {
+		return ports.ShippedKey{}, err
+	}
+	if sigPath == "" {
+		return ports.ShippedKey{}, domain.ValidationError(nil,
+			"the bundle ships its key, %s in %s, but is not signed: it has no %s",
+			shipped.ID, ports.PublicKeyFileName, ports.SignatureFileName).
+			WithHint("a bundle that ships its key declares that it is signed: " +
+				"either it was never signed, or its signature was removed")
+	}
+
+	signer, err := signedBy([]gominisign.PublicKey{key}, sigPath, sumsPath)
+	if err != nil {
+		return ports.ShippedKey{}, err
+	}
+	if signer == "" {
+		return ports.ShippedKey{}, domain.ValidationError(domain.ErrValidation,
+			"the bundle's signature does not verify against the key it ships, %s in %s",
+			shipped.ID, ports.PublicKeyFileName).
+			WithHint("%s must be the public half of the key that signed %s: "+
+				"either it is stale, or someone else signed the bundle",
+				ports.PublicKeyFileName, ports.SumsFileName)
+	}
+	return shipped, nil
+}
+
+// maxKeyFileSize bounds the read of a key file a bundle ships, which is not
+// trusted yet. `minisign -G` writes about a hundred bytes.
+const maxKeyFileSize = 4 << 10
+
+// readKeyFile reads a public key file, returning "" and no error when there is
+// none.
+//
+// It takes the file `minisign -G` writes and nothing looser, an `untrusted
+// comment:` line and then the key, which is also what `minisign -Vm -p` reads.
+// The key line comes back as written, for a caller that records it.
+//
+// The file is opened once and checked through that handle, so it cannot be
+// swapped between the check and the read. Not following a symlink, and not
+// blocking, so a link or a FIFO is refused rather than followed or waited on.
+func readKeyFile(path string) (string, gominisign.PublicKey, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", gominisign.PublicKey{}, nil
+	case errors.Is(err, syscall.ELOOP):
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
+	case err != nil:
+		return "", gominisign.PublicKey{}, domain.ValidationError(err,
+			"cannot read %s", ports.PublicKeyFileName)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return "", gominisign.PublicKey{}, domain.ValidationError(err,
+			"cannot read %s", ports.PublicKeyFileName)
+	}
+	if !info.Mode().IsRegular() {
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxKeyFileSize+1))
+	if err != nil {
+		return "", gominisign.PublicKey{}, domain.ValidationError(err,
+			"cannot read %s", ports.PublicKeyFileName)
+	}
+	if len(raw) > maxKeyFileSize {
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
+	}
+
+	lines := strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "untrusted comment:") {
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
+	}
+	line := strings.TrimSpace(lines[1])
+	key, err := gominisign.NewPublicKey(line)
+	if err != nil {
+		return "", gominisign.PublicKey{}, invalidKeyFile(err)
+	}
+	return line, key, nil
+}
+
+func invalidKeyFile(cause error) error {
+	return domain.ValidationError(cause,
+		"the bundle's %s is not a minisign public key file", ports.PublicKeyFileName).
+		WithHint("it should be the file `minisign -G` writes: " +
+			"an `untrusted comment:` line, then the key")
 }
 
 var _ ports.KeyChecker = (*Verifier)(nil)

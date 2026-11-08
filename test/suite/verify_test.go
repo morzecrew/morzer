@@ -5,9 +5,14 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	gominisign "github.com/jedisct1/go-minisign"
 	"github.com/stretchr/testify/assert"
@@ -39,9 +44,16 @@ func signBundle(t *testing.T, bundleDir string) string {
 			testBundlePath(t), bundleDir, atomicfs.DefaultExtractLimits()))
 	}
 
-	writeSumsFile(t, bundleDir)
-
 	sk, publicKey := minisignKeypair(t)
+	signWith(t, bundleDir, sk)
+	return publicKey
+}
+
+// signWith writes the bundle's SHA256SUMS and signs it with sk.
+func signWith(t *testing.T, bundleDir string, sk gominisign.PrivateKey) {
+	t.Helper()
+
+	writeSumsFile(t, bundleDir)
 
 	sumsPath := filepath.Join(bundleDir, ports.SumsFileName)
 	sig, err := sk.SignFile(sumsPath, gominisign.SignOptions{})
@@ -51,8 +63,19 @@ func signBundle(t *testing.T, bundleDir string) string {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(
 		filepath.Join(bundleDir, ports.SignatureFileName), encoded, 0o644))
+}
 
-	return publicKey
+// shipKey writes publicKey into the bundle as minisign.pub, in the form
+// `minisign -G` writes, before the bundle is summed and signed.
+func shipKey(t *testing.T, bundleDir, publicKey string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(bundleDir, ports.PublicKeyFileName),
+		[]byte("untrusted comment: minisign public key\n"+publicKey+"\n"), 0o644))
+}
+
+// minisignID is a key's id the way `minisign` prints it.
+func minisignID(sk gominisign.PrivateKey) string {
+	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(sk.KeyId[:]))
 }
 
 // minisignKeypair builds an unencrypted minisign key.
@@ -329,4 +352,144 @@ func TestEmptyVerifierChainRefusesRatherThanPasses(t *testing.T) {
 	// everything by verifying nothing.
 	err := verify.NewChain().Verify(context.Background(), "irrelevant", ports.Expectation{})
 	require.Error(t, err)
+}
+
+// A bundle's own key is a claim the bundle makes about itself, so the reader
+// returns it only once the bundle's signature verifies against it (RFC 0052).
+// Through the chain, because that is what production wires.
+func TestAShippedKeyMustSignTheBundleThatShipsIt(t *testing.T) {
+	v := verify.NewChain(checksum.New(), minisign.New())
+
+	copyBundle := func(t *testing.T) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "bundle")
+		require.NoError(t, atomicfs.CopyTree(testBundlePath(t), dir, atomicfs.DefaultExtractLimits()))
+		return dir
+	}
+
+	t.Run("a bundle signed by the key it ships returns it", func(t *testing.T) {
+		dir := copyBundle(t)
+		sk, key := minisignKeypair(t)
+		shipKey(t, dir, key)
+		signWith(t, dir, sk)
+
+		shipped, err := v.ShippedKey(ports.BundlePath(dir))
+		require.NoError(t, err)
+		assert.Equal(t, ports.ShippedKey{Key: key, ID: minisignID(sk)}, shipped)
+
+		// And it is a key the verifier accepts for the bundle, which is
+		// what a first-use install will do with it.
+		require.NoError(t, v.Verify(context.Background(), ports.BundlePath(dir),
+			ports.Expectation{PublicKeys: []string{shipped.Key}, Required: true}))
+	})
+
+	t.Run("a bundle that ships no key returns none", func(t *testing.T) {
+		dir, _ := signedBundle(t)
+
+		shipped, err := v.ShippedKey(ports.BundlePath(dir))
+		require.NoError(t, err)
+		assert.Zero(t, shipped)
+	})
+
+	t.Run("a key the bundle was not signed by is refused, naming its id", func(t *testing.T) {
+		dir := copyBundle(t)
+		sk, _ := minisignKeypair(t)
+		stale, staleKey := minisignKeypair(t)
+		shipKey(t, dir, staleKey)
+		signWith(t, dir, sk)
+
+		_, err := v.ShippedKey(ports.BundlePath(dir))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not verify against the key it ships")
+		assert.Contains(t, err.Error(), minisignID(stale))
+		assert.NotContains(t, err.Error(), staleKey)
+	})
+
+	t.Run("a key with no signature is refused", func(t *testing.T) {
+		dir := copyBundle(t)
+		_, key := minisignKeypair(t)
+		shipKey(t, dir, key)
+		writeSumsFile(t, dir)
+
+		_, err := v.ShippedKey(ports.BundlePath(dir))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not signed")
+	})
+
+	t.Run("a file that is not one minisign key is refused", func(t *testing.T) {
+		sk, key := minisignKeypair(t)
+		_, other := minisignKeypair(t)
+		for name, content := range map[string]string{
+			"a bare key line":   key + "\n",
+			"two keys":          "untrusted comment: one\n" + key + "\nuntrusted comment: two\n" + other + "\n",
+			"not a key":         "untrusted comment: minisign public key\nnot base64 at all\n",
+			"an empty file":     "",
+			"a comment, no key": "untrusted comment: minisign public key\n",
+		} {
+			t.Run(name, func(t *testing.T) {
+				dir := copyBundle(t)
+				require.NoError(t, os.WriteFile(
+					filepath.Join(dir, ports.PublicKeyFileName), []byte(content), 0o644))
+				signWith(t, dir, sk)
+
+				_, err := v.ShippedKey(ports.BundlePath(dir))
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "not a minisign public key file")
+			})
+		}
+	})
+
+	// Each would pass as a key file if it were followed, waited on or read
+	// whole, and is refused before the signature is looked at.
+	t.Run("a key file that is not a small regular file is refused", func(t *testing.T) {
+		_, key := minisignKeypair(t)
+		keyFile := "untrusted comment: minisign public key\n" + key + "\n"
+		for name, plant := range map[string]func(t *testing.T, path string){
+			"a symlink to a key file": func(t *testing.T, path string) {
+				target := filepath.Join(t.TempDir(), "key.pub")
+				require.NoError(t, os.WriteFile(target, []byte(keyFile), 0o644))
+				require.NoError(t, os.Symlink(target, path))
+			},
+			"a FIFO": func(t *testing.T, path string) {
+				require.NoError(t, syscall.Mkfifo(path, 0o644))
+			},
+			"a directory": func(t *testing.T, path string) {
+				require.NoError(t, os.Mkdir(path, 0o755))
+			},
+			"a key file past the size bound": func(t *testing.T, path string) {
+				// Two bytes past the 4 KiB bound, so a read cut off one byte
+				// past it loses only the last newline and still finds a key.
+				head, tail := "untrusted comment: ", "\n"+key+"\n"
+				pad := strings.Repeat("x", 4<<10+2-len(head)-len(tail))
+				require.NoError(t, os.WriteFile(path, []byte(head+pad+tail), 0o644))
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				dir := copyBundle(t)
+				plant(t, filepath.Join(dir, ports.PublicKeyFileName))
+
+				done := make(chan error, 1)
+				go func() { _, err := v.ShippedKey(ports.BundlePath(dir)); done <- err }()
+				select {
+				case err := <-done:
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "not a minisign public key file")
+				case <-time.After(5 * time.Second):
+					t.Fatal("reading the key file blocked")
+				}
+			})
+		}
+	})
+
+	t.Run("a key file written with CRLF line ends is read", func(t *testing.T) {
+		dir := copyBundle(t)
+		sk, key := minisignKeypair(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ports.PublicKeyFileName),
+			[]byte("untrusted comment: minisign public key\r\n"+key+"\r\n"), 0o644))
+		signWith(t, dir, sk)
+
+		shipped, err := v.ShippedKey(ports.BundlePath(dir))
+		require.NoError(t, err)
+		assert.Equal(t, key, shipped.Key)
+	})
 }

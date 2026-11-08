@@ -136,8 +136,24 @@ The private half belongs in your release pipeline and nowhere else. There is no
 the signing key onto a deployment host, which is the one machine it should never
 be on.
 
-Publish the public half where your users will look for it. They hand it to
-`init`, or trust it on an installation that already exists:
+Ship the public half in the bundle as `minisign.pub`, the file `minisign -G`
+wrote, and copy it in before `release build`, so `SHA256SUMS` lists it and the
+signature covers it:
+
+```sh
+cp morzer-bundles.pub ./my-product/minisign.pub
+```
+
+A bundle that ships its key declares that it is signed. `release verify`,
+`release archive` and `release push` refuse one whose signature does not verify
+against the key it ships, and one that ships a key with no signature. `release
+build` runs before you sign, so it accepts both.
+
+The copy in the bundle does not replace publishing the key. A key checked
+against the signature it came with proves only that the two agree, not who made
+them. Publish the public half where your users will look for it, so they can
+compare. They hand it to `init`, or trust it on an installation that already
+exists:
 
 ```sh
 # At creation, with the rest of their init flags:
@@ -150,7 +166,9 @@ morzer release trust add RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO
 `--require-signature` is chosen at `init`. Without it, a signed release is still
 checked against the trusted keys and an unsigned one installs. To rotate your
 key, have users trust the new one, ship a release signed with it, then have
-them run `morzer release trust remove <old-public-key>`.
+them run `morzer release trust remove <old-public-key>`. Replace `minisign.pub`
+in that same release: a bundle signed by the new key that still ships the old
+one is refused.
 
 !!! warning "Say what a signature means, and what it does not"
 
@@ -166,7 +184,10 @@ morzer release verify ./my-product --signing-key RWQf6LR…
 ```
 
 Validates the manifest, checks every referenced file exists, verifies the
-`SHA256SUMS` against the contents, and checks the signature. It needs no
+`SHA256SUMS` against the contents, and checks the signature. A shipped
+`minisign.pub` must be the given key that signed, which catches a stale one.
+Without `--signing-key`, `verify` still checks the signature against the key the
+bundle ships, and says that this proves only that the two agree. It needs no
 installation on the machine, so it belongs in your CI as a required check.
 
 ```yaml title=".github/workflows/release.yaml"
