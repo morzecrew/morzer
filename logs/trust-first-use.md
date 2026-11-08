@@ -194,3 +194,22 @@ evidence: internal/lifecycle/ops/shipped_key.go:115
 action: departed
 proposal: ASSUMED — refines decision 10. The wizard passes on the whole key it showed for a local bundle, or that it found none, and the stage step refuses any other key, including one where the wizard found none.
 ```
+
+Findings from the first review round, each reproduced red before its fix:
+
+- **Fixed in 7416e2c2: the wizard approved a key by its id.** The entry above.
+  A test makes a second key with the approved key's id and ships it; it was
+  trusted. And the wizard, finding no key in a local bundle, held the stage
+  step to nothing. Both are refused now. This also closes the residue the
+  self-audit listed.
+- **Fixed in 7271acc5: a repair read the policy before the lock.** A test
+  removes a key while the repair takes the lock, through a locker that runs
+  the change first; the repair verified against the removed key. The stage
+  step now reads the policy under the lock. Decision 15's entry above still
+  holds: state that cannot be read is refused, now by the stage step.
+- **Fixed in 92daf89e: `update` named the shipped key whatever else was
+  wrong.** A release signed by an untrusted key it ships, and tampered after
+  signing, was refused as signed by an untrusted key. The refusal now names
+  the key only when the release verifies against it in every other respect.
+- **Fixed in fb60aa2a: `unattended-updates.md`** said a release that ships its key
+  meets the auto-apply requirement. Only where `init` trusted it.
