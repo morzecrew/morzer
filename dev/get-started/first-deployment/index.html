@@ -2336,6 +2336,10 @@ losing the machine loses its secrets permanently.</p>
 <p>At a terminal with something missing, <code>init</code> asks instead of refusing, and
 prints the equivalent command line when it is done — so the interactive run
 produces the script for next time.</p>
+<p>The example bundle is not signed, so <code>init</code> warns that this installation trusts
+no signing key. A signed release that ships its key is trusted on first use;
+<a href="../../reference/commands/#the-key-a-release-ships">the key a release ships</a> says
+what that does and does not prove.</p>
 <p>What it created:</p>
 <div class="highlight"><pre><span></span><code>demo/etc/demo/        installation.yaml, secrets.sops.yaml, the machine age key
 demo/var/lib/demo/    data, backups, the operation journal

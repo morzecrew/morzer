@@ -1484,6 +1484,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#the-key-a-release-ships" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The key a release ships
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2528,6 +2539,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#the-key-a-release-ships" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The key a release ships
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3269,11 +3291,11 @@ run <code>apply</code> afterwards.</p>
 </tr>
 <tr>
 <td><code>--signing-key</code></td>
-<td>minisign public key a release signature must verify against. Repeat for several.</td>
+<td>minisign public key a release signature must verify against. Repeat for several. Given one, <code>init</code> requires a signature and ignores a key the release ships. On a repair it is checked beside the installation's keys and not recorded, and requires a signature only with <code>--require-signature</code>.</td>
 </tr>
 <tr>
 <td><code>--require-signature</code></td>
-<td>Refuse any release that is not signed by one of those keys.</td>
+<td>Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or <a href="#the-key-a-release-ships">shipped by the release</a>; <code>--require-signature=false</code> turns it off and trusts no key the release ships.</td>
 </tr>
 <tr>
 <td><code>--product</code></td>
@@ -3296,7 +3318,11 @@ run <code>apply</code> afterwards.</p>
 <h3 id="the-interactive-first-run">The interactive first run<a class="headerlink" href="#the-interactive-first-run" title="Permanent link">&para;</a></h3>
 <p>At a terminal, with something required still missing, <code>init</code> asks for it —
 product name, deployment profile (offering none first, then what the release declares), domains,
-and the recovery key, with an option to generate one on the spot.</p>
+and the recovery key, with an option to generate one on the spot. Where <code>init</code>
+would trust the key the release ships, it asks that too, defaulting to yes. A
+local bundle's key is shown by its id; a registry's is printed when the release
+is fetched. No installs with checksums only, as <code>--require-signature=false</code>
+does, and is refused after <code>--require-signature</code>.</p>
 <p>It is a front-end over the flags and never a second path. It fills the same
 options the flags do, and prints the command line that would have produced the
 same result:</p>
@@ -3312,10 +3338,84 @@ is the point of printing it.</p>
 <p>It never runs with <code>--yes</code>, <code>--json</code> or <code>--quiet</code>, without a terminal, or when
 the command line already answers everything. A CI job, a systemd unit and a
 scripted install all take the flags exactly as given.</p>
-<p><code>--require-signature</code> without <code>--signing-key</code> is refused: no bundle could
-satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. A key that does not parse is
-refused too. The keys change afterwards with <a href="../release-commands/#release-trust"><code>morzer release
+<h3 id="the-key-a-release-ships">The key a release ships<a class="headerlink" href="#the-key-a-release-ships" title="Permanent link">&para;</a></h3>
+<p>A vendor can ship its public key in the release, as <code>minisign.pub</code>. Given no
+<code>--signing-key</code>, <code>init</code> checks the release's signature against that key and
+trusts it. The key becomes the installation's only trusted key, and every later
+release must be signed by it. <code>init</code> prints the key and its id:</p>
+<div class="highlight"><pre><span></span><code>  CHECK THIS:
+    Trusted the signing key the release ships: RWQf6LRCGA9i53ml… (E7620F1842B4E81F).
+    Every release after this one must be signed by it. …
+</code></pre></div>
+<p>This pins the installation; it does not verify the first release. That release
+was checked only against the key it came with, so it is worth what the registry,
+or the directory it was copied from, is worth at the moment of <code>init</code>. Whoever
+controlled that could have shipped their own key. Compare the printed key with
+the one the vendor publishes. To verify the first release too, pass the
+vendor's key as <code>--signing-key</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>init</code> flags</th>
+<th>Signed, ships its key</th>
+<th>Signed, ships no key</th>
+<th>Not signed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>none</td>
+<td>Trusts the shipped key; signature required</td>
+<td>Installs unchecked, with a warning</td>
+<td>Installs, warning that later releases will not be checked</td>
+</tr>
+<tr>
+<td><code>--signing-key K</code></td>
+<td>Checked against <code>K</code>; signature required</td>
+<td>Checked against <code>K</code>; signature required</td>
+<td>Refused</td>
+</tr>
+<tr>
+<td><code>--signing-key K --require-signature=false</code></td>
+<td>Checked against <code>K</code>; not required</td>
+<td>Checked against <code>K</code>; not required</td>
+<td>Installs</td>
+</tr>
+<tr>
+<td><code>--require-signature</code></td>
+<td>As none</td>
+<td>Refused</td>
+<td>Refused</td>
+</tr>
+<tr>
+<td><code>--require-signature=false</code></td>
+<td>Checksums only; no key trusted</td>
+<td>Checksums only</td>
+<td>Checksums only</td>
+</tr>
+</tbody>
+</table>
+<p>A release that ships a key declares that it is signed. In the two rows that
+would trust its key, one whose signature does not verify against that key, or
+that ships a key with no signature, is refused. The other rows ignore the file.</p>
+<p>After the first install, a shipped key is never trusted again:</p>
+<ul>
+<li><code>update</code> checks every release against the installation's trusted keys. A
+  release signed by a key it ships, which the installation does not trust, is
+  refused by that key's id. If the vendor moved to a new key, trust the one
+  they publish with <a href="../release-commands/#release-trust"><code>morzer release trust add</code></a>.</li>
+<li>An installation that trusts no key is told when a release ships one, and
+  stays without. <code>morzer release trust add &lt;key&gt;</code> and <code>morzer config set
+  release.require_signature=true</code> change that.</li>
+<li><code>init --repair</code> of an installation that exists checks the release against
+  the installation's keys, plus any <code>--signing-key</code> it is given, which it does
+  not record. It requires a signature where the installation does, or with
+  <code>--require-signature</code>; a <code>--signing-key</code> alone does not. It never reads the
+  key the release ships.</li>
+</ul>
+<p><code>--require-signature</code> with no <code>--release</code> and no <code>--signing-key</code> is refused
+before anything is created: there is no release to find a key in. A key that
+does not parse is refused too. The keys change afterwards with <a href="../release-commands/#release-trust"><code>morzer release
 trust</code></a>, and whether a signature is required
 with <code>morzer config set release.require_signature</code>. <code>installation.yaml</code> shows
 both, but it is a report, and editing it changes nothing.</p>

@@ -2500,23 +2500,27 @@ signature covers it:</p>
 <code>release archive</code> and <code>release push</code> refuse one whose signature does not verify
 against the key it ships, and one that ships a key with no signature. <code>release
 build</code> runs before you sign, so it accepts both.</p>
-<p>The copy in the bundle does not replace publishing the key. A key checked
+<p>An <code>init</code> given no key trusts the one your bundle ships, prints it, and requires
+every later release to be signed by it. That pins your users' installations
+from the first install on; it does not verify the first install.</p>
+<p>So the copy in the bundle does not replace publishing the key. A key checked
 against the signature it came with proves only that the two agree, not who made
 them. Publish the public half where your users will look for it, so they can
-compare. They hand it to <code>init</code>, or trust it on an installation that already
-exists:</p>
+compare it with what <code>init</code> printed. A user who wants the first install checked
+too hands it to <code>init</code>, and one with an installation that trusts no key adds it:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># At creation, with the rest of their init flags:</span>
-morzer<span class="w"> </span>init<span class="w"> </span>…<span class="w"> </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3<span class="w"> </span>--require-signature
+morzer<span class="w"> </span>init<span class="w"> </span>…<span class="w"> </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 
 <span class="c1"># Or on an installation that already exists:</span>
 morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w"> </span>add<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 </code></pre></div>
-<p><code>--require-signature</code> is chosen at <code>init</code>. Without it, a signed release is still
-checked against the trusted keys and an unsigned one installs. To rotate your
-key, have users trust the new one, ship a release signed with it, then have
-them run <code>morzer release trust remove &lt;old-public-key&gt;</code>. Replace <code>minisign.pub</code>
-in that same release: a bundle signed by the new key that still ships the old
-one is refused.</p>
+<p>A trusted key, given or shipped, means a signature is required, unless the user
+passed <code>--require-signature=false</code> to <code>init</code>. To rotate your key, have users
+trust the new one, ship a release signed with it, then have them run <code>morzer
+release trust remove &lt;old-public-key&gt;</code>. Replace <code>minisign.pub</code> in that same
+release: a bundle signed by the new key that still ships the old one is refused.
+Skip the procedure and every installation refuses the release, naming the new
+key's id, until its operator trusts the key you publish.</p>
 <div class="admonition warning">
 <p class="admonition-title">Say what a signature means, and what it does not</p>
 <p>It proves a bundle came from the holder of your key. It does not prove the
