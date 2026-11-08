@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -525,4 +526,20 @@ func TestARepairVerifiesAgainstThePolicyAsItIsUnderTheLock(t *testing.T) {
 	_, err = ops.Init(ctx, h.Deps, repair)
 	require.Error(t, err, "the repair staged a release signed by a key removed before it took the lock")
 	assert.Contains(t, err.Error(), "does not verify against any configured signing key")
+}
+
+func TestAnUpdateNamesTheShippedKeyOnlyWhenThatIsAllThatIsWrong(t *testing.T) {
+	ctx := context.Background()
+	h := updateMachine(t)
+	trusted, other := newVendor(t), newVendor(t)
+	requireSignatures(t, h, trusted.pub, false)
+	src := releaseFrom(t, h, "bundle-1.3.0", other, signedShippingItsKey)
+	// Tampered after signing: the checksums no longer match.
+	require.NoError(t, os.WriteFile(filepath.Join(src, "hooks", "migrate"), []byte("#!/bin/sh\nexit 0\n"), 0o755))
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "signed by the key it ships",
+		"a release that fails its checksums was refused as if trusting its key would do")
+	assert.Contains(t, err.Error(), "mismatch")
 }

@@ -163,12 +163,22 @@ func isSigned(bundle string) bool {
 // refusedForShippedKey names the key a refused release ships, when that key
 // signed it and the installation does not trust it (decision 8). Its id only:
 // the full key in a refusal would make trusting a hijacked one a copy-paste.
-func (d *Deps) refusedForShippedKey(source domain.Release, policy domain.Policy, refusal error) error {
+//
+// Only when that is all that is wrong: the release is checked against the key
+// it ships, and one that fails that too, its checksums or its digest, keeps the
+// refusal it met. Advice to trust a key would not have helped it.
+func (d *Deps) refusedForShippedKey(ctx context.Context, source domain.Release, policy domain.Policy,
+	digest string, refusal error) error {
 	if len(policy.SigningKeys) == 0 {
 		return refusal
 	}
 	shipped, err := d.shippedKey(source.Root)
 	if err != nil || shipped.Key == "" || slices.ContainsFunc(policy.SigningKeys, sameKey(shipped.Key)) {
+		return refusal
+	}
+	if _, err := d.verifyBundle(ctx, ports.BundlePath(source.Root), ports.Expectation{
+		Digest: digest, Required: true, PublicKeys: []string{shipped.Key},
+	}); err != nil {
 		return refusal
 	}
 	return domain.ValidationError(domain.ErrValidation,

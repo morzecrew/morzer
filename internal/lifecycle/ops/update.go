@@ -694,7 +694,7 @@ func stepVerifyBundle(d *Deps, inst domain.Installation, source domain.Release, 
 				PublicKeys: inst.Policy.SigningKeys,
 			})
 			if err != nil {
-				return d.refusedForShippedKey(source, inst.Policy, err)
+				return d.refusedForShippedKey(ctx, source, inst.Policy, opts.ExpectDigest, err)
 			}
 			// The key a release ships is read, never trusted: an
 			// installation without keys is told about it and
