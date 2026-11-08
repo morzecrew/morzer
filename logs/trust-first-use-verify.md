@@ -120,3 +120,16 @@ pages, the changelog and this log.
     which is the installation's wording on a build machine. `push` checks the
     keys first and avoids it. Left as it is: out of scope here.
   - Nothing on a deployment host reads the key yet; that is P1.
+
+## Review, 2026-11-08
+
+- **Fixed: the key file could be swapped between its check and its read.**
+  `readKeyFile` checked the path with `Lstat`, then opened it again with
+  `ReadFile`. A file replaced in between by a symlink to a FIFO, or to
+  something large, was followed and blocked on, or read whole. A throwaway
+  test swapping the two hung on its tenth call. The file is now opened once,
+  without following a link and without blocking, checked through that handle,
+  and read no further than the bound. The new subtests cover a symlink, a
+  FIFO, a directory, and a file two bytes past the bound. Each goes red when
+  its guard is removed: the no-follow flag, the non-blocking flag, the
+  regular-file check, the size check.

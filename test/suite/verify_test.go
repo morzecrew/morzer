@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	gominisign "github.com/jedisct1/go-minisign"
 	"github.com/stretchr/testify/assert"
@@ -432,6 +435,48 @@ func TestAShippedKeyMustSignTheBundleThatShipsIt(t *testing.T) {
 				_, err := v.ShippedKey(ports.BundlePath(dir))
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "not a minisign public key file")
+			})
+		}
+	})
+
+	// Each would pass as a key file if it were followed, waited on or read
+	// whole, and is refused before the signature is looked at.
+	t.Run("a key file that is not a small regular file is refused", func(t *testing.T) {
+		_, key := minisignKeypair(t)
+		keyFile := "untrusted comment: minisign public key\n" + key + "\n"
+		for name, plant := range map[string]func(t *testing.T, path string){
+			"a symlink to a key file": func(t *testing.T, path string) {
+				target := filepath.Join(t.TempDir(), "key.pub")
+				require.NoError(t, os.WriteFile(target, []byte(keyFile), 0o644))
+				require.NoError(t, os.Symlink(target, path))
+			},
+			"a FIFO": func(t *testing.T, path string) {
+				require.NoError(t, syscall.Mkfifo(path, 0o644))
+			},
+			"a directory": func(t *testing.T, path string) {
+				require.NoError(t, os.Mkdir(path, 0o755))
+			},
+			"a key file past the size bound": func(t *testing.T, path string) {
+				// Two bytes past the 4 KiB bound, so a read cut off one byte
+				// past it loses only the last newline and still finds a key.
+				head, tail := "untrusted comment: ", "\n"+key+"\n"
+				pad := strings.Repeat("x", 4<<10+2-len(head)-len(tail))
+				require.NoError(t, os.WriteFile(path, []byte(head+pad+tail), 0o644))
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				dir := copyBundle(t)
+				plant(t, filepath.Join(dir, ports.PublicKeyFileName))
+
+				done := make(chan error, 1)
+				go func() { _, err := v.ShippedKey(ports.BundlePath(dir)); done <- err }()
+				select {
+				case err := <-done:
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), "not a minisign public key file")
+				case <-time.After(5 * time.Second):
+					t.Fatal("reading the key file blocked")
+				}
 			})
 		}
 	})

@@ -23,10 +23,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	gominisign "github.com/jedisct1/go-minisign"
 
@@ -206,22 +208,37 @@ const maxKeyFileSize = 4 << 10
 // It takes the file `minisign -G` writes and nothing looser, an `untrusted
 // comment:` line and then the key, which is also what `minisign -Vm -p` reads.
 // The key line comes back as written, for a caller that records it.
+//
+// The file is opened once and checked through that handle, so it cannot be
+// swapped between the check and the read. Not following a symlink, and not
+// blocking, so a link or a FIFO is refused rather than followed or waited on.
 func readKeyFile(path string) (string, gominisign.PublicKey, error) {
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return "", gominisign.PublicKey{}, nil
+	case errors.Is(err, syscall.ELOOP):
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
+	case err != nil:
+		return "", gominisign.PublicKey{}, domain.ValidationError(err,
+			"cannot read %s", ports.PublicKeyFileName)
 	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
 	if err != nil {
 		return "", gominisign.PublicKey{}, domain.ValidationError(err,
 			"cannot read %s", ports.PublicKeyFileName)
 	}
-	if !info.Mode().IsRegular() || info.Size() > maxKeyFileSize {
+	if !info.Mode().IsRegular() {
 		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := io.ReadAll(io.LimitReader(f, maxKeyFileSize+1))
 	if err != nil {
 		return "", gominisign.PublicKey{}, domain.ValidationError(err,
 			"cannot read %s", ports.PublicKeyFileName)
+	}
+	if len(raw) > maxKeyFileSize {
+		return "", gominisign.PublicKey{}, invalidKeyFile(nil)
 	}
 
 	lines := strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n")
