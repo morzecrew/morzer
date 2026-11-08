@@ -46,7 +46,12 @@ func newInitCommand(app *App) *cobra.Command {
 			"installation configuration, the encrypted secret state and, optionally,\n" +
 			"the systemd units.\n\n" +
 			"It never overwrites an existing installation, and it does not start the\n" +
-			"product: run `morzer apply` afterwards.",
+			"product: run `morzer apply` afterwards.\n\n" +
+			"A release may ship its vendor's signing key. Given no --signing-key, init\n" +
+			"trusts that key once the release's signature verifies against it, prints it,\n" +
+			"and requires every later release to be signed by it. That first release is\n" +
+			"checked only against the key it came with: compare the printed key with the\n" +
+			"one the vendor publishes, or pass it as --signing-key.",
 		Example: "  morzer init --release ./bundle --profile embedded --domain example.com \\\n" +
 			"      --recovery-recipient age1…\n" +
 			"  morzer init --release ./demo-1.2.0.tar.zst --mode dev --no-recovery-recipient",
@@ -133,6 +138,9 @@ func newInitCommand(app *App) *cobra.Command {
 				RequireSignature:  requireSig,
 				SigningKeys:       signingKeys,
 				Repair:            repair,
+				// Unset and false differ: unset requires a signature
+				// whenever a key is trusted, false says not to.
+				SignatureNotRequired: cmd.Flags().Changed("require-signature") && !requireSig,
 			}
 
 			// Parsed before anything is created, so a typo fails
@@ -173,9 +181,26 @@ func newInitCommand(app *App) *cobra.Command {
 				}
 			}
 
+			var result ops.Result
 			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
-				return ops.Init(ctx, app.Deps, opts)
+				result, err = ops.Init(ctx, app.Deps, opts)
+				return result, err
 			})
+			// The key came from the release, so it is worth exactly what
+			// the channel the release came through is worth. Printed for
+			// the operator to compare with the vendor's (RFC 0052 §5.4).
+			if data, ok := result.Data.(map[string]any); err == nil && !opts.DryRun && ok && data["trusted_key"] != nil {
+				app.notice(ui.Callout{
+					Title: "check this",
+					Body: []string{
+						fmt.Sprintf("Trusted the signing key the release ships: %s (%s).",
+							data["trusted_key"], data["trusted_key_id"]),
+						"Every release after this one must be signed by it. This one was checked " +
+							"only against the key it came with, so compare the key with the one " +
+							"the vendor publishes.",
+					},
+				})
+			}
 			// Init starts nothing, which the help says and a first-time
 			// operator at a fresh prompt has not read. A plan and a repair
 			// created nothing to start. Without a release `apply` refuses, so
@@ -209,9 +234,13 @@ func newInitCommand(app *App) *cobra.Command {
 	f.StringVar(&backupSchedule, "backup-schedule", "", "systemd OnCalendar expression for scheduled backups")
 	f.BoolVar(&generate, "generate-secrets", true, "generate every secret the release declares a generator for")
 	f.StringArrayVar(&signingKeys, "signing-key", nil,
-		"minisign public key a release signature must verify against; repeat for several")
+		"minisign public key a release signature must verify against; repeat for several. "+
+			"Without one, init trusts the key the release ships. On a repair it is checked "+
+			"beside the installation's keys and not recorded, and requires a signature only "+
+			"with --require-signature")
 	f.BoolVar(&requireSig, "require-signature", false,
-		"refuse any release that is not signed by a configured signing key")
+		"refuse any release that is not signed by a trusted key; on whenever a key is trusted, "+
+			"and =false turns it off and trusts no key the release ships")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
 		"what this machine is for: dev for a sandbox, or production (the default). "+

@@ -130,8 +130,8 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--generate-secrets` | Generate every secret the release declares a generator for. Default `true`. |
 | `--install-units` | Install systemd units when systemd is available. Default `true`. |
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |
-| `--signing-key` | minisign public key a release signature must verify against. Repeat for several. |
-| `--require-signature` | Refuse any release that is not signed by one of those keys. |
+| `--signing-key` | minisign public key a release signature must verify against. Repeat for several. Given one, `init` requires a signature and ignores a key the release ships. On a repair it is checked beside the installation's keys and not recorded, and requires a signature only with `--require-signature`. |
+| `--require-signature` | Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or [shipped by the release](#the-key-a-release-ships); `--require-signature=false` turns it off and trusts no key the release ships. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
 | `--repair` | Restore missing directories on an existing installation. It restores a layout; `morzer config set installation.domains` and `installation.profile` are how the domains and the profile change afterwards. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
@@ -141,7 +141,11 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 
 At a terminal, with something required still missing, `init` asks for it —
 product name, deployment profile (offering none first, then what the release declares), domains,
-and the recovery key, with an option to generate one on the spot.
+and the recovery key, with an option to generate one on the spot. Where `init`
+would trust the key the release ships, it asks that too, defaulting to yes. A
+local bundle's key is shown by its id; a registry's is printed when the release
+is fetched. No installs with checksums only, as `--require-signature=false`
+does, and is refused after `--require-signature`.
 
 It is a front-end over the flags and never a second path. It fills the same
 options the flags do, and prints the command line that would have produced the
@@ -163,10 +167,56 @@ It never runs with `--yes`, `--json` or `--quiet`, without a terminal, or when
 the command line already answers everything. A CI job, a systemd unit and a
 scripted install all take the flags exactly as given.
 
-`--require-signature` without `--signing-key` is refused: no bundle could
-satisfy it, and a policy nothing can satisfy is a configuration error rather
-than something to discover on the next update. A key that does not parse is
-refused too. The keys change afterwards with [`morzer release
+### The key a release ships
+
+A vendor can ship its public key in the release, as `minisign.pub`. Given no
+`--signing-key`, `init` checks the release's signature against that key and
+trusts it. The key becomes the installation's only trusted key, and every later
+release must be signed by it. `init` prints the key and its id:
+
+```text
+  CHECK THIS:
+    Trusted the signing key the release ships: RWQf6LRCGA9i53ml… (E7620F1842B4E81F).
+    Every release after this one must be signed by it. …
+```
+
+This pins the installation; it does not verify the first release. That release
+was checked only against the key it came with, so it is worth what the registry,
+or the directory it was copied from, is worth at the moment of `init`. Whoever
+controlled that could have shipped their own key. Compare the printed key with
+the one the vendor publishes. To verify the first release too, pass the
+vendor's key as `--signing-key`.
+
+| `init` flags | Signed, ships its key | Signed, ships no key | Not signed |
+| --- | --- | --- | --- |
+| none | Trusts the shipped key; signature required | Installs unchecked, with a warning | Installs, warning that later releases will not be checked |
+| `--signing-key K` | Checked against `K`; signature required | Checked against `K`; signature required | Refused |
+| `--signing-key K --require-signature=false` | Checked against `K`; not required | Checked against `K`; not required | Installs |
+| `--require-signature` | As none | Refused | Refused |
+| `--require-signature=false` | Checksums only; no key trusted | Checksums only | Checksums only |
+
+A release that ships a key declares that it is signed. In the two rows that
+would trust its key, one whose signature does not verify against that key, or
+that ships a key with no signature, is refused. The other rows ignore the file.
+
+After the first install, a shipped key is never trusted again:
+
+- `update` checks every release against the installation's trusted keys. A
+  release signed by a key it ships, which the installation does not trust, is
+  refused by that key's id. If the vendor moved to a new key, trust the one
+  they publish with [`morzer release trust add`](release-commands.md#release-trust).
+- An installation that trusts no key is told when a release ships one, and
+  stays without. `morzer release trust add <key>` and `morzer config set
+  release.require_signature=true` change that.
+- `init --repair` of an installation that exists checks the release against
+  the installation's keys, plus any `--signing-key` it is given, which it does
+  not record. It requires a signature where the installation does, or with
+  `--require-signature`; a `--signing-key` alone does not. It never reads the
+  key the release ships.
+
+`--require-signature` with no `--release` and no `--signing-key` is refused
+before anything is created: there is no release to find a key in. A key that
+does not parse is refused too. The keys change afterwards with [`morzer release
 trust`](release-commands.md#release-trust), and whether a signature is required
 with `morzer config set release.require_signature`. `installation.yaml` shows
 both, but it is a report, and editing it changes nothing.

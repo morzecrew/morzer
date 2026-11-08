@@ -81,7 +81,7 @@ func TestAReleaseDeclaringNoRuntimeRecordsNothing(t *testing.T) {
 // was in the ordering and an end-to-end test that happened to pass would not say
 // which order it passed under.
 func TestStagingPrecedesTheInstallationWriteWhenThereIsARelease(t *testing.T) {
-	steps := initSteps(&Deps{}, InitOptions{Product: "demo", ReleasePath: "bundle.tar.zst"})
+	steps := initSteps(&Deps{}, InitOptions{Product: "demo", ReleasePath: "bundle.tar.zst"}, releaseTrust{})
 
 	stage, write := -1, -1
 	for i, s := range steps {
@@ -103,7 +103,7 @@ func TestStagingPrecedesTheInstallationWriteWhenThereIsARelease(t *testing.T) {
 
 // And with no release there is nothing to stage, so the write still happens.
 func TestTheInstallationIsStillWrittenWithoutARelease(t *testing.T) {
-	steps := initSteps(&Deps{}, InitOptions{Product: "demo"})
+	steps := initSteps(&Deps{}, InitOptions{Product: "demo"}, releaseTrust{})
 
 	var ids []string
 	for _, s := range steps {

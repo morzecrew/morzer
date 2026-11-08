@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/ui"
@@ -82,7 +83,12 @@ func wizardApp(t *testing.T, answers ...string) (*App, *strings.Builder) {
 			Err: &shown,
 			In:  &scriptedInput{lines: answers},
 		},
-		Deps: &ops.Deps{Secrets: fakes.NewSecretStore()},
+		// State, because the wizard asks whether an installation exists
+		// before it offers to trust the key a release ships.
+		Deps: &ops.Deps{
+			Secrets: fakes.NewSecretStore(),
+			State:   state.New(domain.PathsUnder(t.TempDir(), "demo")),
+		},
 	}, &shown
 }
 
@@ -470,7 +476,9 @@ func (s resolvingSource) Resolve(context.Context, ports.Ref) (ports.ResolvedRele
 // source: read as a path, a reference offered none, and the release was staged
 // with its base files (#297).
 func TestTheWizardOffersTheProfilesOfARegistryReference(t *testing.T) {
-	app, shown := wizardApp(t, "2", "", "3")
+	// The last answer trusts a key the release ships: a registry
+	// reference is not fetched, so the question is asked without one.
+	app, shown := wizardApp(t, "2", "", "3", "y")
 	app.Deps.Source = resolvingSource{manifest: domain.Manifest{Runtimes: domain.Runtimes{"compose": {
 		Files:    []string{"compose.yaml"},
 		Profiles: map[string][]string{"xdns": {"xdns.yaml"}},

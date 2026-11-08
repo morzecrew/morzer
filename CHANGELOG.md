@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one shipped unsigned, so a stale key is caught before it is published.
   `verify --json` reports the key's id as `shipped_key_id`.
 
+- **`init` trusts the key a release ships.** Given no `--signing-key`, it
+  checks the release's signature against its `minisign.pub`, prints the key,
+  and requires every later release to be signed by it. `update` never trusts
+  a shipped key, and names one it refuses by its id.
+
+### Changed
+
+- **`init --signing-key` requires a signature.** A trusted key, given or
+  shipped, now means an unsigned release is refused. Pass
+  `--require-signature=false` to keep installing unsigned releases.
+
+### Fixed
+
+- **`init --repair --release` checks the release against the installation's
+  keys.** Given no `--signing-key`, it checked nothing, even where the
+  installation requires a signature.
+
 ## [0.14.0] - 2026-11-08
 
 A release can declare its restore hook restartable, so `restore --resume`

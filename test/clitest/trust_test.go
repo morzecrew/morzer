@@ -28,7 +28,9 @@ func TestReleaseTrustJudgesKeysWithTheWiredVerifier(t *testing.T) {
 // could not match it: the key stayed trusted however often it was removed.
 func TestInitStoresAKeyAsTheParserReadsIt(t *testing.T) {
 	const key = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
-	r := clitest.NewInstalled(t, "--signing-key", " "+key+"\n")
+	// Not required: the fixture is unsigned, and a key alone now requires
+	// a signature (RFC 0052 decision 5).
+	r := clitest.NewInstalled(t, "--signing-key", " "+key+"\n", "--require-signature=false")
 
 	keys, ok := r.Run("--json", "release", "trust", "list").ExitCode(0).Field("data.keys").([]any)
 	if !ok || len(keys) != 1 || keys[0] != key {

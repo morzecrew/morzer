@@ -197,6 +197,11 @@ func TestVerifyReadsAV1StatementAndRefusesAForeignOne(t *testing.T) {
 // `init --repair` that stages the release already installed, with no signing
 // keys to check it against, verified nothing -- and must not erase the check
 // the original init recorded for that same release.
+//
+// A repair verifies against the installation's policy (RFC 0052 decision 15),
+// so the installation trusts no key by the time of the repair: the key the
+// first init checked against is removed, which an installation that does not
+// require a signature allows.
 func TestARepairKeepsTheCheckRecordedForTheSameRelease(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -211,8 +216,10 @@ func TestARepairKeepsTheCheckRecordedForTheSameRelease(t *testing.T) {
 
 	first, err := ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", NoRecoveryKey: true, ReleasePath: src,
-		RequireSignature: true, SigningKeys: []string{key},
+		SignatureNotRequired: true, SigningKeys: []string{key},
 	})
+	require.NoError(t, err)
+	_, err = ops.TrustRemove(ctx, h.Deps, ops.Options{}, key)
 	require.NoError(t, err)
 
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{

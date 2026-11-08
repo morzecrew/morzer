@@ -64,6 +64,20 @@ type InitOptions struct {
 	RequireSignature bool
 	SigningKeys      []string
 
+	// SignatureNotRequired is `--require-signature=false`, which unset is
+	// not: unset, a signature is required whenever a key is trusted, given
+	// or shipped, and this is the operator saying no (RFC 0052 decision 5).
+	// It also turns off trusting the key a release ships.
+	SignatureNotRequired bool
+
+	// ApprovedKey is the key the wizard showed for a local bundle, zero
+	// when it found none there, and nil when no wizard read the bundle.
+	// The stage step refuses any other key: the wizard read the bundle
+	// where it is, the stage step reads its own copy, and a key that
+	// changed in between, or appeared, is not the one approved. The whole
+	// key, because its id is eight bytes whoever makes the key chooses.
+	ApprovedKey *ports.ShippedKey
+
 	// Repair re-creates missing directories on an existing installation
 	// instead of refusing.
 	Repair bool
@@ -112,7 +126,10 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	// the same message Installation.Validate would give later. Discovering
 	// it after the directories and the machine key exist would mean
 	// unwinding a half-built installation over one missing flag.
-	if opts.RequireSignature && len(opts.SigningKeys) == 0 {
+	//
+	// Only without a release. With one, the release may ship the key, and
+	// the stage step is where that is known (RFC 0052 decision 6).
+	if opts.RequireSignature && len(opts.SigningKeys) == 0 && opts.ReleasePath == "" {
 		return Result{}, domain.Usage(
 			"--require-signature needs at least one --signing-key").
 			WithHint("no bundle could satisfy the policy otherwise; " +
@@ -199,13 +216,44 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
+	// A repair verifies against the policy of the installation it finds
+	// (RFC 0052 decision 15), which the stage step reads under the lock: a
+	// key removed while the repair waited for it is not trusted.
+	trust := initTrust(opts, nil)
+	if exists {
+		trust = releaseTrust{repair: true}
+	}
+
+	// A plan reads the key a local bundle ships, as the wizard does, and
+	// refuses what the stage step would. It does not fetch a remote one.
+	//
+	// shortcut: a plan of an archive extracts it twice, here and in
+	// checkPlannedRelease; share one copy if plans of large archives slow.
+	var planned ports.ShippedKey
+	if opts.DryRun && opts.ReleasePath != "" && trust.shipped {
+		key, local, err := d.LocalShippedKey(ctx, opts.ReleasePath)
+		if err == nil && local {
+			err = checkFirstUseKey(key, opts)
+		}
+		if err != nil {
+			return Result{}, err
+		}
+		switch {
+		case !local:
+			trust.plan = "trust the key the release ships, if it ships one: it is printed when the release is fetched"
+		case key.Key != "":
+			planned = key
+			trust.plan = fmt.Sprintf("trust the key it ships, %s (%s)", key.ID, key.Key)
+		}
+	}
+
 	opID := d.newOpID()
 
 	op := engine.Operation{
 		ID:          opID,
 		Type:        domain.OpTypeInit,
 		Description: "initialise " + opts.Product,
-		Steps:       initSteps(d, opts),
+		Steps:       initSteps(d, opts, trust),
 		Flags:       initFlags(opts),
 	}
 
@@ -234,24 +282,39 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	if opts.DryRun {
 		out.Summary = fmt.Sprintf("would %s an installation for %s",
 			initVerb(opts, "create", "repair"), opts.Product)
-		out.Data = map[string]any{
+		data := map[string]any{
 			"installation_id":    "",
 			"product":            opts.Product,
 			"etc_dir":            d.Paths.EtcDir,
 			"manifest_validated": validated,
 		}
+		addTrustedKey(data, planned)
+		out.Data = data
 		return out, nil
 	}
 
 	inst := engine.MustGet[domain.Installation](result.State, engine.KeyInstallation)
 	out.Summary = fmt.Sprintf("installation %s %s for %s",
 		inst.ID, initVerb(opts, "created", "repaired"), inst.Product)
-	out.Data = map[string]any{
+	data := map[string]any{
 		"installation_id": inst.ID,
 		"product":         inst.Product,
 		"etc_dir":         d.Paths.EtcDir,
 	}
+	addTrustedKey(data, engine.MustGet[ports.ShippedKey](result.State, keyTrustedKey))
+	out.Data = data
 	return out, nil
+}
+
+// addTrustedKey reports the key a first use trusted, or would trust, from the
+// release (RFC 0052 decision 9). Nothing when it trusted none.
+func addTrustedKey(data map[string]any, key ports.ShippedKey) {
+	if key.Key == "" {
+		return
+	}
+	data["trusted_key"] = key.Key
+	data["trusted_key_id"] = key.ID
+	data["trusted_key_source"] = trustedKeySource
 }
 
 // initVerb names what this run of `init` is doing.
@@ -285,7 +348,7 @@ func initFlags(opts InitOptions) map[string]string {
 	return flags
 }
 
-func initSteps(d *Deps, opts InitOptions) []engine.Step {
+func initSteps(d *Deps, opts InitOptions, trust releaseTrust) []engine.Step {
 	steps := []engine.Step{
 		stepCreateDirectories(d),
 		stepCreateIdentity(d),
@@ -312,7 +375,7 @@ func initSteps(d *Deps, opts InitOptions) []engine.Step {
 	// means there is no installation to unwind, which is the same outcome
 	// reached earlier.
 	if opts.ReleasePath != "" {
-		steps = append(steps, stepStageRelease(d, opts))
+		steps = append(steps, stepStageRelease(d, opts, trust))
 	}
 
 	steps = append(steps, stepWriteInstallation(d, opts))
@@ -561,8 +624,17 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	// manager that wrote it.
 	inst.RuntimeOptions = runtimeOptionsFor(st, runtime)
 
-	inst.Policy.RequireSignature = opts.RequireSignature
-	inst.Policy.SigningKeys = opts.SigningKeys
+	// What the stage step verified against, so the release staged during
+	// init and every one after it are held to the same policy. A key the
+	// release shipped and the stage step trusted replaces none, and is
+	// required (RFC 0052 decision 1).
+	trust := initTrust(opts, nil)
+	inst.Policy.RequireSignature = trust.required
+	inst.Policy.SigningKeys = trust.keys
+	if shipped := engine.MustGet[ports.ShippedKey](st, keyTrustedKey); shipped.Key != "" {
+		inst.Policy.RequireSignature = true
+		inst.Policy.SigningKeys = []string{shipped.Key}
+	}
 	inst.Policy.BackupSchedule = backupSchedule
 
 	// The key the minting step just produced, so state records what is
@@ -688,13 +760,16 @@ func newAttestationSalt() (string, error) {
 }
 
 // stepStageRelease copies a bundle into the release store.
-func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
+func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step {
 	return engine.Step{
 		ID:          "stage-release",
 		Description: "stage release bundle",
 		Idempotent:  true,
 		OnFailure:   engine.Compensate,
 		Timeout:     10 * time.Minute,
+		PlanDetail: func(context.Context, *engine.State) (string, string) {
+			return trust.plan, ""
+		},
 		Execute: func(ctx context.Context, st *engine.State) error {
 			ref, err := ports.ParseRef(opts.ReleasePath)
 			if err != nil {
@@ -715,10 +790,45 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 			// only from a verified release.
 			var signed *domain.SignatureCheck
 			if d.Verifier != nil {
+				// State that exists and cannot be read has no policy
+				// to verify against, and is refused rather than read
+				// as none.
+				trust := trust
+				if trust.repair {
+					existing, err := d.State.LoadInstallation(ctx)
+					if err != nil {
+						return err
+					}
+					trust = initTrust(opts, &existing.Policy)
+				}
 				expect := ports.Expectation{
 					Digest:     resolved.Digest,
-					Required:   opts.RequireSignature,
-					PublicKeys: opts.SigningKeys,
+					Required:   trust.required,
+					PublicKeys: trust.keys,
+				}
+				// The refusal a script that passed a key and no
+				// --require-signature now meets, so it names the way
+				// back to installing an unsigned release.
+				if trust.implied && !isSigned(dest) {
+					return domain.Usage(
+						"--signing-key was given, so a signature is required, and release %s is not signed",
+						resolved.Version).
+						WithHint("pass --require-signature=false to install it with checksums only")
+				}
+				// A first use reads the key from this copy, the one
+				// that is verified and installed, never from the
+				// bundle at its source.
+				var shipped ports.ShippedKey
+				if trust.shipped {
+					if shipped, err = d.shippedKey(dest); err != nil {
+						return err
+					}
+					if err := checkFirstUseKey(shipped, opts); err != nil {
+						return err
+					}
+					if shipped.Key != "" {
+						expect.Required, expect.PublicKeys = true, []string{shipped.Key}
+					}
 				}
 				key, err := d.verifyBundle(ctx, ports.BundlePath(dest), expect)
 				if err != nil {
@@ -726,6 +836,9 @@ func stepStageRelease(d *Deps, opts InitOptions) engine.Step {
 				}
 				if key != "" {
 					signed = &domain.SignatureCheck{KeyID: key, OperationID: st.OpID, At: domain.NewTime(d.now())}
+				}
+				if trust.shipped {
+					d.noteFirstUse(st, dest, resolved.Version, shipped)
 				}
 			}
 
