@@ -106,7 +106,10 @@ save tarball carries; it finds a release image **by digest**, which a save
 tarball does not.
 
 Copy `demo-1.3.0.tar.zst` and `helper.tar` to the target machine, along with the
-vendor's signing key if the installation requires signatures.
+vendor's signing key. A bundle that ships its key is trusted without it, but is
+then checked only against the key it came with; passing the vendor's key as
+`--signing-key` checks this first install too. See [the key a release
+ships](../reference/commands.md#the-key-a-release-ships).
 
 ## Install on the disconnected machine
 

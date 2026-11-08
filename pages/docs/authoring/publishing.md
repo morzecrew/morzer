@@ -149,26 +149,31 @@ A bundle that ships its key declares that it is signed. `release verify`,
 against the key it ships, and one that ships a key with no signature. `release
 build` runs before you sign, so it accepts both.
 
-The copy in the bundle does not replace publishing the key. A key checked
+An `init` given no key trusts the one your bundle ships, prints it, and requires
+every later release to be signed by it. That pins your users' installations
+from the first install on; it does not verify the first install.
+
+So the copy in the bundle does not replace publishing the key. A key checked
 against the signature it came with proves only that the two agree, not who made
 them. Publish the public half where your users will look for it, so they can
-compare. They hand it to `init`, or trust it on an installation that already
-exists:
+compare it with what `init` printed. A user who wants the first install checked
+too hands it to `init`, and one with an installation that trusts no key adds it:
 
 ```sh
 # At creation, with the rest of their init flags:
-morzer init … --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3 --require-signature
+morzer init … --signing-key RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 
 # Or on an installation that already exists:
 morzer release trust add RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
 ```
 
-`--require-signature` is chosen at `init`. Without it, a signed release is still
-checked against the trusted keys and an unsigned one installs. To rotate your
-key, have users trust the new one, ship a release signed with it, then have
-them run `morzer release trust remove <old-public-key>`. Replace `minisign.pub`
-in that same release: a bundle signed by the new key that still ships the old
-one is refused.
+A trusted key, given or shipped, means a signature is required, unless the user
+passed `--require-signature=false` to `init`. To rotate your key, have users
+trust the new one, ship a release signed with it, then have them run `morzer
+release trust remove <old-public-key>`. Replace `minisign.pub` in that same
+release: a bundle signed by the new key that still ships the old one is refused.
+Skip the procedure and every installation refuses the release, naming the new
+key's id, until its operator trusts the key you publish.
 
 !!! warning "Say what a signature means, and what it does not"
 

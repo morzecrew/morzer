@@ -63,6 +63,11 @@ At a terminal with something missing, `init` asks instead of refusing, and
 prints the equivalent command line when it is done — so the interactive run
 produces the script for next time.
 
+The example bundle is not signed, so `init` warns that this installation trusts
+no signing key. A signed release that ships its key is trusted on first use;
+[the key a release ships](../reference/commands.md#the-key-a-release-ships) says
+what that does and does not prove.
+
 What it created:
 
 ```text

@@ -14,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/ui"
 )
 
@@ -188,12 +189,52 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 			Value(&recovery))
 	}
 
+	trustKey := true
+	shipped, asksTrust, err := app.shippedKeyQuestion(ctx, opts)
+	if err != nil {
+		return opts, err
+	}
+	if asksTrust {
+		// The id is in the title, for the renderer that prints titles
+		// only. A remote bundle is not fetched to show its key.
+		title := "Trust the signing key this release ships, if it ships one? " +
+			"Every later release must be signed by it"
+		description := "The key is printed when the release is fetched. " +
+			"No installs it with checksums only."
+		if shipped.Key != "" {
+			title = fmt.Sprintf("Trust the signing key this release ships, %s? "+
+				"Every later release must be signed by it", shipped.ID)
+			description = fmt.Sprintf("The key is %s. Compare it with the key the vendor "+
+				"publishes. No installs the release with checksums only.", shipped.Key)
+		}
+		fields = append(fields, huh.NewConfirm().
+			Title(title).
+			Description(description).
+			Value(&trustKey))
+	}
+
 	if len(fields) == 0 {
 		return opts, nil
 	}
 
 	if err := app.form(fields...).RunWithContext(ctx); err != nil {
 		return opts, formError(err)
+	}
+
+	// Before the recovery choice is acted on, as the product check below
+	// is: a refusal after it would leave a recovery key on disk for an
+	// installation that was never made.
+	if asksTrust {
+		switch {
+		case trustKey:
+			opts.ShippedKeyID = shipped.ID
+		case opts.RequireSignature:
+			return opts, domain.Usage(
+				"--require-signature was given, and the only key there is was turned down").
+				WithHint("pass --signing-key with the vendor's minisign public key")
+		default:
+			opts.SignatureNotRequired = true
+		}
 	}
 
 	opts.Domains = splitDomains(domainsInput)
@@ -312,6 +353,26 @@ func (a *App) profilesFrom(ctx context.Context, releasePath string) []string {
 	return manifest.ProfileNames()
 }
 
+// shippedKeyQuestion reads what the trust question shows: the key a local
+// bundle ships, read where it is. ask is false where the stage step would trust
+// no key, so the question is asked only where its answer changes something
+// (RFC 0052 decision 10).
+func (a *App) shippedKeyQuestion(ctx context.Context, opts ops.InitOptions) (key ports.ShippedKey, ask bool, err error) {
+	if opts.ReleasePath == "" || len(opts.SigningKeys) > 0 || opts.SignatureNotRequired {
+		return ports.ShippedKey{}, false, nil
+	}
+	// A repair of an installation that exists is not a first use.
+	exists, err := a.Deps.State.InstallationExists(ctx)
+	if err != nil || exists {
+		return ports.ShippedKey{}, false, err
+	}
+	key, local, err := a.Deps.LocalShippedKey(ctx, opts.ReleasePath)
+	if err != nil {
+		return ports.ShippedKey{}, false, err
+	}
+	return key, !local || key.Key != "", nil
+}
+
 func splitDomains(input string) []string {
 	var out []string
 	for _, part := range strings.Split(input, ",") {
@@ -358,6 +419,9 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	}
 	if opts.RequireSignature {
 		args = append(args, "--require-signature")
+	}
+	if opts.SignatureNotRequired {
+		args = append(args, "--require-signature=false")
 	}
 	if !opts.InstallUnits {
 		args = append(args, "--install-units=false")

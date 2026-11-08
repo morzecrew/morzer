@@ -100,8 +100,13 @@ signatures — at the moment you set it, not at the tick that would have acted o
 it. A machine that accepts the setting and then refuses to act every night is
 worse than one that refuses the setting: you would believe it was armed.
 
-An installation created without `--require-signature` requires one with two
-commands. Trust the vendor's key, then require it:
+An installation whose `init` trusted a key requires a signature already,
+whether the key was passed as `--signing-key` or [shipped by the
+release](../reference/commands.md#the-key-a-release-ships). One that ships its
+key therefore meets this condition with no extra flag, on the strength of the
+registry it was first installed from. An installation that trusts no key
+requires a signature with two commands. Trust the vendor's key, then require
+it:
 
 ```sh
 morzer release trust add RWQ...vendor-public-key...
