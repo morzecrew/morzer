@@ -134,6 +134,10 @@ func checkArchivable(app *App, rel domain.Release) error {
 		// a vendor whose customers do not require one is not doing
 		// anything wrong. The cost is that "the vendor forgot to sign"
 		// is caught on the operator's machine rather than the vendor's.
+		// Unless the bundle ships its key, which declares it signed.
+		if _, err := checkShippedKey(app, rel.Root); err != nil {
+			return err
+		}
 		warnUnsigned(app)
 		return nil
 	case sigErr != nil:
@@ -149,7 +153,8 @@ func checkArchivable(app *App, rel domain.Release) error {
 			ports.SignatureFileName, ports.SumsFileName).
 			WithHint("sign again: `minisign -Sm %s`", sums)
 	}
-	return nil
+	_, err = checkShippedKey(app, rel.Root)
+	return err
 }
 
 // warnUnsigned is what `archive` and `push` say about a bundle with no

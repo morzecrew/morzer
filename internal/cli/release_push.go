@@ -94,7 +94,11 @@ func newReleasePushCommand(app *App) *cobra.Command {
 					}); err != nil {
 					return err
 				}
-			case unsigned:
+			}
+			if _, err := checkShippedKey(app, rel.Root); err != nil {
+				return err
+			}
+			if unsigned {
 				warnUnsigned(app)
 			}
 

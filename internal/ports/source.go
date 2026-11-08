@@ -244,6 +244,30 @@ type SignatureReporter interface {
 	VerifySigned(ctx context.Context, bundle BundlePath, expect Expectation) (keyID string, err error)
 }
 
+// ShippedKeyReader is a Verifier that can read the public key a bundle ships
+// as PublicKeyFileName, and check the bundle's signature against it.
+//
+// Optional, like KeyChecker. What it returns is the bundle's claim about
+// itself: a key that verifies proves that the bundle and its key agree, never
+// who made either. Whether to trust it is the caller's policy (RFC 0052).
+type ShippedKeyReader interface {
+	// ShippedKey returns the key the bundle ships, or a zero ShippedKey
+	// when it ships none. A key file that does not parse, a bundle that
+	// ships a key with no signature, and a signature that does not verify
+	// against the shipped key are refused.
+	ShippedKey(bundle BundlePath) (ShippedKey, error)
+}
+
+// ShippedKey is a public key a bundle carries, which its signature verified
+// against.
+type ShippedKey struct {
+	// Key is the key line, in the form policy.signing_keys holds.
+	Key string
+
+	// ID is the key id the way minisign prints it.
+	ID string
+}
+
 // Names a bundle may ship its own integrity evidence under. They are part of
 // the release contract rather than an adapter's private detail: a vendor's
 // publishing pipeline writes them, a third party checks them with `sha256sum
@@ -261,6 +285,12 @@ const (
 	// It travels inside the bundle so it survives being packed into an
 	// archive and unpacked again -- a sibling file would not.
 	SignatureFileName = SumsFileName + ".minisig"
+
+	// PublicKeyFileName is the vendor's minisign public key, the file
+	// `minisign -G` writes. SumsFileName lists it like any other file, so
+	// the signature covers it. An installation with no trusted key may
+	// trust it on first use (RFC 0052); nothing else does.
+	PublicKeyFileName = "minisign.pub"
 )
 
 // Expectation is what a bundle must satisfy.
