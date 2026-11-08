@@ -130,7 +130,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--generate-secrets` | Generate every secret the release declares a generator for. Default `true`. |
 | `--install-units` | Install systemd units when systemd is available. Default `true`. |
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |
-| `--signing-key` | minisign public key a release signature must verify against. Repeat for several. Given one, `init` requires a signature and ignores a key the release ships. |
+| `--signing-key` | minisign public key a release signature must verify against. Repeat for several. Given one, `init` requires a signature and ignores a key the release ships. On a repair it is checked beside the installation's keys and not recorded, and requires a signature only with `--require-signature`. |
 | `--require-signature` | Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or [shipped by the release](#the-key-a-release-ships); `--require-signature=false` turns it off and trusts no key the release ships. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
@@ -210,7 +210,9 @@ After the first install, a shipped key is never trusted again:
   release.require_signature=true` change that.
 - `init --repair` of an installation that exists checks the release against
   the installation's keys, plus any `--signing-key` it is given, which it does
-  not record. It never reads the key the release ships.
+  not record. It requires a signature where the installation does, or with
+  `--require-signature`; a `--signing-key` alone does not. It never reads the
+  key the release ships.
 
 `--require-signature` with no `--release` and no `--signing-key` is refused
 before anything is created: there is no release to find a key in. A key that

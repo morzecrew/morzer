@@ -235,7 +235,9 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&generate, "generate-secrets", true, "generate every secret the release declares a generator for")
 	f.StringArrayVar(&signingKeys, "signing-key", nil,
 		"minisign public key a release signature must verify against; repeat for several. "+
-			"Without one, init trusts the key the release ships")
+			"Without one, init trusts the key the release ships. On a repair it is checked "+
+			"beside the installation's keys and not recorded, and requires a signature only "+
+			"with --require-signature")
 	f.BoolVar(&requireSig, "require-signature", false,
 		"refuse any release that is not signed by a trusted key; on whenever a key is trusted, "+
 			"and =false turns it off and trusts no key the release ships")
