@@ -2278,6 +2278,24 @@ they only upper-case.</p>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}:/etc/demo/application.yaml:ro</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_DATA_DIR:-/var/lib/demo/data}:/var/lib/demo:rw</span>
 </code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Mount a rendered file so Docker cannot invent it</p>
+<p>With the short syntax above, a container that starts while its bind
+source is missing gets an empty <strong>directory</strong> created at that path, and the
+next render finds a directory where its file belongs. The long syntax with
+<code>create_host_path: false</code> makes Docker refuse to start the container
+instead:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bind</span>
+<span class="w">    </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_CONFIG_FILE:-/etc/demo/application.yaml}</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/demo/application.yaml</span>
+<span class="w">    </span><span class="nt">read_only</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">bind</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">create_host_path</span><span class="p">:</span><span class="w"> </span><span class="nv">false</span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>A first <code>apply</code> that fails takes down the containers it started, so
+they do not restart over the files its rollback removes. A render that
+finds a directory at a target says so, and names the <code>rmdir</code>.</p>
+</div>
 <div class="admonition warning">
 <p class="admonition-title">Nothing from your shell reaches a Compose file</p>
 <p>Setting <code>DEMO_ANYTHING</code> in the environment you run <code>morzer</code> from does not
