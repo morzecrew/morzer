@@ -203,12 +203,14 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 		title := "Trust the signing key this release ships, if it ships one? " +
 			"Every later release must be signed by it"
 		description := "The key is printed when the release is fetched. " +
-			"No installs it with checksums only."
+			"Answering no installs this release, and checks the ones after it, " +
+			"with checksums only."
 		if shipped.Key != "" {
 			title = fmt.Sprintf("Trust the signing key this release ships, %s? "+
 				"Every later release must be signed by it", shipped.ID)
 			description = fmt.Sprintf("The key is %s. Compare it with the key the vendor "+
-				"publishes. No installs the release with checksums only.", shipped.Key)
+				"publishes. Answering no installs this release, and checks the ones after "+
+				"it, with checksums only.", shipped.Key)
 		}
 		fields = append(fields, huh.NewConfirm().
 			Title(title).
