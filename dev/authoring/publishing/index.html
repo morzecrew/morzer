@@ -2491,8 +2491,20 @@ install.</p>
 <code>morzer sign</code> command on purpose: building signing into the manager would invite
 the signing key onto a deployment host, which is the one machine it should never
 be on.</p>
-<p>Publish the public half where your users will look for it. They hand it to
-<code>init</code>, or trust it on an installation that already exists:</p>
+<p>Ship the public half in the bundle as <code>minisign.pub</code>, the file <code>minisign -G</code>
+wrote, and copy it in before <code>release build</code>, so <code>SHA256SUMS</code> lists it and the
+signature covers it:</p>
+<div class="highlight"><pre><span></span><code>cp<span class="w"> </span>morzer-bundles.pub<span class="w"> </span>./my-product/minisign.pub
+</code></pre></div>
+<p>A bundle that ships its key declares that it is signed. <code>release verify</code>,
+<code>release archive</code> and <code>release push</code> refuse one whose signature does not verify
+against the key it ships, and one that ships a key with no signature. <code>release
+build</code> runs before you sign, so it accepts both.</p>
+<p>The copy in the bundle does not replace publishing the key. A key checked
+against the signature it came with proves only that the two agree, not who made
+them. Publish the public half where your users will look for it, so they can
+compare. They hand it to <code>init</code>, or trust it on an installation that already
+exists:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># At creation, with the rest of their init flags:</span>
 morzer<span class="w"> </span>init<span class="w"> </span>…<span class="w"> </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3<span class="w"> </span>--require-signature
 
@@ -2502,7 +2514,9 @@ morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w
 <p><code>--require-signature</code> is chosen at <code>init</code>. Without it, a signed release is still
 checked against the trusted keys and an unsigned one installs. To rotate your
 key, have users trust the new one, ship a release signed with it, then have
-them run <code>morzer release trust remove &lt;old-public-key&gt;</code>.</p>
+them run <code>morzer release trust remove &lt;old-public-key&gt;</code>. Replace <code>minisign.pub</code>
+in that same release: a bundle signed by the new key that still ships the old
+one is refused.</p>
 <div class="admonition warning">
 <p class="admonition-title">Say what a signature means, and what it does not</p>
 <p>It proves a bundle came from the holder of your key. It does not prove the
@@ -2514,7 +2528,10 @@ a release can do. Do not let your documentation imply otherwise.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span>--signing-key<span class="w"> </span>RWQf6LR…
 </code></pre></div>
 <p>Validates the manifest, checks every referenced file exists, verifies the
-<code>SHA256SUMS</code> against the contents, and checks the signature. It needs no
+<code>SHA256SUMS</code> against the contents, and checks the signature. A shipped
+<code>minisign.pub</code> must be the given key that signed, which catches a stale one.
+Without <code>--signing-key</code>, <code>verify</code> still checks the signature against the key the
+bundle ships, and says that this proves only that the two agree. It needs no
 installation on the machine, so it belongs in your CI as a required check.</p>
 <div class="highlight"><span class="filename">.github/workflows/release.yaml</span><pre><span></span><code><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">morzer release verify ./bundle --signing-key ${{ vars.SIGNING_KEY }}</span>
 </code></pre></div>

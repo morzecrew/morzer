@@ -3068,6 +3068,14 @@ needs no installation on the machine, because there is no policy to read there.
 On a deployment host, the installation's trusted keys decide instead: set at
 <code>init</code>, and changed with <a href="#release-trust"><code>release trust</code></a>. See
 <a href="#verification">Verification</a>.</p>
+<p>A bundle may ship its public key as <code>minisign.pub</code>. <code>verify</code> then checks the
+bundle's signature against that key too, with or without <code>--signing-key</code>, and
+refuses a bundle the key did not sign. It also refuses one that ships a key and
+no signature, because a bundle that ships its key declares that it is signed.
+Without <code>--signing-key</code>, the check proves only that the bundle and its key
+agree, and the summary says so. With it, the shipped key must be the given key
+that signed, which catches a stale <code>minisign.pub</code>. The report names the shipped
+key's id, and <code>--json</code> carries it as <code>shipped_key_id</code>.</p>
 <h2 id="release-pack">release pack<a class="headerlink" href="#release-pack" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>pack<span class="w"> </span>&lt;bundle-dir&gt;<span class="w"> </span><span class="o">[</span>--platform<span class="w"> </span>linux/amd64<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
 </code></pre></div>
@@ -3248,6 +3256,10 @@ signing keys.</p>
 <td>Refused. A signature over a tree that has since changed is the exact failure the chain exists to prevent.</td>
 </tr>
 <tr>
+<td>A <code>minisign.pub</code> that did not sign the bundle, or one shipped with no signature</td>
+<td>Refused, as <code>verify</code> refuses it. A bundle that ships its key declares that it is signed, so the warning below does not apply to it.</td>
+</tr>
+<tr>
 <td>No signature at all</td>
 <td><strong>Warned, not refused.</strong> Whether a signature is required is the operator's policy (<code>policy.require_signature</code>), and an unsigned bundle is legitimate for a vendor whose customers do not require one.</td>
 </tr>
@@ -3356,7 +3368,8 @@ have <code>update --check</code> offer a version the bundle does not carry.</p>
 </table>
 <p>Before anything is sent, the archive is extracted the way an installation
 extracts it, then checked as <code>verify</code> checks a bundle: providers, templates,
-<code>SHA256SUMS</code>, and the signature under <code>--signing-key</code>. Credentials are the ones
+<code>SHA256SUMS</code>, a shipped <code>minisign.pub</code>, and the signature under
+<code>--signing-key</code>. Credentials are the ones
 <code>docker login</code> stored; a loopback registry is reached over HTTP, as with
 <code>fetch</code>.</p>
 <h3 id="a-version-already-published">A version already published<a class="headerlink" href="#a-version-already-published" title="Permanent link">&para;</a></h3>
@@ -3663,10 +3676,15 @@ signature → <code>SHA256SUMS</code> → every file, and every link is checkabl
 <div class="highlight"><pre><span></span><code>release/
 ├── SHA256SUMS           # one line per file
 ├── SHA256SUMS.minisig   # detached minisign signature over it
+├── minisign.pub         # optional: the vendor's public key
 └── ...
 </code></pre></div>
 <p>The signature travels <strong>inside</strong> the bundle so it survives being packed into an
-archive and unpacked again. A sibling file would not.</p>
+archive and unpacked again. A sibling file would not. A shipped <code>minisign.pub</code>
+is listed in <code>SHA256SUMS</code> like any other file, so the signature covers it. No
+installation trusts it: <a href="#release-verify"><code>release verify</code></a>, <code>archive</code> and
+<code>push</code> check that it signed the bundle, so the key a vendor ships is the one
+they sign with.</p>
 <p>The keys are set per installation, at <code>init</code>:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--require-signature<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--signing-key<span class="w"> </span>RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
