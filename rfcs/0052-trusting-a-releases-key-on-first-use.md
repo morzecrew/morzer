@@ -1,7 +1,9 @@
 # RFC 0052 — Trusting a release's key on first use
 
 - **Status:** 📝 Draft — proposed 2026-11-07, and ruled by the author
-  2026-11-07: decision 13 as recommended.
+  2026-11-07: decision 13 as recommended. 2026-11-08, from the review:
+  decision 1 narrowed to an `init` that creates an installation, and
+  decision 15 accepted.
 - **Scope:** How an installation comes to trust a vendor's release signing
   key without the operator typing it. A release may ship its minisign public
   key; an `init` given no `--signing-key` checks the release's signature
@@ -367,13 +369,14 @@ key only to an installation that has none, and only to raise the bar.
 
 ## 10. Unresolved questions
 
-None. The author ruled decision 13 on 2026-11-07.
+None. The author ruled decision 13 on 2026-11-07, and on 2026-11-08 accepted
+the review's narrowing of decision 1 and decision 15.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `LOCKED` | An `init` that creates an installation, given no `--signing-key`, and not told `--require-signature=false`, trusts the key a signed release ships and requires a signature from then on, without asking unless the wizard runs. It is the premise: reversing it to an always-ask or a flag brings back the long command this RFC exists to remove. |
+| 1 | `LOCKED` | An `init` that creates an installation, given no `--signing-key`, and not told `--require-signature=false`, trusts the key a signed release ships and requires a signature from then on, without asking unless the wizard runs. It is the premise: reversing it to an always-ask or a flag brings back the long command this RFC exists to remove. Narrowed from the review to an `init` that creates an installation, leaving a repair to decision 15; accepted by the author 2026-11-08. |
 | 2 | `ASSUMED` | The key ships as `minisign.pub` at the bundle root, the file `minisign -G` writes, one key. A file rather than a manifest field: no schema change, no version floor, older managers ignore it, and the signature already covers it through `SHA256SUMS`. |
 | 3 | `ASSUMED` | A release that ships a key must verify against it. A key that does not parse, a signature that does not verify against the shipped key, or a shipped key with no signature is refused at `init`, because a release that ships a key declares that it is signed. This applies only where `init` would trust the key: given `--signing-key` or `--require-signature=false`, `init` ignores the whole file. |
 | 4 | `ASSUMED` | An explicit `--signing-key` wins: the shipped key is ignored and the signature must verify against the given one. The independent channel is never overridden by the bundle. |
@@ -387,7 +390,7 @@ None. The author ruled decision 13 on 2026-11-07.
 | 12 | `ASSUMED` | An unsigned release, or a signed one that ships no key, still installs with no flags, with a warning. Refusing would break every unsigned product's first command for a protection its vendor has not opted into. |
 | 13 | `ASSUMED` | Whether an existing installation without keys trusts the key of the first release that ships one. **Recommended: no.** `update` prints a notice with the key id and the `release trust add` and `config set release.require_signature=true` commands, and trusts nothing itself: an unattended timer adopting whatever a moved tag ships would pin an attacker's key without anyone looking. The alternative is automatic adoption at the next interactive `update`. Was `OPEN`; ruled by the author 2026-11-07: as recommended. |
 | 14 | `ASSUMED` | `release verify` checks a shipped key against the shipped signature, saying it proves self-consistency only, and with `--signing-key` refuses a shipped key that differs from the given one. |
-| 15 | `ASSUMED` | *(2026-11-08, from the review)* `init --repair` is not a first use. It never reads the shipped key. Its stage step verifies against the installation's policy, plus any `--signing-key` it is given, which it does not record, as now. A signature is required when the policy or `--require-signature` requires one. Today a repair given no key verifies nothing, even where the policy requires a signature (`init.go:718-722`, `init.go:632`). |
+| 15 | `ASSUMED` | *(2026-11-08, from the review)* `init --repair` is not a first use. It never reads the shipped key. Its stage step verifies against the installation's policy, plus any `--signing-key` it is given, which it does not record, as now. A signature is required when the policy or `--require-signature` requires one. Today a repair given no key verifies nothing, even where the policy requires a signature (`init.go:718-722`, `init.go:632`). Accepted by the author 2026-11-08. |
 
 ## 12. Phasing
 
