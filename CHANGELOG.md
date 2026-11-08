@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-08
+
+A release can declare its restore hook restartable, so `restore --resume`
+runs it again, and `secret edit <name>` opens one secret's value as plain text.
+The rest fix what deploying a first product turned up: a failed first `apply`
+takes down what it started, a failed restore leaves the product down and
+resumes, `init --release oci://…` names the product from the bundle, and an
+installation named other than its release reads its variables.
+
+Installation state stays at schema 17, so a 0.13.0 manager still reads a
+machine 0.14.0 has run on. Operators, scripts and authors may notice:
+
+- An installation named other than its release passes its variables under the
+  release's name, `DOTDASH_*` for a `dotdash` release installed as `dd`, where
+  it passed `DD_*`. `PRODUCT` still names the installation.
+
+- `secret edit` with one name opens that value as plain text, where it opened a
+  YAML mapping. Several names, or none, still open the mapping.
+
+- A first `apply` that fails ends with no containers, and a restore that fails
+  writing the data ends with the product stopped; `restore --resume` continues
+  it once the cause is cleared.
+
+- A rolled-back operation's error carries the failed step's hint, under
+  `--json` and in `history` too.
+
+- A bundle declaring `operations.restore.restartable` needs
+  `compatibility.min_manager_version: "0.14.0"`.
+
+Under `--json`, no existing field changed meaning.
+
 ### Added
 
 - **A release can declare its restore hook restartable.** With
@@ -27,10 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `init --product dd` for a release named `dotdash` handed it `DD_*` while
   its files read `DOTDASH_*`. The prefix is the release's name, as the hook
   reference says, and a Compose error quotes Compose's own diagnostic.
+
 - **`init --release oci://…` names the product from the bundle.** It read
   the reference as a local path, `oci:/…/manifest.yaml`, and failed unless
   `--product` was given. It now reads the name through the release source,
   and the bundle is downloaded once for the name and the staging both.
+
 - **`installation remove` takes down a project whose release no longer
   works.** When the release's Compose files could not take the project
   down, as when they no longer interpolate, the removal failed and could not
@@ -1243,7 +1276,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.13.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/morzecrew/morzer/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/morzecrew/morzer/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/morzecrew/morzer/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/morzecrew/morzer/compare/v0.10.0...v0.11.0

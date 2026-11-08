@@ -96,7 +96,7 @@ The install script is the other way, and the only one for going back.
 
     ```sh
     curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-      | sh -s -- --version 0.13.0 --require-signature --dir /usr/local/bin
+      | sh -s -- --version 0.14.0 --require-signature --dir /usr/local/bin
     ```
 
 `--dir` matters. Left to itself, the script picks `/usr/local/bin` or

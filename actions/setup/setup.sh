@@ -29,8 +29,8 @@ die() {
 
 [ "${RUNNER_OS:-}" = Linux ] || die "morzer runs on Linux, and this runner is ${RUNNER_OS:-unknown}"
 case "${VERSION:-}" in
-'') die "the version input is required, for example 0.13.0" ;;
-v*) die "version '${VERSION}' takes no v: 0.13.0, not v0.13.0" ;;
+'') die "the version input is required, for example 0.14.0" ;;
+v*) die "version '${VERSION}' takes no v: 0.14.0, not v0.14.0" ;;
 esac
 
 dir=${DIR:-${RUNNER_TEMP:?}/morzer}
