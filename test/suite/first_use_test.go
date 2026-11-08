@@ -490,3 +490,39 @@ func TestAFirstUseRefusesAnotherKeyWithTheApprovedID(t *testing.T) {
 	require.Error(t, err, "a key with the approved id, and not the approved key, was trusted")
 	assert.Contains(t, err.Error(), "does not ship the key you approved")
 }
+
+// lockedAfter runs then while the lock is being taken, as another operation
+// holding it would have before letting go.
+type lockedAfter struct {
+	ports.Locker
+	then func()
+}
+
+func (l lockedAfter) Acquire(ctx context.Context, name string, opts ports.LockOptions) (func() error, error) {
+	l.then()
+	return l.Locker.Acquire(ctx, name, opts)
+}
+
+func TestARepairVerifiesAgainstThePolicyAsItIsUnderTheLock(t *testing.T) {
+	ctx := context.Background()
+	h := firstUseMachine(t)
+	old, current := newVendor(t), newVendor(t)
+	opts := initOptions(firstRelease(t, h, old, signedShippingItsKey))
+	opts.SigningKeys = []string{old.pub, current.pub}
+	_, err := ops.Init(ctx, h.Deps, opts)
+	require.NoError(t, err)
+
+	// `release trust remove <old>` finishes while the repair waits.
+	h.Deps.Locker = lockedAfter{Locker: h.Deps.Locker, then: func() {
+		inst, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		inst.Policy.SigningKeys = []string{current.pub}
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	}}
+	repair := initOptions(releaseFrom(t, h, "bundle-1.3.0", old, signedShippingItsKey))
+	repair.Repair = true
+
+	_, err = ops.Init(ctx, h.Deps, repair)
+	require.Error(t, err, "the repair staged a release signed by a key removed before it took the lock")
+	assert.Contains(t, err.Error(), "does not verify against any configured signing key")
+}

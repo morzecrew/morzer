@@ -35,6 +35,10 @@ type releaseTrust struct {
 	// opt-out (decision 5).
 	implied bool
 
+	// repair marks a repair of an installation that exists, whose policy
+	// the stage step reads under the lock and verifies against.
+	repair bool
+
 	// shipped marks a first use: the key the release ships is trusted, if
 	// it ships one (RFC 0052 §5.2).
 	shipped bool

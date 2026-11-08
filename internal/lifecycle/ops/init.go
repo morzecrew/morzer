@@ -217,17 +217,12 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	}
 
 	// A repair verifies against the policy of the installation it finds
-	// (RFC 0052 decision 15). State that exists and cannot be read has no
-	// policy to verify against, and is refused rather than read as none.
-	var policy *domain.Policy
-	if exists && opts.ReleasePath != "" {
-		existing, err := d.State.LoadInstallation(ctx)
-		if err != nil {
-			return Result{}, err
-		}
-		policy = &existing.Policy
+	// (RFC 0052 decision 15), which the stage step reads under the lock: a
+	// key removed while the repair waited for it is not trusted.
+	trust := initTrust(opts, nil)
+	if exists {
+		trust = releaseTrust{repair: true}
 	}
-	trust := initTrust(opts, policy)
 
 	// A plan reads the key a local bundle ships, as the wizard does, and
 	// refuses what the stage step would. It does not fetch a remote one.
@@ -795,6 +790,17 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			// only from a verified release.
 			var signed *domain.SignatureCheck
 			if d.Verifier != nil {
+				// State that exists and cannot be read has no policy
+				// to verify against, and is refused rather than read
+				// as none.
+				trust := trust
+				if trust.repair {
+					existing, err := d.State.LoadInstallation(ctx)
+					if err != nil {
+						return err
+					}
+					trust = initTrust(opts, &existing.Policy)
+				}
 				expect := ports.Expectation{
 					Digest:     resolved.Digest,
 					Required:   trust.required,
