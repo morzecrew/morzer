@@ -128,7 +128,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0053**. Before creating an RFC, glance at the table
+The next free number is **0054**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -191,6 +191,7 @@ number in the filename in sync.
 | [0050](0050-restarting-a-service-and-an-interactive-exec.md) | Restarting a service, and an interactive exec | ✅ Complete | Two commands RFC 0021 left out: `restart` for one service, and an `exec` with stdin and a TTY, with what each does to the deployment, the journal and the runtime port. |
 | [0051](0051-resuming-an-interrupted-restore.md) | Resuming an interrupted restore | ✅ Complete | Continuing a restore that was interrupted or cleared from its first unfinished step, without restoring again what already went back, and when a release's restore hook may run twice. |
 | [0052](0052-trusting-a-releases-key-on-first-use.md) | Trusting a release's key on first use | 📝 Draft | How an installation comes to trust a vendor's signing key without the operator typing it: a key the first release ships, and a trusted key meaning a required signature. |
+| [0053](0053-several-profiles-per-installation.md) | Several profiles per installation | 📝 Draft | Letting an installation run several deployment profiles at once, so a bundle's independent overlays need no combined profile: which profiles may combine, in what order, and what templates see. |
 
 ## Status legend
 
