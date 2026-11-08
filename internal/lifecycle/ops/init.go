@@ -70,11 +70,13 @@ type InitOptions struct {
 	// It also turns off trusting the key a release ships.
 	SignatureNotRequired bool
 
-	// ShippedKeyID is the id of the key the wizard showed for a local
-	// bundle. The stage step refuses a shipped key with another id: the
-	// wizard read the bundle where it is, the stage step reads its own
-	// copy, and a key that changed in between is not the one approved.
-	ShippedKeyID string
+	// ApprovedKey is the key the wizard showed for a local bundle, zero
+	// when it found none there, and nil when no wizard read the bundle.
+	// The stage step refuses any other key: the wizard read the bundle
+	// where it is, the stage step reads its own copy, and a key that
+	// changed in between, or appeared, is not the one approved. The whole
+	// key, because its id is eight bytes whoever makes the key chooses.
+	ApprovedKey *ports.ShippedKey
 
 	// Repair re-creates missing directories on an existing installation
 	// instead of refusing.

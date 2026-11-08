@@ -70,7 +70,9 @@ func TestTheWizardAsksBeforeTrustingTheKeyAReleaseShips(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Contains(t, shown, "Trust the signing key this release ships, "+id)
-		assert.Equal(t, id, got.ShippedKeyID)
+		require.NotNil(t, got.ApprovedKey)
+		assert.Equal(t, id, got.ApprovedKey.ID)
+		assert.NotEmpty(t, got.ApprovedKey.Key)
 		assert.False(t, got.SignatureNotRequired)
 	})
 
@@ -80,7 +82,7 @@ func TestTheWizardAsksBeforeTrustingTheKeyAReleaseShips(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.True(t, got.SignatureNotRequired)
-		assert.Empty(t, got.ShippedKeyID)
+		assert.Nil(t, got.ApprovedKey)
 		assert.Contains(t, EquivalentCommand(got), "--require-signature=false")
 	})
 
@@ -89,6 +91,20 @@ func TestTheWizardAsksBeforeTrustingTheKeyAReleaseShips(t *testing.T) {
 		_, _, err := ask(t, "n", ops.InitOptions{Product: "demo", ReleasePath: bundle, RequireSignature: true})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "the only key there is was turned down")
+	})
+
+	// Nothing to ask, and the stage step is still held to it: a key that
+	// appears before staging was never approved.
+	t.Run("a local bundle with no key is held to none", func(t *testing.T) {
+		app, shown := wizardApp(t, "1", "", "3")
+		app.Deps.Verifier = verify.NewChain(checksum.New(), minisign.New())
+		got, err := runInitWizard(context.Background(), app, ops.InitOptions{
+			Product: "demo", ReleasePath: testdataBundle(t),
+		})
+		require.NoError(t, err)
+		assert.NotContains(t, shown.String(), "Trust the signing key")
+		require.NotNil(t, got.ApprovedKey, "the wizard read a bundle with no key and held the stage step to nothing")
+		assert.Empty(t, got.ApprovedKey.Key)
 	})
 
 	t.Run("not asked after --signing-key", func(t *testing.T) {

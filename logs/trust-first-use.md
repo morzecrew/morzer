@@ -180,3 +180,17 @@ Scope: the branch against `8a8799d7`: `ops` (init, update, the new
     `EquivalentCommand` cannot carry the approved id, so the printed command
     trusts whatever key the release ships when it runs.
   - Not run: the demos and the Docker acceptance run.
+
+## Review, 2026-11-08
+
+```divergence
+decision: 10
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-08T18:41:08Z
+attempt: 1
+claim: §5.5 has the wizard pass on the id of the key it showed, and the stage step refuse a shipped key with any other id. A minisign key id is eight bytes whoever makes the key chooses, so another key can carry the approved id and pass; and a local bundle where the wizard found no key passed on nothing, so a key added before staging was trusted without being asked about. The wizard now passes on the key it showed, or that it found none, and the stage step compares whole keys.
+evidence: internal/lifecycle/ops/shipped_key.go:115
+action: departed
+proposal: ASSUMED — refines decision 10. The wizard passes on the whole key it showed for a local bundle, or that it found none, and the stage step refuses any other key, including one where the wizard found none.
+```

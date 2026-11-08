@@ -112,11 +112,16 @@ func (d *Deps) LocalShippedKey(ctx context.Context, releasePath string) (key por
 // than the key the wizard showed (decision 10), or none after an explicit
 // --require-signature (decision 6).
 func checkFirstUseKey(shipped ports.ShippedKey, opts InitOptions) error {
-	if opts.ShippedKeyID != "" && shipped.ID != opts.ShippedKeyID {
+	if approved := opts.ApprovedKey; approved != nil && shipped.Key != approved.Key {
+		const hint = "the bundle changed after it was read for the question: " +
+			"check where it came from before running `morzer init` again"
+		if approved.Key == "" {
+			return domain.ValidationError(domain.ErrValidation,
+				"the release ships a key, %s, and shipped none when it was read for the question",
+				shipped.ID).WithHint(hint)
+		}
 		return domain.ValidationError(domain.ErrValidation,
-			"the release does not ship the key you approved, %s", opts.ShippedKeyID).
-			WithHint("the bundle changed after the question was asked: " +
-				"check where it came from before running `morzer init` again")
+			"the release does not ship the key you approved, %s", approved.ID).WithHint(hint)
 	}
 	if shipped.Key == "" && opts.RequireSignature {
 		return domain.Usage(

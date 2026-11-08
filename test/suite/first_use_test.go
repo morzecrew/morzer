@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/base64"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // A release may ship its vendor's key as minisign.pub. An `init` that creates
@@ -238,11 +240,24 @@ func TestAFirstUseRefusesAKeyOtherThanTheOneApproved(t *testing.T) {
 	h := firstUseMachine(t)
 	shown, staged := newVendor(t), newVendor(t)
 	opts := initOptions(firstRelease(t, h, staged, signedShippingItsKey))
-	opts.ShippedKeyID = shown.id()
+	opts.ApprovedKey = &ports.ShippedKey{Key: shown.pub, ID: shown.id()}
 
 	_, err := ops.Init(ctx, h.Deps, opts)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not ship the key you approved, "+shown.id())
+}
+
+// And a key that appeared, where the wizard found none.
+func TestAFirstUseRefusesAKeyWhereTheWizardFoundNone(t *testing.T) {
+	ctx := context.Background()
+	h := firstUseMachine(t)
+	v := newVendor(t)
+	opts := initOptions(firstRelease(t, h, v, signedShippingItsKey))
+	opts.ApprovedKey = &ports.ShippedKey{}
+
+	_, err := ops.Init(ctx, h.Deps, opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ships a key, "+v.id()+", and shipped none")
 }
 
 // `--require-signature` with no release has no stage step to find a key in,
@@ -447,4 +462,31 @@ func TestAPlanSaysWhichKeyAFirstUseWouldTrust(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not signed")
 	})
+}
+
+// impostorOf is another key carrying v's id. A minisign key id is eight bytes
+// whoever makes the key chooses, so it names a key without proving one.
+func impostorOf(t *testing.T, v vendor) vendor {
+	t.Helper()
+	other := newVendor(t)
+	other.sk.KeyId = v.sk.KeyId
+	pk := other.sk.PublicKey()
+	blob := append(append(append([]byte{}, pk.SignatureAlgorithm[:]...), pk.KeyId[:]...), pk.PublicKey[:]...)
+	other.pub = base64.StdEncoding.EncodeToString(blob)
+	require.NotEqual(t, v.pub, other.pub)
+	require.Equal(t, v.id(), other.id())
+	return other
+}
+
+func TestAFirstUseRefusesAnotherKeyWithTheApprovedID(t *testing.T) {
+	ctx := context.Background()
+	h := firstUseMachine(t)
+	shown := newVendor(t)
+	impostor := impostorOf(t, shown)
+	opts := initOptions(firstRelease(t, h, impostor, signedShippingItsKey))
+	opts.ApprovedKey = &ports.ShippedKey{Key: shown.pub, ID: shown.id()}
+
+	_, err := ops.Init(ctx, h.Deps, opts)
+	require.Error(t, err, "a key with the approved id, and not the approved key, was trusted")
+	assert.Contains(t, err.Error(), "does not ship the key you approved")
 }

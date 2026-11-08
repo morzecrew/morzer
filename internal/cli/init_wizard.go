@@ -190,10 +190,13 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	}
 
 	trustKey := true
-	shipped, asksTrust, err := app.shippedKeyQuestion(ctx, opts)
+	shipped, firstUse, local, err := app.shippedKeyQuestion(ctx, opts)
 	if err != nil {
 		return opts, err
 	}
+	// Asked where there is something to approve: a key a local bundle
+	// ships, or a remote one's, which is not fetched to show.
+	asksTrust := firstUse && (!local || shipped.Key != "")
 	if asksTrust {
 		// The id is in the title, for the renderer that prints titles
 		// only. A remote bundle is not fetched to show its key.
@@ -224,10 +227,15 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	// Before the recovery choice is acted on, as the product check below
 	// is: a refusal after it would leave a recovery key on disk for an
 	// installation that was never made.
-	if asksTrust {
+	//
+	// A local bundle holds the stage step to what was read here, a key or
+	// none, so one that changes or appears before staging is refused.
+	if firstUse {
 		switch {
+		case trustKey && local:
+			opts.ApprovedKey = &shipped
 		case trustKey:
-			opts.ShippedKeyID = shipped.ID
+			// A remote bundle: nothing was read to hold it to.
 		case opts.RequireSignature:
 			return opts, domain.Usage(
 				"--require-signature was given, and the only key there is was turned down").
@@ -354,23 +362,22 @@ func (a *App) profilesFrom(ctx context.Context, releasePath string) []string {
 }
 
 // shippedKeyQuestion reads what the trust question shows: the key a local
-// bundle ships, read where it is. ask is false where the stage step would trust
-// no key, so the question is asked only where its answer changes something
-// (RFC 0052 decision 10).
-func (a *App) shippedKeyQuestion(ctx context.Context, opts ops.InitOptions) (key ports.ShippedKey, ask bool, err error) {
+// bundle ships, read where it is, and local true. firstUse is false where the
+// stage step would trust no key, and nothing is asked or held to (RFC 0052
+// decision 10).
+func (a *App) shippedKeyQuestion(ctx context.Context, opts ops.InitOptions) (
+	key ports.ShippedKey, firstUse, local bool, err error,
+) {
 	if opts.ReleasePath == "" || len(opts.SigningKeys) > 0 || opts.SignatureNotRequired {
-		return ports.ShippedKey{}, false, nil
+		return ports.ShippedKey{}, false, false, nil
 	}
 	// A repair of an installation that exists is not a first use.
 	exists, err := a.Deps.State.InstallationExists(ctx)
 	if err != nil || exists {
-		return ports.ShippedKey{}, false, err
+		return ports.ShippedKey{}, false, false, err
 	}
-	key, local, err := a.Deps.LocalShippedKey(ctx, opts.ReleasePath)
-	if err != nil {
-		return ports.ShippedKey{}, false, err
-	}
-	return key, !local || key.Key != "", nil
+	key, local, err = a.Deps.LocalShippedKey(ctx, opts.ReleasePath)
+	return key, err == nil, local, err
 }
 
 func splitDomains(input string) []string {
