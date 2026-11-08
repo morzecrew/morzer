@@ -4,20 +4,20 @@
   2026-11-07: decision 13 as recommended. 2026-11-08, from the review:
   decision 1 narrowed to an `init` that creates an installation, and
   decision 15 accepted.
-- **Scope:** How an installation comes to trust a vendor's release signing
-  key without the operator typing it. A release may ship its minisign public
-  key; an `init` given no `--signing-key` checks the release's signature
-  against that key, trusts it, and requires a signature from every release
-  after. Folded in: a trusted key, given or shipped, means a signature is
-  required unless `--require-signature=false` says otherwise. Also folded
-  in: `init --repair` is not a first use, and verifies against the
-  installation's policy rather than its own flags. It covers
-  `init`, its wizard and plan, the refusal a later release meets when it is
-  signed by another key, and the vendor-side check that the shipped key
-  signs the release. It does not change how `update` verifies, does not
-  fetch keys from anywhere but the release, does not add keyless signing,
-  and changes no manifest schema: the key is a file in the bundle, which
-  older managers ignore.
+- **Scope:** How an installation comes to trust a vendor's release signing key
+  without the operator typing it. A release may ship its minisign public key;
+  an `init` given no `--signing-key` checks the release's signature against
+  that key, trusts it, and requires a signature from every release after.
+  Folded in: a trusted key, given or shipped, means a signature is required
+  unless `--require-signature=false` says otherwise. Also folded in: a repair
+  of an installation that exists is not a first use, and verifies against the
+  installation's policy rather than its own flags. It covers `init`, its
+  wizard and plan, the refusal a later release meets when it is signed by
+  another key, and the vendor-side check that the shipped key signs the
+  release. It does not change how `update` verifies, does not fetch keys from
+  anywhere but the release, does not add keyless signing, and changes no
+  manifest schema: the key is a file in the bundle, which older managers
+  ignore.
 - **Related:** [RFC 0004](0004-distribution-and-verification.md) (decisions
   5, 6, 7 and 24),
   [RFC 0022](0022-bootstrapping-the-manager.md) (decision 5, the embedded
@@ -158,9 +158,15 @@ judged as if it shipped no key.
 
 ### 5.2 Trusting it at `init`
 
-When `init` creates an installation, is given no `--signing-key`, and
-`--require-signature` is not `false`, the stage step does the following
-after the checksum check. A repair is not a first use (§5.4).
+The stage step does the following after the checksum check when three
+conditions hold:
+
+- `init` creates an installation, because no installation state exists,
+  whether or not `--repair` was passed (`init.go:88-97`);
+- it is given no `--signing-key`;
+- `--require-signature` is not `false`.
+
+A repair of an installation that exists is not a first use (§5.4).
 
 1. reads `minisign.pub` from the fetched release, if there is one;
 2. verifies `SHA256SUMS.minisig` against it, refusing a release whose
@@ -225,7 +231,10 @@ After the first install the shipped key is never trusted again:
   and points to the vendor's published key and the rotation procedure in
   `publishing.md`. It does not print the full key, which would make trusting
   a hijacked one a copy-paste.
-- `init --repair --release` is not a first install. It never reads the
+- `init --repair --release` of an installation that exists is not a first
+  install. A repair with nothing to repair creates an installation
+  (`init.go:92`, and the repair branch at `init.go:582` needs one), and is a
+  first use like any other `init`. One that repairs never reads the
   shipped key, so a repaired installation without keys stays without them,
   as decision 13 has `update` leave one. Its stage step verifies against the
   installation's policy, as `update` does, instead of against its own flags
@@ -245,19 +254,26 @@ key only to an installation that has none, and only to raise the bar.
   does (`releaseManifest`, `internal/cli/commands.go:1301-1314`). For a local
   bundle it reads the bundle in place, so the question shows the key and its
   id. For a remote one it reads only the manifest, so the question says that
-  the key is printed when the stage step fetches the release. It does not ask
-  after `--signing-key` or `--require-signature=false`, which leave nothing to
-  trust. Answering no installs with checksum verification only, as
+  the key is printed when the stage step fetches the release. It asks only
+  where the stage step would trust a key (§5.2). It does not ask after
+  `--signing-key` or `--require-signature=false`, or on a repair of an
+  installation that exists. The wizard reads a local bundle in place, and
+  the stage step reads the copy it fetched. The wizard therefore passes on
+  the id of the key it showed, and the stage step refuses a shipped key with
+  any other id: a key that changed in between is not the one the operator
+  approved. Answering no installs with checksum verification only, as
   `--require-signature=false` does. If `--require-signature` was given,
   answering no is refused instead, before anything is created, as a release
   that ships no key is (§5.2). The operator asked for a signature and turned
   down the only key there is.
-- **`init --dry-run`** of a local bundle shows the key it would trust, as a
-  line of the stage step. A plan does not fetch a remote bundle
-  (`checkPlannedRelease`, `ops.go:355-360`). For a remote bundle, the plan
-  says that the stage step will trust a key if the release ships one, and
-  prints no key. Either way the plan does not check the signature, as it
-  does not today (`init.go:190-193`).
+- **`init --dry-run`**, where the stage step would trust a key (§5.2),
+  shows the key of a local bundle as a line of the stage step. A plan does
+  not fetch a remote bundle (`checkPlannedRelease`, `ops.go:355-360`). For a
+  remote bundle, the plan says that the stage step will trust a key if the
+  release ships one, and prints no key. Where the stage step would not
+  trust one, the plan says nothing about a shipped key. In every case the
+  plan does not check the signature, as it does not today
+  (`init.go:190-193`).
 - **The record.** The stage step's journal message names the key id and
   that it came from the release. `release trust list` shows the key like any
   other. JSON output carries the trusted key and its id. No new state field:
@@ -307,7 +323,8 @@ key only to an installation that has none, and only to raise the bar.
   `init`.
 - `init --repair --release` on an installation with a key refuses a release
   that is signed by another key and ships that key. On an installation
-  without keys, the repair leaves it without keys.
+  without keys, the repair leaves it without keys. With no installation, it
+  trusts the shipped key as `init` does.
 - After a first-use install, an `update` to a release signed by a different
   key, shipping that key, is refused, and the refusal names the key id, not
   the key.
@@ -318,6 +335,10 @@ key only to an installation that has none, and only to raise the bar.
   Of a remote one, it says a shipped key would be trusted and prints none.
 - CLI tests for the tri-state `--require-signature`, and for the wizard's no
   being refused after an explicit `--require-signature`.
+- A local bundle whose key changes between the wizard and the stage step is
+  refused.
+- `init --dry-run --signing-key K`, and a dry-run repair of an installation
+  that exists, say nothing about a shipped key.
 - `release verify` with and without `--signing-key` against a matching, a
   stale and a missing `minisign.pub`.
 - Sabotage: trust the shipped key on `update`, or on a repair; skip the
@@ -385,12 +406,12 @@ the review's narrowing of decision 1 and decision 15.
 | 7 | `ASSUMED` | After the first install the shipped key is never trusted: `update` verifies against `policy.signing_keys` only, and a later release's key file changes neither the keys nor the requirement. "Never from the bundle" stays true of policy. |
 | 8 | `ASSUMED` | A later release signed by an untrusted key it ships is refused with that key's id, never the full key, and a pointer to the vendor's published key and the rotation procedure. The full key in a refusal would make trusting a hijacked key a copy-paste. |
 | 9 | `ASSUMED` | `init` prints the trusted key and its id and says it came from the release; the docs never call a first-use install verified. |
-| 10 | `ASSUMED` | The wizard asks before trusting, defaulting to yes. It shows the key only for a local bundle; for a remote one it says the stage step will print it. Answering no installs with checksum verification only, unless `--require-signature` was given, in which case no is refused. `--dry-run` shows the key for a local bundle and says one would be trusted for a remote one, which a plan does not fetch. JSON carries it. |
+| 10 | `ASSUMED` | The wizard asks before trusting, defaulting to yes. It shows the key only for a local bundle; for a remote one it says the stage step will print it. Answering no installs with checksum verification only, unless `--require-signature` was given, in which case no is refused. `--dry-run` shows the key for a local bundle and says one would be trusted for a remote one, which a plan does not fetch. JSON carries it. Both the wizard and the plan speak only where the stage step would trust a key. The stage step refuses a shipped key other than the one the wizard showed. |
 | 11 | `ASSUMED` | No new state field. The journal names the key id and its source, `release trust list` shows the key, and the release record's `SignatureCheck` says which key verified the first release. |
 | 12 | `ASSUMED` | An unsigned release, or a signed one that ships no key, still installs with no flags, with a warning. Refusing would break every unsigned product's first command for a protection its vendor has not opted into. |
 | 13 | `ASSUMED` | Whether an existing installation without keys trusts the key of the first release that ships one. **Recommended: no.** `update` prints a notice with the key id and the `release trust add` and `config set release.require_signature=true` commands, and trusts nothing itself: an unattended timer adopting whatever a moved tag ships would pin an attacker's key without anyone looking. The alternative is automatic adoption at the next interactive `update`. Was `OPEN`; ruled by the author 2026-11-07: as recommended. |
 | 14 | `ASSUMED` | `release verify` checks a shipped key against the shipped signature, saying it proves self-consistency only, and with `--signing-key` refuses a shipped key that differs from the given one. |
-| 15 | `ASSUMED` | *(2026-11-08, from the review)* `init --repair` is not a first use. It never reads the shipped key. Its stage step verifies against the installation's policy, plus any `--signing-key` it is given, which it does not record, as now. A signature is required when the policy or `--require-signature` requires one. Today a repair given no key verifies nothing, even where the policy requires a signature (`init.go:718-722`, `init.go:632`). Accepted by the author 2026-11-08. |
+| 15 | `ASSUMED` | *(2026-11-08, from the review)* `init --repair` of an installation that exists is not a first use; one with nothing installed creates an installation and is. A repair never reads the shipped key. Its stage step verifies against the installation's policy, plus any `--signing-key` it is given, which it does not record, as now. A signature is required when the policy or `--require-signature` requires one. Today a repair given no key verifies nothing, even where the policy requires a signature (`init.go:718-722`, `init.go:632`). Accepted by the author 2026-11-08. |
 
 ## 12. Phasing
 
