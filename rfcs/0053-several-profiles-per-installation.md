@@ -1,7 +1,8 @@
 # RFC 0053 — Several profiles per installation
 
-- **Status:** 📝 Draft. Proposed 2026-11-08 and not yet ruled. §11's `OPEN`
-  rows wait on the author.
+- **Status:** 📝 Draft — proposed 2026-11-08, and ruled by the author
+  2026-11-09: decisions 1 and 2 confirmed, 3–16 as written, and §11's
+  `OPEN` rows as recommended.
 - **Scope:** Lets an installation run more than one deployment profile at once,
   so a bundle whose optional parts are independent no longer has to declare
   every combination as a profile of its own. It covers what a release declares
@@ -627,7 +628,6 @@ accepts for a renamed profile.
 
 - The floor's value. It is whichever manager release ships this, set at
   build time.
-- §11's `OPEN` rows, 17 and 18, which the implementation may settle.
 - The two follow-ups in §8 that this design shapes: a secret required under
   a profile, and profile-aware ports. Each needs its own RFC once a bundle
   asks for it.
@@ -652,8 +652,8 @@ accepts for a renamed profile.
 | 14 | `ASSUMED` | `requirements.ports` stays `.Parameters`-only. Profile-aware ports are a follow-up (§8). |
 | 15 | `ASSUMED` | `init` checks the selection against the release it stages when `--release` is given. Today it checks nothing, despite the comment at `settings.go:479-481`. The wizard keeps a single choice. |
 | 16 | `ASSUMED` | No change to the runtime port, the Compose adapter or the hook ABI, and no new acceptance case: `RuntimeConfig.Files` is already ordered. |
-| 17 | `OPEN` | How `release show` marks combinable names and how `release diff` reports a change to `combinable`. Recommended: a suffix in `show`, and a `combinable` entry in the diff's `profiles` changes. The implementation settles it against the existing views. |
-| 18 | `OPEN` | Whether runtimes in one release that disagree about `combinable` are refused. Recommended: no, as `ProfileNames` already leaves disagreement to the vendor (`manifest.go:283-287`), and a selection is checked against the installation's own runtime. It is settled if a second runtime ships first. |
+| 17 | `ASSUMED` | How `release show` marks combinable names and how `release diff` reports a change to `combinable`. Recommended: a suffix in `show`, and a `combinable` entry in the diff's `profiles` changes. The implementation settles the exact output against the existing views. Was `OPEN`; ruled by the author 2026-11-09: as recommended. |
+| 18 | `ASSUMED` | Whether runtimes in one release that disagree about `combinable` are refused. Recommended: no, as `ProfileNames` already leaves disagreement to the vendor (`manifest.go:283-287`), and a selection is checked against the installation's own runtime. Was `OPEN`; ruled by the author 2026-11-09: as recommended. |
 
 ## 12. Phasing
 
