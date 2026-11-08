@@ -676,18 +676,25 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			// Before the files go, after every later step's undo:
 			// left, what a first start created restarts over the files
 			// this removes (#300).
-			if err := d.downFirstStart(ctx, st); err != nil {
-				return err
+			downErr := d.downFirstStart(ctx, st)
+			if downErr != nil {
+				// Then it may still run, and restart over a file removed
+				// here as a directory: the files the render created stay,
+				// and nothing is started against them.
+				st.Set(keyConfigNotRestored, true)
 			}
 			kept := d.replacedDir(st.OpID)
-			if err := restoreConfigBackups(st); err != nil {
+			if err := restoreConfigBackups(st, downErr != nil); err != nil {
 				// In the message, not a hint: the engine reports only a
 				// compensator's message.
+				msg := domain.AsError(err).Message
 				if _, statErr := os.Stat(kept); statErr == nil {
-					return domain.InstallationError(nil, "%s; the files the update replaced where "+
-						"no release rendered one are kept under %s", domain.AsError(err).Message, kept)
+					msg += "; the files the update replaced where no release rendered one are kept under " + kept
 				}
-				return err
+				if downErr != nil {
+					msg = domain.AsError(downErr).Message + "; " + msg
+				}
+				return domain.InstallationError(nil, "%s", msg)
 			}
 			// Every file is back, so a copy would only be a second,
 			// stale one. Removed after the files, never before: until
@@ -696,7 +703,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			if err := os.RemoveAll(kept); err != nil {
 				st.Warn("could not remove the copies under %s, which are no longer needed: %v", kept, err)
 			}
-			return nil
+			return downErr
 		},
 	}
 }
@@ -708,8 +715,9 @@ const keyConfigBackups = "config-backups"
 // restoreConfigBackups puts back what the render replaced. The render step's
 // compensator, and recreate-services', which the engine undoes first and which
 // must not re-create the services against the new files. Idempotent, so the
-// second call writes the same bytes again.
-func restoreConfigBackups(st *engine.State) error {
+// second call writes the same bytes again. keepCreated leaves the files the
+// render created where there were none.
+func restoreConfigBackups(st *engine.State, keepCreated bool) error {
 	backups, ok := st.Get(keyConfigBackups)
 	if !ok {
 		return nil
@@ -730,6 +738,9 @@ func restoreConfigBackups(st *engine.State) error {
 		// wider mode let read it.
 		var err error
 		if backup.created {
+			if keepCreated {
+				continue
+			}
 			if err = os.Remove(target); errors.Is(err, fs.ErrNotExist) {
 				err = nil
 			}

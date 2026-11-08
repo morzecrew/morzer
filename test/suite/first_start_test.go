@@ -148,3 +148,65 @@ func TestARenderOverADirectorySaysWhatItIs(t *testing.T) {
 	// operator reads last, and what JSON output and `history` keep.
 	assert.Contains(t, domain.AsError(err).Hint, "rmdir "+target)
 }
+
+// failingTeardown makes every `down` after the next `up` fail.
+func failingTeardown(h *harness) {
+	up := h.Runtime.OnCall
+	h.Runtime.OnCall = func(method string) {
+		if up != nil {
+			up(method)
+		}
+		if method == "Up" {
+			h.Runtime.Fail["Down"] = domain.RuntimeError(nil, "injected: the daemon stopped answering")
+		}
+	}
+}
+
+// An update over a project with no containers is a first start too. When its
+// teardown fails, the files the update replaced still go back, and the
+// previous release is not brought up over the ones that could not.
+func TestAFirstStartThatCannotBeTakenDownBringsNothingBack(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+	before, err := os.ReadFile(config)
+	require.NoError(t, err)
+	clear(h.Runtime.Services)
+	h.Health.FailingWaits = 1
+	failingTeardown(h)
+	calls := len(h.Runtime.Calls)
+
+	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: stageRecoverableUpgradeSource(t, h)})
+
+	require.Error(t, err)
+	ups := 0
+	for _, call := range h.callsSince(calls) {
+		if call == "Up" {
+			ups++
+		}
+	}
+	assert.Equal(t, 1, ups, "the previous release was brought up over files the rollback did not put back")
+	after, err := os.ReadFile(config)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after), "the file the update replaced was not put back")
+}
+
+// What a failed teardown leaves running restarts over a file the rollback
+// removes, and Docker makes a directory of it (#300), so the files the render
+// created stay.
+func TestAFirstStartThatCannotBeTakenDownKeepsTheFilesItMounts(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	failingFirstUp(h)
+	failingTeardown(h)
+
+	result, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.FileExists(t, filepath.Join(h.Root, "etc", "demo", "application.yaml"))
+	// Not rolled back: what it started is still there.
+	assert.Equal(t, domain.StatusManualIntervention, result.Record.Status)
+}
