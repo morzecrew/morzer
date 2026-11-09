@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Templates get `lines`,** which splits a text value for a `range`.
 
+- **Templates get `split`, the counterpart of `join`.** `split ","
+  .Parameters.servers` turns a comma-separated parameter into a list to
+  `range` over, each item trimmed and empty ones dropped.
+
 ### Changed
 
 - **An unset optional secret renders as an empty file.** A service that

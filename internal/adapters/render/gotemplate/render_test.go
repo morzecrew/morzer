@@ -197,6 +197,11 @@ func TestTheHelperSet(t *testing.T) {
 		"trim":                            {`{{ trim "  x  " }}`, "x"},
 		"contains":                        {`{{ contains "haystack" "stack" }}`, "true"},
 		"replace":                         {`{{ replace "a-b" "-" "_" }}`, "a_b"},
+		"split trims and drops empties":   {`{{ range split "," "a, b,,c ," }}[{{ . }}]{{ end }}`, "[a][b][c]"},
+		"split of nothing is no items":    {`{{ range split "," "" }}x{{ else }}none{{ end }}`, "none"},
+		"split as join's inverse":         {`{{ join (split "," "a,b") "+" }}`, "a+b"},
+		"split with an index":             {`{{ range $i, $s := split "," "a, b" }}{{ $i }}={{ $s }};{{ end }}`, "0=a;1=b;"},
+		"split in a pipeline":             {`{{ range "a;b" | split ";" }}[{{ . }}]{{ end }}`, "[a][b]"},
 		"has finds a selected profile":    {`{{ has "embedded" .Profiles }}`, "true"},
 		"has finds nothing else":          {`{{ has "xdns" .Profiles }}`, "false"},
 		"indent leaves blank lines alone": {"{{ indent 2 \"a\\n\\nb\" }}", "  a\n\n  b"},
@@ -362,5 +367,14 @@ func TestReadTemplateRefusesASymlinkOutOfTheRelease(t *testing.T) {
 	}
 	if _, err := gotemplate.ReadTemplate(root, "templates/ok.yaml.tmpl"); err != nil {
 		t.Errorf("a real file inside the release was refused: %v", err)
+	}
+}
+
+// An empty separator would split into characters, which no list parameter
+// means, so the render stops and says so (#317).
+func TestSplitNeedsASeparator(t *testing.T) {
+	_, err := render(t, `{{ range split "" "a,b" }}{{ . }}{{ end }}`, testData())
+	if err == nil || !strings.Contains(err.Error(), "split needs a separator") {
+		t.Fatalf("an empty separator rendered, or failed without saying why: %v", err)
 	}
 }

@@ -193,6 +193,26 @@ template whose body is the value, `{{ .Parameters.rules }}`, rendered to a
 target the Compose file mounts. `lines` needs
 `compatibility.min_manager_version` of at least `0.15.0`, as `text` does.
 
+### split
+
+`split` is `join`'s counterpart: it turns a list held in one parameter into a
+list a template can `range` over. Each item is trimmed and an empty one is
+dropped, so `"a.example, b.example,"` gives two items:
+
+```yaml
+outbounds:
+{{- range $i, $server := split "," .Parameters.servers }}
+  - tag: upstream-{{ $i }}
+    address: {{ $server }}
+{{- end }}
+```
+
+The separator comes first, so it also reads as a pipeline:
+`.Parameters.servers | split ","`. An empty separator stops the render. An
+empty value gives no items, so a `range` renders nothing, and its `else`
+branch runs. `split` needs `compatibility.min_manager_version` of at least
+`0.15.0`.
+
 !!! danger "`.Secrets` holds paths, never values"
 
     A configuration file in `/etc` must never contain a credential. The render
