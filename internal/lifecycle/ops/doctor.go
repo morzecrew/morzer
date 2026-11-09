@@ -387,7 +387,13 @@ func (d *Deps) checkInstallationFileMatchesState() preflight.Check {
 func installationDifferences(onDisk, recorded domain.Installation) []string {
 	var out []string
 
-	if onDisk.Profile != recorded.Profile {
+	// A report written before schema 18 names one profile in the old
+	// field, which is the same selection and not drift.
+	reported := onDisk.Profiles
+	if len(reported) == 0 && onDisk.Profile != "" {
+		reported = []string{onDisk.Profile}
+	}
+	if !sameProfiles(reported, recorded.Profiles) {
 		out = append(out, "profile")
 	}
 	if strings.Join(onDisk.Domains, ",") != strings.Join(recorded.Domains, ",") {
@@ -1300,7 +1306,7 @@ func (d *Deps) checkServices(inst domain.Installation, rel domain.Release) prefl
 		// warns: an operator may have stopped it on purpose.
 		Fatal: true,
 		Run: func(ctx context.Context) events.CheckResult {
-			cfg, err := d.runtimeConfig(rel, inst, "")
+			cfg, err := d.runtimeConfig(rel, inst, nil)
 			if err != nil {
 				return preflight.Warn("", "%s", domain.AsError(err).Message)
 			}
@@ -1380,7 +1386,7 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 			// wall of connection refusals, and a remedy ("check its
 			// logs") that contradicts the service check directly
 			// above. The service check already said what is wrong.
-			cfg, cfgErr := d.runtimeConfig(rel, inst, "")
+			cfg, cfgErr := d.runtimeConfig(rel, inst, nil)
 			if cfgErr == nil {
 				services, statusErr := d.Runtime.Status(ctx, cfg)
 				switch {
@@ -1900,7 +1906,7 @@ func (d *Deps) checkVolumeCoverage(inst domain.Installation, rel domain.Release)
 				return preflight.OK("the configured runtime does not report volumes")
 			}
 
-			cfg, err := d.runtimeConfig(rel, inst, "")
+			cfg, err := d.runtimeConfig(rel, inst, nil)
 			if err != nil {
 				return preflight.Warn("", "cannot resolve the project: %s",
 					domain.AsError(err).Message)

@@ -17,7 +17,7 @@ func syntheticRelease() (domain.Release, domain.SecretSchema) {
 	rel.Manifest.Metadata.Version = domain.MustParseVersion("1.2.0")
 	rel.Manifest.Metadata.Vendor = "example"
 	// Declared under `runtimes:`, which is the only spelling read since
-	// 0.3.0. While this fixture used the deprecated block, syntheticProfile
+	// 0.3.0. While this fixture used the deprecated block, syntheticProfiles
 	// returned "" for every real bundle and this test did not notice --
 	// the render-check had quietly stopped exercising profile branches.
 	rel.Manifest.Runtimes = domain.Runtimes{"compose": {
@@ -183,5 +183,45 @@ func TestARenderFailureNamesItsTemplateOnce(t *testing.T) {
 	msg := domain.AsError(err).Message
 	if !strings.HasPrefix(msg, name+" does not render: 1:") {
 		t.Errorf("the detail does not open at the failing position: %q", msg)
+	}
+}
+
+// `--render-check` renders the first profile outside `combinable` and every
+// combinable one together, in layering order (RFC 0053 decision 13, refined by
+// its build): the all-on branch is the one an operator reaches and a vendor's
+// CI otherwise never renders.
+func TestTheSyntheticSelectionIsEveryCombinableProfile(t *testing.T) {
+	rel, schema := syntheticRelease()
+	if got := SyntheticData(rel, schema).Profiles; !reflect.DeepEqual(got, []string{"embedded"}) {
+		t.Errorf("with nothing combinable the synthetic selection is %v, want the first name", got)
+	}
+
+	decl := rel.Manifest.Runtimes["compose"]
+	decl.Profiles["xdns"] = []string{"compose/xdns.yaml"}
+	decl.Profiles["xhttp-reality"] = []string{"compose/xhttp-reality.yaml"}
+	decl.Combinable = []string{"xhttp-reality", "xdns"}
+	rel.Manifest.Runtimes["compose"] = decl
+
+	data := SyntheticData(rel, schema)
+	want := []string{"embedded", "xhttp-reality", "xdns"}
+	if !reflect.DeepEqual(data.Profiles, want) || !reflect.DeepEqual(data.Installation.Profiles, want) {
+		t.Errorf("the synthetic selection is %v, recorded %v; want %v in layering order",
+			data.Profiles, data.Installation.Profiles, want)
+	}
+
+	// One combinable profile beside an alternative is still two names, so a
+	// `.Profile` left in the bundle fails here rather than at an apply.
+	decl.Combinable = []string{"xdns"}
+	rel.Manifest.Runtimes["compose"] = decl
+	if got := SyntheticData(rel, schema).Profiles; !reflect.DeepEqual(got, []string{"embedded", "xdns"}) {
+		t.Errorf("with one combinable profile the synthetic selection is %v, want [embedded xdns]", got)
+	}
+
+	delete(decl.Profiles, "embedded")
+	delete(decl.Profiles, "external-db")
+	delete(decl.Profiles, "xhttp-reality")
+	rel.Manifest.Runtimes["compose"] = decl
+	if got := SyntheticData(rel, schema).Profiles; !reflect.DeepEqual(got, []string{"xdns"}) {
+		t.Errorf("with only combinable profiles the synthetic selection is %v, want [xdns]", got)
 	}
 }

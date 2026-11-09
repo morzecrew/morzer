@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
@@ -90,7 +91,7 @@ func DiffReleases(from, to domain.Release) (ReleaseDiff, error) {
 		Compatibility: changes(compatibility(a.Compatibility), compatibility(b.Compatibility), identity),
 		Tasks:         changes(a.Tasks, b.Tasks, func(domain.TaskSpec) string { return "" }),
 		Preflight:     changes(a.Preflight, b.Preflight, describePreflight),
-		Profiles:      changes(nameSet(a.ProfileNames()), nameSet(b.ProfileNames()), identity),
+		Profiles:      profileChanges(a, b),
 		Files:         changes(fromFiles, toFiles, identity),
 	}, nil
 }
@@ -184,6 +185,20 @@ func schemaSecretNames(rel domain.Release) (map[string]string, error) {
 		out[s.Name] = ""
 	}
 	return out, nil
+}
+
+// profileChanges is the declared names, and `combinable` as one entry beside
+// them in layering order, since reordering it changes which overlay wins
+// (RFC 0053 decision 17).
+func profileChanges(a, b domain.Manifest) []Change {
+	from, to := nameSet(a.ProfileNames()), nameSet(b.ProfileNames())
+	if names := a.CombinableNames(); len(names) > 0 {
+		from["combinable"] = strings.Join(names, ", ")
+	}
+	if names := b.CombinableNames(); len(names) > 0 {
+		to["combinable"] = strings.Join(names, ", ")
+	}
+	return changes(from, to, identity)
 }
 
 func nameSet(names []string) map[string]string {

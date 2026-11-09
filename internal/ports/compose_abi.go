@@ -21,6 +21,8 @@ var ComposeVars = []string{
 	"CONFIG_FILE",
 	"RELEASE_DIR",
 	"VERSION",
+	// The selection, comma-joined in layering order, as the hook ABI joins
+	// DOMAINS; unchanged for none or one (RFC 0053 decision 7).
 	"PROFILE",
 	// Only when the installation has one, which is why the builder sets it
 	// conditionally and a Compose file should carry a `:-` fallback.

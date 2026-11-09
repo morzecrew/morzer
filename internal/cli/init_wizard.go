@@ -156,14 +156,17 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 	//
 	// Not on a repair, where an empty answer keeps the recorded profile and
 	// "none" would be untrue. `config set installation.profile` changes it.
-	if opts.Profile == "" && len(profiles) > 0 && !opts.Repair {
+	// One choice: a combination is `--profile` or a later `config set`
+	// (RFC 0053 decision 15).
+	var profile string
+	if len(opts.Profiles) == 0 && len(profiles) > 0 && !opts.Repair {
 		options := append([]huh.Option[string]{huh.NewOption("none, the base files", "")},
 			huh.NewOptions(profiles...)...)
 		fields = append(fields, huh.NewSelect[string]().
 			Title("Deployment profile").
 			Description("The topologies this release declares.").
 			Options(options...).
-			Value(&opts.Profile))
+			Value(&profile))
 	}
 
 	if len(opts.Domains) == 0 {
@@ -224,6 +227,9 @@ func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.Ini
 
 	if err := app.form(fields...).RunWithContext(ctx); err != nil {
 		return opts, formError(err)
+	}
+	if profile != "" {
+		opts.Profiles = []string{profile}
 	}
 
 	// Before the recovery choice is acted on, as the product check below
@@ -408,7 +414,9 @@ func EquivalentCommand(opts ops.InitOptions) string {
 
 	add("product", opts.Product)
 	add("release", opts.ReleasePath)
-	add("profile", opts.Profile)
+	for _, p := range opts.Profiles {
+		add("profile", p)
+	}
 	for _, d := range opts.Domains {
 		add("domain", d)
 	}

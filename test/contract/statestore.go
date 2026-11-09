@@ -27,7 +27,7 @@ func RunStateStoreSuite(t *testing.T, newStore StateStoreFactory) {
 			ID:            "inst_01ABCDEF",
 			Product:       "demo",
 			CreatedAt:     domain.NewTime(time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)),
-			Profile:       "embedded",
+			Profiles:      []string{"embedded", "xdns"},
 			Domains:       []string{"demo.example"},
 			Policy:        domain.DefaultPolicy(),
 		}
@@ -60,7 +60,7 @@ func RunStateStoreSuite(t *testing.T, newStore StateStoreFactory) {
 
 		assert.Equal(t, want.ID, got.ID)
 		assert.Equal(t, want.Product, got.Product)
-		assert.Equal(t, want.Profile, got.Profile)
+		assert.Equal(t, want.Profiles, got.Profiles, "a selection keeps its order")
 		assert.Equal(t, want.Domains, got.Domains)
 		assert.Equal(t, want.Policy.SkipBackupBeforeUpdate, got.Policy.SkipBackupBeforeUpdate)
 	})

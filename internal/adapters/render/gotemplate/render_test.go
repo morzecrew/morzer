@@ -30,10 +30,10 @@ func render(t *testing.T, body string, data ports.TemplateData) ([]byte, error) 
 func testData() ports.TemplateData {
 	return ports.TemplateData{
 		Installation: domain.Installation{
-			ID: "inst_01", Product: "demo", Profile: "embedded",
+			ID: "inst_01", Product: "demo", Profiles: []string{"embedded"},
 			Domains: []string{"demo.example", "www.demo.example"},
 		},
-		Profile:    "embedded",
+		Profiles:   []string{"embedded"},
 		Domains:    []string{"demo.example", "www.demo.example"},
 		Parameters: domain.Parameters{"http_port": "18080", "log_level": "info"},
 		Secrets:    map[string]string{"db_password": "/run/demo/secrets/db_password"},
@@ -197,6 +197,8 @@ func TestTheHelperSet(t *testing.T) {
 		"trim":                            {`{{ trim "  x  " }}`, "x"},
 		"contains":                        {`{{ contains "haystack" "stack" }}`, "true"},
 		"replace":                         {`{{ replace "a-b" "-" "_" }}`, "a_b"},
+		"has finds a selected profile":    {`{{ has "embedded" .Profiles }}`, "true"},
+		"has finds nothing else":          {`{{ has "xdns" .Profiles }}`, "false"},
 		"indent leaves blank lines alone": {"{{ indent 2 \"a\\n\\nb\" }}", "  a\n\n  b"},
 	}
 
@@ -210,6 +212,67 @@ func TestTheHelperSet(t *testing.T) {
 				t.Errorf("rendered %q, want it to contain %q", out, tc.want)
 			}
 		})
+	}
+}
+
+// The profile fields under each selection RFC 0053 §5.6 tabulates: `.Profile`
+// is the effective one and `.Installation.Profile` the recorded one, and each
+// names one profile or none.
+func TestTheProfileFieldsNameOneProfileOrNone(t *testing.T) {
+	const body = "{{ .Profile }}|{{ .Installation.Profile }}|{{ join .Profiles \",\" }}|{{ join .Installation.Profiles \",\" }}"
+	for _, tc := range []struct {
+		name                string
+		effective, recorded []string
+		want                string
+	}{
+		{"none", nil, nil, "|||"},
+		{"one", []string{"embedded"}, []string{"embedded"}, "embedded|embedded|embedded|embedded"},
+		{"one, overridden for the run", []string{"external-db"}, []string{"embedded"},
+			"external-db|embedded|external-db|embedded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := testData()
+			data.Profiles, data.Installation.Profiles = tc.effective, tc.recorded
+			out, err := render(t, body, data)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if string(out) != tc.want {
+				t.Errorf("rendered %q, want %q", out, tc.want)
+			}
+		})
+	}
+}
+
+// With several selected, a field naming one profile stops the render (RFC 0053
+// decision 6): `eq .Profile "xdns"` would otherwise be quietly false under a
+// selection that holds xdns.
+func TestAFieldNamingOneProfileRefusesSeveral(t *testing.T) {
+	several := []string{"xdns", "xhttp-reality"}
+	for _, tc := range []struct {
+		name, body, want string
+		data             func(*ports.TemplateData)
+	}{
+		{"the effective profile", `{{ if eq .Profile "xdns" }}on{{ end }}`, "use .Profiles",
+			func(d *ports.TemplateData) { d.Profiles = several }},
+		{"the recorded profile", `{{ .Installation.Profile }}`, "use .Installation.Profiles",
+			func(d *ports.TemplateData) { d.Installation.Profiles = several }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := testData()
+			tc.data(&data)
+			_, err := render(t, tc.body, data)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Render error = %v, want one containing %q", err, tc.want)
+			}
+		})
+	}
+
+	data := testData()
+	data.Profiles = several
+	out, err := render(t, `{{ if has "xdns" .Profiles }}on{{ end }}`, data)
+	if err != nil || string(out) != "on" {
+		t.Errorf("has under several rendered %q, %v; want \"on\"", out, err)
 	}
 }
 

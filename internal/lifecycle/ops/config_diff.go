@@ -51,7 +51,7 @@ func ConfigDiff(ctx context.Context, d *Deps) (ConfigDiffReport, error) {
 	if err != nil {
 		return ConfigDiffReport{}, err
 	}
-	comparison, err := configComparison(ctx, d, inst, rel, "")
+	comparison, err := configComparison(ctx, d, inst, rel, nil)
 	if err != nil {
 		return ConfigDiffReport{}, err
 	}
@@ -92,7 +92,7 @@ func (d *Deps) definitionDrift(
 	if !ok {
 		return nil, "this runtime records no service definitions"
 	}
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return nil, domain.AsError(err).Message
 	}
@@ -208,7 +208,7 @@ func (d *Deps) checkConfigDrift(inst domain.Installation, rel domain.Release, sk
 			if skip != "" {
 				return preflight.OK("not checked: %s", skip)
 			}
-			comparison, err := configComparison(ctx, d, inst, rel, "")
+			comparison, err := configComparison(ctx, d, inst, rel, nil)
 			if err != nil {
 				return preflight.Warn("`morzer config diff` says the same",
 					"cannot render the configuration to compare it: %s", domain.AsError(err).Message)
@@ -304,7 +304,7 @@ func (d *Deps) driftedFiles(ctx context.Context, inst domain.Installation) (int,
 	if err != nil {
 		return 0, err
 	}
-	comparison, err := configComparison(ctx, d, inst, rel, "")
+	comparison, err := configComparison(ctx, d, inst, rel, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -431,7 +431,7 @@ func (d *Deps) everConverged(ctx context.Context) (bool, error) {
 // existingTargetsFor is the one list the plan and the tick use (RFC 0048
 // decision 2), with the profile the render uses.
 func (d *Deps) existingTargetsFor(
-	ctx context.Context, inst domain.Installation, rel domain.Release, profile string,
+	ctx context.Context, inst domain.Installation, rel domain.Release, profiles []string,
 ) (existingTargets, error) {
 	var out existingTargets
 	if len(rel.Manifest.Configuration) == 0 {
@@ -442,7 +442,7 @@ func (d *Deps) existingTargetsFor(
 		return out, err
 	}
 	out.owner = owned
-	comparison, err := configComparison(ctx, d, inst, rel, profile)
+	comparison, err := configComparison(ctx, d, inst, rel, profiles)
 	if err != nil {
 		return out, err
 	}
@@ -475,7 +475,7 @@ func (d *Deps) heldForExisting(ctx context.Context, inst domain.Installation, ro
 	if retired := domain.Parameters(inst.Parameters).ValidateAgainst(rel.Manifest.Parameters); len(retired) > 0 {
 		inst = withoutParameters(inst, retired)
 	}
-	existing, err := d.existingTargetsFor(ctx, inst, rel, "")
+	existing, err := d.existingTargetsFor(ctx, inst, rel, nil)
 	if err != nil || !existing.any() {
 		return ""
 	}

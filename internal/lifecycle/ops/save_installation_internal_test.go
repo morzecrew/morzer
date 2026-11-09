@@ -85,7 +85,7 @@ func TestAFailedStateWriteLeavesAnExistingReportAlone(t *testing.T) {
 	require.NoError(t, os.WriteFile(d.Paths.InstallationFile(), []byte(previous), 0o640))
 
 	err := d.saveInstallation(context.Background(),
-		domain.Installation{ID: "inst-1", Product: "demo", Profile: "changed"})
+		domain.Installation{ID: "inst-1", Product: "demo", Profiles: []string{"changed"}})
 
 	require.Error(t, err)
 

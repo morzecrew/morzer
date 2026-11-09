@@ -27,6 +27,7 @@ func deployment() ops.Status {
 		Product:        "demo",
 		InstallationID: "inst_01J8ZP",
 		Profile:        "embedded",
+		Profiles:       []string{"embedded"},
 		PublicURL:      "https://demo.example",
 		CurrentRelease: &domain.ReleaseRecord{
 			Version: domain.MustParseVersion("1.3.0"),

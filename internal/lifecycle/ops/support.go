@@ -863,7 +863,7 @@ func collectConfigDiff(ctx context.Context, d *Deps, src *supportSource) ([]supp
 		return nil, src.noRelease("so nothing renders configuration")
 	}
 
-	comparison, err := configComparison(ctx, d, src.Installation, src.Release, "")
+	comparison, err := configComparison(ctx, d, src.Installation, src.Release, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -969,12 +969,12 @@ func (d *Deps) scrubbed(ctx context.Context, c ConfigComparison) (ConfigComparis
 // beside it -- and the operator holding both would have no way to tell which was
 // lying.
 //
-// profile is what to render with, empty for the installed one: a plan for
+// profiles is what to render with, none for the installed selection: a plan for
 // `update --profile` renders the profile it was asked for.
 func configComparison(
-	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profile string,
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profiles []string,
 ) (ConfigComparison, error) {
-	rendered, err := renderConfiguration(ctx, d, inst, rel, profile)
+	rendered, err := renderConfiguration(ctx, d, inst, rel, profiles)
 	if err != nil {
 		return ConfigComparison{}, err
 	}
@@ -1008,7 +1008,7 @@ func configComparison(
 // `apply --dry-run` show a configuration diff without executing the step that
 // would normally have left the schema in state.
 func renderConfiguration(
-	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profile string,
+	ctx context.Context, d *Deps, inst domain.Installation, rel domain.Release, profiles []string,
 ) (map[string][]byte, error) {
 	if d.Renderer == nil {
 		return nil, domain.Internal(nil, "no template renderer is configured")
@@ -1017,7 +1017,7 @@ func renderConfiguration(
 	if err != nil {
 		return nil, err
 	}
-	data, err := d.templateData(inst, rel, profile, schema)
+	data, err := d.templateData(inst, rel, profiles, schema)
 	if err != nil {
 		return nil, err
 	}

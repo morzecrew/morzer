@@ -120,6 +120,14 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 	})
 
 	if profiles := m.ProfileNames(); len(profiles) > 0 {
+		// A suffix, so the alternatives and the overlays read in one list
+		// (RFC 0053 decision 17).
+		combinable := m.CombinableNames()
+		for i, name := range profiles {
+			if slices.Contains(combinable, name) {
+				profiles[i] = name + " (combinable)"
+			}
+		}
 		d.Heading("profiles")
 		d.Text(4, "%s", strings.Join(profiles, ", "))
 	}

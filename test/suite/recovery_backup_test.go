@@ -207,7 +207,7 @@ func TestAnInstallationWithNoRecoveryRecipientGetsNoExportComponent(t *testing.T
 	_, err := ops.Init(ctx, origin.Deps, ops.InitOptions{
 		Product:         "demo",
 		ReleasePath:     testBundlePath(t),
-		Profile:         "embedded",
+		Profiles:        []string{"embedded"},
 		NoRecoveryKey:   true,
 		GenerateSecrets: true,
 	})

@@ -63,8 +63,12 @@ type InstallationDocument struct {
 	// bundle.
 	RuntimeOptions map[string]string `yaml:"runtime_options,omitempty" json:"runtime_options,omitempty"`
 
-	Profile string   `yaml:"profile,omitempty" json:"profile,omitempty"`
-	Domains []string `yaml:"domains,omitempty" json:"domains,omitempty"`
+	// Profile is the selection as `installation.profile` takes it,
+	// comma-joined; Profiles is the same names as a list (RFC 0053
+	// decision 9).
+	Profile  string   `yaml:"profile,omitempty" json:"profile,omitempty"`
+	Profiles []string `yaml:"profiles,omitempty" json:"profiles,omitempty"`
+	Domains  []string `yaml:"domains,omitempty" json:"domains,omitempty"`
 
 	Parameters map[string]string `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 
@@ -149,7 +153,8 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 		Release:        release,
 		Runtime:        i.RuntimeName(),
 		RuntimeOptions: copyStringMap(i.RuntimeOptions),
-		Profile:        i.Profile,
+		Profile:        i.ProfileSetting(),
+		Profiles:       append([]string(nil), i.Profiles...),
 		Domains:        append([]string(nil), i.Domains...),
 		Parameters:     copyStringMap(i.Parameters),
 		Secrets:        names,

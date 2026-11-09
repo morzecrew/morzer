@@ -123,10 +123,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err := d.refuseRuntimeOptionChange(inst, staged); err != nil {
 		return Result{}, err
 	}
-	if err := refuseUndeclaredProfile(inst, staged, opts.Profile); err != nil {
+	if err := refuseUndeclaredProfile(inst, staged, opts.Profiles); err != nil {
 		return Result{}, err
 	}
-	d.warnOneRunProfile(inst, opts.Profile)
+	d.warnOneRunProfile(inst, opts.Profiles)
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -823,7 +823,7 @@ func stepPreUpdateBackup(
 			// whose unused busybox `docker image prune -a` removed, has none.
 			if len(staged.Manifest.PulledImageRefs()) > 0 {
 				if current, err := d.currentReleaseFor(ctx); err == nil {
-					if cfg, err := d.runtimeConfig(current, inst, ""); err == nil {
+					if cfg, err := d.runtimeConfig(current, inst, nil); err == nil {
 						d.pullVolumeHelper(ctx, st, cfg)
 					}
 				}
@@ -1150,7 +1150,7 @@ func (d *Deps) restorePreviousRuntime(
 	if err != nil {
 		return err
 	}
-	cfg, err := d.runtimeConfig(previous, inst, "")
+	cfg, err := d.runtimeConfig(previous, inst, nil)
 	if err != nil {
 		return err
 	}

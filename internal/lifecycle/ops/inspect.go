@@ -63,7 +63,7 @@ func resolveDeployment(ctx context.Context, d *Deps) (deployment, error) {
 	if err != nil {
 		return deployment{}, err
 	}
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return deployment{}, err
 	}

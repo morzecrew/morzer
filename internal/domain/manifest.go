@@ -296,6 +296,27 @@ func (m Manifest) ProfileNames() []string {
 	return out
 }
 
+// CombinableNames is every profile a runtime of this release lets run beside
+// others, for `release show`, `release diff` and the synthetic render context.
+//
+// The runtimes in sorted order and each one's names in its own order, a name
+// already seen skipped: with one runtime, exactly its `combinable`. Runtimes
+// that disagree are not refused (RFC 0053 decision 18), as ProfileNames does
+// not refuse them, and a selection is checked against the installation's own
+// runtime.
+func (m Manifest) CombinableNames() []string {
+	declared := m.DeclaredRuntimes()
+	var out []string
+	for _, name := range declared.Names() {
+		for _, profile := range declared[name].Combinable {
+			if !slices.Contains(out, profile) {
+				out = append(out, profile)
+			}
+		}
+	}
+	return out
+}
+
 type Metadata struct {
 	Name        string  `yaml:"name" json:"name"`
 	Version     Version `yaml:"version" json:"version"`
@@ -381,6 +402,15 @@ type RuntimeDecl struct {
 	Files    []string            `yaml:"files" json:"files"`
 	Profiles map[string][]string `yaml:"profiles" json:"profiles,omitempty"`
 
+	// Combinable names the profiles that may run together, and the order
+	// their files are layered in (RFC 0053 decisions 1 and 3). A selection
+	// holds any of them plus at most one profile outside the list, so
+	// alternatives such as `embedded` and `external-db` never deploy
+	// together, and a release that declares none runs one profile at a
+	// time, as before. The order is the vendor's: they know which overlay
+	// should win a scalar two of them set.
+	Combinable []string `yaml:"combinable,omitempty" json:"combinable,omitempty"`
+
 	// Options are settings this runtime understands and the manager does
 	// not. They are carried, bounded and compared here, and never
 	// interpreted: what `project` means is Compose's business, and a
@@ -400,28 +430,100 @@ type RuntimeDecl struct {
 	Options map[string]string `yaml:"options,omitempty" json:"options,omitempty"`
 }
 
-// FilesFor returns this runtime's files for a deployment profile.
+// FilesFor returns this runtime's files for a selection of deployment
+// profiles: the base files, then the one profile outside `combinable` if any,
+// then the combinable ones in `combinable` order. A file already in the list
+// is not added again.
 //
 // The same rule RuntimeSpec.ComposeFiles applies, and deliberately the same
 // text: an unknown profile refuses rather than falling back to base, because
 // deploying the wrong topology quietly is worse than stopping.
-func (d RuntimeDecl) FilesFor(profile string) ([]string, error) {
+func (d RuntimeDecl) FilesFor(profiles []string) ([]string, error) {
+	return d.filesFor(profiles, "this release")
+}
+
+func (d RuntimeDecl) filesFor(profiles []string, release string) ([]string, error) {
+	selected, err := d.selection(profiles, release)
+	if err != nil {
+		return nil, err
+	}
 	files := append([]string(nil), d.Files...)
-	if profile == "" {
-		return files, nil
-	}
-	extra, ok := d.Profiles[profile]
-	if !ok {
-		known := slices.Sorted(maps.Keys(d.Profiles))
-		return nil, ValidationError(nil, "unknown deployment profile %q", profile).
-			WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
-	}
-	for _, f := range extra {
-		if !slices.Contains(files, f) {
-			files = append(files, f)
+	for _, profile := range selected {
+		for _, f := range d.Profiles[profile] {
+			if !slices.Contains(files, f) {
+				files = append(files, f)
+			}
 		}
 	}
 	return files, nil
+}
+
+// Selection checks names against this declaration and returns them in the
+// order FilesFor layers them (RFC 0053 decisions 3 and 4). The order names
+// are given in does not count: two installations with the same parts deploy
+// the same merge.
+func (d RuntimeDecl) Selection(names []string) ([]string, error) {
+	return d.selection(names, "this release")
+}
+
+// selection is Selection with the release named in the hint on names that
+// cannot run together, as `release 1.4.0` where the caller knows the version.
+func (d RuntimeDecl) selection(names []string, release string) ([]string, error) {
+	if err := CheckProfileSelection(names); err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(names))
+	var outside []string
+	for _, name := range names {
+		seen[name] = true
+		// Today's message and hint, unchanged (decision 4).
+		if _, ok := d.Profiles[name]; !ok {
+			known := slices.Sorted(maps.Keys(d.Profiles))
+			return nil, ValidationError(nil, "unknown deployment profile %q", name).
+				WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
+		}
+		if !slices.Contains(d.Combinable, name) {
+			outside = append(outside, name)
+		}
+	}
+	if len(outside) > 1 {
+		refusal := ValidationError(nil, "profiles %s cannot be deployed together", JoinAnd(outside))
+		if len(d.Combinable) == 0 {
+			return nil, refusal.WithHint("%s declares no profile combinable", release)
+		}
+		return nil, refusal.WithHint("%s lets these run beside one other profile: %s",
+			release, strings.Join(d.Combinable, ", "))
+	}
+	out := outside
+	for _, name := range d.Combinable {
+		if seen[name] {
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// CheckProfileSelection refuses what no release accepts: an empty entry, as in
+// `xdns,`, or a name selected twice. Selection applies it too; `init` without
+// a release has nothing else to check against.
+func CheckProfileSelection(names []string) error {
+	for i, name := range names {
+		switch {
+		case name == "":
+			return ValidationError(nil, "an empty profile name in the selection")
+		case slices.Contains(names[:i], name):
+			return ValidationError(nil, "profile %q is selected twice", name)
+		}
+	}
+	return nil
+}
+
+// JoinAnd names a list in a sentence: `a`, `a and b`, `a, b and c`.
+func JoinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // LegacyRuntimeName is the runtime a manifest declares when it uses the old
@@ -647,6 +749,11 @@ const MigrateStepsMinManagerVersion = "0.4.0"
 // `operations.restore.restartable`, which an older one refuses as an unknown
 // field (RFC 0051 decision 12).
 const RestartableRestoreMinManagerVersion = "0.14.0"
+
+// CombinableProfilesMinManagerVersion is the manager release that reads
+// `runtimes.<name>.combinable`, which an older one refuses as an unknown field
+// (RFC 0053 decision 11).
+const CombinableProfilesMinManagerVersion = "0.15.0"
 
 // Named manifest operations the lifecycle layer looks up by convention.
 const (
@@ -1308,6 +1415,22 @@ func (m *Manifest) Validate() error {
 				v.checkRelPath(fmt.Sprintf("%s.profiles.%s[%d]", base, profile, i), f)
 			}
 		}
+		// The runtime-name pattern, and only for names listed here, so no
+		// profile name that loads today is refused. A name that matches
+		// holds no comma, which is what a selection is written with.
+		for i, profile := range decl.Combinable {
+			field := fmt.Sprintf("%s.combinable[%d]", base, i)
+			_, declared := decl.Profiles[profile]
+			switch {
+			case !runtimeName.MatchString(profile):
+				v.add(field, "%q is not a usable name for a combinable profile: lower-case letters, "+
+					"digits and hyphens, starting with a letter, at most 32 characters", profile)
+			case slices.Contains(decl.Combinable[:i], profile):
+				v.add(field, "lists %q twice", profile)
+			case !declared:
+				v.add(field, "names %q, which %s.profiles does not declare", profile, base)
+			}
+		}
 		for _, key := range sortedStringKeys(decl.Options) {
 			field := base + ".options." + key
 			if !optionName.MatchString(key) {
@@ -1328,6 +1451,12 @@ func (m *Manifest) Validate() error {
 				v.add(field, "%s", AsError(err).Message)
 			}
 		}
+	}
+	if minimum := MustParseVersion(CombinableProfilesMinManagerVersion); len(m.CombinableNames()) > 0 &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because a runtime declares combinable profiles, which an older "+
+				"manager refuses as an unknown field", minimum)
 	}
 
 	// parameters

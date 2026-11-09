@@ -418,11 +418,14 @@ published=$(docker compose -p demo port app 18080 2>/dev/null | sed 's/.*://')
 info "config unset restored the release default and re-created the service"
 
 step "a hand edit to installation.yaml is reported, not obeyed"
-sed -i 's/^profile: embedded/profile: external-db/' "${ROOT}/etc/demo/installation.yaml"
+# The report lists the selection under `profiles` (RFC 0053), one name a line.
+sed -i '/^profiles:/,/^[a-z]/ s/^- embedded$/- external-db/' "${ROOT}/etc/demo/installation.yaml"
+grep -A1 '^profiles:' "${ROOT}/etc/demo/installation.yaml" | grep -q '^- external-db$' ||
+	fail "the hand edit did not land in installation.yaml"
 "${MORZER}" --root "${ROOT}" doctor 2>&1 | grep -q 'installation.yaml' ||
 	fail "doctor does not report a hand edit that changes nothing"
 "${MORZER}" --root "${ROOT}" config set log_level=warn >/dev/null
-grep -q '^profile: embedded' "${ROOT}/etc/demo/installation.yaml" ||
+grep -A1 '^profiles:' "${ROOT}/etc/demo/installation.yaml" | grep -q '^- embedded$' ||
 	fail "config set did not rewrite installation.yaml from the recorded state"
 info "the drift is reported and the next config set corrects the file"
 

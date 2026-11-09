@@ -225,7 +225,7 @@ func (d *Deps) fillServiceCounts(
 		entry.ServicesProblem = domain.AsError(err).Message
 		return
 	}
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		entry.ServicesProblem = domain.AsError(err).Message
 		return

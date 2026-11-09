@@ -45,7 +45,7 @@ func restartAppAt(t *testing.T, bundle string, services ...ports.ServiceState) (
 		SchemaVersion: domain.InstallationSchemaVersion,
 		ID:            "inst_01",
 		Product:       "demo",
-		Profile:       "embedded",
+		Profiles:      []string{"embedded"},
 	}))
 
 	rel, err := release.Load(bundle)

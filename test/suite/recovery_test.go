@@ -204,7 +204,7 @@ func initOriginMachine(t *testing.T, ctx context.Context, recoveryPub string) *m
 	_, err := ops.Init(ctx, origin.Deps, ops.InitOptions{
 		Product:           "demo",
 		ReleasePath:       testBundlePath(t),
-		Profile:           "embedded",
+		Profiles:          []string{"embedded"},
 		Domains:           []string{"demo.example"},
 		RecoveryRecipient: recoveryPub,
 		GenerateSecrets:   true,
@@ -289,7 +289,7 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 			"the rebuilt machine must assume the original installation id")
 		assert.Equal(t, originInst.Product, got.Product)
 		assert.Equal(t, originInst.Domains, got.Domains)
-		assert.Equal(t, originInst.Profile, got.Profile)
+		assert.Equal(t, originInst.Profiles, got.Profiles)
 		assert.Equal(t, originInst.CreatedAt, got.CreatedAt)
 	})
 

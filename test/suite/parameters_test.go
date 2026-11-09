@@ -221,7 +221,7 @@ func TestTheTemplateContextMatchesItsDocumentation(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Installation", "Release", "Profile", "Paths", "Secrets", "Domains", "Parameters",
+		"Installation", "Release", "Profile", "Profiles", "Paths", "Secrets", "Domains", "Parameters",
 	} {
 		assert.Contains(t, fields, want)
 	}

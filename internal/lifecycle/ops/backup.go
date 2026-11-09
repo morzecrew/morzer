@@ -1070,7 +1070,7 @@ func stepStopServices(d *Deps, inst domain.Installation, rel domain.Release) eng
 		OnFailure:   engine.Compensate,
 		Timeout:     10 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			cfg, err := d.runtimeConfig(rel, inst, "")
+			cfg, err := d.runtimeConfig(rel, inst, nil)
 			if err != nil {
 				return err
 			}
@@ -1174,7 +1174,7 @@ func stepReapply(d *Deps, inst domain.Installation, rel domain.Release) engine.S
 		Execute: func(ctx context.Context, st *engine.State) error {
 			cfg, err := engine.GetTyped[ports.RuntimeConfig](st, engine.KeyRuntimeConfig)
 			if err != nil {
-				if cfg, err = d.runtimeConfig(rel, inst, ""); err != nil {
+				if cfg, err = d.runtimeConfig(rel, inst, nil); err != nil {
 					return err
 				}
 			}

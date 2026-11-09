@@ -115,7 +115,13 @@ import (
 // remove the metrics timer an operator's alerts depend on.
 // Bumped to 17 for `policy.retain_attestations` (RFC 0049 decision 7), for the
 // write path, as every field added to the state has been.
-const InstallationSchemaVersion = 17
+// Bumped to 18 for `profiles`, which replaces `profile` (RFC 0053 decision 2).
+// An older manager would ignore the list, deploy the base files and remove the
+// overlays' services.
+const InstallationSchemaVersion = 18
+
+// profilesSchemaVersion is the schema `profiles` replaced `profile` at.
+const profilesSchemaVersion = 18
 
 // Signing is this installation's signing identity: the public half of the key
 // the machine signs its own statements with, and the keys it used to.
@@ -272,6 +278,12 @@ func (i Installation) RuntimeName() string {
 	return i.Runtime
 }
 
+// ProfileSetting is the selection as `installation.profile` reads and takes
+// it: the names comma-joined, identical to schema 17's field for none or one.
+func (i Installation) ProfileSetting() string {
+	return strings.Join(i.Profiles, ",")
+}
+
 // Installation is the machine-specific state of one deployment. It is the
 // only place operator intent is recorded; everything else is derived from it
 // plus the release.
@@ -303,8 +315,15 @@ type Installation struct {
 	// or the installation id would be defending the wrong thing.
 	Mode Mode `yaml:"mode" json:"mode,omitempty"`
 
-	// Profile selects the deployment topology from runtime.profiles.
-	Profile string `yaml:"profile" json:"profile,omitempty"`
+	// Profiles is the selection of deployment profiles the release is
+	// rendered and started with, in layering order; none means the base
+	// files (RFC 0053 decision 2).
+	Profiles []string `yaml:"profiles,omitempty" json:"profiles,omitempty"`
+
+	// Profile is the single profile schema 17 and earlier recorded. Decoded
+	// and never written: the migration to 18 moves it into Profiles and
+	// empties it, and Validate refuses it at 18 and later.
+	Profile string `yaml:"profile,omitempty" json:"profile,omitempty"`
 
 	// Runtime is which runtime this installation was created against, and
 	// it never transitions (RFC 0023 decision 3).
@@ -1085,6 +1104,11 @@ func (i Installation) Validate() error {
 	if i.Runtime != "" && !ValidRuntimeName(i.Runtime) {
 		v.add("runtime", "is not a usable runtime name: lower-case letters, digits "+
 			"and hyphens, starting with a letter, at most 32 characters")
+	}
+	// Only a hand edit, or code that set the old field, gets here: the
+	// migration to 18 empties it. Ignored, it would read as the base files.
+	if i.SchemaVersion >= profilesSchemaVersion && i.Profile != "" {
+		v.add("profile", "was replaced by `profiles`, a list, at schema %d", profilesSchemaVersion)
 	}
 	// The same bounds the manifest puts on them, checked again here for the
 	// same reason the backup schedule is: this file is hand-editable, and

@@ -52,7 +52,7 @@ directory, or a `tar.zst` archive.
 | parameters | name, and the type and default; a changed description is not listed |
 | secrets | name, from the secret schema |
 | compatibility | `upgrade_from`, `min_manager_version`, `rollback_safe` and the three `database_schema_*` fields |
-| tasks, profiles | name |
+| tasks, profiles | name; `combinable` is one entry among the profiles, its names in layering order |
 | preflight | name, and the whole declaration: whether it is fatal, its timeout, command, description and remedy |
 | files | path, and the SHA-256 of the contents |
 
@@ -194,6 +194,13 @@ catching them on yours is free.
 Two things are *not* invented, and they are why the check has teeth: secret
 names come from the schema your manifest declares, and parameters from your own
 `parameters:` block. A typo in either fails here.
+
+The profiles are yours too. The check renders with your first profile in
+sorted order. Where the release lists
+[`combinable`](manifest.md#combinable-profiles) profiles, it renders with the
+first profile outside the list and every combinable one together, the branch
+an operator reaches with everything on. Then a `.Profile` left in such a
+bundle fails here rather than on a customer's machine.
 
 A parameter you declared without a default gets an invented value that satisfies
 its type, rather than the empty string an unset parameter really resolves to.

@@ -71,7 +71,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 	if err := d.refuseRuntimeOptionChange(inst, rel); err != nil {
 		return Result{}, err
 	}
-	d.warnOneRunProfile(inst, opts.Profile)
+	d.warnOneRunProfile(inst, opts.Profiles)
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -203,8 +203,8 @@ func applyFlags(opts Options) map[string]string {
 	if opts.Startup {
 		flags["startup"] = "true"
 	}
-	if opts.Profile != "" {
-		flags["profile"] = opts.Profile
+	if len(opts.Profiles) > 0 {
+		flags["profile"] = strings.Join(opts.Profiles, ",")
 	}
 	if len(flags) == 0 {
 		return nil
@@ -333,7 +333,7 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 // projectRunning reports whether any service of the project is up. An error
 // leaves that unknown, and each caller decides which way unknown counts.
 func (d *Deps) projectRunning(ctx context.Context, inst domain.Installation, rel domain.Release, opts Options) (bool, error) {
-	cfg, err := d.runtimeConfig(rel, inst, opts.Profile)
+	cfg, err := d.runtimeConfig(rel, inst, opts.Profiles)
 	if err != nil {
 		return false, err
 	}
@@ -493,7 +493,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				return nil, err
 			}
 		}
-		data, err := d.templateData(inst, rel, opts.Profile, schema)
+		data, err := d.templateData(inst, rel, opts.Profiles, schema)
 		if err != nil {
 			return nil, err
 		}
@@ -555,7 +555,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 		// plan and that command cannot disagree about a file (RFC 0044
 		// §5.5) and a value pasted into one is not printed by either.
 		PlanDetail: func(ctx context.Context, st *engine.State) (string, string) {
-			comparison, err := configComparison(ctx, d, inst, rel, opts.Profile)
+			comparison, err := configComparison(ctx, d, inst, rel, opts.Profiles)
 			if err != nil {
 				return "cannot render: " + domain.AsError(err).Message, ""
 			}
@@ -563,7 +563,7 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 			detail := fmt.Sprintf("%d file(s)", comparison.Targets)
 			// Ahead of the diff, which shows such a file as one more
 			// change: it is one no installed release rendered (RFC 0048).
-			switch existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profile); {
+			switch existing, err := d.existingTargetsFor(ctx, inst, rel, opts.Profiles); {
 			case err != nil:
 				detail += "; cannot tell whether a file the release adds is already there: " +
 					domain.AsError(err).Error()
@@ -781,7 +781,7 @@ func stepValidateRuntime(d *Deps, inst domain.Installation, rel domain.Release, 
 		OnFailure:   engine.Compensate,
 		Timeout:     2 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
-			cfg, err := d.runtimeConfig(rel, inst, opts.Profile)
+			cfg, err := d.runtimeConfig(rel, inst, opts.Profiles)
 			if err != nil {
 				return err
 			}
@@ -1493,13 +1493,13 @@ func (d *Deps) refuseChangedProfile(ctx context.Context, planned domain.Installa
 	if err != nil {
 		return err
 	}
-	if now.Profile == planned.Profile {
+	if sameProfiles(now.Profiles, planned.Profiles) {
 		return nil
 	}
 	return domain.Usage(
 		"the installation's profile changed while waiting for the deployment lock, from %s to %s",
-		profileName(planned.Profile), profileName(now.Profile)).
-		WithHint("run the same command again to plan against %s", profileName(now.Profile))
+		profileName(planned.Profiles), profileName(now.Profiles)).
+		WithHint("run the same command again to plan against %s", profileName(now.Profiles))
 }
 
 // refuseMoved compares a release record a plan read before the lock with the

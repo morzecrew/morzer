@@ -335,21 +335,27 @@ var settings = map[string]setting{
 		Clear: func(i *domain.Installation) { i.Domains = nil },
 	},
 	// What `apply --profile` overrides for one run, kept (#286).
+	// A comma list, as installation.domains is (RFC 0053 decision 8).
 	"installation.profile": {
-		Description: "the deployment profile the release is rendered and started with, empty for the base files; " +
-			"a change applies the release under it when the product is running",
-		Read: func(i domain.Installation) string { return i.Profile },
+		Description: "the deployment profiles the release is rendered and started with, comma-separated, " +
+			"empty for the base files; a change applies the release under them when the product is running",
+		Read: func(i domain.Installation) string { return i.ProfileSetting() },
 		Apply: func(ctx context.Context, d *Deps, i *domain.Installation, raw string) error {
-			profile := strings.TrimSpace(raw)
-			if profile != "" {
-				if err := d.checkProfileDeclared(ctx, *i, profile); err != nil {
+			var profiles []string
+			if raw = strings.TrimSpace(raw); raw != "" {
+				profiles = strings.Split(raw, ",")
+				for n := range profiles {
+					profiles[n] = strings.TrimSpace(profiles[n])
+				}
+				var err error
+				if profiles, err = d.checkProfileDeclared(ctx, *i, profiles); err != nil {
 					return err
 				}
 			}
-			i.Profile = profile
+			i.Profiles = profiles
 			return nil
 		},
-		Clear: func(i *domain.Installation) { i.Profile = "" },
+		Clear: func(i *domain.Installation) { i.Profiles = nil },
 	},
 	"retention.releases": {
 		Description: "how many releases the store keeps beside the current, previous and staged ones; " +
@@ -476,25 +482,25 @@ func (d *Deps) checkSchedule(ctx context.Context, schedule string) error {
 	return d.Supervisor.ValidateSchedule(ctx, schedule)
 }
 
-// checkProfileDeclared refuses a profile the installed release does not declare
-// for this installation's runtime, with the error the render would give.
-// `init --profile` refuses the same name.
-func (d *Deps) checkProfileDeclared(ctx context.Context, inst domain.Installation, profile string) error {
+// checkProfileDeclared refuses a selection the installed release cannot deploy
+// for this installation's runtime, with the error the render would give, and
+// returns it in that release's layering order. `init --profile` refuses the
+// same selection against the release it stages.
+func (d *Deps) checkProfileDeclared(ctx context.Context, inst domain.Installation, profiles []string) ([]string, error) {
 	current, err := d.State.CurrentRelease(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if current.IsZero() {
-		return domain.InstallationError(nil,
+		return nil, domain.InstallationError(nil,
 			"no release is installed, so no profile is declared to choose from").
 			WithHint("`morzer config unset installation.profile` returns to the base files")
 	}
 	rel, err := release.Load(current.Root)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	_, err = rel.RuntimeFilePaths(inst.RuntimeName(), profile)
-	return err
+	return rel.Selection(inst.RuntimeName(), profiles)
 }
 
 // checkChannelIsFollowable refuses a reference this manager could never watch.
@@ -784,7 +790,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 // journalled reports whether a change runs as an operation rather than a
 // write: see SetSettings.
 func journalled(before, after domain.Installation) bool {
-	return !slices.Equal(before.Domains, after.Domains) || before.Profile != after.Profile ||
+	return !slices.Equal(before.Domains, after.Domains) || !sameProfiles(before.Profiles, after.Profiles) ||
 		signatureDropped(before, after)
 }
 
@@ -839,7 +845,7 @@ type settingsPlan struct {
 func (d *Deps) planSettings(ctx context.Context, before, after domain.Installation) (settingsPlan, error) {
 	plan := settingsPlan{steps: []engine.Step{stepRecordSettings(d, before, after)}}
 	plan.domains = !slices.Equal(before.Domains, after.Domains)
-	plan.profile = before.Profile != after.Profile
+	plan.profile = !sameProfiles(before.Profiles, after.Profiles)
 	if !plan.domains && !plan.profile {
 		return plan, nil
 	}
@@ -862,9 +868,9 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 		}
 	}
 	if plan.profile && len(plan.services) > 0 {
-		plan.converged, plan.under = true, profileName(after.Profile)
+		plan.converged, plan.under = true, profileName(after.Profiles)
 		keep := stepRestorePoint(d, before, current, true)
-		keep.Description = "keep " + profileName(before.Profile) + " to bring back on failure"
+		keep.Description = "keep " + profileName(before.Profiles) + " to bring back on failure"
 		plan.steps = append(plan.steps, keep)
 		// Apply's checks abort, since in `apply` nothing before them
 		// needs undoing. Here the profile is already recorded. Not
@@ -892,7 +898,7 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 func (d *Deps) runningServices(
 	ctx context.Context, inst domain.Installation, rel domain.Release,
 ) ([]string, error) {
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return nil, err
 	}

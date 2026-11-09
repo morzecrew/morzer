@@ -233,7 +233,7 @@ func (d *Deps) liveImages(
 		return nil, domain.Internal(nil, "no runtime configured")
 	}
 
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (d *Deps) onDemandDigests(
 		return nil, nil
 	}
 
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return nil, err
 	}

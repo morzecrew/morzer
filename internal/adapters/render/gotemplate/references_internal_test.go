@@ -32,7 +32,10 @@ func TestReadingATemplateFindsWhatItNamesAndNothingDeclares(t *testing.T) {
 		{"a top-level field the context does not have",
 			`{{ .Domian }}`, `.Domian: the render context has no field Domian`},
 		{"a field on a value that has none",
-			`{{ .Profile.Name }}`, `.Profile.Name: .Profile is a string, which has no fields`},
+			`{{ .Release.Vendor.Name }}`, `.Release.Vendor.Name: .Release.Vendor is a string, which has no fields`},
+		// Methods since RFC 0053, and still names a template may use.
+		{"the profile fields",
+			`{{ .Profile }} {{ .Installation.Profile }} {{ has "x" .Profiles }} {{ .Installation.Profiles }}`, ""},
 		{"the branch a synthetic render skips",
 			`{{ if .Domains }}{{ .Paths.Data }}{{ else }}{{ .Parameters.typo }}{{ end }}`, `parameter "typo"`},
 		{"an if's body keeps the context",

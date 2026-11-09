@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sort"
 
@@ -45,8 +46,9 @@ type TemplateData struct {
 	// Release is the release metadata: name, version, digest.
 	Release ReleaseInfo `json:"release"`
 
-	// Profile is the active deployment profile.
-	Profile string `json:"profile"`
+	// Profiles is the active selection of deployment profiles, in layering
+	// order. Profile, the method, is the one-profile view of it.
+	Profiles []string `json:"profiles"`
 
 	// Paths is the resolved directory layout.
 	Paths PathInfo `json:"paths"`
@@ -62,6 +64,27 @@ type TemplateData struct {
 	// installation: every declared name is present, holding either the
 	// operator's value or the release's default.
 	Parameters domain.Parameters `json:"parameters"`
+}
+
+// Profile is the active deployment profile when there is at most one: its
+// name, or empty for the base files. With several it is an error, which
+// text/template stops the render on (RFC 0053 decision 6).
+func (d TemplateData) Profile() (string, error) {
+	return OneProfile(".Profile", d.Profiles)
+}
+
+// OneProfile is a selection read as one profile, for the template fields that
+// name one. An error rather than the first name, the names joined or empty,
+// because each of those makes `eq .Profile "x"` quietly true or false, and an
+// error reaches the vendor's `--render-check` before an operator meets it.
+func OneProfile(field string, profiles []string) (string, error) {
+	switch len(profiles) {
+	case 0:
+		return "", nil
+	case 1:
+		return profiles[0], nil
+	}
+	return "", fmt.Errorf("%s names one profile and this installation runs several; use %ss", field, field)
 }
 
 // ReleaseInfo is the release facts templates may use.
@@ -97,6 +120,10 @@ func TemplateFields() []string {
 	out := make([]string, 0, t.NumField())
 	for i := range t.NumField() {
 		out = append(out, t.Field(i).Name)
+	}
+	// A value method is a top-level name too: `.Profile` is one.
+	for i := range t.NumMethod() {
+		out = append(out, t.Method(i).Name)
 	}
 	sort.Strings(out)
 	return out

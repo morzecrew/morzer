@@ -58,7 +58,7 @@ func fullyPopulatedInstallation() domain.Installation {
 		ID:            "inst-7",
 		Product:       "acme",
 		Mode:          domain.ModeDev,
-		Profile:       "edge",
+		Profiles:      []string{"edge", "ipv6"},
 		Domains:       []string{"acme.example", "www.acme.example"},
 		Parameters:    map[string]string{"http_port": "8443", "site_name": "Acme"},
 		Policy: domain.Policy{
@@ -99,7 +99,8 @@ func TestTheOperatorsAnswersSurviveTheDocument(t *testing.T) {
 		{"id", doc.ID, inst.ID},
 		{"product", doc.Product, inst.Product},
 		{"mode", doc.Mode, inst.Mode},
-		{"profile", doc.Profile, inst.Profile},
+		{"profile", doc.Profile, "edge,ipv6"},
+		{"profiles", doc.Profiles, inst.Profiles},
 		{"domains", doc.Domains, inst.Domains},
 		{"parameters", doc.Parameters, inst.Parameters},
 		{"policy", doc.Policy, inst.Policy},

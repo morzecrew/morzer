@@ -88,7 +88,7 @@ claims a service was re-created; it says what *would* happen.
 | --- | --- |
 | A port, a log level, a limit | `config set`, if the release declares it |
 | A credential | [`morzer secret`](secrets.md) — never a parameter |
-| The deployment profile | [`config set installation.profile=<name>`](../reference/parameters.md#changing-the-profile), which applies the release under it; `apply --profile` for one run |
+| The deployment profiles | [`config set installation.profile=<names>`](../reference/parameters.md#changing-the-profile), comma-separated, which applies the release under them; `apply --profile` for one run |
 | The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
 | How many pre-update backups to keep | `config set retention.pre_update_backups=<n>` |
 | No pre-update backup on a dev-mode machine | `config set backup.before_update=false` |

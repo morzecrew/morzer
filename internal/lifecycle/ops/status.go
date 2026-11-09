@@ -30,8 +30,12 @@ type Status struct {
 	// deciding whether the data on it is real.
 	Mode string `json:"mode,omitempty"`
 
-	Profile   string `json:"profile,omitempty"`
-	PublicURL string `json:"public_url,omitempty"`
+	// Profile is the selection as `installation.profile` takes it,
+	// comma-joined; Profiles is the same names as a list (RFC 0053
+	// decision 9).
+	Profile   string   `json:"profile,omitempty"`
+	Profiles  []string `json:"profiles,omitempty"`
+	PublicURL string   `json:"public_url,omitempty"`
 
 	// SupportURL is the release's own "where do I get help". Shown here
 	// and on a failing doctor check, and nowhere else: appending it to
@@ -147,7 +151,8 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		Product:        inst.Product,
 		InstallationID: inst.ID,
 		Mode:           string(inst.Mode),
-		Profile:        inst.Profile,
+		Profile:        inst.ProfileSetting(),
+		Profiles:       inst.Profiles,
 		PublicURL:      inst.PublicURL(),
 		Stopped:        inst.Stopped,
 	}
@@ -314,7 +319,7 @@ type runtimeRead struct {
 }
 
 func (d *Deps) readRuntime(ctx context.Context, inst domain.Installation, rel domain.Release) runtimeRead {
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return runtimeRead{err: err}
 	}

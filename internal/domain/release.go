@@ -47,8 +47,8 @@ func (r Release) Path(rel string) (string, error) {
 	return joined, nil
 }
 
-// RuntimeFilePaths resolves one runtime's declared files for a profile to
-// absolute paths.
+// RuntimeFilePaths resolves one runtime's declared files for a selection of
+// profiles to absolute paths.
 //
 // Named for the runtime rather than for Compose (RFC 0023 §2.1 inventoried the
 // old name as a leak), and taking the runtime as an argument rather than
@@ -59,15 +59,12 @@ func (r Release) Path(rel string) (string, error) {
 // An undeclared runtime refuses and names what the release does declare. That
 // is decision 5 at the point a caller would otherwise get an empty file list
 // and deploy nothing while reporting success.
-func (r Release) RuntimeFilePaths(runtime, profile string) ([]string, error) {
-	declared := r.Manifest.DeclaredRuntimes()
-	decl, ok := declared[runtime]
-	if !ok {
-		return nil, ValidationError(nil,
-			"this release does not support the %s runtime", runtime).
-			WithHint("it declares: %s", strings.Join(declared.Names(), ", "))
+func (r Release) RuntimeFilePaths(runtime string, profiles []string) ([]string, error) {
+	decl, err := r.runtimeDecl(runtime)
+	if err != nil {
+		return nil, err
 	}
-	rels, err := decl.FilesFor(profile)
+	rels, err := decl.filesFor(profiles, "release "+r.Version().String())
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +77,28 @@ func (r Release) RuntimeFilePaths(runtime, profile string) ([]string, error) {
 		out = append(out, abs)
 	}
 	return out, nil
+}
+
+// Selection checks a selection of profiles against one runtime of this release
+// and returns it in layering order (RuntimeDecl.Selection), naming the release
+// in its hints.
+func (r Release) Selection(runtime string, names []string) ([]string, error) {
+	decl, err := r.runtimeDecl(runtime)
+	if err != nil {
+		return nil, err
+	}
+	return decl.selection(names, "release "+r.Version().String())
+}
+
+func (r Release) runtimeDecl(runtime string) (RuntimeDecl, error) {
+	declared := r.Manifest.DeclaredRuntimes()
+	decl, ok := declared[runtime]
+	if !ok {
+		return RuntimeDecl{}, ValidationError(nil,
+			"this release does not support the %s runtime", runtime).
+			WithHint("it declares: %s", strings.Join(declared.Names(), ", "))
+	}
+	return decl, nil
 }
 
 // ReleaseRecord is the persisted pointer to an installed release. It is

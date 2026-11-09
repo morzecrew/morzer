@@ -269,3 +269,67 @@ func TestASchemaSixteenInstallationKeepsEveryAttestation(t *testing.T) {
 	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
 	assert.Zero(t, got.Policy.RetainAttestations)
 }
+
+// 17 -> 18 replaced `profile` with `profiles` (RFC 0053 decision 2), the first
+// migration that converts a value: a profile becomes a one-element selection,
+// and none stays none.
+func TestASchemaSeventeenProfileBecomesASelection(t *testing.T) {
+	got, err := migrateInstallation(domain.Installation{SchemaVersion: 17, Profile: "embedded"})
+	require.NoError(t, err)
+	assert.Equal(t, domain.InstallationSchemaVersion, got.SchemaVersion)
+	assert.Equal(t, []string{"embedded"}, got.Profiles)
+	assert.Empty(t, got.Profile, "the old field is decoded and never written")
+
+	got, err = migrateInstallation(domain.Installation{SchemaVersion: 17})
+	require.NoError(t, err)
+	assert.Nil(t, got.Profiles, "no profile is the base files, not a selection of one empty name")
+}
+
+// The same through the file an older manager wrote, and back out: the saved
+// state names `profiles` and not `profile`, so the value survives the round
+// trip a load and a `config set` make.
+func TestASchemaSeventeenStateKeepsItsProfileOnDisk(t *testing.T) {
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	store := New(paths)
+	require.NoError(t, os.MkdirAll(filepath.Dir(paths.InstallationState()), 0o750))
+	legacy := map[string]any{
+		"schema_version": 17,
+		"installation": map[string]any{
+			"schema_version": 17,
+			"id":             "inst_seventeen",
+			"product":        "demo",
+			"created_at":     "2026-01-01T00:00:00Z",
+			"profile":        "embedded",
+		},
+	}
+	data, err := json.Marshal(legacy)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(paths.InstallationState(), data, 0o640))
+
+	inst, err := store.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"embedded"}, inst.Profiles)
+
+	require.NoError(t, store.SaveInstallation(context.Background(), inst))
+	saved, err := os.ReadFile(paths.InstallationState())
+	require.NoError(t, err)
+	assert.Contains(t, string(saved), `"profiles": [`)
+	assert.NotContains(t, string(saved), `"profile":`)
+}
+
+// At 18 the old field is only a hand edit, and is refused rather than read as
+// the base files.
+func TestASchemaEighteenStateNamingTheOldFieldIsRefused(t *testing.T) {
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	store := New(paths)
+	require.NoError(t, os.MkdirAll(filepath.Dir(paths.InstallationState()), 0o750))
+	data := fmt.Sprintf(`{"schema_version": %d, "installation": {"schema_version": %[1]d, `+
+		`"id": "inst", "product": "demo", "created_at": "2026-01-01T00:00:00Z", "profile": "embedded"}}`,
+		domain.InstallationSchemaVersion)
+	require.NoError(t, os.WriteFile(paths.InstallationState(), []byte(data), 0o640))
+
+	_, err := store.LoadInstallation(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "profile: was replaced by `profiles`")
+}
