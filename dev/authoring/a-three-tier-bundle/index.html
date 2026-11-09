@@ -2448,6 +2448,23 @@ requires authenticating to it; only the server moves, and where it moved to is
 the <code>db_host</code> parameter, which <code>compose.external-db.yaml</code> reads as
 <code>${WEB_PARAM_DB_HOST}</code>. A variable like that with no parameter behind it would
 fall back to its default on every machine, so <code>release verify</code> refuses one.</p>
+<p><code>embedded</code> and <code>external-db</code> are alternatives: an installation runs one or the
+other. A part that can run beside either is an <strong>overlay</strong>, and the release
+says so with <a href="../../reference/manifest/#combinable-profiles"><code>combinable</code></a>. This
+bundle declares none. One that published the backend's metrics would look like
+this:</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.metrics.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">combinable</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">metrics</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>An operator then runs <code>--profile embedded,metrics</code>, and templates ask <code>has
+"metrics" .Profiles</code>. <code>combinable</code> needs <code>compatibility.min_manager_version</code> of
+at least <code>0.15.0</code>. A bundle that already ships a combined profile, such as
+<code>embedded-metrics</code>, drops it over two releases, not one. The first declares
+<code>combinable</code> and keeps the combined profile, so installations recording it can
+still update and move to <code>embedded,metrics</code>. The second removes it.</p>
 <h2 id="installing-it">Installing it<a class="headerlink" href="#installing-it" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./bundle-web<span class="w"> </span>--profile<span class="w"> </span>embedded<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--set<span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">8443</span><span class="w"> </span>--set<span class="w"> </span><span class="nv">api_port</span><span class="o">=</span><span class="m">9443</span>

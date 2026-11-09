@@ -1700,6 +1700,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#combinable-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Combinable profiles
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2446,6 +2457,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#combinable-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Combinable profiles
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3119,6 +3141,12 @@ declaring several carries a set of files for each.</p>
 <td>Named deployment topologies; each is a list of <em>additional</em> files.</td>
 </tr>
 <tr>
+<td><code>combinable</code></td>
+<td>list</td>
+<td style="text-align: center;"></td>
+<td>The profiles that may run together, in the order their files are layered. See <a href="#combinable-profiles">Combinable profiles</a>.</td>
+</tr>
+<tr>
 <td><code>options</code></td>
 <td>map</td>
 <td style="text-align: center;"></td>
@@ -3136,6 +3164,42 @@ Deploying the wrong topology quietly is worse than refusing. For the same
 reason an update or rollback to a release that no longer declares an
 installation's profile is refused before it starts; the operator
 <a href="../parameters/#changing-the-profile">changes the profile</a> first.</p>
+<h3 id="combinable-profiles">Combinable profiles<a class="headerlink" href="#combinable-profiles" title="Permanent link">&para;</a></h3>
+<p>An installation runs one profile unless the release lists some as
+<code>combinable</code>. A selection then holds any of those, plus at most one profile
+outside the list:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">embedded</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/embedded.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">external-db</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/external-db.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">xdns</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/xdns.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">xhttp-reality</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/xhttp-reality.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">combinable</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">xdns</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">xhttp-reality</span><span class="p p-Indicator">]</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.15.0"</span>
+</code></pre></div>
+<p>Here <code>embedded,xdns,xhttp-reality</code> is a selection and <code>embedded,external-db</code>
+is not: profiles outside the list are alternatives, and two of them never
+deploy together. A release without <code>combinable</code> runs one profile at a time,
+as before.</p>
+<p>The files are the base files, then the one profile outside the list, then the
+combinable ones <strong>in <code>combinable</code> order</strong>, whatever order the operator named
+them in. That order is yours to choose: where two overlays set the same key,
+the later one wins, and Compose merges the rest. A file already in the list is
+not passed twice.</p>
+<p>Each name must be one <code>profiles</code> declares, listed once, and lower-case letters,
+digits and hyphens, starting with a letter. <code>combinable</code> needs
+<code>compatibility.min_manager_version</code> of at least <code>0.15.0</code>, because an older
+manager refuses the field as unknown. So do <code>.Profiles</code> and <code>has</code> in a template
+(<a href="../variables/#the-render-context">Variables</a>), and <code>release verify</code> cannot tell
+you when a template uses them without the floor.</p>
+<p>To replace a combined profile with combinable ones, take two releases. The
+first declares <code>combinable</code> and <strong>keeps</strong> the combined profile, so an
+installation recording it can still update. Operators move to the
+combination with <code>morzer config set installation.profile=a,b</code>. The second
+release drops the combined profile.</p>
 <h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
 <p>The manager carries <code>options</code> and never reads them. It checks the shape — a key
 is a lower-case identifier, a value is one line of at most 200 characters,

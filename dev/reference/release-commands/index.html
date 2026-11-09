@@ -2907,7 +2907,7 @@ directory, or a <code>tar.zst</code> archive.</p>
 </tr>
 <tr>
 <td>tasks, profiles</td>
-<td>name</td>
+<td>name; <code>combinable</code> is one entry among the profiles, its names in layering order</td>
 </tr>
 <tr>
 <td>preflight</td>
@@ -3058,6 +3058,12 @@ catching them on yours is free.</p>
 <p>Two things are <em>not</em> invented, and they are why the check has teeth: secret
 names come from the schema your manifest declares, and parameters from your own
 <code>parameters:</code> block. A typo in either fails here.</p>
+<p>The profiles are yours too. The check renders with your first profile in
+sorted order. Where the release lists
+<a href="../manifest/#combinable-profiles"><code>combinable</code></a> profiles, it renders with the
+first profile outside the list and every combinable one together, the branch
+an operator reaches with everything on. Then a <code>.Profile</code> left in such a
+bundle fails here rather than on a customer's machine.</p>
 <p>A parameter you declared without a default gets an invented value that satisfies
 its type, rather than the empty string an unset parameter really resolves to.
 Otherwise <code>{{ required "choose a port" .Parameters.http_port }}</code> would fail the

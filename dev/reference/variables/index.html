@@ -2236,7 +2236,7 @@ variable that is not here resolves to its <code>:-</code> fallback or to empty.<
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_PROFILE</code></td>
-<td>The active deployment profile.</td>
+<td>The active deployment profiles, comma-joined in layering order: one name for one, empty for none.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_DOMAIN</code></td>
@@ -2326,7 +2326,7 @@ available:</p>
 <tbody>
 <tr>
 <td><code>.Installation</code></td>
-<td><code>.ID</code>, <code>.Product</code>, <code>.Profile</code>, <code>.Domains</code>, <code>.Domain</code> (the first), <code>.URL</code>.</td>
+<td><code>.ID</code>, <code>.Product</code>, <code>.Profile</code>, <code>.Profiles</code>, <code>.Domains</code>, <code>.Domain</code> (the first), <code>.URL</code>. Its profile fields are the recorded selection, which a one-run <code>--profile</code> does not change.</td>
 </tr>
 <tr>
 <td><code>.Release</code></td>
@@ -2334,7 +2334,11 @@ available:</p>
 </tr>
 <tr>
 <td><code>.Profile</code></td>
-<td>The active profile, as a string.</td>
+<td>The active profile, as a string, empty for none. With several selected it fails the render: use <code>.Profiles</code>.</td>
+</tr>
+<tr>
+<td><code>.Profiles</code></td>
+<td>The active profiles, a list in layering order, empty for none.</td>
 </tr>
 <tr>
 <td><code>.Paths</code></td>
@@ -2375,6 +2379,17 @@ available:</p>
 <p><code>secretFile</code> is a helper that fails loudly when the named secret is not
 declared, rather than rendering an empty path a service would then fail to open
 with no explanation.</p>
+<p><code>has</code> tests whether a list holds a name, which is how a template asks about one
+profile of a selection:</p>
+<div class="highlight"><pre><span></span><code><span class="p p-Indicator">{{</span><span class="nv">- if has "xdns" .Profiles</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="nt">dns_tunnel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">enabled</span>
+<span class="p p-Indicator">{{</span><span class="nv">- end</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+</code></pre></div>
+<p><code>.Profile</code> stops the render when several profiles are selected, because <code>eq
+.Profile "xdns"</code> would otherwise be false under a selection that holds <code>xdns</code>.
+Only a release that declares <a href="../manifest/#combinable-profiles"><code>combinable</code></a> can
+have several selected, so its templates use <code>.Profiles</code>. <code>.Profiles</code> and <code>has</code>
+need <code>compatibility.min_manager_version</code> of at least <code>0.15.0</code>.</p>
 <div class="admonition danger">
 <p class="admonition-title"><code>.Secrets</code> holds paths, never values</p>
 <p>A configuration file in <code>/etc</code> must never contain a credential. The render

@@ -2675,7 +2675,7 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 </tr>
 <tr>
 <td><code>installation.profile</code></td>
-<td>The <a href="../manifest/#runtimes">deployment profile</a> the release is rendered and started with, one the installed release declares. Absent, or empty, is the base files. A change on a running product applies the release under it.</td>
+<td>The <a href="../manifest/#runtimes">deployment profiles</a> the release is rendered and started with, comma-separated; a selection the installed release can deploy. Absent, or empty, is the base files. A change on a running product applies the release under it.</td>
 </tr>
 </tbody>
 </table>
@@ -2711,6 +2711,7 @@ re-created: <code>morzer start</code> brings every service up with the new value
 release's proxy or yours, needs one before the name is served.</p>
 <h3 id="changing-the-profile">Changing the profile<a class="headerlink" href="#changing-the-profile" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>installation.profile<span class="o">=</span>embedded
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>installation.profile<span class="o">=</span>embedded,xdns<span class="w">   </span><span class="c1"># several, where the release allows</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>installation.profile<span class="w">     </span><span class="c1"># the base files, as an install without --profile</span>
 </code></pre></div>
 <p>The profile chooses which of the release's files are deployed, so a change can
@@ -2724,12 +2725,18 @@ shows the steps without running them.</p>
 <p>While the product is stopped, or nothing is running, the change is recorded and
 rendered, and the next <code>morzer start</code> or <code>morzer apply</code> deploys it. A runtime
 that cannot say what is running refuses the change.</p>
-<p>A name the installed release does not declare is refused. <code>apply --profile</code> and
-<code>update --profile</code> still choose a profile for one run and leave the recorded one
-as it is; each says so when the two differ. An update or rollback to a release
-that does not declare the recorded profile is refused before it starts, even
-with <code>--profile</code>: change the profile first, to one both releases declare, or
-unset it.</p>
+<p>Several profiles are a comma list, where the release lists them as
+<a href="../manifest/#combinable-profiles"><code>combinable</code></a>: any of those, plus at most one
+other. The order you name them in does not count. The release decides the
+order their files are layered in, and that is the order <code>config get</code> shows.
+Naming the same profiles in another order changes nothing and runs nothing.</p>
+<p>A name the installed release does not declare is refused, and so are two
+profiles it does not let run together. <code>apply --profile</code> and <code>update
+--profile</code> still choose a selection for one run and leave the recorded one as
+it is; each says so when the two differ. An update or rollback to a release
+that does not declare a recorded profile, or does not let the recorded ones run
+together, is refused before it starts, even with <code>--profile</code>: change the
+selection first, to one both releases accept, or unset it.</p>
 <h3 id="config-diff"><code>config diff</code><a class="headerlink" href="#config-diff" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w">            </span><span class="c1"># each file that differs, then a summary on stderr</span>
 morzer<span class="w"> </span>config<span class="w"> </span>diff<span class="w"> </span>--json<span class="w">     </span><span class="c1"># release, targets, redacted, drift, unreadable, services, services_compared</span>

@@ -3263,7 +3263,7 @@ run <code>apply</code> afterwards.</p>
 </tr>
 <tr>
 <td><code>--profile</code></td>
-<td>Deployment profile from the release manifest.</td>
+<td>Deployment profile from the release manifest. Repeat, or separate with commas, for several where the release lists them as <a href="../manifest/#combinable-profiles"><code>combinable</code></a>. With <code>--release</code>, a selection the release cannot deploy is refused before anything is created.</td>
 </tr>
 <tr>
 <td><code>--domain</code></td>
@@ -3441,7 +3441,7 @@ rather than repeating the work.</p>
 <tbody>
 <tr>
 <td><code>--profile</code></td>
-<td>Override the installation's deployment profile for this run; <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps one.</td>
+<td>Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps a selection.</td>
 </tr>
 <tr>
 <td><code>--startup</code></td>
@@ -3480,7 +3480,7 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 </tr>
 <tr>
 <td><code>--profile</code></td>
-<td>Override the installation's deployment profile for this run; <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps one.</td>
+<td>Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. <a href="../parameters/#changing-the-profile"><code>config set installation.profile</code></a> keeps a selection.</td>
 </tr>
 <tr>
 <td><code>--skip-backup</code></td>
