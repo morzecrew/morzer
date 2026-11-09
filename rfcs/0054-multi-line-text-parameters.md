@@ -269,8 +269,14 @@ $ morzer config edit rules
   - A value equal to the effective one changes nothing:
     `no change: rules already matches`.
   - An emptied file changes nothing, as in `secret edit` (RFC 0003
-    decision 20). The hint names `config set rules=` and
-    `config unset rules`, which do what an empty file might have meant.
+    decision 20). The hint depends on the declaration:
+    - **With a default,** it names `config set rules=`, which records an
+      empty value, and `config unset rules`, which returns to the default.
+    - **With no default,** it says the parameter cannot be left empty.
+      `mergeParameters` refuses an empty value for such a parameter as
+      missing (`MissingValues`,
+      [`config.go:259`](../internal/lifecycle/ops/config.go)), as for every
+      type (§8).
   - A refusal from `Parse` names the reason. Nothing has changed at that
     point, and the message says so.
   - Any other value runs the same operation as `config set rules=<value>`:
@@ -423,6 +429,12 @@ $ morzer config edit rules
 - **A diff view** of old and new values in the journal or the summary. The
   journal holds no parameter values (§3), and the operator has just seen the
   change in their editor. The summary gives line counts (decision 11).
+- **An optional parameter that may be empty.** A declaration with no default
+  counts an empty value as missing, for every type, so `init` and
+  `config set` refuse it. A vendor therefore cannot declare "empty unless the
+  operator sets it". A text parameter that may be empty needs a non-empty
+  default. Changing what "no default" means is a decision for every type,
+  not for this one.
 - **A check of the rendered output.** The render check does not parse a
   rendered YAML file, so a text value pasted into a scalar position without
   `indent` is still found by the product, not by the manager. This is the
@@ -471,7 +483,7 @@ floor's value is set by whichever manager release ships this.
 | 4 | `OPEN` | The size limit. Recommended: 64 KiB per value, measured after normalisation, with no limit on the total (§9). Measured on Linux 6.6: a 128 KiB environment string fails `exec`, and every value is in the environment of every Compose call and hook. 64 KiB leaves room under that limit. Larger content is a file the bundle ships, or a secret. |
 | 5 | `OPEN` | How Compose and hooks get a text value. Recommended: `<PRODUCT>_PARAM_<NAME>`, as for every type. The manager passes the process environment and no env file (`compose.go:110`), and Compose 5.5.1 interpolates the value intact (§3). A product that needs a file gets one from a `configuration:` template, the mechanism that already renders files. Rejected: a `_FILE` path variable, which is a second delivery path (§5.7). |
 | 6 | `ASSUMED` | Templates get `.Parameters.<name>` whole and a new `lines` function, which returns an empty list for an empty value. sprig's `splitList` is not added: its empty-value case yields one empty element. |
-| 7 | `ASSUMED` | `config edit <name>` takes one `text` parameter and needs a terminal. It opens the effective value alone, plus a final newline, in a temporary directory that is removed afterwards. It follows RFC 0003 decision 20: an unchanged or emptied file changes nothing. A saved change is the `config set` operation. Other types are refused with a hint naming `config set`. |
+| 7 | `ASSUMED` | `config edit <name>` takes one `text` parameter and needs a terminal. It opens the effective value alone, plus a final newline, in a temporary directory that is removed afterwards. It follows RFC 0003 decision 20: an unchanged or emptied file changes nothing. The hint for an emptied file names `config set <name>=` only for a parameter with a default, since one with no default refuses an empty value as missing. A saved change is the `config set` operation. Other types are refused with a hint naming `config set`. |
 | 8 | `ASSUMED` | `config edit` holds no lock while the editor is open, and does not check whether the value changed meanwhile: last write wins, as with `config set` and `secret edit`. Holding the deployment lock for an editor session would block timers and every other operation for as long as the editor stays open. |
 | 9 | `ASSUMED` | `--set-file name=path` on `config set` and `init`, repeatable, with `-` for standard input once. It takes any parameter type, and refuses a dotted setting. Whatever the type, it refuses a file holding a NUL byte or invalid UTF-8 before the type's `Parse` runs, because `string` accepts both and decision 3's reasons apply to every value. One flag name on both commands, as in Helm's `--set-file`. Rejected: `name=@path`, because it changes the meaning of an existing value that starts with `@`. `init`'s equivalent command prints the flag, not the value. |
 | 10 | `ASSUMED` | `config list` shows the first line and `(N lines)`. `config get`, `--json` and `describe` show the whole value. `describe` must, because it is the installation document (RFC 0027). This departs from #315, which proposed a summary in `describe` and `status`; `status` shows no parameters today and is unchanged. |
