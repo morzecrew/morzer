@@ -258,3 +258,13 @@ this log.
   - The decision 13 entry's evidence, `synthetic.go:90-104`, was written
     before the doc comment above the function grew by three lines; the
     function is at `:93-106`.
+
+## Acceptance, 2026-11-09
+
+The first `just acceptance` run failed at "a hand edit to installation.yaml
+is reported, not obeyed". The stage edits the report's `profile: embedded`
+line, which a schema-18 report no longer has: it lists `profiles`, one name
+a line. The `sed` changed nothing and `doctor` rightly reported nothing.
+`.github/scripts/acceptance.sh` now edits the list, and checks that the edit
+landed before asking `doctor`, so a report whose shape changes again fails
+there rather than looking like a `doctor` that misses drift.
