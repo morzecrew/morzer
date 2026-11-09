@@ -296,8 +296,13 @@ $ morzer config edit rules
   rules:
   {{- range lines .Parameters.rules }}
     - {{ . }}
+  {{- else }} []
   {{- end }}
   ```
+
+  The `else` branch renders `rules: []` for an empty value. Without it the
+  key would have no value, which YAML reads as null rather than as an empty
+  list.
 
   `indent` already covers a fragment pasted whole, as in
   `{{ .Parameters.fragment | indent 4 }}`. sprig's `splitList "\n"` is not
