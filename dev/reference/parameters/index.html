@@ -1681,6 +1681,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#text-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text values
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#changing-one-after-install" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2239,6 +2250,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#text-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text values
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#changing-one-after-install" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2428,6 +2450,11 @@ does not accept is refused before anything is created:</p>
         failed: parameter "log_level"
         hint: log_level accepts debug, info, warn, error; default info -- Application log verbosity
 </code></pre></div>
+<p><code>--set-file name=path</code> reads a value from a file instead, and <code>-</code> reads it from
+standard input. It is how a multi-line <a href="#text-values">text value</a> is given at
+install time:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./bundle<span class="w"> </span>--set-file<span class="w"> </span><span class="nv">rules</span><span class="o">=</span>./rules.txt
+</code></pre></div>
 <p>The chosen values are recorded in the installation's state, and shown in
 <code>installation.yaml</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">parameters</span><span class="p">:</span>
@@ -2545,6 +2572,11 @@ invisible to the manifest that was supposed to describe the release.</p>
 <td><code>512KiB</code>, <code>25MiB</code>, <code>2GiB</code></td>
 <td>canonical form</td>
 </tr>
+<tr>
+<td><code>text</code></td>
+<td>several lines of UTF-8, up to 64 KiB</td>
+<td>LF line endings, trailing newlines removed</td>
+</tr>
 </tbody>
 </table>
 <p>Values are normalised, so <code>9000</code> and <code>9000</code> cannot become two different ports
@@ -2560,6 +2592,57 @@ with mode <code>0400</code>, never passed as environment, and audited by <code>d
 <a href="../secret-commands/">Secret commands</a> and
 <a href="../../explanation/secrets/">How secrets work</a>.</p>
 </div>
+<h2 id="text-values">Text values<a class="headerlink" href="#text-values" title="Permanent link">&para;</a></h2>
+<p>A <code>text</code> parameter holds several lines: routing rules, an allow list, a
+fragment of the product's own configuration. Line endings become LF and
+trailing newlines are removed, and nothing else is trimmed, so indentation
+survives. A value is at most 64 KiB once normalised, and a NUL byte or invalid
+UTF-8 is refused.</p>
+<p>Set one from a file, from standard input, or in your editor:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--set-file<span class="w"> </span><span class="nv">rules</span><span class="o">=</span>./rules.txt
+generate-rules<span class="w"> </span><span class="p">|</span><span class="w"> </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--set-file<span class="w"> </span><span class="nv">rules</span><span class="o">=</span>-
+morzer<span class="w"> </span>config<span class="w"> </span>edit<span class="w"> </span>rules
+</code></pre></div>
+<p><code>--set-file</code> works for every type, and on <code>init</code> too. Whatever the type, it
+refuses a file holding a NUL byte or invalid UTF-8: no process environment can
+carry a NUL, and the recorded state is <abbr title="JavaScript Object Notation">JSON</abbr>, which would replace invalid bytes.</p>
+<p><code>config edit &lt;name&gt;</code> opens one text parameter's value alone, as plain text, in
+<code>$VISUAL</code> or <code>$EDITOR</code>, and needs a terminal. Saving it runs <code>config set</code>.
+Saving it unchanged changes nothing, and so does emptying it. To clear a value,
+<code>config set rules=</code> records an empty one where the release declares a default,
+and <code>config unset rules</code> returns to that default. A parameter with no default
+cannot be left empty.</p>
+<p>What each view shows:</p>
+<table>
+<thead>
+<tr>
+<th>Where</th>
+<th>A text value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config list</code></td>
+<td>the first line and a count, such as <code>DOMAIN-SUFFIX,example.ru (42 lines)</code></td>
+</tr>
+<tr>
+<td><code>config get</code>, <code>config list --json</code></td>
+<td>the whole value</td>
+</tr>
+<tr>
+<td><code>installation describe</code>, <code>installation.yaml</code></td>
+<td>the whole value, as a block scalar</td>
+</tr>
+<tr>
+<td>the <code>config set</code> summary</td>
+<td>the line counts before and after, such as <code>set rules (42 → 44 lines)</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>config get rules &gt; rules.txt</code> writes back what <code>--set-file rules=rules.txt</code>
+reads.</p>
+<p>A text value is not secret, like every parameter. Anything that must not be
+visible in <code>docker inspect</code> or <code>installation.yaml</code> is a secret.</p>
 <h2 id="changing-one-after-install">Changing one after install<a class="headerlink" href="#changing-one-after-install" title="Permanent link">&para;</a></h2>
 <p>See <a href="../../operating/changing-configuration/">Changing configuration</a> for the
 operator's walkthrough. In short:</p>
@@ -2569,6 +2652,8 @@ on it.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>list<span class="w">                    </span><span class="c1"># every parameter, its value, and where it came from</span>
 morzer<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>http_port<span class="w">           </span><span class="c1"># the value alone, for a script</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w">      </span><span class="c1"># validate, record, re-create the dependants</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--set-file<span class="w"> </span><span class="nv">rules</span><span class="o">=</span>rules.txt<span class="w">   </span><span class="c1"># a value from a file; - is stdin</span>
+morzer<span class="w"> </span>config<span class="w"> </span>edit<span class="w"> </span>rules<span class="w">              </span><span class="c1"># a text value in your editor</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">unset</span><span class="w"> </span>http_port<span class="w">         </span><span class="c1"># back to the release's default</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span><span class="w"> </span>--dry-run<span class="w">   </span><span class="c1"># the step list, and the config diff</span>
 </code></pre></div>

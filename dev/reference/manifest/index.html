@@ -1772,6 +1772,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#text-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#required" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2527,6 +2538,17 @@
   
     <nav class="md-nav" aria-label="parameters">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#text-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#required" class="md-nav__link">
@@ -3408,7 +3430,7 @@ optional <code>default</code>, and — for an enum — the <code>values</code> i
 <td><code>type</code></td>
 <td>string</td>
 <td style="text-align: center;">✅</td>
-<td>One of <code>port</code>, <code>int</code>, <code>bool</code>, <code>string</code>, <code>enum</code>, <code>duration</code>, <code>bytes</code>.</td>
+<td>One of <code>port</code>, <code>int</code>, <code>bool</code>, <code>string</code>, <code>enum</code>, <code>duration</code>, <code>bytes</code>, <code>text</code>. <code>text</code> needs <code>min_manager_version</code> 0.15.0; see <a href="#text-parameters">below</a>.</td>
 </tr>
 <tr>
 <td><code>default</code></td>
@@ -3475,6 +3497,31 @@ the journal, and in <code>installation.yaml</code> in the clear. Anything that m
 not be is a <a href="../../authoring/">secret</a>, which has its own declared,
 audited path and is rendered to tmpfs as a file.</p>
 </div>
+<h3 id="text-parameters">Text parameters<a class="headerlink" href="#text-parameters" title="Permanent link">&para;</a></h3>
+<p><code>type: text</code> holds several lines that are not secret, such as routing rules,
+an allow list or a fragment of the product's own configuration:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.15.0"</span>
+
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">rules</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Routing rules, one per line</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">app</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p><strong>A release declaring one needs <code>min_manager_version: "0.15.0"</code> or later.</strong> An
+older manager refuses the type as unknown, and <code>release verify</code> refuses a
+manifest that declares it below that version.</p>
+<p>A value is UTF-8 text of at most 64 KiB. Line endings become LF and trailing
+newlines are removed; nothing else is trimmed, so indentation survives. A NUL
+byte or invalid UTF-8 is refused. The limit exists because every parameter is
+in the environment of every Compose call and hook, and Linux refuses to start a
+process whose one environment variable is 128 KiB.</p>
+<p>A default written as a <code>|</code> block ends in a newline, which is removed like any
+other trailing newline. Templates read the value whole, or line by line with
+<a href="../variables/#lines"><code>lines</code></a>. Compose and hooks get it as
+<code>&lt;PRODUCT&gt;_PARAM_&lt;NAME&gt;</code>, newlines included. An operator sets one with
+<a href="../parameters/#text-values"><code>config set --set-file</code> or <code>config edit</code></a>.</p>
 <h3 id="required">required<a class="headerlink" href="#required" title="Permanent link">&para;</a></h3>
 <p>Without it, a parameter with no default resolves silently to the empty string —
 so a vendor could declare a knob that exists to be an operator choice and had

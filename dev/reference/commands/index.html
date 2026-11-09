@@ -3306,6 +3306,10 @@ run <code>apply</code> afterwards.</p>
 <td>Set a release parameter, as <code>name=value</code>. Repeat for several. Needs <code>--release</code> to validate against. See <a href="../parameters/">Parameters</a>.</td>
 </tr>
 <tr>
+<td><code>--set-file</code></td>
+<td>Read a release parameter's value from a file, as <code>name=path</code>, or from standard input with <code>-</code>. Repeat for several. Refuses a file holding a NUL byte or invalid UTF-8. See <a href="../parameters/#text-values">Text values</a>.</td>
+</tr>
+<tr>
 <td><code>--repair</code></td>
 <td>Restore missing directories on an existing installation. It restores a layout; <code>morzer config set installation.domains</code> and <code>installation.profile</code> are how the domains and the profile change afterwards. It finds the installation as every other command does, so <code>--product</code> is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag.</td>
 </tr>
@@ -4467,6 +4471,10 @@ it, or that its state does not load.</p>
 <tr>
 <td><code>config get</code>, <code>config set</code>, <code>config unset</code></td>
 <td>the parameter and setting names, as <code>name=</code> for <code>set</code>; <code>unset</code> adds the stale values <code>config list</code> reports</td>
+</tr>
+<tr>
+<td><code>config edit</code></td>
+<td>the text parameters</td>
 </tr>
 <tr>
 <td><code>restore --backup</code>, <code>backup verify</code>, <code>backup target push</code></td>

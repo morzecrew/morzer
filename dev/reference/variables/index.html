@@ -1703,6 +1703,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The render context">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        lines
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2081,6 +2098,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The render context">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        lines
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2269,6 +2303,9 @@ variable that is not here resolves to its <code>:-</code> fallback or to empty.<
 <p><code>-</code> and <code>.</code> in an image name become <code>_</code>: <code>web-ui</code> is <code>DEMO_IMAGE_WEB_UI</code>.
 Parameter names are already restricted to lowercase, digits and underscores, so
 they only upper-case.</p>
+<p>A <a href="../parameters/#text-values">text parameter</a> arrives whole, newlines
+included. The manager gives Compose its variables in the process environment,
+never through an env file, and Compose interpolates a multi-line value intact.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">app</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${DEMO_IMAGE_APP:-registry.example/demo/app@sha256:…}</span>
@@ -2390,6 +2427,28 @@ profile of a selection:</p>
 Only a release that declares <a href="../manifest/#combinable-profiles"><code>combinable</code></a> can
 have several selected, so its templates use <code>.Profiles</code>. <code>.Profiles</code> and <code>has</code>
 need <code>compatibility.min_manager_version</code> of at least <code>0.15.0</code>.</p>
+<h3 id="lines">lines<a class="headerlink" href="#lines" title="Permanent link">&para;</a></h3>
+<p><code>lines</code> splits a <a href="../parameters/#text-values">text parameter</a> into its lines
+for a <code>range</code>. An empty value is no lines:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">rules</span><span class="p">:</span>
+<span class="p p-Indicator">{{</span><span class="nv">- range lines .Parameters.rules</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">printf "%q" .</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+<span class="p p-Indicator">{{</span><span class="nv">- else</span><span class="w"> </span><span class="p p-Indicator">}}</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<span class="p p-Indicator">{{</span><span class="nv">- end</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+</code></pre></div>
+<p>The <code>else</code> branch renders <code>rules: []</code> for an empty value. Without it the key
+would have no value, which <abbr title="YAML Ain't Markup Language">YAML</abbr> reads as null rather than as an empty list.
+<code>printf "%q"</code> writes each line as a double-quoted string, so <code>a: b</code> stays a
+string and <code>hello # note</code> keeps its comment. <code>quote</code> escapes <code>"</code> but not <code>\</code>,
+so it is not safe for this.</p>
+<p>A fragment pasted whole keeps its indentation with <code>indent</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">extra</span><span class="p">:</span>
+<span class="p p-Indicator">{{</span><span class="w"> </span><span class="nv">.Parameters.fragment | indent 2</span><span class="w"> </span><span class="p p-Indicator">}}</span>
+</code></pre></div>
+<p>A product that reads a file rather than its own configuration gets one from a
+template whose body is the value, <code>{{ .Parameters.rules }}</code>, rendered to a
+target the Compose file mounts. <code>lines</code> needs
+<code>compatibility.min_manager_version</code> of at least <code>0.15.0</code>, as <code>text</code> does.</p>
 <div class="admonition danger">
 <p class="admonition-title"><code>.Secrets</code> holds paths, never values</p>
 <p>A configuration file in <code>/etc</code> must never contain a credential. The render

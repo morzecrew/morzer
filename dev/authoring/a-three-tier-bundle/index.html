@@ -2367,6 +2367,14 @@ leaves the backend running the old value.</p>
 re-creating a container would not apply it — a full <code>apply</code> would. Declaring no
 services is how you say that, and <code>config set</code> then tells the operator the
 change waits for the next <code>apply</code> rather than claiming it took effect.</p>
+<div class="admonition tip">
+<p class="admonition-title">A value of several lines</p>
+<p>A list of rules or a fragment of the product's own configuration is
+<code>type: text</code>, rendered line by line with
+<a href="../../reference/variables/#lines"><code>lines</code></a>. It needs
+<code>min_manager_version: "0.15.0"</code>; see
+<a href="../../reference/manifest/#text-parameters">Text parameters</a>.</p>
+</div>
 <h2 id="the-compose-file">The Compose file<a class="headerlink" href="#the-compose-file" title="Permanent link">&para;</a></h2>
 <p>Host ports come from the parameters; container ports are fixed by your images:</p>
 <div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
