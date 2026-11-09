@@ -145,6 +145,12 @@
     "profile": {
       "type": "string"
     },
+    "profiles": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "release": {
       "additionalProperties": false,
       "properties": {
