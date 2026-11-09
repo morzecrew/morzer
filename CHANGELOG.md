@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`installation.yaml` lists the deployment profiles under `profiles`.** Its
+  `profile` field is gone. A script reading it can read `morzer config get
+  installation.profile`, which prints the same names comma-joined.
+
 - **`init --signing-key` requires a signature.** A trusted key, given or
   shipped, now means an unsigned release is refused. Pass
   `--require-signature=false` to keep installing unsigned releases.
