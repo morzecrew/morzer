@@ -10,11 +10,12 @@
   production host") and supersedes decisions 4 and 6. It also builds the parts
   of RFC 0029's P2 that a supported host needs: the darwin archives, `doctor`
   on darwin and a macOS unit lane. **Contract changes:** the manifest gains
-  `requirements.os` and a per-profile restriction, behind a 0.16.0 floor, and a
-  release that does not opt in is refused on macOS. **New code:** a launchd
-  supervisor adapter, the darwin layout, the real `pidStart`, darwin
-  `FilesystemType`, and darwin checks in `doctor`. **Not covered:** Windows, which is a separate
-  investigation, and whole-machine routing on a Mac. No Docker engine on macOS
+  `requirements.platforms` and a per-profile restriction, behind a 0.16.0
+  floor, and a release that does not opt in is refused on macOS. **New
+  code:** a launchd supervisor adapter, the darwin layout, the real
+  `pidStart`, darwin `FilesystemType`, and darwin checks in `doctor`. **Not
+  covered:** Windows, which is a separate investigation, and whole-machine
+  routing on a Mac. No Docker engine on macOS
   can route the Mac's traffic, so a TUN profile stays Linux-only (§5.7).
   Rootless or per-user installations, and any change to the Linux layout,
   the hook ABI or how a Linux-only release behaves, are also out.
@@ -40,8 +41,8 @@
 
 ## 1. Summary
 
-A release that declares `requirements.os: [linux, darwin]` installs on a Mac
-with the same commands as on Linux. It runs as root, under the Linux paths
+A release that declares `requirements.platforms: [linux, darwin]` installs on a
+Mac with the same commands as on Linux. It runs as root, under the Linux paths
 reached through `/private`: `/etc/<product>`, `/var/lib/<product>` and
 `/opt/<product>`. The one exception is the ephemeral directory, which moves
 from `/run/<product>` to `/var/run/<product>` because the sealed system volume
@@ -100,6 +101,13 @@ can change the design, and the docs cannot settle any of them.
 - **No darwin build is published.** `.goreleaser.yaml:27` is `goos: [linux]`.
   `install.sh:156` refuses `Darwin` and points at `go build`, and
   `self_update.go:81` refuses anything but linux/amd64 and linux/arm64.
+- **`requirements.os` exists, and it only advises.** It lists the
+  distributions a release was tested on, each an `id` and a `version`
+  constraint (`OSRequirement`, `internal/domain/manifest.go:576`). `preflight`
+  compares it with `/etc/os-release` and only ever warns, and an empty list
+  passes (`internal/lifecycle/preflight/preflight.go:193`). macOS has no
+  `/etc/os-release`, so on a Mac the check warns that it cannot identify the
+  host.
 - **The layout is fixed to Linux paths.** `DefaultPaths`
   (`internal/domain/paths.go:59`) returns `/etc/<p>`, `/var/lib/<p>`,
   `/run/<p>` and `/opt/<p>`, and `RunDir` is "expected to be tmpfs". On macOS,
@@ -176,8 +184,8 @@ can change the design, and the docs cannot settle any of them.
   it (§5.7). It needs the proxy running natively, which is a runtime that is
   not Compose, and that is another RFC.
 - **Windows.** It is being investigated separately. Nothing here assumes the
-  answer, and `requirements.os` takes no `windows` value until a design gives
-  it one.
+  answer, and `requirements.platforms` takes no `windows` value until a design
+  gives it one.
 - **A per-user or rootless installation on a Mac.** The manager runs as root,
   as on Linux, because it gives secrets away and writes `/private/etc`
   (§5.3). A per-user layout would be a second layout with its own guarantees.
@@ -185,7 +193,7 @@ can change the design, and the docs cannot settle any of them.
   and clean up after a crash, before the engine's file sharing can see it. It
   is named in §8 as the escape hatch, and it is not built.
 - **Any change to Linux.** Paths, units and checks stay as they are, and so
-  does a release that does not declare `requirements.os`. Platform
+  does a release that does not declare `requirements.platforms`. Platform
   differences go in per-OS files (RFC 0029 decision 8).
 
 ## 5. Design
@@ -194,29 +202,36 @@ can change the design, and the docs cannot settle any of them.
 
 ```yaml
 requirements:
-  os: [linux, darwin]        # default: [linux]
+  platforms: [linux, darwin]  # default: [linux]
 runtimes:
   compose:
     profiles:
       tun: [compose/tun.yaml]
-    os:
-      tun: [linux]           # this profile is refused on darwin
+    platforms:
+      tun: [linux]            # this profile is refused on darwin
 ```
 
-- `requirements.os` lists the platforms a release has been made for. Absent,
-  it is `[linux]`, so every release published so far is refused on a Mac. The
-  refusal comes at `init`, `update` and `rollback`, before anything is staged.
-  It names the platform and the release, and its hint says the vendor
-  declares `darwin` once they have run it there. This is RFC 0010's rule: the
-  permissive side is the one enumerated.
-- `runtimes.<runtime>.os` narrows single profiles. A profile listed there
-  is refused on a platform it does not name, as `init --profile` refuses an
-  undeclared profile (RFC 0053). This happens wherever a selection is made or
-  checked, so a stored selection is refused at `update` too. A profile not
-  listed runs wherever the release does.
+- `requirements.platforms` lists the platforms a release has been made for.
+  Absent, it is `[linux]`, so every release published so far is refused on a
+  Mac. The refusal comes at `init`, `update` and `rollback`, before anything
+  is staged. It names the platform and the release, and its hint says the
+  vendor declares `darwin` once they have run it there. This is RFC 0010's
+  rule: the permissive side is the one enumerated.
+- It is a key of its own, not a value of `requirements.os`. That list holds
+  `{id, version}` distributions, warns, and passes when empty (§3), and this
+  one refuses, with absence meaning `[linux]`. One field cannot mean both. A
+  release may declare both, with `os` naming the Linux distributions it was
+  tested on. On darwin, `system.os` has no distribution to compare, so it
+  says the list names Linux distributions rather than warning that the host
+  is unknown.
+- `runtimes.<runtime>.platforms` narrows single profiles. A profile listed
+  there is refused on a platform it does not name, as `init --profile`
+  refuses an undeclared profile (RFC 0053). This happens wherever a selection
+  is made or checked, so a stored selection is refused at `update` too. A
+  profile not listed runs wherever the release does.
 - `release verify` checks the shape: values from `{linux, darwin}`, a
-  profile's list within `requirements.os`, and the floor. It cannot check
-  that a release works on a Mac, and the docs say so.
+  profile's list within `requirements.platforms`, and the floor. It cannot
+  check that a release works on a Mac, and the docs say so.
 - Declaring either key needs `compatibility.min_manager_version: "0.16.0"`,
   so a 0.15.0 manager refuses the unknown key instead of ignoring it. The
   floor is the next minor, and if a patch release comes first that is a
@@ -344,7 +359,7 @@ A container on macOS runs in the engine's Linux VM:
 
 dotdash's `tun` profile (`client/compose/tun.yaml:13-15`) therefore cannot do
 on a Mac what it promises, and starting it would look like success. It is the
-case `runtimes.compose.os` exists for: the vendor marks it `[linux]`, and
+case `runtimes.compose.platforms` exists for: the vendor marks it `[linux]`, and
 morzer refuses it on darwin.
 
 On a Mac, dotdash's client is its proxy. Applications use `127.0.0.1:7890`
@@ -422,11 +437,20 @@ claim.
   route to whole-machine routing. It loses here because it is a new runtime
   (images become binaries, `restart` becomes launchd's), which is RFC 0023's
   territory and a separate RFC.
+- **`id: macos` in `requirements.os`.** It reuses a field that exists. It
+  loses because that field is the other way round: it warns rather than
+  refuses, and an empty list allows every host (§3). Turning it into a gate
+  would refuse a Linux release that lists one distribution on every other
+  distribution, and leaving it advisory would let every release that never
+  declared it run on a Mac.
 
 ## 6. Tests
 
 - **Domain:**
-  - `requirements.os` and `runtimes.<r>.os`: shape, default, the floor;
+  - `requirements.platforms` and `runtimes.<r>.platforms`: shape, default,
+    the floor;
+  - beside `requirements.os`, which keeps its warning on Linux and its
+    darwin wording;
   - the refusal at `init`, `update` and `rollback` for the release and for a
     profile, a stored selection included;
   - `release verify`'s messages.
@@ -457,8 +481,9 @@ claim.
   - secrets on an encrypted disk;
   - no machine-wide routing;
   - what is verified, and where.
-- **Authoring:** `requirements.os`, `runtimes.<r>.os`, hook portability, and
-  why a bundle that names `/run` literally in Compose is not darwin-ready.
+- **Authoring:** `requirements.platforms`, `runtimes.<r>.platforms`, how
+  they differ from `requirements.os`, hook portability, and why a bundle that
+  names `/run` literally in Compose is not darwin-ready.
 - **Reference:**
   - `manifest.md` for both keys and the floor;
   - `commands.md` for the refusal and `--allow-unencrypted-disk`;
@@ -482,7 +507,7 @@ claim.
   it is reopened by a user who cannot use the script.
 - **Engines other than Docker Desktop being claimed.** They are reopened by
   someone running the self-hosted lane against one.
-- **The dotdash client's own changes:** declaring `os`, marking `tun`
+- **The dotdash client's own changes:** declaring `platforms`, marking `tun`
   `[linux]`, and, if S2 says root, reading its secrets as root. They belong
   in morzecrew/dotdash.
 
@@ -510,13 +535,19 @@ claim.
 - **WSL2 is `linux` to this design.** A manager in a WSL2 distro is the Linux
   build, so a release declaring `[linux]` installs there. A `[linux]` TUN
   profile would then start and route only the WSL VM, the same false success
-  §5.7 refuses on a Mac. Telling WSL apart, as its own `requirements.os`
-  value or a check in `doctor`, belongs to the Windows design. Until then the
-  docs say a TUN profile under WSL2 routes nothing of Windows.
-- **`requirements.os` defaults strictly.** Every published bundle is refused
-  on a Mac until its vendor opts in. That is the intent. Error text that
-  sounds like a manager bug would be the risk, so the refusal names the
+  §5.7 refuses on a Mac. Telling WSL apart, as its own
+  `requirements.platforms` value or a check in `doctor`, belongs to the
+  Windows design. Until then the docs say a TUN profile under WSL2 routes
+  nothing of Windows.
+- **`requirements.platforms` defaults strictly.** Every published bundle is
+  refused on a Mac until its vendor opts in. That is the intent. Error text
+  that sounds like a manager bug would be the risk, so the refusal names the
   vendor's step.
+- **`platforms` and `os` read alike.** A vendor may write `os: [darwin]` and
+  expect it to opt in. It fails to decode wherever the manifest is read,
+  `release verify` included, since an `os` entry is a mapping ("string was
+  used where mapping is expected"). The authoring page sets the two side by
+  side.
 
 ## 10. Unresolved questions
 
@@ -544,8 +575,8 @@ say.
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `LOCKED` | macOS is a supported host for an installation that runs unattended. This supersedes RFC 0029 decision 1, and RFC 0029's decisions 4 (no launchd) and 6 (refuse unrooted on darwin) with it. Each weaker guarantee is stated in `doctor` and the docs, never left implicit. Reversing this later means withdrawing darwin archives from operators who depend on them. |
-| 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.os` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
-| 3 | `OPEN` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.os: {<profile>: [os…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `os`, which changes a shape every bundle uses. Both need the 0.16.0 floor. |
+| 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.platforms` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
+| 3 | `OPEN` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.platforms: {<profile>: [platform…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `platforms`, which changes a shape every bundle uses. Both need the 0.16.0 floor. |
 | 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. |
 | 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off; and `apply` refuses to render with FileVault off unless `--allow-unencrypted-disk` is given, which is journaled. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
@@ -557,7 +588,7 @@ say.
 | 12 | `ASSUMED` | The darwin archives cover `amd64` and `arm64`, `install.sh` and `self-update` accept darwin, and the binary relies on Go's ad-hoc signature with no notarisation. It rests on S6. |
 | 13 | `ASSUMED` | The manager runs as root on macOS, as on Linux. A per-user installation is a separate layout with separate guarantees, and is not designed here. |
 | 14 | `ASSUMED` | Linux is unchanged by construction: per-OS files, no runtime branches on `GOOS` beyond those that exist (RFC 0029 decision 8). A Linux-only release behaves as today. |
-| 15 | `ASSUMED` | The floor for `requirements.os` and `runtimes.<r>.os` is 0.16.0, the next minor. A release in between moves it, logged as a departure. |
+| 15 | `ASSUMED` | The floor for `requirements.platforms` and `runtimes.<r>.platforms` is 0.16.0, the next minor. A release in between moves it, logged as a departure. |
 
 ## 12. Phasing
 
@@ -581,6 +612,6 @@ and the engine restarts its containers. P1 alone is usable, and it says so.
 **P2 — the supervisor.** The launchd adapter, boot convergence and schedules
 (§5.6), with the self-hosted lane's reboot run.
 
-**P3 — the client bundle**, in morzecrew/dotdash: `requirements.os`, `tun`
-marked `[linux]`, and whatever S2 asks of its secrets. It is gated on P1
+**P3 — the client bundle**, in morzecrew/dotdash: `requirements.platforms`,
+`tun` marked `[linux]`, and whatever S2 asks of its secrets. It is gated on P1
 being released.
