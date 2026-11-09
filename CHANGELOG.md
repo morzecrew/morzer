@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An unset optional secret renders as an empty file.** A service that
+  mounts one now starts, and reads an empty file. A bundle relying on that
+  needs `min_manager_version: "0.15.0"`. A consumer that tested whether the
+  file exists should test whether it is empty.
+
 - **`installation.yaml` lists the deployment profiles under `profiles`.** Its
   `profile` field is gone. A script reading it can read `morzer config get
   installation.profile`, which prints the same names comma-joined.

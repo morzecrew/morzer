@@ -856,7 +856,7 @@ Each declaration:
 | --- | --- | --- |
 | `name` | string | Secret name, as `morzer secret` refers to it. |
 | `description` | string | Shown by `secret list`. |
-| `required` | bool | Whether `doctor` reports its absence as a failure. |
+| `required` | bool | Whether `doctor` reports its absence as a failure. An unset secret that is not required renders as an empty file; see [below](#an-optional-secret). |
 | `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. It does at `init`, and at the `update` whose release first declares the secret. |
 | `file` | string | Filename under the render directory. Defaults to `name`. |
 | `services` | list | Compose services that consume it. A rotation restarts exactly these. |
@@ -909,6 +909,31 @@ secrets:
 A schema that declares `owner` needs the manifest to declare
 `compatibility.min_manager_version: "0.6.0"` or later. An older manager then
 says it is too old, instead of calling `owner` an unknown field.
+
+### An optional secret
+
+A secret declared `required: false` that the operator has not set renders as
+an empty file, mode `0400`, with its declared `owner`. A Compose service that
+mounts it starts, and reads an empty file where a set secret would have a
+value:
+
+```yaml
+secrets:
+  - name: upstream6
+    description: IPv6 upstream credential, when the IPv6 proxy is on
+    required: false
+    services: [gate]
+```
+
+Test for an empty file to tell "not set" from "set". There is no need for a
+generated placeholder that every consumer has to recognise. `secret list` and
+`doctor` report the secret as unset, and `secret set` fills the same file.
+Removing it with `secret remove` empties the file again.
+
+A release that relies on the empty file needs
+`compatibility.min_manager_version: "0.15.0"` or later. An older manager
+renders no file for an unset optional secret, so a service that mounts it fails
+at start.
 
 ---
 
