@@ -49,10 +49,10 @@ from `/run/<product>` to `/var/run/<product>` because the sealed system volume
 has no `/run`. Containers run under a Docker engine in a Linux VM, Docker
 Desktop first.
 
-A launchd adapter takes the systemd adapter's place: it converges at boot once
-the engine's socket appears, and runs the backup, update, doctor, fleet and
-metrics schedules. Two guarantees are weaker, and `doctor` reports both on every
-run:
+A launchd adapter takes the systemd adapter's place: it converges at boot,
+retrying until the engine answers, and runs the backup, update, doctor, fleet
+and metrics schedules, catching up a run missed while the Mac was off. Two
+guarantees are weaker, and `doctor` reports both on every run:
 
 - **Decrypted secrets are on disk.** macOS has no tmpfs. They sit on a
   FileVault-encrypted volume, and `doctor` fails when FileVault is off.
@@ -344,19 +344,40 @@ what the VM shows.
 LaunchDaemons in `/Library/LaunchDaemons`, labelled `dev.morzer.<p>` and
 `dev.morzer.<p>-backup` and so on, one per systemd unit:
 
-- **Boot convergence.** Docker Desktop is not running at boot; it starts at
-  login. `dev.morzer.<p>` runs `apply --startup` from `RunAtLoad`, and again
-  from `WatchPaths` on the engine's socket, so it converges when the engine
-  appears. `apply --startup` that cannot reach the engine exits with the
-  runtime's exit code, and the next `WatchPaths` event retries it. The
-  containers' own restart policies bring them back when the engine starts
-  anyway. The job exists for the render and the checks, as it does on Linux.
+- **Boot convergence retries until the engine answers.** Docker Desktop is
+  not running at boot; it starts at login. Its `/var/run/docker.sock` is a
+  symlink that can exist before the engine answers, so an event on that path
+  says nothing reliable about readiness, and the job waits on none.
+  `dev.morzer.<p>` runs `apply --startup` from `RunAtLoad`, with `KeepAlive`
+  set to `{SuccessfulExit: false}` and a `ThrottleInterval` of 30 seconds, so
+  launchd starts it again after every failed attempt. That is the systemd
+  unit's `Restart=on-failure` and `RestartSec=30s` (`systemd.go:546-548`).
+  An attempt that cannot reach the engine exits with the runtime's exit code,
+  7, before it takes the lock, so an operator's command never queues behind
+  a wait for a login. The containers' own restart policies bring them back
+  when the engine starts anyway. The job exists for the render and the
+  checks, as it does on Linux.
+- **Exit 12 still stops the retries.** launchd has no counterpart of
+  `RestartPreventExitStatus=12`, and restarting on it would bury the reason
+  under a retry every 30 seconds. The lean: an `apply --startup` that ends in
+  exit 12 records it, and while the record stands the job exits 0 at once
+  without converging, at a retry or at the next boot. An operator's `apply`
+  clears it. The reason stays in the log, the journal and `doctor`.
 - **Schedules.** The timers become `StartCalendarInterval`. launchd's grammar
   is a set of minute, hour, weekday, day and month fields. It is not systemd's
   `OnCalendar`, so `ValidateSchedule` accepts what translates exactly (fixed
   times daily, weekly, monthly, or hourly at a minute) and refuses the rest at
   `config set`, naming the form it takes. The port already exists for this
   question (`supervisor.go`, `ValidateSchedule`).
+- **A run missed while the Mac was off is caught up.** launchd starts a
+  `StartCalendarInterval` job missed during sleep when the Mac wakes, but not
+  one missed while it was off. The systemd timers for backup, update, fleet
+  and doctor are `Persistent=true` for that case (`systemd.go:581`), and
+  metrics is not. On darwin each of those four jobs writes a stamp under
+  `VarDir` when it runs, as systemd keeps a stamp per persistent timer. Once
+  boot convergence succeeds, so the engine is up, `apply --startup` runs
+  `launchctl kickstart` once for each job whose latest scheduled time is
+  later than its stamp. Metrics is not caught up, as on Linux.
 - **Logs.** `StandardOutPath` and `StandardErrorPath` go under
   `VarDir/logs`, since the manager logs JSON as it does under journald.
 - `Available` is true where `launchctl` runs and the manager is root.
@@ -456,6 +477,10 @@ claim.
   would refuse a Linux release that lists one distribution on every other
   distribution, and leaving it advisory would let every release that never
   declared it run on a Mac.
+- **`WatchPaths` on the engine socket for boot convergence.** It reacts to
+  the engine appearing rather than polling. It loses because the socket is a
+  symlink that can exist before the engine answers, and an attempt that fails
+  on the only event is never retried.
 
 ## 6. Tests
 
@@ -472,7 +497,12 @@ claim.
 - **launchd adapter:**
   - plist rendering, golden files against the systemd unit set;
   - `ValidateSchedule`: every accepted form and the first refused one;
-  - `Status` parsing from captured `launchctl print` output.
+  - `Status` parsing from captured `launchctl print` output;
+  - the exit-12 record: set by `apply --startup`, honoured at the next
+    start, cleared by `apply`;
+  - the catch-up: a stamp older than the latest scheduled time starts the
+    job once, a current stamp starts nothing, and metrics is never caught
+    up.
 - **Secrets:** the FileVault gate on each of the four render paths, and the
   setting that overrides it, journaled; `doctor`'s darwin wording; the
   ownership rule S2 decides, as a contract case per outcome.
@@ -484,8 +514,9 @@ claim.
   - a release that does not declare darwin is refused;
   - a `[linux]` profile is refused.
 - **Sabotage:** drop the default `[linux]`, skip the profile refusal on
-  `update`, render through `secret render` with FileVault off, and translate
-  `render_to` on Linux. Each must turn a test red.
+  `update`, render through `secret render` with FileVault off, drop
+  `KeepAlive` from the boot job, and translate `render_to` on Linux. Each
+  must turn a test red.
 
 ## 7. Docs
 
@@ -575,8 +606,11 @@ the decision it can overturn:
   `65532:65532`? (Decision 6.)
 - **S3:** does root's `docker` reach Docker Desktop through
   `/var/run/docker.sock`, and what does enabling that take? (Decision 7.)
-- **S4:** does a LaunchDaemon's `WatchPaths` on that socket fire when Docker
-  Desktop starts after a login? (Decision 8.)
+- **S4:** does a LaunchDaemon with `RunAtLoad`, `KeepAlive`
+  `{SuccessfulExit: false}` and a 30-second `ThrottleInterval` retry until
+  Docker Desktop answers after a login, and stop once the exit-12 record
+  makes it exit 0? Does `launchctl kickstart` from the boot job start a
+  missed backup? (Decision 8.)
 - **S5:** is `/private/var/run` cleared at boot? (§5.4.)
 - **S6:** does an ad-hoc-signed darwin/arm64 binary from `curl` run, and does
   `self-update` replacing it keep running? (§5.9.)
@@ -595,7 +629,7 @@ say.
 | 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
 | 7 | `OPEN` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. |
-| 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad` and `WatchPaths` on the engine socket. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`. It rests on S4. |
+| 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps. It rests on S4. |
 | 9 | `OPEN` | Verification. The lean has three parts: a hosted `macos-latest` unit lane on every push; a self-hosted Apple-silicon runner with Docker Desktop, required on release PRs and nightly; and darwin archives dropped from a release whose self-hosted lane is red. The author says whose Mac the runner is. Without a runner, this RFC does not ship P1, because a production claim with no real-engine run is the thing RFC 0029 §5.7 called worse than none. |
 | 10 | `LOCKED` | No profile is offered as routing a Mac's traffic. A TUN or `network_mode: host` profile on macOS acts on the engine's VM, so a release marks it Linux-only, and whole-machine routing is a native-runtime RFC. |
 | 11 | `ASSUMED` | `pidStart` on darwin uses `unix.SysctlKinfoProc` and is tested on the macOS lane, which ends the reason the stub gave for waiting. |
