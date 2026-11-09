@@ -295,9 +295,22 @@ rendered-file check stays. What changes is stated and checked:
   and does not say "mount a tmpfs".
 - `doctor` checks FileVault (`fdesetup status`) and **fails when it is
   off**. Decrypted secrets on an unencrypted disk are a credential anyone with
-  the disk can read. `apply` refuses to render on darwin while FileVault is
-  off, unless `--allow-unencrypted-disk` is given, and that flag is journaled
-  (decision 5).
+  the disk can read.
+- **Every render refuses on darwin while FileVault is off.** The check sits
+  where `OwnerRefusal` does, first in the store's `Render`
+  (`sopsage.go:450`), so no path that writes plaintext can miss it. Four
+  paths render today: `apply` (`apply.go:407`), `update`'s re-render
+  (`update.go:1188`), `secret render` (`internal/cli/secret.go:241`), and the
+  restart after `secret set`, `generate`, `rotate` and `edit`
+  (`restartDependents`, `secret.go:490`).
+- **The override is a setting, `secrets.allow_unencrypted_disk`, not a
+  flag.** The renders that matter most run unattended, `apply --startup` at
+  boot and a scheduled update, and nobody is there to pass a flag. The store
+  is given the setting when it is built. Setting it is a downgrade, so it
+  runs as a journaled `config` operation, as turning
+  `release.require_signature` off does (`signatureDropped`,
+  `internal/lifecycle/ops/settings.go:797`). `doctor` keeps failing while
+  FileVault is off, set or not (decision 5).
 - Whether macOS clears `/private/var/run` at boot is spike S5. If it does,
   boot behaves as on Linux, where the render is redone by `apply --startup`.
   If it does not, `stop`, `installation remove` and the boot job remove the
@@ -460,9 +473,9 @@ claim.
   - plist rendering, golden files against the systemd unit set;
   - `ValidateSchedule`: every accepted form and the first refused one;
   - `Status` parsing from captured `launchctl print` output.
-- **Secrets:** the FileVault gate, and its journaled override; `doctor`'s
-  darwin wording; the ownership rule S2 decides, as a contract case per
-  outcome.
+- **Secrets:** the FileVault gate on each of the four render paths, and the
+  setting that overrides it, journaled; `doctor`'s darwin wording; the
+  ownership rule S2 decides, as a contract case per outcome.
 - **The macOS lane** runs `pidStart`, `FilesystemType`, memory and space for
   real.
 - **The self-hosted lane** runs the acceptance run under the darwin layout:
@@ -471,8 +484,8 @@ claim.
   - a release that does not declare darwin is refused;
   - a `[linux]` profile is refused.
 - **Sabotage:** drop the default `[linux]`, skip the profile refusal on
-  `update`, render with FileVault off, and translate `render_to` on Linux.
-  Each must turn a test red.
+  `update`, render through `secret render` with FileVault off, and translate
+  `render_to` on Linux. Each must turn a test red.
 
 ## 7. Docs
 
@@ -486,7 +499,8 @@ claim.
   names `/run` literally in Compose is not darwin-ready.
 - **Reference:**
   - `manifest.md` for both keys and the floor;
-  - `commands.md` for the refusal and `--allow-unencrypted-disk`;
+  - `commands.md` for the refusal;
+  - `parameters.md` for `secrets.allow_unencrypted_disk`;
   - the darwin `doctor` checks;
   - the launchd schedule forms beside the systemd ones.
 - **Get started:** installing on a Mac, with Docker Desktop's "default Docker
@@ -578,7 +592,7 @@ say.
 | 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.platforms` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
 | 3 | `OPEN` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.platforms: {<profile>: [platform…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `platforms`, which changes a shape every bundle uses. Both need the 0.16.0 floor. |
 | 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. |
-| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off; and `apply` refuses to render with FileVault off unless `--allow-unencrypted-disk` is given, which is journaled. The alternative is a warning alone. A RAM disk is out (§8). |
+| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
 | 7 | `OPEN` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. |
 | 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad` and `WatchPaths` on the engine socket. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`. It rests on S4. |
