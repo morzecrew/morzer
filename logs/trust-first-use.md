@@ -213,3 +213,15 @@ Findings from the first review round, each reproduced red before its fix:
   the key only when the release verifies against it in every other respect.
 - **Fixed in fb60aa2a: `unattended-updates.md`** said a release that ships its key
   meets the auto-apply requirement. Only where `init` trusted it.
+
+## Reconciliation, 2026-11-08
+
+- **The decision 13 entry was wrong about the timer.** It says the notice
+  prints on every update "interactive or from the timer". The timer never
+  prints it. An installation that trusts no key cannot turn on
+  `update.auto_apply`, which needs `release.require_signature`
+  (`internal/domain/installation.go:1151`), which needs a key
+  (`internal/domain/installation.go:1197`). The timer's staging, in
+  `FollowChannel`, does not run `update`'s verify step, the only caller of
+  `noteShippedKey` (`internal/lifecycle/ops/update.go:703`). RFC 0052's row 20
+  says so.

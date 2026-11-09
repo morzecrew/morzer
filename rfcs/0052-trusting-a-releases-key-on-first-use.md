@@ -1,9 +1,12 @@
 # RFC 0052 — Trusting a release's key on first use
 
-- **Status:** 📝 Draft — proposed 2026-11-07, and ruled by the author
+- **Status:** ✅ Complete — proposed 2026-11-07, and ruled by the author
   2026-11-07: decision 13 as recommended. 2026-11-08, from the review:
   decision 1 narrowed to an `init` that creates an installation, and
-  decision 15 accepted.
+  decision 15 accepted. **Built 2026-11-08**: P2 in #311 and P1 in #312. The
+  entries in [logs/trust-first-use-verify.md](../logs/trust-first-use-verify.md)
+  and [logs/trust-first-use.md](../logs/trust-first-use.md) are decisions
+  16–22, accepted by the author 2026-11-08.
 - **Scope:** How an installation comes to trust a vendor's release signing key
   without the operator typing it. A release may ship its minisign public key;
   an `init` given no `--signing-key` checks the release's signature against
@@ -412,10 +415,18 @@ the review's narrowing of decision 1 and decision 15.
 | 13 | `ASSUMED` | Whether an existing installation without keys trusts the key of the first release that ships one. **Recommended: no.** `update` prints a notice with the key id and the `release trust add` and `config set release.require_signature=true` commands, and trusts nothing itself: an unattended timer adopting whatever a moved tag ships would pin an attacker's key without anyone looking. The alternative is automatic adoption at the next interactive `update`. Was `OPEN`; ruled by the author 2026-11-07: as recommended. |
 | 14 | `ASSUMED` | `release verify` checks a shipped key against the shipped signature, saying it proves self-consistency only, and with `--signing-key` refuses a shipped key that differs from the given one. |
 | 15 | `ASSUMED` | *(2026-11-08, from the review)* `init --repair` of an installation that exists is not a first use; one with nothing installed creates an installation and is. A repair never reads the shipped key. Its stage step verifies against the installation's policy, plus any `--signing-key` it is given, which it does not record, as now. A signature is required when the policy or `--require-signature` requires one. Today a repair given no key verifies nothing, even where the policy requires a signature (`init.go:718-722`, `init.go:632`). Accepted by the author 2026-11-08. |
+| 16 | `ASSUMED` | *(2026-11-08, from the build of P2; accepted 2026-11-08)* **Refines decision 14.** `release verify` refuses a bundle that ships `minisign.pub` and no `SHA256SUMS.minisig`, with or without `--signing-key`. Decision 3 refuses that bundle wherever `init` would trust the key it ships, so the vendor hears it first. See [logs/trust-first-use-verify.md](../logs/trust-first-use-verify.md) (decision 14, unlisted, attempt 1, 15:20, a key with no signature). |
+| 17 | `ASSUMED` | *(2026-11-08, from the build of P2; accepted 2026-11-08)* **Refines decision 14.** `release archive` and `release push` check a shipped key as `release verify` does: both say they check a bundle the way `verify` does, and `push` is where a stale `minisign.pub` reaches a registry. `release build`, which runs before the bundle is signed, does not. See [logs/trust-first-use-verify.md](../logs/trust-first-use-verify.md) (decision 14, unlisted, attempt 1, 15:20, `archive` and `push`). |
+| 18 | `ASSUMED` | *(2026-11-08, from the build of P2; accepted 2026-11-08)* **Refines decision 14.** With `--signing-key`, which repeats, the bundle's signature must verify against a given key and against the shipped key, so the shipped key is the one that signed it rather than merely one of those given. A vendor mid-rotation who passes both keys, signs with the new one and still ships the old one is refused, as an `init` that trusts the key a release ships would refuse that release. See [logs/trust-first-use-verify.md](../logs/trust-first-use-verify.md) (decision 14, attempt 1, 15:20, several keys). |
+| 19 | `ASSUMED` | *(2026-11-08, from the build of P1 and its review; accepted 2026-11-08)* **Refines decision 15.** A repair that stages a release refuses when the installation state it finds cannot be read, rather than staging against its flags alone. Its stage step reads the policy under the deployment lock, so it verifies against the policy as it stands when the release is staged. See [logs/trust-first-use.md](../logs/trust-first-use.md) (decision 15, attempt 1, 17:40; the review's second finding). |
+| 20 | `ASSUMED` | *(2026-11-08, from the build of P1 and its reconciliation; accepted 2026-11-08)* **Refines decision 13.** `update`'s notice prints on every `update`, not only the first, while the installation trusts no key and the release ships one that signed it; nothing records that it was shown, so an operator who missed it sees it again. The timer never prints it: an installation that trusts no key cannot turn on `update.auto_apply`, which needs `release.require_signature`, which needs a key, and the timer's staging does not run the check that prints it. A release that ships a key and no signature, or a key that did not sign it, gets no notice, since the notice offers the key for trust. See [logs/trust-first-use.md](../logs/trust-first-use.md) (decision 13, attempt 1, 17:40, corrected under Reconciliation; the plan's note that `update` names a shipped key only when the release's signature verifies against it). |
+| 21 | `ASSUMED` | *(2026-11-08, from the build of P1; accepted 2026-11-08)* **Refines decision 9.** The printed key is a callout like the recovery key's: `--quiet` suppresses it, and under `--json` it is carried in `data` as `trusted_key`, `trusted_key_id` and `trusted_key_source`. See [logs/trust-first-use.md](../logs/trust-first-use.md) (decision 9, attempt 1, 17:40). |
+| 22 | `ASSUMED` | *(2026-11-08, from the review of P1; accepted 2026-11-08)* **Refines decision 10.** The wizard passes on the whole key it showed for a local bundle, or that it found none, and the stage step refuses any other key, including one where the wizard found none. §5.5 passes on the key's id, which is eight bytes whoever makes a key chooses, so another key could carry it and pass. See [logs/trust-first-use.md](../logs/trust-first-use.md) (decision 10, attempt 1, 18:41). |
 
 ## 12. Phasing
 
 - **P1, the manager:** §5.1–§5.5 and decisions 1–13 and 15, with the
-  operator docs. One PR.
+  operator docs. One PR. *(2026-11-08: built in #312.)*
 - **P2, the vendor side:** §5.6 and decision 14, with `publishing.md`. It can
   land before P1 so vendors ship the key first; nothing in P1 depends on it.
+  *(2026-11-08: built in #311.)*
