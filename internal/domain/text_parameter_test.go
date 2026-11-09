@@ -134,24 +134,30 @@ func TestATextParameterNeedsTheFloor(t *testing.T) {
 	}
 }
 
-// An operator sees an error's message and hint, never its cause, so a refused
-// value names its reason in the message, for every type. The hint is the
-// refusal's own where it has one.
-func TestARefusedValueSaysWhy(t *testing.T) {
+// A refused text value names its reason in the message, which it can because
+// no text refusal quotes the value. The other types quote theirs, and an
+// error's message reaches fleet rows, so their message stays value-free.
+func TestARefusedTextValueSaysWhyAndNoValueTravels(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"http_port": {Type: domain.ParamPort},
 		"rules":     textSpec,
 	}
 
-	_, err := domain.ResolveParameters(declared, map[string]string{"http_port": "70000"})
+	_, err := domain.ResolveParameters(declared, map[string]string{"http_port": "PORT-VALUE-70000"})
 	require.Error(t, err)
-	assert.Equal(t, `parameter "http_port": port 70000 is out of range (1-65535)`, domain.AsError(err).Message)
+	assert.Equal(t, `parameter "http_port"`, domain.AsError(err).Message)
 	assert.Contains(t, domain.AsError(err).Hint, "http_port takes a port value")
 
-	_, err = domain.ResolveParameters(declared, map[string]string{
-		"rules": strings.Repeat("a", int(domain.TextParameterLimit)+1),
-	})
+	over := strings.Repeat("TEXT-VALUE", int(domain.TextParameterLimit)/10+1)
+	_, err = domain.ResolveParameters(declared, map[string]string{"rules": over})
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, `parameter "rules": the value is `)
+	assert.NotContains(t, domain.AsError(err).Message, "TEXT-VALUE")
 	assert.Contains(t, domain.AsError(err).Hint, "environment")
+
+	for _, bad := range []string{"TEXT-VALUE\x00", "TEXT-VALUE\xff"} {
+		_, err = domain.ResolveParameters(declared, map[string]string{"rules": bad})
+		require.Error(t, err)
+		assert.NotContains(t, domain.AsError(err).Message, "TEXT-VALUE")
+	}
 }

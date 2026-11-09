@@ -29,7 +29,7 @@ does not accept is refused before anything is created:
 
 ```text
 [4/6] stage release bundle
-        failed: parameter "log_level": "chatty" is not one of: debug, info, warn, error
+        failed: parameter "log_level"
         hint: log_level accepts debug, info, warn, error; default info -- Application log verbosity
 ```
 

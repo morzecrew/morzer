@@ -62,10 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A refused parameter value says why.** `config set http_port=70000`
-  reported only `parameter "http_port"`; it now adds that the port is out of
-  range, for every type.
-
 - **`config list` and `config get` show a default as the deployment gets it.**
   A default is normalised as every value is, so a port default of `08` lists
   as `8`.

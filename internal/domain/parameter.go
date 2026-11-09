@@ -402,19 +402,22 @@ func (p Parameters) ValidateAgainst(declared map[string]ParameterSpec) []string 
 	return stale
 }
 
-// RefusedParameterValue is a value its declaration refused, with the reason in
-// the message: an operator is shown an error's message and hint, never its
-// cause, so `parameter "http_port"` alone would not say what was wrong.
+// RefusedParameterValue is a value its declaration refused.
 //
-// The hint is the refusal's own when it has one -- a text value over the limit
-// says why there is a limit -- and the parameter's description otherwise.
+// Only a `text` refusal puts its reason in the message, as `parameter "rules":
+// the value is 70.2KiB, ...`, with its own hint. The other types' refusals quote
+// the value they refuse, and an error's message travels beyond the terminal --
+// into a fleet row published to a shared target -- so theirs stays
+// `parameter "http_port"`, with the type's description as the hint. A text
+// refusal names a size or a byte class, never the value (RFC 0054 §5.1).
 func RefusedParameterValue(err error, name string, spec ParameterSpec) *Error {
-	reason := AsError(err)
-	refused := ValidationError(err, "parameter %q: %s", name, reason.Message)
-	if reason.Hint != "" {
-		return refused.WithHint("%s", reason.Hint)
+	if spec.Type != ParamText {
+		return ValidationError(err, "parameter %q", name).
+			WithHint("%s", DescribeParameter(name, spec))
 	}
-	return refused.WithHint("%s", DescribeParameter(name, spec))
+	reason := AsError(err)
+	return ValidationError(err, "parameter %q: %s", name, reason.Message).
+		WithHint("%s", reason.Hint)
 }
 
 // DescribeParameter is the hint shown when a value is refused.
