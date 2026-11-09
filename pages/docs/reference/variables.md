@@ -38,7 +38,7 @@ variable that is not here resolves to its `:-` fallback or to empty.
 | `<PRODUCT>_CONFIG_FILE` | The rendered configuration file. |
 | `<PRODUCT>_RELEASE_DIR` | The unpacked release, for mounting files the bundle ships. |
 | `<PRODUCT>_VERSION` | The release version. |
-| `<PRODUCT>_PROFILE` | The active deployment profile. |
+| `<PRODUCT>_PROFILE` | The active deployment profiles, comma-joined in layering order: one name for one, empty for none. |
 | `<PRODUCT>_DOMAIN` | The canonical domain. **Absent** when the installation has none, so carry a `:-` fallback. |
 
 Two families take their names from your manifest:
@@ -110,9 +110,10 @@ available:
 
 | Field | Holds |
 | --- | --- |
-| `.Installation` | `.ID`, `.Product`, `.Profile`, `.Domains`, `.Domain` (the first), `.URL`. |
+| `.Installation` | `.ID`, `.Product`, `.Profile`, `.Profiles`, `.Domains`, `.Domain` (the first), `.URL`. Its profile fields are the recorded selection, which a one-run `--profile` does not change. |
 | `.Release` | `.Name`, `.Version`, `.Digest`, `.Root`, `.Vendor`. |
-| `.Profile` | The active profile, as a string. |
+| `.Profile` | The active profile, as a string, empty for none. With several selected it fails the render: use `.Profiles`. |
+| `.Profiles` | The active profiles, a list in layering order, empty for none. |
 | `.Paths` | `.Etc`, `.Var`, `.Run`, `.Opt`, `.Data`, `.Backups`, `.Secrets`, `.Generated`. |
 | `.Secrets` | Secret name → the **path** of its rendered file. Never a value. |
 | `.Domains` | Every configured domain, first one canonical. |
@@ -141,6 +142,21 @@ secrets:
 `secretFile` is a helper that fails loudly when the named secret is not
 declared, rather than rendering an empty path a service would then fail to open
 with no explanation.
+
+`has` tests whether a list holds a name, which is how a template asks about one
+profile of a selection:
+
+```yaml
+{{- if has "xdns" .Profiles }}
+dns_tunnel: enabled
+{{- end }}
+```
+
+`.Profile` stops the render when several profiles are selected, because `eq
+.Profile "xdns"` would otherwise be false under a selection that holds `xdns`.
+Only a release that declares [`combinable`](manifest.md#combinable-profiles) can
+have several selected, so its templates use `.Profiles`. `.Profiles` and `has`
+need `compatibility.min_manager_version` of at least `0.15.0`.
 
 !!! danger "`.Secrets` holds paths, never values"
 

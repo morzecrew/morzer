@@ -195,7 +195,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `retention.attestations` | How many of the newest [attestations](attestations.md#keeping-fewer-of-them) this machine keeps; at least `1`. Absent keeps them all, and no release sets it. A statement a backup target does not have yet is never removed. |
 | `release.require_signature` | Refuse any release not signed by a key [`release trust`](release-commands.md#release-trust) lists. `true` needs a trusted key; `false` is refused while `update.auto_apply` is on, and is journalled. See [unattended updates](../operating/unattended-updates.md#turning-it-on). |
 | `installation.domains` | The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an `https://` URL. A change renders the configuration and re-creates every running service. |
-| `installation.profile` | The [deployment profile](manifest.md#runtimes) the release is rendered and started with, one the installed release declares. Absent, or empty, is the base files. A change on a running product applies the release under it. |
+| `installation.profile` | The [deployment profiles](manifest.md#runtimes) the release is rendered and started with, comma-separated; a selection the installed release can deploy. Absent, or empty, is the base files. A change on a running product applies the release under it. |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
@@ -241,6 +241,7 @@ release's proxy or yours, needs one before the name is served.
 
 ```sh
 morzer config set installation.profile=embedded
+morzer config set installation.profile=embedded,xdns   # several, where the release allows
 morzer config unset installation.profile     # the base files, as an install without --profile
 ```
 
@@ -257,12 +258,19 @@ While the product is stopped, or nothing is running, the change is recorded and
 rendered, and the next `morzer start` or `morzer apply` deploys it. A runtime
 that cannot say what is running refuses the change.
 
-A name the installed release does not declare is refused. `apply --profile` and
-`update --profile` still choose a profile for one run and leave the recorded one
-as it is; each says so when the two differ. An update or rollback to a release
-that does not declare the recorded profile is refused before it starts, even
-with `--profile`: change the profile first, to one both releases declare, or
-unset it.
+Several profiles are a comma list, where the release lists them as
+[`combinable`](manifest.md#combinable-profiles): any of those, plus at most one
+other. The order you name them in does not count. The release decides the
+order their files are layered in, and that is the order `config get` shows.
+Naming the same profiles in another order changes nothing and runs nothing.
+
+A name the installed release does not declare is refused, and so are two
+profiles it does not let run together. `apply --profile` and `update
+--profile` still choose a selection for one run and leave the recorded one as
+it is; each says so when the two differ. An update or rollback to a release
+that does not declare a recorded profile, or does not let the recorded ones run
+together, is refused before it starts, even with `--profile`: change the
+selection first, to one both releases accept, or unset it.
 
 ### `config diff`
 

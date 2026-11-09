@@ -110,6 +110,7 @@ runtimes:
 | --- | --- | :---: | --- |
 | `files` | list | ✅ | The files this runtime is declared with, release-relative. |
 | `profiles` | map | | Named deployment topologies; each is a list of *additional* files. |
+| `combinable` | list | | The profiles that may run together, in the order their files are layered. See [Combinable profiles](#combinable-profiles). |
 | `options` | map | | Settings this runtime understands and the manager does not. Keys are lower-case identifiers, values one short line. |
 
 One `files` field for every runtime, rather than a differently named key per
@@ -123,6 +124,50 @@ Deploying the wrong topology quietly is worse than refusing. For the same
 reason an update or rollback to a release that no longer declares an
 installation's profile is refused before it starts; the operator
 [changes the profile](parameters.md#changing-the-profile) first.
+
+### Combinable profiles
+
+An installation runs one profile unless the release lists some as
+`combinable`. A selection then holds any of those, plus at most one profile
+outside the list:
+
+```yaml
+runtimes:
+  compose:
+    files: [compose/compose.yaml]
+    profiles:
+      embedded: [compose/embedded.yaml]
+      external-db: [compose/external-db.yaml]
+      xdns: [compose/xdns.yaml]
+      xhttp-reality: [compose/xhttp-reality.yaml]
+    combinable: [xdns, xhttp-reality]
+compatibility:
+  min_manager_version: "0.15.0"
+```
+
+Here `embedded,xdns,xhttp-reality` is a selection and `embedded,external-db`
+is not: profiles outside the list are alternatives, and two of them never
+deploy together. A release without `combinable` runs one profile at a time,
+as before.
+
+The files are the base files, then the one profile outside the list, then the
+combinable ones **in `combinable` order**, whatever order the operator named
+them in. That order is yours to choose: where two overlays set the same key,
+the later one wins, and Compose merges the rest. A file already in the list is
+not passed twice.
+
+Each name must be one `profiles` declares, listed once, and lower-case letters,
+digits and hyphens, starting with a letter. `combinable` needs
+`compatibility.min_manager_version` of at least `0.15.0`, because an older
+manager refuses the field as unknown. So do `.Profiles` and `has` in a template
+([Variables](variables.md#the-render-context)), and `release verify` cannot tell
+you when a template uses them without the floor.
+
+To replace a combined profile with combinable ones, take two releases. The
+first declares `combinable` and **keeps** the combined profile, so an
+installation recording it can still update. Operators move to the
+combination with `morzer config set installation.profile=a,b`. The second
+release drops the combined profile.
 
 ### Options
 

@@ -181,6 +181,27 @@ the `db_host` parameter, which `compose.external-db.yaml` reads as
 `${WEB_PARAM_DB_HOST}`. A variable like that with no parameter behind it would
 fall back to its default on every machine, so `release verify` refuses one.
 
+`embedded` and `external-db` are alternatives: an installation runs one or the
+other. A part that can run beside either is an **overlay**, and the release
+says so with [`combinable`](../reference/manifest.md#combinable-profiles). This
+bundle declares none. One that published the backend's metrics would look like
+this:
+
+```yaml
+    profiles:
+      embedded: [compose/compose.embedded.yaml]
+      external-db: [compose/compose.external-db.yaml]
+      metrics: [compose/compose.metrics.yaml]
+    combinable: [metrics]
+```
+
+An operator then runs `--profile embedded,metrics`, and templates ask `has
+"metrics" .Profiles`. `combinable` needs `compatibility.min_manager_version` of
+at least `0.15.0`. A bundle that already ships a combined profile, such as
+`embedded-metrics`, drops it over two releases, not one. The first declares
+`combinable` and keeps the combined profile, so installations recording it can
+still update and move to `embedded,metrics`. The second removes it.
+
 ## Installing it
 
 ```sh

@@ -123,7 +123,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | Flag | Meaning |
 | --- | --- |
 | `--release` | Release bundle to stage during init. The product name is taken from its manifest. |
-| `--profile` | Deployment profile from the release manifest. |
+| `--profile` | Deployment profile from the release manifest. Repeat, or separate with commas, for several where the release lists them as [`combinable`](manifest.md#combinable-profiles). With `--release`, a selection the release cannot deploy is refused before anything is created. |
 | `--domain` | Public domain. Repeat for several; the first is canonical. |
 | `--recovery-recipient` | Offline age public key that can also decrypt the secret state. |
 | `--no-recovery-recipient` | Proceed without one. Losing this machine then loses its secrets. |
@@ -238,7 +238,7 @@ rather than repeating the work.
 
 | Flag | Meaning |
 | --- | --- |
-| `--profile` | Override the installation's deployment profile for this run; [`config set installation.profile`](parameters.md#changing-the-profile) keeps one. |
+| `--profile` | Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. [`config set installation.profile`](parameters.md#changing-the-profile) keeps a selection. |
 | `--startup` | Boot-time mode: skip pulls when images are local, skip migrations when the schema is current. |
 
 `--startup` is what the systemd unit uses. It exists so a machine rebooting
@@ -261,7 +261,7 @@ morzer update --to 1.3.0
 | `--to` | Install a version already in the release store, instead of a bundle path. |
 | `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
-| `--profile` | Override the installation's deployment profile for this run; [`config set installation.profile`](parameters.md#changing-the-profile) keeps one. |
+| `--profile` | Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. [`config set installation.profile`](parameters.md#changing-the-profile) keeps a selection. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
 | `--generate-secrets` | Generate the secrets the new release adds with a `generator`. Default `true`; `false` is recorded in the journal, and `--resume` keeps it. |
 | `--check` | Report whether a newer release exists, without installing anything. |
