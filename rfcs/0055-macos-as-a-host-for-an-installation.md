@@ -299,7 +299,8 @@ rendered-file check stays. What changes is stated and checked:
 - **Every render refuses on darwin while FileVault is off.** The check sits
   where `OwnerRefusal` does, first in the store's `Render`
   (`sopsage.go:450`), so no path that writes plaintext can miss it. Four
-  paths render today: `apply` (`apply.go:407`), `update`'s re-render
+  paths render today: `apply` (`apply.go:407`), a failed `update`'s
+  compensation, which renders the old release's secrets back
   (`update.go:1188`), `secret render` (`internal/cli/secret.go:241`), and the
   restart after `secret set`, `generate`, `rotate` and `edit`
   (`restartDependents`, `secret.go:490`).
