@@ -23,6 +23,8 @@ func TestATextValueIsNormalisedAndNotTrimmed(t *testing.T) {
 		{"a final newline", "a\nb\n", "a\nb"},
 		{"several final newlines", "a\nb\n\n\n", "a\nb"},
 		{"CRLF line endings", "a\r\nb\r\n", "a\nb"},
+		{"CR line endings", "a\rb\r", "a\nb"},
+		{"CR and CRLF mixed", "a\r\nb\rc", "a\nb\nc"},
 		{"leading indentation", "  key: 1\n  other: 2\n", "  key: 1\n  other: 2"},
 		{"a blank line inside", "a\n\nb", "a\n\nb"},
 		{"trailing spaces on a line", "a  \nb", "a  \nb"},

@@ -209,3 +209,17 @@ notifications), so a message never quotes a value an operator typed; a reason
 that would, goes in the hint or nowhere.
 
 Drift count: 0.
+
+## Review
+
+```divergence
+decision: 2
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-09T15:34:33Z
+attempt: 1
+claim: decision 2 turns CRLF into LF and says nothing of a lone CR. Kept, a value saved with classic Mac line endings, or a stray CR before the end, is one line to `LineCount`, `FirstLine` and `lines`, and a trailing CR survives the trailing-newline trim, so "every line ending becomes LF", which the docs and §5.1's intent say, is false for it. Every CR, alone or before LF, becomes LF.
+evidence: internal/domain/parameter.go:213
+action: departed
+proposal: ASSUMED — refines decision 2. `Parse` for `text` turns CRLF into LF, then any remaining CR into LF, before removing trailing newlines.
+```

@@ -202,15 +202,16 @@ func (p ParameterSpec) Parse(raw string) (string, error) {
 	}
 }
 
-// parseText normalises a text value: line endings become LF and trailing
-// newlines go, so an editor that adds a final newline and one that does not
-// save the same value, and an unchanged save is a no-op (RFC 0054 decision 2).
-// Nothing else is trimmed.
+// parseText normalises a text value: every line ending, CRLF or a lone CR,
+// becomes LF and trailing newlines go, so an editor that adds a final newline
+// and one that does not save the same value, and an unchanged save is a no-op
+// (RFC 0054 decision 2). Nothing else is trimmed.
 func parseText(raw string) (string, error) {
 	if err := checkTextBytes(raw); err != nil {
 		return "", err
 	}
-	value := strings.TrimRight(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	lf := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\r", "\n")
+	value := strings.TrimRight(lf, "\n")
 	if len(value) > int(TextParameterLimit) {
 		return "", Usage("the value is %s, and a text parameter holds at most %s",
 			ByteSize(len(value)), TextParameterLimit).
