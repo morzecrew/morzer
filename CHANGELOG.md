@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-09
+
+An installation can run several deployment profiles together, and a parameter
+can hold several lines as `type: text`, set from a file or in an editor. A
+bundle can ship its public key as `minisign.pub`, which `init` trusts on first
+use. Templates gain `.Profiles`, `has`, `lines` and `split`, and an unset
+optional secret renders as an empty file a service can mount.
+
+Upgrading moves installation state from schema 17 to 18, so a 0.14.0 manager
+refuses a machine 0.15.0 has run on. Operators, scripts and authors may notice:
+
+- `init --signing-key` refuses an unsigned release; pass
+  `--require-signature=false` to keep installing one. Given no key, `init`
+  trusts a key the release ships, and every later release must be signed by
+  it. `init --repair --release` now checks the release against the
+  installation's keys.
+
+- `installation.yaml` lists the profiles under `profiles`, and its `profile`
+  field is gone. `morzer config get installation.profile` prints the same
+  names comma-joined.
+
+- An unset optional secret has an empty file where it had none. A consumer
+  that tested whether the file exists should test whether it is empty.
+
+- `config list` and `config get` show a default as the deployment gets it, so
+  a port default of `08` lists as `8`, under `--json` too.
+
+- `init --profile` refuses a profile the release does not declare, where it
+  recorded it for the first `apply` to refuse.
+
+- A bundle declaring `combinable` profiles or a `text` parameter needs
+  `compatibility.min_manager_version: "0.15.0"`, which `release verify`
+  checks. So does one whose templates use `.Profiles`, `has`, `lines` or
+  `split`, or that relies on the empty optional secret file, and `release
+  verify` does not check that.
+
+Under `--json`, commands gain `profiles` and `shipped_key_id`, and no existing
+field changed meaning.
+
 ### Added
 
 - **A bundle can ship its public key as `minisign.pub`.** `release verify`,
@@ -1348,7 +1387,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.14.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/morzecrew/morzer/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/morzecrew/morzer/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/morzecrew/morzer/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/morzecrew/morzer/compare/v0.11.0...v0.12.0
