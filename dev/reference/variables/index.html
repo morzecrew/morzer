@@ -1717,6 +1717,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#split" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        split
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2112,6 +2123,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#split" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        split
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2449,6 +2471,21 @@ so it is not safe for this.</p>
 template whose body is the value, <code>{{ .Parameters.rules }}</code>, rendered to a
 target the Compose file mounts. <code>lines</code> needs
 <code>compatibility.min_manager_version</code> of at least <code>0.15.0</code>, as <code>text</code> does.</p>
+<h3 id="split">split<a class="headerlink" href="#split" title="Permanent link">&para;</a></h3>
+<p><code>split</code> is <code>join</code>'s counterpart: it turns a list held in one parameter into a
+list a template can <code>range</code> over. Each item is trimmed and an empty one is
+dropped, so <code>"a.example, b.example,"</code> gives two items:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">outbounds</span><span class="p">:</span>
+<span class="p p-Indicator">{{</span><span class="nv">- range $i</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">$server</span><span class="w"> </span><span class="p p-Indicator">:</span><span class="nv">= split "</span><span class="p p-Indicator">,</span><span class="s">"</span><span class="nv"> </span><span class="s">.Parameters.servers</span><span class="nv"> </span><span class="s">}}</span>
+<span class="w">  </span><span class="s">-</span><span class="nv"> </span><span class="s">tag:</span><span class="nv"> </span><span class="s">upstream-{{</span><span class="nv"> </span><span class="s">$i</span><span class="nv"> </span><span class="s">}}</span>
+<span class="w">    </span><span class="s">address:</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$server</span><span class="nv"> </span><span class="s">}}</span>
+<span class="s">{{-</span><span class="nv"> </span><span class="s">end</span><span class="nv"> </span><span class="s">}}</span>
+</code></pre></div>
+<p>The separator comes first, so it also reads as a pipeline:
+<code>.Parameters.servers | split ","</code>. An empty separator stops the render. An
+empty value gives no items, so a <code>range</code> renders nothing, and its <code>else</code>
+branch runs. <code>split</code> needs <code>compatibility.min_manager_version</code> of at least
+<code>0.15.0</code>.</p>
 <div class="admonition danger">
 <p class="admonition-title"><code>.Secrets</code> holds paths, never values</p>
 <p>A configuration file in <code>/etc</code> must never contain a credential. The render
