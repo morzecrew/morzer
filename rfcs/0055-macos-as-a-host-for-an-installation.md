@@ -318,6 +318,13 @@ rendered-file check stays. What changes is stated and checked:
   (`update.go:1188`), `secret render` (`internal/cli/secret.go:241`), and the
   restart after `secret set`, `generate`, `rotate` and `edit`
   (`restartDependents`, `secret.go:490`).
+- **A `secret` change checks the gate before it stores anything.** `secret
+  set`, `generate`, `rotate` and `edit` save the new value first and render
+  after (`rotate` at `secret.go:175-181`). With the check only in `Render`,
+  the stored value would change while the running services keep the old one,
+  and the command could not finish the change. So each of them runs the same
+  check before it stores, and the check in `Render` stays for every other
+  path.
 - **The override is a setting, `secrets.allow_unencrypted_disk`, not a
   flag** once the installation exists. The renders that matter most run
   unattended, `apply --startup` at boot and a scheduled update, and nobody is
@@ -519,12 +526,15 @@ claim.
   - the catch-up: a stamp older than the latest scheduled time starts the
     job once, a current stamp starts nothing, and metrics is never caught
     up.
-- **Secrets:** the FileVault gate at `init` before the identity is written,
-  and on each of the four render paths; `init --allow-unencrypted-disk`
-  recording the setting, and the setting that overrides it, journaled;
-  `doctor`'s darwin wording, an identity on a disk whose FileVault was turned
-  off included; the
-  ownership rule S2 decides, as a contract case per outcome.
+- **Secrets:**
+  - the FileVault gate at `init` before the identity is written, on each of
+    the four render paths, and before a `secret` change stores its value, so
+    a refused rotation leaves the stored value as it was;
+  - `init --allow-unencrypted-disk` recording the setting, and the setting
+    that overrides the gate, journaled;
+  - `doctor`'s darwin wording, an identity on a disk whose FileVault was
+    turned off included;
+  - the ownership rule S2 decides, as a contract case per outcome.
 - **The macOS lane** runs `pidStart`, `FilesystemType`, memory and space for
   real.
 - **The self-hosted lane** runs the acceptance run under the darwin layout:
@@ -645,7 +655,7 @@ say.
 | 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.platforms` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
 | 3 | `OPEN` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.platforms: {<profile>: [platform…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `platforms`, which changes a shape every bundle uses. Both need the 0.16.0 floor. |
 | 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. |
-| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off, since the age identity is on that disk too; `init` refuses with FileVault off before it writes the identity, unless `--allow-unencrypted-disk`, which records the setting below; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
+| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off, since the age identity is on that disk too; `init` refuses with FileVault off before it writes the identity, unless `--allow-unencrypted-disk`, which records the setting below; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it, and a `secret` change runs the same check before it stores the value. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
 | 7 | `OPEN` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. |
 | 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps. It rests on S4. |
