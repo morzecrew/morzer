@@ -33,7 +33,8 @@ func renderToDisk(targetDir string, schema domain.SecretSchema, set domain.Secre
 	for _, decl := range schema.Secrets {
 		value, ok := set.Get(decl.Name)
 		if !ok || value.IsEmpty() {
-			continue
+			// Rendered empty, as the real store does (#318).
+			value = domain.NewSecret("")
 		}
 		name := decl.FileName()
 		expected[name] = true
