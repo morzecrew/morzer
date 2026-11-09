@@ -295,7 +295,21 @@ rendered-file check stays. What changes is stated and checked:
   and does not say "mount a tmpfs".
 - `doctor` checks FileVault (`fdesetup status`) and **fails when it is
   off**. Decrypted secrets on an unencrypted disk are a credential anyone with
-  the disk can read.
+  the disk can read. So is the age identity, which `init` writes to
+  `EtcDir/age/identity` (`AgeIdentityFile`, `paths.go:107`), beside the state
+  it decrypts. Whoever has the disk and that file reads every secret, rendered
+  or not.
+- **`init` refuses on darwin while FileVault is off**, before any step
+  writes, so no identity is created on an unencrypted disk. Its
+  `--allow-unencrypted-disk` is the one flag form of the override: there is
+  no installation yet to hold a setting, so `init` records it as the setting
+  below, journaled with the rest of `init`.
+- **An identity already on disk when FileVault is turned off** cannot be
+  protected after the fact. `doctor` fails, and its hint says turning
+  FileVault back on encrypts the volume in place, and that a disk that left
+  the operator's hands meanwhile means the identity and every secret are to
+  be treated as exposed. On Linux the identity sits on an unchecked disk, and
+  this RFC leaves that as it is (§4).
 - **Every render refuses on darwin while FileVault is off.** The check sits
   where `OwnerRefusal` does, first in the store's `Render`
   (`sopsage.go:450`), so no path that writes plaintext can miss it. Four
@@ -305,8 +319,9 @@ rendered-file check stays. What changes is stated and checked:
   restart after `secret set`, `generate`, `rotate` and `edit`
   (`restartDependents`, `secret.go:490`).
 - **The override is a setting, `secrets.allow_unencrypted_disk`, not a
-  flag.** The renders that matter most run unattended, `apply --startup` at
-  boot and a scheduled update, and nobody is there to pass a flag. The store
+  flag** once the installation exists. The renders that matter most run
+  unattended, `apply --startup` at boot and a scheduled update, and nobody is
+  there to pass a flag. The store
   is given the setting when it is built. Setting it is a downgrade, so it
   runs as a journaled `config` operation, as turning
   `release.require_signature` off does (`signatureDropped`,
@@ -504,8 +519,11 @@ claim.
   - the catch-up: a stamp older than the latest scheduled time starts the
     job once, a current stamp starts nothing, and metrics is never caught
     up.
-- **Secrets:** the FileVault gate on each of the four render paths, and the
-  setting that overrides it, journaled; `doctor`'s darwin wording; the
+- **Secrets:** the FileVault gate at `init` before the identity is written,
+  and on each of the four render paths; `init --allow-unencrypted-disk`
+  recording the setting, and the setting that overrides it, journaled;
+  `doctor`'s darwin wording, an identity on a disk whose FileVault was turned
+  off included; the
   ownership rule S2 decides, as a contract case per outcome.
 - **The macOS lane** runs `pidStart`, `FilesystemType`, memory and space for
   real.
@@ -531,7 +549,7 @@ claim.
   names `/run` literally in Compose is not darwin-ready.
 - **Reference:**
   - `manifest.md` for both keys and the floor;
-  - `commands.md` for the refusal;
+  - `commands.md` for the refusal and `init --allow-unencrypted-disk`;
   - `parameters.md` for `secrets.allow_unencrypted_disk`;
   - the darwin `doctor` checks;
   - the launchd schedule forms beside the systemd ones.
@@ -627,7 +645,7 @@ say.
 | 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.platforms` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
 | 3 | `OPEN` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.platforms: {<profile>: [platform…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `platforms`, which changes a shape every bundle uses. Both need the 0.16.0 floor. |
 | 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. |
-| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
+| 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off, since the age identity is on that disk too; `init` refuses with FileVault off before it writes the identity, unless `--allow-unencrypted-disk`, which records the setting below; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
 | 7 | `OPEN` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. |
 | 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps. It rests on S4. |
