@@ -52,6 +52,10 @@ Two families take their names from your manifest:
 Parameter names are already restricted to lowercase, digits and underscores, so
 they only upper-case.
 
+A [text parameter](parameters.md#text-values) arrives whole, newlines
+included. The manager gives Compose its variables in the process environment,
+never through an env file, and Compose interpolates a multi-line value intact.
+
 ```yaml
 services:
   app:
@@ -157,6 +161,37 @@ dns_tunnel: enabled
 Only a release that declares [`combinable`](manifest.md#combinable-profiles) can
 have several selected, so its templates use `.Profiles`. `.Profiles` and `has`
 need `compatibility.min_manager_version` of at least `0.15.0`.
+
+### lines
+
+`lines` splits a [text parameter](parameters.md#text-values) into its lines
+for a `range`. An empty value is no lines:
+
+```yaml
+rules:
+{{- range lines .Parameters.rules }}
+  - {{ printf "%q" . }}
+{{- else }} []
+{{- end }}
+```
+
+The `else` branch renders `rules: []` for an empty value. Without it the key
+would have no value, which YAML reads as null rather than as an empty list.
+`printf "%q"` writes each line as a double-quoted string, so `a: b` stays a
+string and `hello # note` keeps its comment. `quote` escapes `"` but not `\`,
+so it is not safe for this.
+
+A fragment pasted whole keeps its indentation with `indent`:
+
+```yaml
+extra:
+{{ .Parameters.fragment | indent 2 }}
+```
+
+A product that reads a file rather than its own configuration gets one from a
+template whose body is the value, `{{ .Parameters.rules }}`, rendered to a
+target the Compose file mounts. `lines` needs
+`compatibility.min_manager_version` of at least `0.15.0`, as `text` does.
 
 !!! danger "`.Secrets` holds paths, never values"
 
