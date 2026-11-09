@@ -576,6 +576,12 @@
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
+          "combinable": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "files": {
             "items": {
               "type": "string"

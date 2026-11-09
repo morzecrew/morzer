@@ -87,13 +87,13 @@ func TestAProfileChangeAppliesTheReleaseUnderIt(t *testing.T) {
 	require.Greater(t, len(plan.Record.Steps), 2, "the plan does not show the converge")
 	assert.Equal(t, "restore-point", plan.Record.Steps[1].ID)
 	assert.Equal(t, "record-state", plan.Record.Steps[len(plan.Record.Steps)-1].ID)
-	assert.Equal(t, "embedded", installation(t, h).Profile, "a plan recorded the profile")
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles, "a plan recorded the profile")
 	assert.Len(t, h.Runtime.UpOptions, ups, "a plan started a service")
 
 	result, err := setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
 	require.NoError(t, err)
 	assert.Equal(t, "set installation.profile and applied demo 1.2.0 under the profile external-db", result.Summary)
-	assert.Equal(t, "external-db", installation(t, h).Profile)
+	assert.Equal(t, []string{"external-db"}, installation(t, h).Profiles)
 	assert.Contains(t, renderedApplication(t, h), "profile: external-db")
 
 	cfg, up := lastUp(t, h)
@@ -144,7 +144,7 @@ func TestUnsettingTheProfileReturnsToTheBaseFiles(t *testing.T) {
 		Unset: []string{"installation.profile"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, installation(t, h).Profile)
+	assert.Empty(t, installation(t, h).Profiles)
 	assert.Contains(t, renderedApplication(t, h), "profile: default")
 	cfg, up := lastUp(t, h)
 	assert.Equal(t, []string{"compose.yaml"}, composeFiles(cfg))
@@ -155,7 +155,7 @@ func TestUnsettingTheProfileReturnsToTheBaseFiles(t *testing.T) {
 	result, err := setSetting(t, h, false, map[string]string{"installation.profile": " "})
 	require.NoError(t, err)
 	assert.Contains(t, result.Summary, "under the base files")
-	assert.Empty(t, installation(t, h).Profile)
+	assert.Empty(t, installation(t, h).Profiles)
 }
 
 // A name the installed release does not declare is refused before anything is
@@ -172,7 +172,7 @@ func TestAnUndeclaredProfileIsRefusedWithNothingChanged(t *testing.T) {
 	assert.Contains(t, err.Error(), `unknown deployment profile "xdns"`)
 	assert.Contains(t, domain.AsError(err).Hint, "embedded, external-db")
 
-	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles)
 	assert.Contains(t, renderedApplication(t, h), "profile: embedded")
 	assert.Empty(t, configRecords(t, h))
 	assert.Len(t, h.Runtime.UpOptions, ups)
@@ -209,7 +209,7 @@ func TestAFailedProfileChangeBringsTheOldProfileBack(t *testing.T) {
 	assert.NotContains(t, composeFiles(cfg), "compose.external-db.yaml")
 	assert.True(t, up.RemoveOrphans, "the new profile's services were left running")
 	assert.True(t, up.ForceRecreate, "the undo left containers on the new profile's file")
-	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles)
 }
 
 // Under a stop the change is recorded and rendered, and nothing starts:
@@ -241,24 +241,24 @@ func TestAOneRunProfileLeavesTheStoredOneAndSaysSo(t *testing.T) {
 	applyBaseline(t, h)
 	warned := oneRunWarnings(h)
 
-	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{Profile: "external-db"})
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{Profiles: []string{"external-db"}})
 	require.NoError(t, err)
 	cfg, _ := lastUp(t, h)
 	assert.Contains(t, composeFiles(cfg), "compose.external-db.yaml")
-	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles)
 	require.Len(t, *warned, 1)
 	assert.Contains(t, (*warned)[0], "the installation keeps the profile embedded")
 	assert.Contains(t, (*warned)[0], "`morzer config set installation.profile=external-db`")
 
-	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{Profile: "embedded"})
+	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{Profiles: []string{"embedded"}})
 	require.NoError(t, err)
 	assert.Len(t, *warned, 1, "the stored profile, passed again, was called an override")
 
 	_, err = ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
-		Ref: stageUpgradeSource(t, h), Options: ops.Options{Profile: "external-db"},
+		Ref: stageUpgradeSource(t, h), Options: ops.Options{Profiles: []string{"external-db"}},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles)
 	require.Len(t, *warned, 2, "update --profile did not say it lasts the run")
 }
 
@@ -273,8 +273,8 @@ func TestAnUpdateToAReleaseWithoutTheProfileIsRefused(t *testing.T) {
 	applyBaseline(t, h)
 	src := patchedUpgradeSource(t, h, "      embedded: [compose/compose.embedded.yaml]\n", "")
 
-	for _, override := range []string{"", "external-db"} {
-		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Options: ops.Options{Profile: override}})
+	for _, override := range [][]string{nil, {"external-db"}} {
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Options: ops.Options{Profiles: override}})
 		require.Error(t, err, "--profile %q", override)
 		assert.Contains(t, err.Error(), `release 1.3.0 does not declare the profile "embedded" this installation uses`)
 		assert.Contains(t, domain.AsError(err).Hint, "it declares external-db")
@@ -322,7 +322,7 @@ func TestAProfileChangeRefusedAtPreflightKeepsTheOldProfile(t *testing.T) {
 
 	_, err := setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
 	require.Error(t, err)
-	assert.Equal(t, "embedded", installation(t, h).Profile, "a refused profile change stayed recorded")
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles, "a refused profile change stayed recorded")
 }
 
 // A runtime that cannot say what runs refuses a profile change. Counted as
@@ -337,7 +337,7 @@ func TestAProfileChangeTheRuntimeCannotAnswerForIsRefused(t *testing.T) {
 	_, err := setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot connect to the Docker daemon")
-	assert.Equal(t, "embedded", installation(t, h).Profile)
+	assert.Equal(t, []string{"embedded"}, installation(t, h).Profiles)
 	assert.Contains(t, renderedApplication(t, h), "profile: embedded")
 }
 
@@ -367,7 +367,7 @@ func TestAProfileChangedWhileWaitingForTheLockRefuses(t *testing.T) {
 			h.Locker.BeforeAcquire = func() {
 				h.Locker.BeforeAcquire = nil
 				inst := installation(t, h)
-				inst.Profile = "external-db"
+				inst.Profiles = []string{"external-db"}
 				require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
 			}
 
@@ -397,7 +397,7 @@ func TestAFailedUpdateUnderAnOverrideRestoresTheRecordedProfile(t *testing.T) {
 		}
 	}
 
-	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Options: ops.Options{Profile: "extra"}})
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Options: ops.Options{Profiles: []string{"extra"}}})
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "unknown deployment profile")
 	assert.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)

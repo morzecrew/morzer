@@ -160,7 +160,7 @@ func restartSteps(d *Deps, inst domain.Installation, rel domain.Release, service
 func (d *Deps) refuseUnstartedServices(
 	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
 ) error {
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return err
 	}

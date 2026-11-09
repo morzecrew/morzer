@@ -62,6 +62,21 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 			"sorted and deduplicated across runtimes")
 	})
 
+	// Combinable names carry a suffix, so alternatives and overlays read in
+	// one list (RFC 0053 decision 17).
+	t.Run("combinable profiles are marked", func(t *testing.T) {
+		out := render(domain.Manifest{
+			Metadata: base,
+			Runtimes: domain.Runtimes{"compose": {Files: []string{"compose.yaml"},
+				Profiles: map[string][]string{
+					"embedded": {"a.yaml"}, "xdns": {"x.yaml"}, "xhttp-reality": {"r.yaml"},
+				},
+				Combinable: []string{"xhttp-reality", "xdns"},
+			}},
+		})
+		assert.Contains(t, out, "embedded, xdns (combinable), xhttp-reality (combinable)")
+	})
+
 	t.Run("two runtimes, sorted, one of them plain", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,

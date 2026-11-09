@@ -71,7 +71,7 @@ func StatusDoc(d *ui.Doc, s ops.Status) *ui.Doc {
 		fields = append(fields, ui.Field{Label: "notify", Value: strings.Join(s.Notify, ", ")})
 	}
 	for _, f := range []ui.Field{
-		{Label: "profile", Value: s.Profile},
+		{Label: "profile", Value: strings.Join(s.Profiles, ", ")},
 		{Label: "url", Value: s.PublicURL},
 		{Label: "support", Value: s.SupportURL},
 	} {

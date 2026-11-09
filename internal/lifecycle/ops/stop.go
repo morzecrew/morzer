@@ -165,7 +165,7 @@ func stopSteps(d *Deps, inst domain.Installation, rel domain.Release, opID, reas
 			OnFailure:   engine.Compensate,
 			Timeout:     10 * time.Minute,
 			Execute: func(ctx context.Context, _ *engine.State) error {
-				cfg, err := d.runtimeConfig(rel, inst, "")
+				cfg, err := d.runtimeConfig(rel, inst, nil)
 				if err != nil {
 					return err
 				}

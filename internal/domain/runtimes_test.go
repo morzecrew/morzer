@@ -204,7 +204,7 @@ func TestResolvingAnUndeclaredRuntimeRefusesAndSaysWhatIsDeclared(t *testing.T) 
 	m.Runtimes = Runtimes{"compose": {Files: []string{"compose.yaml"}}}
 	rel := Release{Manifest: m, Root: "/opt/demo/releases/1"}
 
-	_, err := rel.RuntimeFilePaths("quadlet", "")
+	_, err := rel.RuntimeFilePaths("quadlet", nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support the quadlet runtime")
@@ -221,7 +221,7 @@ func TestResolvingADeclaredRuntimeReturnsItsFiles(t *testing.T) {
 	m.Runtimes = Runtimes{"quadlet": {Files: []string{"app.container"}}}
 	rel := Release{Manifest: m, Root: "/opt/demo/releases/1"}
 
-	paths, err := rel.RuntimeFilePaths("quadlet", "")
+	paths, err := rel.RuntimeFilePaths("quadlet", nil)
 
 	require.NoError(t, err)
 	require.Len(t, paths, 1)
@@ -236,7 +236,7 @@ func TestAnUnknownProfileRefusesUnderARuntimeDeclaration(t *testing.T) {
 		Profiles: map[string][]string{"prod": {"compose.prod.yaml"}},
 	}
 
-	_, err := decl.FilesFor("staging")
+	_, err := decl.FilesFor([]string{"staging"})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown deployment profile")
@@ -251,7 +251,7 @@ func TestAProfileFileAlreadyListedIsNotPassedTwice(t *testing.T) {
 		Profiles: map[string][]string{"prod": {"shared.yaml", "compose.prod.yaml"}},
 	}
 
-	files, err := decl.FilesFor("prod")
+	files, err := decl.FilesFor([]string{"prod"})
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"compose.yaml", "shared.yaml", "compose.prod.yaml"}, files,

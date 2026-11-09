@@ -208,8 +208,9 @@ type Options struct {
 	// journaled so an incident review can see the choice.
 	SkipBackup bool
 
-	// Profile overrides the installation's deployment profile.
-	Profile string
+	// Profiles overrides the installation's selection of deployment
+	// profiles for this run; none means the recorded one.
+	Profiles []string
 
 	// ForceRecreate replaces every container when the services start, even
 	// one whose definition did not change. Set by a profile change alone: a
@@ -735,7 +736,7 @@ func (d *Deps) runtimeHookVars(rel domain.Release, inst domain.Installation) map
 	if !ok {
 		return nil
 	}
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return nil
 	}
@@ -936,7 +937,12 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 // The stored profile whatever the flag says (#286): a run under an override
 // leaves the next plain `apply`, the boot unit's included, rendering the stored
 // one against a release with no profile of that name.
-func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, override string) error {
+//
+// A recorded selection the release declares and will not run together is
+// refused the same way (RFC 0053 decision 10), with no fallback, so a topology
+// never changes as a side effect of an update: RFC 0042 decision 17 applied to
+// a set.
+func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, override []string) error {
 	decl, ok := rel.Manifest.DeclaredRuntimes()[inst.RuntimeName()]
 	if !ok {
 		return nil // runtimeConfig refuses an undeclared runtime with its own error
@@ -945,39 +951,65 @@ func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, overr
 	if names := slices.Sorted(maps.Keys(decl.Profiles)); len(names) > 0 {
 		declares = "it declares " + strings.Join(names, ", ")
 	}
-	if _, ok := decl.Profiles[inst.Profile]; inst.Profile != "" && !ok {
-		return domain.IncompatibleError(nil,
-			"release %s does not declare the profile %q this installation uses", rel.Version(), inst.Profile).
-			WithHint("%s. Change the installation's first, with `morzer config set installation.profile=<name>` "+
-				"to one both releases declare, or `morzer config unset installation.profile` for the base files",
-				declares)
+	for _, name := range inst.Profiles {
+		if _, ok := decl.Profiles[name]; !ok {
+			return domain.IncompatibleError(nil,
+				"release %s does not declare the profile %q this installation uses", rel.Version(), name).
+				WithHint("%s. Change the installation's first, with `morzer config set installation.profile=<name>` "+
+					"to one both releases declare, or `morzer config unset installation.profile` for the base files",
+					declares)
+		}
 	}
-	if _, ok := decl.Profiles[override]; override != "" && !ok {
+	if _, err := decl.Selection(inst.Profiles); err != nil {
+		together := "it runs one of them at a time"
+		if len(decl.Combinable) > 0 {
+			together = "of those, only " + strings.Join(decl.Combinable, ", ") + " run beside one other"
+		}
 		return domain.IncompatibleError(nil,
-			"release %s does not declare the profile %q", rel.Version(), override).
-			WithHint("%s", declares)
+			"release %s does not let %s run together", rel.Version(), domain.JoinAnd(inst.Profiles)).
+			WithHint("%s, and %s. Change the installation's first, with `morzer config set "+
+				"installation.profile=<names>` to a selection both releases accept, or `morzer config unset "+
+				"installation.profile` for the base files", declares, together)
 	}
-	return nil
+	for _, name := range override {
+		if _, ok := decl.Profiles[name]; name != "" && !ok {
+			return domain.IncompatibleError(nil,
+				"release %s does not declare the profile %q", rel.Version(), name).
+				WithHint("%s", declares)
+		}
+	}
+	_, err := rel.Selection(inst.RuntimeName(), override)
+	return err
 }
 
 // warnOneRunProfile says that a `--profile` other than the installation's lasts
 // this run (#286). Never persisted: rehearsing a topology once is what the flag
 // is for.
-func (d *Deps) warnOneRunProfile(inst domain.Installation, override string) {
-	if override == "" || override == inst.Profile {
+func (d *Deps) warnOneRunProfile(inst domain.Installation, override []string) {
+	if len(override) == 0 || sameProfiles(override, inst.Profiles) {
 		return
 	}
+	setting := strings.Join(override, ",")
 	d.warnf("--profile %s is for this run only: the installation keeps %s, which the next "+
 		"`morzer apply` renders. `morzer config set installation.profile=%s` keeps it",
-		override, profileName(inst.Profile), override)
+		setting, profileName(inst.Profiles), setting)
 }
 
-// profileName names a profile in a sentence, the empty one included.
-func profileName(profile string) string {
-	if profile == "" {
+// profileName names a selection in a sentence, the empty one included.
+func profileName(profiles []string) string {
+	switch len(profiles) {
+	case 0:
 		return "the base files"
+	case 1:
+		return "the profile " + profiles[0]
 	}
-	return "the profile " + profile
+	return "the profiles " + domain.JoinAnd(profiles)
+}
+
+// sameProfiles compares two selections as sets: the release decides the
+// order, so a reordering is no change (RFC 0053 decision 3).
+func sameProfiles(a, b []string) bool {
+	return slices.Equal(slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b)))
 }
 
 // resolveRuntimeOptions returns options as the runtime will actually read them.
@@ -1069,10 +1101,11 @@ func (d *Deps) checkRuntimeOptions(inst domain.Installation, declared map[string
 			"installation and `restore` into it")
 }
 
-// runtimeConfig builds the runtime configuration for a release and profile.
-func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profile string) (ports.RuntimeConfig, error) {
-	if profile == "" {
-		profile = inst.Profile
+// runtimeConfig builds the runtime configuration for a release and a selection
+// of profiles, none meaning the installation's.
+func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profiles []string) (ports.RuntimeConfig, error) {
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
 	}
 
 	// Decision 5: an installation whose runtime this manager cannot drive is
@@ -1089,7 +1122,12 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 				"transition; a manager built for a different runtime cannot operate it")
 	}
 
-	files, err := rel.RuntimeFilePaths(inst.RuntimeName(), profile)
+	// In layering order, which is what `<PRODUCT>_PROFILE` joins.
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles)
+	if err != nil {
+		return ports.RuntimeConfig{}, err
+	}
+	files, err := rel.RuntimeFilePaths(inst.RuntimeName(), profiles)
 	if err != nil {
 		return ports.RuntimeConfig{}, err
 	}
@@ -1108,7 +1146,7 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 		"CONFIG_FILE": d.Paths.ApplicationFile(),
 		"RELEASE_DIR": rel.Root,
 		"VERSION":     rel.Version().String(),
-		"PROFILE":     profile,
+		"PROFILE":     strings.Join(profiles, ","),
 	}
 	if len(inst.Domains) > 0 {
 		values["DOMAIN"] = inst.Domains[0]
@@ -1213,7 +1251,7 @@ func imageVarName(name string) string {
 func (d *Deps) templateData(
 	inst domain.Installation,
 	rel domain.Release,
-	profile string,
+	profiles []string,
 	schema domain.SecretSchema,
 ) (ports.TemplateData, error) {
 	// Secret *references*: a name to the path of its rendered file. The
@@ -1224,8 +1262,12 @@ func (d *Deps) templateData(
 		secretPaths[decl.Name] = d.Paths.SecretsRenderDir() + "/" + decl.FileName()
 	}
 
-	if profile == "" {
-		profile = inst.Profile
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles)
+	if err != nil {
+		return ports.TemplateData{}, err
 	}
 
 	params, err := d.parameters(rel, inst)
@@ -1242,7 +1284,7 @@ func (d *Deps) templateData(
 			Root:    rel.Root,
 			Vendor:  rel.Manifest.Metadata.Vendor,
 		},
-		Profile: profile,
+		Profiles: profiles,
 		Paths: ports.PathInfo{
 			Etc:       d.Paths.EtcDir,
 			Var:       d.Paths.VarDir,
@@ -1263,7 +1305,7 @@ func (d *Deps) templateData(
 // which needs it for the few commands that touch the runtime directly --
 // restarting the services that depend on a rotated secret, above all.
 func (d *Deps) RuntimeConfigFor(rel domain.Release, inst domain.Installation) (ports.RuntimeConfig, error) {
-	return d.runtimeConfig(rel, inst, "")
+	return d.runtimeConfig(rel, inst, nil)
 }
 
 // ResolveBackup exposes backup selection to the CLI layer.

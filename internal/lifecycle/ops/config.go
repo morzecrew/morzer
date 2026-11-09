@@ -434,7 +434,7 @@ func stepRecreateServices(
 func (d *Deps) recreate(
 	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
 ) error {
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 	if err != nil {
 		return err
 	}

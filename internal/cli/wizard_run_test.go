@@ -325,7 +325,7 @@ func TestTheWizardOffersTheProfilesTheBundleDeclares(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "embedded", got.Profile)
+	assert.Equal(t, []string{"embedded"}, got.Profiles)
 	assert.Contains(t, shown.String(), "Deployment profile")
 	assert.Contains(t, shown.String(), "external-db")
 }
@@ -340,7 +340,7 @@ func TestTheWizardOffersNoProfileFirst(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Empty(t, got.Profile, "the first option chose a profile")
+	assert.Empty(t, got.Profiles, "the first option chose a profile")
 	assert.Contains(t, shown.String(), "1. none, the base files")
 }
 
@@ -456,7 +456,7 @@ func TestTheWizardDoesNotAskTheProfileOnARepair(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Empty(t, got.Profile)
+	assert.Empty(t, got.Profiles)
 	assert.NotContains(t, shown.String(), "Deployment profile")
 }
 
@@ -489,6 +489,6 @@ func TestTheWizardOffersTheProfilesOfARegistryReference(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, "xdns", got.Profile)
+	assert.Equal(t, []string{"xdns"}, got.Profiles)
 	assert.Contains(t, shown.String(), "Deployment profile")
 }

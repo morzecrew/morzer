@@ -354,9 +354,10 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 		"Product":       "from the flag; --product is required and names which installation",
 		"CreatedAt":     "carried: a repaired machine was not created today",
 
-		"Mode":    "carried unless --mode is given, and a change is refused by the state store",
-		"Profile": "carried unless --profile is given",
-		"Domains": "carried unless --domain is given",
+		"Mode":     "carried unless --mode is given, and a change is refused by the state store",
+		"Profiles": "carried unless --profile is given",
+		"Profile":  "schema 17's single profile, emptied by the migration and never written",
+		"Domains":  "carried unless --domain is given",
 
 		"Runtime": "carried from the existing state, always. Rebuilding it from " +
 			"the release would let a vendor who changed runtimes between " +

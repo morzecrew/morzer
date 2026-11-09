@@ -19,6 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and requires every later release to be signed by it. `update` never trusts
   a shipped key, and names one it refuses by its id.
 
+- **An installation can run several deployment profiles.** A release lists
+  the ones that may run together under `runtimes.<name>.combinable`, which
+  needs `compatibility.min_manager_version: "0.15.0"`. `config set
+  installation.profile` and `--profile` then take a comma list.
+
+- **Templates get `.Profiles` and `has`.** `has "xdns" .Profiles` asks about
+  one profile of a selection, and `.Profile` fails the render when several
+  are selected. `<PRODUCT>_PROFILE` joins the names with commas.
+
+- **`status --json` and `installation describe` add a `profiles` list.**
+  `profile` keeps the comma-joined form `config set` takes. Installation state
+  moves to schema 18, so an older manager refuses a machine this one touched.
+
+- **`init --profile` is checked against the release it stages.** A profile
+  the release does not declare was recorded, and refused by the first
+  `apply`.
+
 ### Changed
 
 - **`init --signing-key` requires a signature.** A trusted key, given or

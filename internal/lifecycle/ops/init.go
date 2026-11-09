@@ -30,8 +30,10 @@ type InitOptions struct {
 	// later.
 	ReleasePath string
 
-	Profile string
-	Domains []string
+	// Profiles is the selection of deployment profiles to record, checked
+	// against the release when one is staged (RFC 0053 decision 15).
+	Profiles []string
+	Domains  []string
 
 	// Mode declares this machine a sandbox. Empty means production.
 	//
@@ -96,6 +98,9 @@ type InitOptions struct {
 // partially-running deployment.
 func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	if err := domain.ValidateProductName(opts.Product); err != nil {
+		return Result{}, err
+	}
+	if err := domain.CheckProfileSelection(opts.Profiles); err != nil {
 		return Result{}, err
 	}
 
@@ -603,7 +608,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		Product:       opts.Product,
 		CreatedAt:     domain.NewTime(d.now()),
 		Mode:          opts.Mode,
-		Profile:       opts.Profile,
+		Profiles:      opts.Profiles,
 		Domains:       opts.Domains,
 		Policy:        domain.DefaultPolicy(),
 		Parameters:    opts.Parameters,
@@ -613,6 +618,17 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		return domain.Installation{}, err
 	}
 	inst.Runtime = runtime
+	// Checked against the staged release and kept in its layering order, as
+	// `config set` stores it (RFC 0053 decisions 3 and 15). Until now a
+	// selection was recorded unchecked and refused by the first `apply`;
+	// refused here, no installation state is written.
+	if rel, ok := st.Get(engine.KeyRelease); ok && len(inst.Profiles) > 0 {
+		if r, ok := rel.(domain.Release); ok {
+			if inst.Profiles, err = r.Selection(inst.RuntimeName(), inst.Profiles); err != nil {
+				return domain.Installation{}, err
+			}
+		}
+	}
 	// What the runtime was told, recorded beside which runtime it is. These
 	// name the volumes, so a later release that changes them is a release
 	// pointing this deployment at storage it has never written to -- and the
@@ -695,8 +711,8 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		// A repair is not a start: an operator repairing a machine they
 		// stopped still wants it down until `morzer start` (RFC 0040).
 		inst.Stopped = existing.Stopped
-		if opts.Profile == "" {
-			inst.Profile = existing.Profile
+		if len(opts.Profiles) == 0 {
+			inst.Profiles = existing.Profiles
 		}
 		if len(opts.Domains) == 0 {
 			inst.Domains = existing.Domains

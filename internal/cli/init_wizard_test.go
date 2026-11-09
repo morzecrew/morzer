@@ -110,7 +110,7 @@ func TestEquivalentCommandReproducesTheRun(t *testing.T) {
 	got := EquivalentCommand(ops.InitOptions{
 		Product:           "demo",
 		ReleasePath:       "./bundle",
-		Profile:           "embedded",
+		Profiles:          []string{"embedded"},
 		Domains:           []string{"demo.example", "www.demo.example"},
 		RecoveryRecipient: "age1abc",
 		SigningKeys:       []string{"RWQabc"},

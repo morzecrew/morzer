@@ -591,7 +591,7 @@ func stepTakeDownProject(
 				// A configuration refused stays refused: it is how a
 				// runtime this manager does not drive is told apart,
 				// and by name would take down another adapter's project.
-				cfg, err := d.runtimeConfig(rel, inst, "")
+				cfg, err := d.runtimeConfig(rel, inst, nil)
 				if err != nil {
 					return err
 				}

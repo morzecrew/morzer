@@ -129,7 +129,7 @@ func TestAnInstallationIsRefusedByAManagerBuiltForAnotherRuntime(t *testing.T) {
 		Root: "/opt/demo/releases/1",
 	}
 
-	_, err := d.runtimeConfig(rel, inst, "")
+	_, err := d.runtimeConfig(rel, inst, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "runs on the quadlet runtime")
@@ -148,7 +148,7 @@ func TestAMatchingRuntimeStillBuildsAConfiguration(t *testing.T) {
 		Root: "/opt/demo/releases/1",
 	}
 
-	cfg, err := d.runtimeConfig(rel, inst, "")
+	cfg, err := d.runtimeConfig(rel, inst, nil)
 
 	require.NoError(t, err)
 	assert.Len(t, cfg.Files, 1)

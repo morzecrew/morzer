@@ -68,7 +68,8 @@ func sandboxClassification() map[string]sandboxVerdict {
 			"different project and rehearse a restore against volumes " +
 			"the real machine does not use"),
 
-		"Profile": keep("which topology to deploy; a sandbox needs one to run"),
+		"Profiles": keep("which topology to deploy; a sandbox needs one to run"),
+		"Profile":  keep("schema 17's single profile, which the migration empties"),
 		"Domains": keep("the names the product is served under -- a sandbox that " +
 			"lost them renders nothing, and it cannot serve them anyway " +
 			"without DNS pointing at it"),

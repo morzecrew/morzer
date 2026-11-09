@@ -391,6 +391,16 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// before. The bump is for the write path, as every other
 			// field's was.
 			i.SchemaVersion = 17
+		case 17:
+			// 17 -> 18 replaced `profile` with `profiles` (RFC 0053
+			// decision 2), the first migration that converts a value.
+			// A profile becomes a one-element selection, a name with a
+			// comma included: it keeps deploying what it deployed.
+			if i.Profile != "" {
+				i.Profiles = []string{i.Profile}
+				i.Profile = ""
+			}
+			i.SchemaVersion = 18
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

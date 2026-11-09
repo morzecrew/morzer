@@ -25,7 +25,7 @@ func newInitCommand(app *App) *cobra.Command {
 	var (
 		product        string
 		releasePath    string
-		profile        string
+		profiles       []string
 		domains        []string
 		recoveryKey    string
 		noRecoveryKey  bool
@@ -128,7 +128,7 @@ func newInitCommand(app *App) *cobra.Command {
 				Mode:              parsedMode,
 				Product:           product,
 				ReleasePath:       releasePath,
-				Profile:           profile,
+				Profiles:          profileFlag(profiles),
 				Domains:           domains,
 				RecoveryRecipient: recoveryKey,
 				NoRecoveryKey:     noRecoveryKey,
@@ -225,7 +225,8 @@ func newInitCommand(app *App) *cobra.Command {
 		"set a release parameter, as name=value; repeat for several")
 	f.StringVar(&product, "product", "", "product name; taken from the release manifest when --release is given")
 	f.StringVar(&releasePath, "release", "", "release bundle to stage during init")
-	f.StringVar(&profile, "profile", "", "deployment profile from the release manifest")
+	f.StringSliceVar(&profiles, "profile", nil,
+		"deployment profile from the release manifest; repeat, or separate with commas, for several")
 	f.StringSliceVar(&domains, "domain", nil, "public domain; repeat for several, the first is canonical")
 	f.StringVar(&recoveryKey, "recovery-recipient", "", "offline age public key that can decrypt the secret state")
 	f.BoolVar(&noRecoveryKey, "no-recovery-recipient", false,
@@ -251,8 +252,8 @@ func newInitCommand(app *App) *cobra.Command {
 
 func newApplyCommand(app *App) *cobra.Command {
 	var (
-		startup bool
-		profile string
+		startup  bool
+		profiles []string
 	)
 
 	cmd := &cobra.Command{
@@ -265,7 +266,7 @@ func newApplyCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.operationOptions()
 			opts.Startup = startup
-			opts.Profile = profile
+			opts.Profiles = profileFlag(profiles)
 
 			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				return ops.Apply(ctx, app.Deps, opts)
@@ -276,7 +277,8 @@ func newApplyCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVar(&startup, "startup", false,
 		"boot-time mode: skip pulls when images are local, skip migrations when the schema is current")
-	f.StringVar(&profile, "profile", "", "override the installation's deployment profile for this run")
+	f.StringSliceVar(&profiles, "profile", nil,
+		"override the installation's deployment profiles for this run; repeat, or separate with commas, for several")
 
 	return cmd
 }
@@ -292,7 +294,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 		skipBackup bool
 		generate   bool
 		digest     string
-		profile    string
+		profiles   []string
 		to         string
 		allowOlder bool
 	)
@@ -316,7 +318,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := app.operationOptions()
-			opts.Profile = profile
+			opts.Profiles = profileFlag(profiles)
 			opts.SkipBackup = skipBackup
 			opts.NoGenerateSecrets = !generate
 
@@ -456,7 +458,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		"generate the secrets the new release adds with a generator; false leaves them to you")
 	f.StringVar(&digest, "digest", "",
 		"expected bundle content digest; a mismatch refuses the update")
-	f.StringVar(&profile, "profile", "", "override the installation's deployment profile for this run")
+	f.StringSliceVar(&profiles, "profile", nil,
+		"override the installation's deployment profiles for this run; repeat, or separate with commas, for several")
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&allowOlder, "allow-older", false,
 		"install a release older than the one running, which is otherwise refused; recorded in the journal")
@@ -1340,4 +1343,14 @@ func (a *App) releaseManifest(ctx context.Context, releasePath string) (domain.M
 		return domain.Manifest{}, err
 	}
 	return resolved.Manifest, nil
+}
+
+// profileFlag is `--profile` as given, a name, a comma list or the flag
+// repeated, with each name trimmed as `config set installation.profile` trims
+// it (RFC 0053 decision 8).
+func profileFlag(values []string) []string {
+	for i := range values {
+		values[i] = strings.TrimSpace(values[i])
+	}
+	return values
 }

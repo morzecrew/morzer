@@ -2,6 +2,7 @@ package gotemplate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -38,7 +39,7 @@ func SyntheticData(rel domain.Release, schema domain.SecretSchema) ports.Templat
 		SchemaVersion: domain.InstallationSchemaVersion,
 		ID:            "00000000-0000-0000-0000-000000000000",
 		Product:       product,
-		Profile:       syntheticProfile(rel),
+		Profiles:      syntheticProfiles(rel),
 		Domains:       []string{product + ".example"},
 	}
 
@@ -56,7 +57,7 @@ func SyntheticData(rel domain.Release, schema domain.SecretSchema) ports.Templat
 			Root:    rel.Root,
 			Vendor:  syntheticVendor(rel),
 		},
-		Profile: inst.Profile,
+		Profiles: inst.Profiles,
 		Paths: ports.PathInfo{
 			Etc:       paths.EtcDir,
 			Var:       paths.VarDir,
@@ -73,7 +74,15 @@ func SyntheticData(rel domain.Release, schema domain.SecretSchema) ports.Templat
 	}
 }
 
-// syntheticProfile picks a profile the release actually declares.
+// syntheticProfiles picks a selection the release actually declares: its first
+// profile outside `combinable`, then every combinable one, in layering order
+// (RFC 0053 decision 13, as the log of its build refines it).
+//
+// All of them together because that is the branch an operator reaches and the
+// vendor's CI otherwise never renders. The other profile with them because
+// `combinable: [metrics]` beside `embedded` is otherwise rendered as `metrics`
+// alone, and a `.Profile` left behind in the bundle passes here and fails an
+// operator's `embedded,metrics`. Two names or more make `.Profile` fail.
 //
 // A declared one rather than an invented one because `{{ if eq .Profile "ha" }}`
 // is a branch a vendor writes, and a name no profile block matches would take
@@ -81,15 +90,19 @@ func SyntheticData(rel domain.Release, schema domain.SecretSchema) ports.Templat
 // rather than whatever the map yields, so the same branch is exercised on every
 // run: a check that rendered a different profile each time would report a
 // failure that disappears when someone looks into it.
-func syntheticProfile(rel domain.Release) string {
-	names := rel.Manifest.ProfileNames()
-	if len(names) == 0 {
-		// A release declaring no profiles installs with none, so this is
-		// the honest value rather than a placeholder -- and the empty
-		// string is what such a template sees in the field.
-		return ""
+func syntheticProfiles(rel domain.Release) []string {
+	combinable := rel.Manifest.CombinableNames()
+	// A release declaring no profiles installs with none, so nil is the
+	// honest value rather than a placeholder -- and the empty string is what
+	// such a template sees in `.Profile`.
+	var out []string
+	for _, name := range rel.Manifest.ProfileNames() {
+		if !slices.Contains(combinable, name) {
+			out = append(out, name)
+			break
+		}
 	}
-	return names[0]
+	return append(out, combinable...)
 }
 
 func syntheticVendor(rel domain.Release) string {

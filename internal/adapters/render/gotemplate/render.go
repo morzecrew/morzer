@@ -147,7 +147,7 @@ func renderHint(err error) string {
 	switch {
 	case strings.Contains(msg, "map has no entry for key"):
 		return "the template referenced a key that the render context does not define. " +
-			"Available top-level fields: Installation, Release, Profile, Paths, Secrets, Domains, Parameters"
+			"Available top-level fields: Installation, Release, Profile, Profiles, Paths, Secrets, Domains, Parameters"
 	case strings.Contains(msg, "can't evaluate field"):
 		return "the template referenced a field that does not exist on that type; " +
 			"check the field name and its capitalisation"
@@ -165,8 +165,11 @@ func renderHint(err error) string {
 type view struct {
 	Installation installationView
 	Release      ports.ReleaseInfo
-	Profile      string
-	Paths        ports.PathInfo
+
+	// Profiles is the effective selection, never nil, so `has` and
+	// `range` need no guard. `.Profile` is the method below.
+	Profiles []string
+	Paths    ports.PathInfo
 
 	// Secrets maps a secret name to the path of its rendered file.
 	// Templates get references, never values: a config file in /etc must
@@ -181,15 +184,28 @@ type view struct {
 // is deliberately less than the installation holds: identity and addressing,
 // not policy, parameters or machine identity.
 type installationView struct {
-	ID      string
-	Product string
-	Profile string
-	Domains []string
+	ID       string
+	Product  string
+	Profiles []string
+	Domains  []string
 
 	// Domain is the canonical name, the overwhelmingly common case. Having
 	// it saves every template writing `index .Installation.Domains 0`.
 	Domain string
 	URL    string
+}
+
+// Profile is the effective profile when there is at most one, and fails the
+// render with several (RFC 0053 decision 6).
+func (v view) Profile() (string, error) {
+	return ports.OneProfile(".Profile", v.Profiles)
+}
+
+// Profile is the recorded profile under the same rule as `.Profile`, so `eq
+// .Installation.Profile "x"` cannot quietly be false under a selection holding
+// x either.
+func (v installationView) Profile() (string, error) {
+	return ports.OneProfile(".Installation.Profile", v.Profiles)
 }
 
 func newView(d ports.TemplateData) view {
@@ -210,15 +226,15 @@ func newView(d ports.TemplateData) view {
 	}
 	return view{
 		Installation: installationView{
-			ID:      d.Installation.ID,
-			Product: d.Installation.Product,
-			Profile: d.Installation.Profile,
-			Domains: d.Installation.Domains,
-			Domain:  domain0,
-			URL:     d.Installation.PublicURL(),
+			ID:       d.Installation.ID,
+			Product:  d.Installation.Product,
+			Profiles: orEmpty(d.Installation.Profiles),
+			Domains:  d.Installation.Domains,
+			Domain:   domain0,
+			URL:      d.Installation.PublicURL(),
 		},
 		Release:    d.Release,
-		Profile:    d.Profile,
+		Profiles:   orEmpty(d.Profiles),
 		Paths:      d.Paths,
 		Secrets:    secrets,
 		Domains:    d.Domains,
@@ -267,7 +283,9 @@ func funcs() template.FuncMap {
 		"lower":    strings.ToLower,
 		"trim":     strings.TrimSpace,
 		"contains": strings.Contains,
-		"replace":  strings.ReplaceAll,
+		// has is sprig's argument order: `has "xdns" .Profiles`.
+		"has":     func(needle string, haystack []string) bool { return slices.Contains(haystack, needle) },
+		"replace": strings.ReplaceAll,
 
 		"indent": func(spaces int, s string) string {
 			pad := strings.Repeat(" ", spaces)
@@ -280,6 +298,13 @@ func funcs() template.FuncMap {
 			return strings.Join(lines, "\n")
 		},
 	}
+}
+
+func orEmpty(names []string) []string {
+	if names == nil {
+		return []string{}
+	}
+	return names
 }
 
 func isEmpty(v any) bool {

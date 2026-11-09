@@ -201,7 +201,7 @@ func (h *harness) install() domain.Installation {
 		ID:            "inst_01TESTINSTALLATION",
 		Product:       "demo",
 		CreatedAt:     domain.NewTime(h.Deps.Now()),
-		Profile:       "embedded",
+		Profiles:      []string{"embedded"},
 		Domains:       []string{"demo.example"},
 		Policy:        domain.DefaultPolicy(),
 	}
