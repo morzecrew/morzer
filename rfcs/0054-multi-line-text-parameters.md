@@ -237,9 +237,13 @@ a no-op.
   `config set`, where it combines with `name=value` arguments in one
   operation, and on `init`, beside `--set`. Naming the same parameter twice
   in one command is refused, as `ParseAssignments` already refuses it. The
-  flag takes any parameter type, since the value goes through the type's
-  `Parse` either way. A dotted name is refused here: installation settings
-  have no file form (§8).
+  flag takes any parameter type. Before the type's `Parse` runs, it refuses
+  a file holding a NUL byte or invalid UTF-8, whatever the type. `string`
+  accepts both today. A NUL would stop every Compose call and hook, and
+  invalid bytes would change on the state's first save (§5.1). A file is the
+  first way either could realistically arrive, so the refusal sits at the
+  file boundary, and `string` itself is not narrowed (decision 15). A dotted
+  name is refused here: installation settings have no file form (§8).
 - **`init`'s equivalent command** prints `--set-file name=<path>` for a value
   that came from a file, never the value itself.
 
@@ -423,9 +427,10 @@ $ morzer config edit rules
   rendered YAML file, so a text value pasted into a scalar position without
   `indent` is still found by the product, not by the manager. This is the
   same as for every template today.
-- **Refusing invalid UTF-8 and NUL in `string`.** The same hazards apply
-  there, but `--set-file` is the first way they could arrive in practice.
-  Narrowing `string` falls under decision 15.
+- **Refusing invalid UTF-8 in a `string` given as `name=value`.**
+  `--set-file` refuses it, and NUL, for every type (§5.2). A shell argument
+  cannot hold a NUL, but `$'\xff'` can hold invalid UTF-8. Refusing that in
+  `string` itself would narrow the type, which falls under decision 15.
 
 ## 9. Risks
 
@@ -468,7 +473,7 @@ floor's value is set by whichever manager release ships this.
 | 6 | `ASSUMED` | Templates get `.Parameters.<name>` whole and a new `lines` function, which returns an empty list for an empty value. sprig's `splitList` is not added: its empty-value case yields one empty element. |
 | 7 | `ASSUMED` | `config edit <name>` takes one `text` parameter and needs a terminal. It opens the effective value alone, plus a final newline, in a temporary directory that is removed afterwards. It follows RFC 0003 decision 20: an unchanged or emptied file changes nothing. A saved change is the `config set` operation. Other types are refused with a hint naming `config set`. |
 | 8 | `ASSUMED` | `config edit` holds no lock while the editor is open, and does not check whether the value changed meanwhile: last write wins, as with `config set` and `secret edit`. Holding the deployment lock for an editor session would block timers and every other operation for as long as the editor stays open. |
-| 9 | `ASSUMED` | `--set-file name=path` on `config set` and `init`, repeatable, with `-` for standard input once. It takes any parameter type, and refuses a dotted setting. One flag name on both commands, as in Helm's `--set-file`. Rejected: `name=@path`, because it changes the meaning of an existing value that starts with `@`. `init`'s equivalent command prints the flag, not the value. |
+| 9 | `ASSUMED` | `--set-file name=path` on `config set` and `init`, repeatable, with `-` for standard input once. It takes any parameter type, and refuses a dotted setting. Whatever the type, it refuses a file holding a NUL byte or invalid UTF-8 before the type's `Parse` runs, because `string` accepts both and decision 3's reasons apply to every value. One flag name on both commands, as in Helm's `--set-file`. Rejected: `name=@path`, because it changes the meaning of an existing value that starts with `@`. `init`'s equivalent command prints the flag, not the value. |
 | 10 | `ASSUMED` | `config list` shows the first line and `(N lines)`. `config get`, `--json` and `describe` show the whole value. `describe` must, because it is the installation document (RFC 0027). This departs from #315, which proposed a summary in `describe` and `status`; `status` shows no parameters today and is unchanged. |
 | 11 | `OPEN` | Whether old and new values need a diff view. Recommended: no. The journal and the attestation hold parameter names, never values, for every type (`config.go:140`, `attestation.go:220`), so there is nothing there to diff. The `config set` and `config edit` summary gives line counts before and after (§5.5). |
 | 12 | `ASSUMED` | A manifest declaring `text` needs `compatibility.min_manager_version` of at least `TextParametersMinManagerVersion`, validated as `CombinableProfilesMinManagerVersion` is. This assumes the next release, 0.15.0, ships it. |
