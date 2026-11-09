@@ -89,6 +89,12 @@ type InitOptions struct {
 	// before a directory exists rather than after a deployment is running
 	// on a default the operator did not intend.
 	Parameters map[string]string
+
+	// ParameterFiles are the paths `--set-file` read values from, by
+	// parameter name. Init reads only Parameters, which already holds the
+	// values; these are for the wizard's equivalent command, which prints the
+	// flag rather than the value (RFC 0054 decision 9).
+	ParameterFiles map[string]string
 }
 
 // Init creates a new installation.

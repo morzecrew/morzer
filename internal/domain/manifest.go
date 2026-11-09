@@ -755,6 +755,11 @@ const RestartableRestoreMinManagerVersion = "0.14.0"
 // (RFC 0053 decision 11).
 const CombinableProfilesMinManagerVersion = "0.15.0"
 
+// TextParametersMinManagerVersion is the manager release that reads a
+// parameter of type `text`, which an older one refuses as an unknown type
+// (RFC 0054 decision 12).
+const TextParametersMinManagerVersion = "0.15.0"
+
 // Named manifest operations the lifecycle layer looks up by convention.
 const (
 	OpMigrate   = "migrate"
@@ -1461,6 +1466,12 @@ func (m *Manifest) Validate() error {
 
 	// parameters
 	ValidateParameters(m.Parameters, &v)
+	if minimum := MustParseVersion(TextParametersMinManagerVersion); m.declaresTextParameter() &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because a parameter has type %q, which an older "+
+				"manager refuses as an unknown type", minimum, ParamText)
+	}
 
 	if m.Bundle.UncompressedSize < 0 {
 		v.add("bundle.uncompressed_size", "must not be negative, got %s",

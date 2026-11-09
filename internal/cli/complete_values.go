@@ -169,6 +169,21 @@ func configNames(suffix string) valueLister {
 	}
 }
 
+// textParameterNames lists the parameters `config edit` opens: the text ones.
+func textParameterNames(ctx context.Context, d *ops.Deps) ([]cobra.Completion, error) {
+	report, err := ops.ConfigList(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	var out []cobra.Completion
+	for _, p := range report.Parameters {
+		if p.Type == domain.ParamText {
+			out = append(out, cobra.CompletionWithDesc(p.Name, p.Description))
+		}
+	}
+	return out, nil
+}
+
 // unsettable adds to configNames the recorded values the current release no
 // longer declares, which `config list` reports as stale and `config unset` is
 // how an operator clears.

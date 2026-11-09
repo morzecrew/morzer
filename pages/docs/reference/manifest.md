@@ -306,7 +306,7 @@ parameters:
 
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
-| `type` | string | ✅ | One of `port`, `int`, `bool`, `string`, `enum`, `duration`, `bytes`. |
+| `type` | string | ✅ | One of `port`, `int`, `bool`, `string`, `enum`, `duration`, `bytes`, `text`. `text` needs `min_manager_version` 0.15.0; see [below](#text-parameters). |
 | `default` | string | | Used when the operator sets nothing. Validated against `type` at `release verify`. |
 | `required` | bool | | The operator must supply a value. Declaring it alongside a `default` is a validation error. |
 | `description` | string | | Shown when a value is refused, so the operator learns what is accepted. |
@@ -331,6 +331,38 @@ rather than the actual source of the value.
     the journal, and in `installation.yaml` in the clear. Anything that must
     not be is a [secret](../authoring/index.md), which has its own declared,
     audited path and is rendered to tmpfs as a file.
+
+### Text parameters
+
+`type: text` holds several lines that are not secret, such as routing rules,
+an allow list or a fragment of the product's own configuration:
+
+```yaml
+compatibility:
+  min_manager_version: "0.15.0"
+
+parameters:
+  rules:
+    type: text
+    description: Routing rules, one per line
+    services: [app]
+```
+
+**A release declaring one needs `min_manager_version: "0.15.0"` or later.** An
+older manager refuses the type as unknown, and `release verify` refuses a
+manifest that declares it below that version.
+
+A value is UTF-8 text of at most 64 KiB. Line endings become LF and trailing
+newlines are removed; nothing else is trimmed, so indentation survives. A NUL
+byte or invalid UTF-8 is refused. The limit exists because every parameter is
+in the environment of every Compose call and hook, and Linux refuses to start a
+process whose one environment variable is 128 KiB.
+
+A default written as a `|` block ends in a newline, which is removed like any
+other trailing newline. Templates read the value whole, or line by line with
+[`lines`](variables.md#lines). Compose and hooks get it as
+`<PRODUCT>_PARAM_<NAME>`, newlines included. An operator sets one with
+[`config set --set-file` or `config edit`](parameters.md#text-values).
 
 ### required
 
@@ -856,7 +888,7 @@ Each declaration:
 | --- | --- | --- |
 | `name` | string | Secret name, as `morzer secret` refers to it. |
 | `description` | string | Shown by `secret list`. |
-| `required` | bool | Whether `doctor` reports its absence as a failure. |
+| `required` | bool | Whether `doctor` reports its absence as a failure. An unset secret that is not required renders as an empty file; see [below](#an-optional-secret). |
 | `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. It does at `init`, and at the `update` whose release first declares the secret. |
 | `file` | string | Filename under the render directory. Defaults to `name`. |
 | `services` | list | Compose services that consume it. A rotation restarts exactly these. |
@@ -909,6 +941,31 @@ secrets:
 A schema that declares `owner` needs the manifest to declare
 `compatibility.min_manager_version: "0.6.0"` or later. An older manager then
 says it is too old, instead of calling `owner` an unknown field.
+
+### An optional secret
+
+A secret declared `required: false` that the operator has not set renders as
+an empty file, mode `0400`, with its declared `owner`. A Compose service that
+mounts it starts, and reads an empty file where a set secret would have a
+value:
+
+```yaml
+secrets:
+  - name: upstream6
+    description: IPv6 upstream credential, when the IPv6 proxy is on
+    required: false
+    services: [gate]
+```
+
+Test for an empty file to tell "not set" from "set". There is no need for a
+generated placeholder that every consumer has to recognise. `secret list` and
+`doctor` report the secret as unset, and `secret set` fills the same file.
+Removing it with `secret remove` empties the file again.
+
+A release that relies on the empty file needs
+`compatibility.min_manager_version: "0.15.0"` or later. An older manager
+renders no file for an unset optional secret, so a service that mounts it fails
+at start.
 
 ---
 

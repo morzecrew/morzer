@@ -333,7 +333,10 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 			"the error must map to the secrets exit code")
 	})
 
-	t.Run("render skips optional secrets that are not set", func(t *testing.T) {
+	// An unset optional secret is an empty file, 0400 like every other, so a
+	// service that mounts it starts and reads "not set" from an empty file
+	// rather than a generated placeholder (#318).
+	t.Run("render writes an unset optional secret as an empty file", func(t *testing.T) {
 		store := newStore(t)
 		ctx := context.Background()
 		require.NoError(t, store.Set(ctx, "present", domain.NewSecret("a-present-value")))
@@ -346,7 +349,38 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		targetDir := filepath.Join(t.TempDir(), "secrets")
 		files, err := store.Render(ctx, targetDir, schema)
 		require.NoError(t, err)
-		assert.Len(t, files, 1, "an unset optional secret must be skipped, not rendered empty")
+		require.Len(t, files, 2, "an unset optional secret rendered no file")
+
+		var absent ports.RenderedFile
+		for _, f := range files {
+			if f.Name == "absent" {
+				absent = f
+			}
+		}
+		require.Equal(t, "absent", absent.Name)
+		assert.Zero(t, absent.Size)
+		assert.Equal(t, uint32(0o400), absent.Mode)
+
+		info, err := os.Stat(filepath.Join(targetDir, "absent"))
+		require.NoError(t, err)
+		assert.Zero(t, info.Size(), "the file holds something for a secret that is not set")
+		assert.Equal(t, os.FileMode(0o400), info.Mode().Perm())
+
+		// Set later, the same file takes the value; removed, it is empty
+		// again rather than gone.
+		require.NoError(t, store.Set(ctx, "absent", domain.NewSecret("now-set")))
+		_, err = store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		data, err := os.ReadFile(filepath.Join(targetDir, "absent"))
+		require.NoError(t, err)
+		assert.Equal(t, "now-set", string(data))
+
+		require.NoError(t, store.Remove(ctx, "absent"))
+		_, err = store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		info, err = os.Stat(filepath.Join(targetDir, "absent"))
+		require.NoError(t, err, "a removed optional secret's file was pruned rather than emptied")
+		assert.Zero(t, info.Size())
 	})
 
 	t.Run("metadata never carries values", func(t *testing.T) {

@@ -1,0 +1,225 @@
+# text-parameters · RFC 0054 P1
+
+On branch `text-parameters-p1` from `main` at `8ff4e369`, building
+[RFC 0054](../rfcs/0054-multi-line-text-parameters.md) P1: §5.1–§5.6, the
+docs in §7 and the tests in §6, as ruled by the author 2026-11-09
+(decisions 4, 5 and 11 as recommended). Closes #315.
+
+**Drift count: 0.**
+
+| Class | Test | Meaning |
+|---|---|---|
+| `discovery` | Could not have been known before code existed | Healthy — the spec was right to be silent |
+| `spec-gap` | Could have been known; the spec was silent or at the wrong altitude | The design process missed something |
+| `drift` | The spec covered it and it was built otherwise anyway | **A defect** |
+| `irreducible` | No amount of design settles it | Stop and spike |
+
+## Plan
+
+Domain:
+
+- `internal/domain/parameter.go`:
+  - `ParamText`, added to `ParameterTypes` (decision 1).
+  - `Parse` for `text`: invalid UTF-8 and NUL refused, CRLF to LF,
+    trailing newlines removed, nothing else trimmed (decisions 2, 3), and
+    at most `TextParameterLimit` (64 KiB) after normalisation (decision 4).
+  - `ParameterFileValue(name, data)`: the `--set-file` boundary, which
+    refuses NUL and invalid UTF-8 whatever the type (decision 9).
+  - `LineCount` and `FirstLine`, for the summary, `config list` and
+    `release diff`.
+- `internal/domain/manifest.go`: `TextParametersMinManagerVersion =
+  "0.15.0"` and its floor check beside `combinable`'s (decision 12).
+
+Render:
+
+- `internal/adapters/render/gotemplate/render.go`: `lines`, which splits on
+  LF and returns an empty list for an empty value (decision 6).
+- `synthetic.go`: a two-line synthetic value for `text` (decision 13).
+
+Operations:
+
+- `internal/lifecycle/ops/config.go`:
+  - `ConfigList` parses the default as it parses a recorded value
+    (decision 10, every type).
+  - `configSummary` gives a text parameter's line counts before and after
+    (decision 11, §5.5).
+- `release_diff.go`: `describeParameter` gives a text default as a line
+  count and a 12-hex SHA-256 prefix (decision 14).
+- `init.go`: `InitOptions.ParameterFiles`, the paths `--set-file` read,
+  used only by the wizard's equivalent command (decision 9).
+
+CLI:
+
+- `internal/cli/config.go`: `config set --set-file name=path`, repeatable,
+  with `-` once for stdin. A dotted name is refused, as is a name given both
+  as `name=value` and by file (decision 9). `config set` with neither is
+  still "nothing to change".
+- `internal/cli/config_edit.go` (new): `config edit <name>` on the
+  `secret edit` session pieces (`editorCommand`, `runEditor`, the terminal
+  check), with a `configEditWith` seam for a scripted editor (decisions 7,
+  8; §5.3). One `text` parameter only. The value plus a final newline goes
+  in a fresh directory under the system temp dir, removed however the
+  editor exits. Unchanged and emptied files change nothing, with the
+  emptied-file hint that depends on whether a default exists. Anything else
+  runs `ops.ConfigSet`.
+- `internal/cli/commands.go`: `init --set-file`, merged with `--set`, with
+  duplicates refused.
+- `internal/cli/init_wizard.go`: `EquivalentCommand` prints
+  `--set-file name=<path>` for a file-sourced value.
+- `internal/ui/views/config.go`: a text value is shown as its first line
+  plus a dim `(N lines)`; empty stays empty (decision 10).
+
+Docs, schema, changelog:
+
+- `reference/manifest.md`: the type, its normalisation, limit and floor.
+- `reference/parameters.md`: `--set-file`, `config edit`, and what each
+  view shows, including that a text value is not secret.
+- `reference/commands.md`: `config edit`, and `--set-file` on `config set`
+  and `init`, plus the regenerated command index.
+- `reference/variables.md`: `lines`, and a text value in
+  `<PRODUCT>_PARAM_<NAME>`.
+- An authoring snippet: the quoted `lines` list, and a value rendered to a
+  file.
+- `schemas/` regenerated. `CHANGELOG.md` Unreleased: Added for the type,
+  `config edit` and `--set-file`; Fixed for `config list`/`get` showing a
+  default as delivered.
+
+Tests (§6):
+
+- Domain: every `Parse` case (CRLF, trailing newlines, indentation, NUL,
+  UTF-8, exactly 64 KiB and one byte over), `ParameterFileValue`, the
+  floor, and a bad text default refused.
+- State: a text value with leading spaces, a tab and blank lines
+  round-trips through the JSON state and `installation.yaml`, and `doctor`
+  reports no drift.
+- Render: `lines` cases, and the two-line synthetic value.
+- Suite (fake runtime): `config set --set-file` records the value, delivers
+  it in the runtime environment and re-creates the declared services; `-`;
+  an unchanged file journals nothing; refusals change nothing; the summary's
+  line counts; `config list` shows a default parsed.
+- CLI: `config edit` against a scripted editor, covering changed,
+  unchanged, emptied (both hints), non-zero exit, removed file, non-text
+  parameter and no terminal, with the temp directory gone in every case.
+  Also `init --set-file` and the equivalent command.
+- Real Compose: a `docker`-tagged suite test, so that
+  `compose.Runtime.Validate` (`docker compose config`) carries a multi-line
+  `<PRODUCT>_PARAM_<NAME>` intact.
+
+Decisions the spec does not settle:
+
+- None load-bearing. §5.6 says `release show` "lists the type like any
+  other", but `release show` lists no parameters
+  (`internal/ui/views/release.go` has parameters only in the diff), so
+  there is nothing to build. A one-line text value shows as `(1 line)`,
+  following decision 10's wording.
+
+Readiness gate: zero load-bearing gaps.
+
+## Build
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-09T14:48:51Z
+attempt: 1
+claim: a refused value's reason never reaches the operator. `printError` prints an error's Message and Hint and never its cause, and `mergeParameters` and `ResolveParameters` wrap a `Parse` refusal as `parameter "<name>"` with the type's description as the hint. So `config set http_port=70000` says only `parameter "http_port"`, and a text value over the limit would never say why. §5.1 writes the refusal as `parameter "rules": the value is …`. Both wrappers now carry the reason in the message, for every type, and keep the refusal's own hint where it has one.
+evidence: internal/cli/root.go:505-511
+action: decided
+proposal: ASSUMED — a refused parameter value names its reason in the message, `parameter "<name>": <reason>`, for every type. The hint is the refusal's own when it has one, and the type's description otherwise.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-09T15:12:41Z
+attempt: 2
+claim: the entry above was wrong for every type but `text`. An error's message travels beyond the terminal: `fleet publish` puts it in a row on a shared target, and the other types' refusals quote the value they refuse (`%q is not a port number`). With the reason in the message, `TestARowCarriesNoParameterValueOrSecret` found a parameter value in a published row. The type's description in the hint, and nothing quoted in the message, is what kept the value at home. A `text` refusal names a size or a byte class and never the value, so only it puts its reason in the message, as §5.1 writes.
+evidence: test/suite/fleet_test.go:136-161
+action: decided
+proposal: ASSUMED — supersedes the proposal above. A refused `text` value names its reason in the message, `parameter "<name>": <reason>`, with the refusal's own hint. The other types keep `parameter "<name>"` with the type's description as the hint, because their refusals quote the value, and a message reaches fleet rows.
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-09T15:19:30Z
+attempt: 1
+claim: decision 1 honoured: `text` is a new type in the closed parameter set, parsed by its own branch before the trim every other type gets, and its value is a string in `Installation.Parameters`, so neither the installation schema nor the hook ABI changes; it is not a secret
+evidence: internal/domain/parameter.go:30-33
+action: decided
+```
+
+Built as planned, with the two entries above. The second supersedes the
+first: only a `text` refusal names its reason in the message.
+
+Build notes:
+
+- `config edit` takes the code that records a saved value as a parameter
+  (`editParameterWith(..., set)`). That lets a scripted-editor test cover the
+  whole session without rebuilding the suite harness. `ConfigSet` with a text
+  value is covered in `test/suite/text_parameters_test.go`.
+- `runEditor` takes the "nothing was written" sentence from its caller.
+  `secret edit` keeps "no secrets were changed", and `config edit` says
+  "nothing was changed".
+- `init --set-file` records where each value came from in
+  `InitOptions.ParameterFiles`, which only the wizard's equivalent command
+  reads.
+
+## Self-audit (2026-11-09)
+
+Scope: branch `text-parameters-p1` against `main` at `8ff4e369`.
+
+Spec fidelity: §5.1–§5.6 and decisions 1–15 walked against the diff. §5.6's
+`release show` sentence has nothing to build (§ Plan).
+
+Findings:
+
+1. **A parameter value reached a fleet row.** This was my own unlisted change:
+   it put every type's refusal reason in the message, and the reason quotes
+   the value. `TestARowCarriesNoParameterValueOrSecret` caught it in `just
+   ci`. Fixed in `eadf5858`, and logged above as attempt 2.
+2. **Lint QF1002** in the edit session. Fixed in `c0c2392f`.
+
+Sabotage: 33 mutations, each run against the tests written for it, all red:
+
+- `Parse`: CRLF, trailing newline, trim, limit, NUL, UTF-8.
+- The file boundary and the floor.
+- The refusal message: reason dropped, every type naming its reason (red in
+  the fleet test), own hint dropped.
+- `lines` of an empty value, and the two-line synthetic value.
+- The parsed default, and the summary counts.
+- The diff: whole default printed, digest over the raw default.
+- The list view: first line, and no count for an empty value.
+- The edit session, eight ways: unchanged applied, emptied applied, one hint
+  for both, any type opened, directory kept, no final newline, no terminal
+  check, raw default opened.
+- `--set-file`: stdin read twice, a setting by file, a name given both ways,
+  and `init` and `config set` ignoring the flag.
+- The equivalent command printing the value.
+
+The terminal-check mutation launched a real editor on the test's stdin until
+that editor was ended; a test that bypasses the check meets an editor, not a
+hang in production code.
+
+Distilled rule: an error's `Message` is published (fleet rows,
+notifications), so a message never quotes a value an operator typed; a reason
+that would, goes in the hint or nowhere.
+
+Drift count: 0.
+
+## Review
+
+```divergence
+decision: 2
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-09T15:34:33Z
+attempt: 1
+claim: decision 2 turns CRLF into LF and says nothing of a lone CR. Kept, a value saved with classic Mac line endings, or a stray CR before the end, is one line to `LineCount`, `FirstLine` and `lines`, and a trailing CR survives the trailing-newline trim, so "every line ending becomes LF", which the docs and §5.1's intent say, is false for it. Every CR, alone or before LF, becomes LF.
+evidence: internal/domain/parameter.go:213
+action: departed
+proposal: ASSUMED — refines decision 2. `Parse` for `text` turns CRLF into LF, then any remaining CR into LF, before removing trailing newlines.
+```

@@ -126,6 +126,7 @@ func TestASyntheticParameterSatisfiesItsDeclaration(t *testing.T) {
 		"level":    {Type: domain.ParamEnum, Values: []string{"warn", "info"}},
 		"timeout":  {Type: domain.ParamDuration},
 		"capacity": {Type: domain.ParamBytes},
+		"rules":    {Type: domain.ParamText},
 		"defaults": {Type: domain.ParamPort, Default: "08080"},
 	}
 
@@ -152,6 +153,12 @@ func TestASyntheticParameterSatisfiesItsDeclaration(t *testing.T) {
 	// ever produces.
 	if got := params["defaults"]; got != "8080" {
 		t.Errorf("a declared default is not normalised: %q", got)
+	}
+
+	// More than one line, so a template that assumes one is rendered with
+	// more (RFC 0054 decision 13).
+	if got := domain.LineCount(params["rules"]); got < 2 {
+		t.Errorf("a text parameter's synthetic value has %d line(s), want several", got)
 	}
 }
 

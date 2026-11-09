@@ -477,7 +477,11 @@ func (s *Store) Render(ctx context.Context, targetDir string, schema domain.Secr
 					WithHint("run `morzer secret set %s`, or `morzer secret generate %s` "+
 						"if the release declares a generator", decl.Name, decl.Name)
 			}
-			continue
+			// An unset optional secret is an empty file rather than
+			// none: a Compose service that mounts it would otherwise
+			// fail at start, and a bundle would ship a generated
+			// placeholder every consumer has to recognise (#318).
+			value = domain.NewSecret("")
 		}
 
 		fileName := decl.FileName()

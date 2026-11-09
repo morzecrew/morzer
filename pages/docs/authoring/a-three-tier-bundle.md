@@ -80,6 +80,14 @@ re-creating a container would not apply it — a full `apply` would. Declaring n
 services is how you say that, and `config set` then tells the operator the
 change waits for the next `apply` rather than claiming it took effect.
 
+!!! tip "A value of several lines"
+
+    A list of rules or a fragment of the product's own configuration is
+    `type: text`, rendered line by line with
+    [`lines`](../reference/variables.md#lines). It needs
+    `min_manager_version: "0.15.0"`; see
+    [Text parameters](../reference/manifest.md#text-parameters).
+
 ## The Compose file
 
 Host ports come from the parameters; container ports are fixed by your images:

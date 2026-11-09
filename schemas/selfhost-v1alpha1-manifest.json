@@ -358,7 +358,8 @@
               "string",
               "enum",
               "duration",
-              "bytes"
+              "bytes",
+              "text"
             ],
             "type": "string"
           },

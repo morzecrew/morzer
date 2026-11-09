@@ -301,6 +301,14 @@ func funcs() template.FuncMap {
 		// has is sprig's argument order: `has "xdns" .Profiles`.
 		"has":     func(needle string, haystack []string) bool { return slices.Contains(haystack, needle) },
 		"replace": strings.ReplaceAll,
+		// lines splits a text parameter for a range, and an empty value
+		// is no lines, not one empty one (RFC 0054 decision 6).
+		"lines": func(s string) []string {
+			if s == "" {
+				return []string{}
+			}
+			return strings.Split(s, "\n")
+		},
 
 		"indent": func(spaces int, s string) string {
 			pad := strings.Repeat(" ", spaces)
