@@ -203,6 +203,24 @@ func TestTheConfigViewShowsATextValuesFirstLine(t *testing.T) {
 	}
 }
 
+// A value a release or an operator chose is shown as what it holds, so an
+// escape sequence in it is printed, not obeyed by the terminal.
+func TestTheConfigViewQuotesWhatATerminalWouldObey(t *testing.T) {
+	report := configReport()
+	report.Parameters = append(report.Parameters,
+		ops.ConfigEntry{Name: "banner", Type: "text", Value: "\x1b]0;owned\x07title\nmore", Source: "release"},
+		ops.ConfigEntry{Name: "motd", Type: "string", Value: "\x1b[2Jcleared", Source: "release"})
+
+	for _, mode := range []ui.Mode{ui.ModeRich, ui.ModePlain} {
+		var b bytes.Buffer
+		require.NoError(t, ui.Render(&b, mode, theme.New(false, false), report))
+		out := b.String()
+		require.NotContainsf(t, out, "\x1b]0;", "%s printed an escape sequence raw:\n%q", mode, out)
+		require.NotContainsf(t, out, "\x1b[2J", "%s printed an escape sequence raw:\n%q", mode, out)
+		require.Containsf(t, out, `"\x1b]0;owned\atitle"`, "%s:\n%s", mode, out)
+	}
+}
+
 // TestAParameterWithNoServicesSaysSo stops an operator assuming a change took
 // effect. There is nothing to re-create, so it waits for the next apply.
 func TestAParameterWithNoServicesSaysSo(t *testing.T) {
