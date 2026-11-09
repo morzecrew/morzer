@@ -507,6 +507,12 @@ claim.
 - **A self-hosted runner is a machine someone maintains,** and a runner that
   is down blocks a release's macOS archives. It does not block Linux: the
   darwin archives are dropped from that release, and the changelog says so.
+- **WSL2 is `linux` to this design.** A manager in a WSL2 distro is the Linux
+  build, so a release declaring `[linux]` installs there. A `[linux]` TUN
+  profile would then start and route only the WSL VM, the same false success
+  §5.7 refuses on a Mac. Telling WSL apart, as its own `requirements.os`
+  value or a check in `doctor`, belongs to the Windows design. Until then the
+  docs say a TUN profile under WSL2 routes nothing of Windows.
 - **`requirements.os` defaults strictly.** Every published bundle is refused
   on a Mac until its vendor opts in. That is the intent. Error text that
   sounds like a manager bug would be the risk, so the refusal names the
