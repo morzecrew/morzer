@@ -127,6 +127,7 @@ func TestTheConfigReportShowsADefaultAsDelivered(t *testing.T) {
 	motd, err := ops.ConfigGet(context.Background(), h.Deps, "motd")
 	require.NoError(t, err)
 	assert.Equal(t, "welcome\nto demo", motd.Value)
+	assert.Equal(t, "welcome\nto demo", motd.Default, "the default reached --json with the newline its `|` block left")
 	assert.Equal(t, "release", motd.Source)
 	assert.Equal(t, domain.ParamText, motd.Type)
 

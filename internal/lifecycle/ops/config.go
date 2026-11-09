@@ -60,10 +60,11 @@ func ConfigList(ctx context.Context, d *Deps) (ConfigReport, error) {
 		// written as a `|` block ends in a newline the deployment never
 		// sees (RFC 0054 decision 10). An invalid one is refused when the
 		// release loads.
-		value, source := spec.Default, "release"
+		def := spec.Default
 		if parsed, err := spec.Parse(spec.Default); err == nil && spec.Default != "" {
-			value = parsed
+			def = parsed
 		}
+		value, source := def, "release"
 		if set, ok := inst.Parameters[name]; ok {
 			// Parsed rather than echoed, so `list` shows what the
 			// deployment will actually receive.
@@ -75,7 +76,7 @@ func ConfigList(ctx context.Context, d *Deps) (ConfigReport, error) {
 		}
 
 		out.Parameters = append(out.Parameters, ConfigEntry{
-			Name: name, Type: spec.Type, Value: value, Default: spec.Default,
+			Name: name, Type: spec.Type, Value: value, Default: def,
 			Description: spec.Description, Source: source,
 			Values: spec.Values, Services: spec.Services,
 		})
