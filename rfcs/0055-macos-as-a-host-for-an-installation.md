@@ -320,7 +320,7 @@ rendered-file check stays. What changes is stated and checked:
   (`restartDependents`, `secret.go:490`).
 - **A `secret` change checks the gate before it stores anything.** `secret
   set`, `generate`, `rotate` and `edit` save the new value first and render
-  after (`rotate` at `secret.go:175-181`). With the check only in `Render`,
+  after (`rotate` at `secret.go:176-181`). With the check only in `Render`,
   the stored value would change while the running services keep the old one,
   and the command could not finish the change. So each of them runs the same
   check before it stores, and the check in `Render` stays for every other
