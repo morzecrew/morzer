@@ -277,7 +277,22 @@ func funcs() template.FuncMap {
 			return value, nil
 		},
 
-		"join":     strings.Join,
+		"join": strings.Join,
+		// split is join's counterpart, so a list held in one parameter can
+		// drive a range: `split "," .Parameters.servers`. Each item is
+		// trimmed and an empty one dropped, so "a, b," is [a b] (#317).
+		"split": func(sep, s string) ([]string, error) {
+			if sep == "" {
+				return nil, fmt.Errorf("split needs a separator")
+			}
+			out := []string{}
+			for _, item := range strings.Split(s, sep) {
+				if item = strings.TrimSpace(item); item != "" {
+					out = append(out, item)
+				}
+			}
+			return out, nil
+		},
 		"quote":    func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"` },
 		"upper":    strings.ToUpper,
 		"lower":    strings.ToLower,
