@@ -295,14 +295,19 @@ $ morzer config edit rules
   ```yaml
   rules:
   {{- range lines .Parameters.rules }}
-    - {{ . }}
+    - {{ printf "%q" . }}
   {{- else }} []
   {{- end }}
   ```
 
   The `else` branch renders `rules: []` for an empty value. Without it the
   key would have no value, which YAML reads as null rather than as an empty
-  list.
+  list. `printf "%q"` writes each line as a double-quoted string. Unquoted, a
+  line such as `a: b` would become a mapping and `hello # note` would lose
+  its comment. Go's escapes are a subset of YAML's double-quoted ones:
+  `"a: b"`, `"hello # note"`, a backslash, a quote, a tab and non-ASCII
+  text all parsed back exactly. The existing `quote` function is not safe
+  here, because it escapes `"` and not `\` (§8).
 
   `indent` already covers a fragment pasted whole, as in
   `{{ .Parameters.fragment | indent 4 }}`. sprig's `splitList "\n"` is not
@@ -440,6 +445,11 @@ $ morzer config edit rules
   operator sets it". A text parameter that may be empty needs a non-empty
   default. Changing what "no default" means is a decision for every type,
   not for this one.
+- **`quote` escaping a backslash.** It escapes only `"`
+  ([`render.go:281`](../internal/adapters/render/gotemplate/render.go)), so
+  `quote` on a value containing `\` can produce an invalid or different
+  YAML string. This is true of every value today, not only text. It is its
+  own fix, and the examples here use `printf "%q"`.
 - **A check of the rendered output.** The render check does not parse a
   rendered YAML file, so a text value pasted into a scalar position without
   `indent` is still found by the product, not by the manager. This is the
