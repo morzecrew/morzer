@@ -4,6 +4,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ui"
 	"github.com/morzecrew/morzer/internal/ui/theme"
@@ -43,9 +44,18 @@ func configDoc(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
 		// The operator's own value is highlighted and the release's
 		// default is dim, so "what did I change here" is answerable
 		// without reading the source column.
-		value := t.Dim(p.Value)
+		shown := p.Value
+		if p.Type == domain.ParamText {
+			shown = domain.FirstLine(p.Value)
+		}
+		value := t.Dim(shown)
 		if p.Source == "installation" {
-			value = t.Highlight(p.Value)
+			value = t.Highlight(shown)
+		}
+		// A text value whole would make its row as tall as the value; the
+		// first line and a count say what is set (RFC 0054 decision 10).
+		if n := domain.LineCount(p.Value); p.Type == domain.ParamText && n > 0 {
+			value += " " + t.Dim("("+domain.Lines(n)+")")
 		}
 		rows = append(rows, []string{p.Name, value, string(p.Type), p.Source})
 	}

@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -55,13 +56,20 @@ func ConfigList(ctx context.Context, d *Deps) (ConfigReport, error) {
 	for _, name := range sortedNames(rel.Manifest.Parameters) {
 		spec := rel.Manifest.Parameters[name]
 
+		// The default parsed too, as delivery parses it: a text default
+		// written as a `|` block ends in a newline the deployment never
+		// sees (RFC 0054 decision 10). An invalid one is refused when the
+		// release loads.
 		value, source := spec.Default, "release"
+		if parsed, err := spec.Parse(spec.Default); err == nil && spec.Default != "" {
+			value = parsed
+		}
 		if set, ok := inst.Parameters[name]; ok {
 			// Parsed rather than echoed, so `list` shows what the
 			// deployment will actually receive.
 			parsed, err := spec.Parse(set)
 			if err != nil {
-				return ConfigReport{}, domain.ValidationError(err, "parameter %q", name)
+				return ConfigReport{}, domain.RefusedParameterValue(err, name, spec)
 			}
 			value, source = parsed, "installation"
 		}
@@ -181,7 +189,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 
 	out := Result{
 		Record: result.Record,
-		Summary: configSummary(changed, affectedServices(rel, changed),
+		Summary: configSummary(summaryNames(rel, inst.Parameters, next, changed), affectedServices(rel, changed),
 			opts.DryRun, running, inst.Stopped != nil),
 		Data: next,
 	}
@@ -300,8 +308,7 @@ func mergeParameters(
 		}
 		value, err := spec.Parse(raw)
 		if err != nil {
-			return nil, nil, domain.ValidationError(err, "parameter %q", name).
-				WithHint("%s", domain.DescribeParameter(name, spec))
+			return nil, nil, domain.RefusedParameterValue(err, name, spec)
 		}
 		if current, ok := next[name]; ok && current == value {
 			continue
@@ -458,6 +465,35 @@ func affectedServices(rel domain.Release, changed []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// summaryNames are the changed parameters as the summary names them: a text
+// parameter with its line counts before and after, `rules (42 → 44 lines)`
+// (RFC 0054 §5.5), the rest by name.
+func summaryNames(rel domain.Release, before, after map[string]string, changed []string) []string {
+	out := make([]string, len(changed))
+	for i, name := range changed {
+		out[i] = name
+		if spec, ok := rel.Manifest.Parameters[name]; ok && spec.Type == domain.ParamText {
+			out[i] = fmt.Sprintf("%s (%d → %d lines)", name,
+				domain.LineCount(effectiveValue(spec, before, name)),
+				domain.LineCount(effectiveValue(spec, after, name)))
+		}
+	}
+	return out
+}
+
+// effectiveValue is what a deployment receives for one parameter: the recorded
+// value or the default, parsed.
+func effectiveValue(spec domain.ParameterSpec, set map[string]string, name string) string {
+	raw, ok := set[name]
+	if !ok {
+		raw = spec.Default
+	}
+	if value, err := spec.Parse(raw); err == nil {
+		return value
+	}
+	return raw
 }
 
 // configSummary says what happened, in the tense it happened in.

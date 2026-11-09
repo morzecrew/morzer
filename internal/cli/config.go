@@ -26,6 +26,7 @@ func newConfigCommand(app *App) *cobra.Command {
 	cmd.AddCommand(
 		newConfigListCommand(app),
 		newConfigGetCommand(app),
+		newConfigEditCommand(app),
 		newConfigSetCommand(app),
 		newConfigUnsetCommand(app),
 		newConfigSettingsCommand(app),
@@ -138,8 +139,9 @@ func newConfigGetCommand(app *App) *cobra.Command {
 }
 
 func newConfigSetCommand(app *App) *cobra.Command {
+	var setFiles []string
 	cmd := &cobra.Command{
-		Use:   "set <name=value> [name=value ...]",
+		Use:   "set [name=value ...] [--set-file name=path ...]",
 		Short: "Change one or more parameters, or an installation setting",
 		Long: "Validates each value against what the release declares, records it, and\n" +
 			"re-creates the services the release says depend on it.\n\n" +
@@ -148,6 +150,9 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"the old port in place.\n\n" +
 			"A parameter that declares no dependent services is recorded and takes\n" +
 			"effect on the next `apply`, which the summary says.\n\n" +
+			"`--set-file name=path` reads a value from a file, and `-` from standard\n" +
+			"input; it is how a multi-line `text` value is set without a terminal.\n" +
+			"`morzer config edit <name>` opens one in an editor.\n\n" +
 			"A dotted name is an installation setting rather than a release\n" +
 			"parameter — `update.check`, `update.channel`. Those are the operator's\n" +
 			"arrangement with the manager, change nothing that is running, and are\n" +
@@ -157,12 +162,20 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			"release under the new profile when the product is running.",
 		Example: "  morzer config set http_port=8443\n" +
 			"  morzer config set site_name=\"Demo Corp\" locale=en_GB\n" +
-			"  morzer config set update.check=true            # an installation setting",
-		Args:              cobra.MinimumNArgs(1),
+			"  morzer config set update.check=true            # an installation setting\n" +
+			"  morzer config set --set-file rules=rules.txt   # a value from a file",
+		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: unnamed(app.completeConfigAssignments),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			set, err := domain.ParseAssignments(args)
 			if err != nil {
+				return err
+			}
+			files, _, err := app.readParameterFiles(setFiles)
+			if err != nil {
+				return err
+			}
+			if set, err = mergeParameterFiles(set, files); err != nil {
 				return err
 			}
 			settings, parameters := splitSettings(set)
@@ -193,6 +206,8 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().StringArrayVar(&setFiles, "set-file", nil,
+		"read a parameter's value from a file, as name=path; - is standard input; repeat for several")
 	return cmd
 }
 

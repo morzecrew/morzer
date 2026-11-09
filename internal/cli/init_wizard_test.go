@@ -219,3 +219,17 @@ func TestShellQuoteLeavesOrdinaryValuesAlone(t *testing.T) {
 	assert.True(t, strings.HasPrefix(quoted, "'"))
 	assert.Contains(t, quoted, `'\''`)
 }
+
+// A value `--set-file` read is printed as the flag and the path, never as the
+// file's contents on a command line (RFC 0054 decision 9).
+func TestEquivalentCommandPrintsTheFileAValueCameFrom(t *testing.T) {
+	got := EquivalentCommand(ops.InitOptions{
+		Product:        "demo",
+		Parameters:     map[string]string{"rules": "a\nb", "http_port": "9000"},
+		ParameterFiles: map[string]string{"rules": "/srv/rules.txt"},
+	})
+
+	assert.Contains(t, got, "--set-file rules=/srv/rules.txt")
+	assert.Contains(t, got, "--set http_port=9000")
+	assert.NotContains(t, got, "a\nb")
+}

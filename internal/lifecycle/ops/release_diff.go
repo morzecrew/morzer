@@ -2,6 +2,8 @@ package ops
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -125,6 +127,18 @@ func identity(s string) string { return s }
 func describeParameter(p domain.ParameterSpec) string {
 	if p.Default == "" {
 		return string(p.Type) + ", no default"
+	}
+	// A line count and a digest of the value delivered: the whole of a
+	// multi-line default does not fit a one-line row, and the digest keeps a
+	// change on any line listed (RFC 0054 decision 14).
+	if p.Type == domain.ParamText {
+		value, err := p.Parse(p.Default)
+		if err != nil {
+			value = p.Default
+		}
+		sum := sha256.Sum256([]byte(value))
+		return fmt.Sprintf("%s, default of %s (sha256 %x)",
+			p.Type, domain.Lines(domain.LineCount(value)), sum[:6])
 	}
 	return string(p.Type) + ", default " + p.Default
 }

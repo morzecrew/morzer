@@ -185,6 +185,24 @@ func TestTheConfigViewNamesTheSourceWithoutColour(t *testing.T) {
 	require.Contains(t, out, "release")
 }
 
+// A text value is shown as its first line and a count, so its row is one line
+// tall; the rest of the value is never printed here (RFC 0054 decision 10).
+func TestTheConfigViewShowsATextValuesFirstLine(t *testing.T) {
+	report := configReport()
+	report.Parameters = append(report.Parameters,
+		ops.ConfigEntry{Name: "rules", Type: "text", Value: "DOMAIN-SUFFIX,a.example\nDOMAIN-SUFFIX,b.example\nlast", Source: "installation"},
+		ops.ConfigEntry{Name: "motd", Type: "text", Value: "", Source: "release"})
+
+	for _, mode := range []ui.Mode{ui.ModeRich, ui.ModePlain} {
+		var b bytes.Buffer
+		require.NoError(t, ui.Render(&b, mode, theme.New(false, false), report))
+		out := b.String()
+		require.Containsf(t, out, "DOMAIN-SUFFIX,a.example (3 lines)", "%s:\n%s", mode, out)
+		require.NotContainsf(t, out, "b.example", "%s printed the rest of the value:\n%s", mode, out)
+		require.NotContainsf(t, out, "(0 lines)", "%s counted an empty value:\n%s", mode, out)
+	}
+}
+
 // TestAParameterWithNoServicesSaysSo stops an operator assuming a change took
 // effect. There is nothing to re-create, so it waits for the next apply.
 func TestAParameterWithNoServicesSaysSo(t *testing.T) {

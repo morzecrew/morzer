@@ -200,6 +200,9 @@ func TestTheHelperSet(t *testing.T) {
 		"has finds a selected profile":    {`{{ has "embedded" .Profiles }}`, "true"},
 		"has finds nothing else":          {`{{ has "xdns" .Profiles }}`, "false"},
 		"indent leaves blank lines alone": {"{{ indent 2 \"a\\n\\nb\" }}", "  a\n\n  b"},
+		"lines splits on newlines":        {"{{ range lines \"a\\n\\nb\" }}[{{ . }}]{{ end }}", "[a][][b]"},
+		"lines of nothing is no lines":    {`{{ range lines "" }}x{{ else }}none{{ end }}`, "none"},
+		"lines quoted for YAML":           {"{{ range lines \"a: b\\nc # d\" }}- {{ printf \"%q\" . }};{{ end }}", `- "a: b";- "c # d";`},
 	}
 
 	for name, tc := range cases {
