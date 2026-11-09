@@ -408,6 +408,12 @@ LaunchDaemons in `/Library/LaunchDaemons`, labelled `dev.morzer.<p>` and
   once it has reached the engine. One that cannot exits 7 with the stamp as
   it was, and the next boot convergence catches the run up. Any other failure
   stamps, as a systemd timer's stamp moves whether its run succeeded or not.
+- **The catch-up runs one job at a time.** Backup and update both take the
+  deployment lock, and no unit passes `--wait` (`systemd.go:565`, `:605`), so
+  two jobs kickstarted together would leave one refused with exit 4. The
+  boot job releases the lock, then starts the overdue jobs in a fixed order,
+  backup, update, fleet, doctor, and waits for each to exit, read from
+  `launchctl print`, before the next.
 - **Logs.** `StandardOutPath` and `StandardErrorPath` go under
   `VarDir/logs`, since the manager logs JSON as it does under journald.
 - `Available` is true where `launchctl` runs and the manager is root.
@@ -534,7 +540,9 @@ claim.
     job once, a current stamp starts nothing, and metrics is never caught
     up;
   - a job that fires before the engine answers exits 7 and leaves its
-    stamp, so the catch-up after convergence still runs it.
+    stamp, so the catch-up after convergence still runs it;
+  - overdue backup and update run one after the other, in order, and
+    neither exits 4.
 - **Secrets:**
   - the FileVault gate at `init` before the identity is written, on each of
     the four render paths, and before a `secret` change stores its value, so
@@ -667,7 +675,7 @@ say.
 | 5 | `OPEN` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off, since the age identity is on that disk too; `init` refuses with FileVault off before it writes the identity, unless `--allow-unencrypted-disk`, which records the setting below; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it, and a `secret` change runs the same check before it stores the value. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). |
 | 6 | `OPEN` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. |
 | 7 | `OPEN` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. |
-| 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps,; a run that cannot reach the engine leaves its stamp, so it is caught up too. It rests on S4. |
+| 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps, one at a time in a fixed order; a run that cannot reach the engine leaves its stamp, so it is caught up too. It rests on S4. |
 | 9 | `OPEN` | Verification. The lean has three parts: a hosted `macos-latest` unit lane on every push; a self-hosted Apple-silicon runner with Docker Desktop, required on release PRs and nightly; and darwin archives dropped from a release whose self-hosted lane is red. The author says whose Mac the runner is. Without a runner, this RFC does not ship P1, because a production claim with no real-engine run is the thing RFC 0029 §5.7 called worse than none. |
 | 10 | `LOCKED` | No profile is offered as routing a Mac's traffic. A TUN or `network_mode: host` profile on macOS acts on the engine's VM, so a release marks it Linux-only, and whole-machine routing is a native-runtime RFC. |
 | 11 | `ASSUMED` | `pidStart` on darwin uses `unix.SysctlKinfoProc` and is tested on the macOS lane, which ends the reason the stub gave for waiting. |
