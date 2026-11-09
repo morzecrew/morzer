@@ -140,3 +140,72 @@ evidence: test/suite/fleet_test.go:136-161
 action: decided
 proposal: ASSUMED — supersedes the proposal above. A refused `text` value names its reason in the message, `parameter "<name>": <reason>`, with the refusal's own hint. The other types keep `parameter "<name>"` with the type's description as the hint, because their refusals quote the value, and a message reaches fleet rows.
 ```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-09T15:19:30Z
+attempt: 1
+claim: decision 1 honoured: `text` is a new type in the closed parameter set, parsed by its own branch before the trim every other type gets, and its value is a string in `Installation.Parameters`, so neither the installation schema nor the hook ABI changes; it is not a secret
+evidence: internal/domain/parameter.go:30-33
+action: decided
+```
+
+Built as planned, with the two entries above. The second supersedes the
+first: only a `text` refusal names its reason in the message.
+
+Build notes:
+
+- `config edit` takes the code that records a saved value as a parameter
+  (`editParameterWith(..., set)`). That lets a scripted-editor test cover the
+  whole session without rebuilding the suite harness. `ConfigSet` with a text
+  value is covered in `test/suite/text_parameters_test.go`.
+- `runEditor` takes the "nothing was written" sentence from its caller.
+  `secret edit` keeps "no secrets were changed", and `config edit` says
+  "nothing was changed".
+- `init --set-file` records where each value came from in
+  `InitOptions.ParameterFiles`, which only the wizard's equivalent command
+  reads.
+
+## Self-audit (2026-11-09)
+
+Scope: branch `text-parameters-p1` against `main` at `8ff4e369`.
+
+Spec fidelity: §5.1–§5.6 and decisions 1–15 walked against the diff. §5.6's
+`release show` sentence has nothing to build (§ Plan).
+
+Findings:
+
+1. **A parameter value reached a fleet row.** This was my own unlisted change:
+   it put every type's refusal reason in the message, and the reason quotes
+   the value. `TestARowCarriesNoParameterValueOrSecret` caught it in `just
+   ci`. Fixed in `eadf5858`, and logged above as attempt 2.
+2. **Lint QF1002** in the edit session. Fixed in `c0c2392f`.
+
+Sabotage: 33 mutations, each run against the tests written for it, all red:
+
+- `Parse`: CRLF, trailing newline, trim, limit, NUL, UTF-8.
+- The file boundary and the floor.
+- The refusal message: reason dropped, every type naming its reason (red in
+  the fleet test), own hint dropped.
+- `lines` of an empty value, and the two-line synthetic value.
+- The parsed default, and the summary counts.
+- The diff: whole default printed, digest over the raw default.
+- The list view: first line, and no count for an empty value.
+- The edit session, eight ways: unchanged applied, emptied applied, one hint
+  for both, any type opened, directory kept, no final newline, no terminal
+  check, raw default opened.
+- `--set-file`: stdin read twice, a setting by file, a name given both ways,
+  and `init` and `config set` ignoring the flag.
+- The equivalent command printing the value.
+
+The terminal-check mutation launched a real editor on the test's stdin until
+that editor was ended; a test that bypasses the check meets an editor, not a
+hang in production code.
+
+Distilled rule: an error's `Message` is published (fleet rows,
+notifications), so a message never quotes a value an operator typed; a reason
+that would, goes in the hint or nowhere.
+
+Drift count: 0.
