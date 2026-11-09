@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release does not declare was recorded, and refused by the first
   `apply`.
 
+- **Templates get `split`, the counterpart of `join`.** `split ","
+  .Parameters.servers` turns a comma-separated parameter into a list to
+  `range` over, each item trimmed and empty ones dropped.
+
 ### Changed
 
 - **`installation.yaml` lists the deployment profiles under `profiles`.** Its
