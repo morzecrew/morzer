@@ -118,8 +118,8 @@ func (a *App) editParameterWith(
 			WithHint("%s", refused.Hint)
 	}
 
-	switch {
-	case value == entry.Value:
+	switch value {
+	case entry.Value:
 		a.finish(ops.Result{Summary: "no change: " + name + " already matches"})
 		return nil
 
@@ -127,7 +127,7 @@ func (a *App) editParameterWith(
 	// often a slip than a choice, so it changes nothing, and the hint names
 	// what an empty file might have meant -- where that can be done at all.
 	// A declaration with no default refuses an empty value as missing.
-	case value == "":
+	case "":
 		refusal := domain.Usage("%s was left empty, so %s", name, parameterUnchanged)
 		if entry.Default == "" {
 			return refusal.WithHint("the release declares no default for %s, so it cannot be left empty", name)
