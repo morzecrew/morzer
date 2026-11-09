@@ -142,3 +142,119 @@ proposal: ASSUMED — refines decision 6. `.Installation.Profile` follows `.Prof
 ```
 
 Close-outs for decisions 1 and 2, both `LOCKED`, follow the build.
+
+## Build, 2026-11-09
+
+```divergence
+decision: 13
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-09T09:52:17Z
+attempt: 1
+claim: decision 13 renders every combinable profile together, which is the all-on branch only when the release declares no other profile. With `combinable: [metrics]` beside `embedded` and `external-db`, the synthetic selection is `metrics` alone, `.Profile` renders, and an operator's `embedded,metrics` fails the render at apply: the leftover `.Profile` §5.8 says render-check catches is not caught. The synthetic selection is the first other declared profile, sorted, then every combinable one, which is a selection the release accepts and the branch an operator reaches.
+evidence: internal/adapters/render/gotemplate/synthetic.go:90-104
+action: departed
+proposal: ASSUMED — refines decision 13. `--render-check` renders every combinable profile together with the first other profile the release declares, sorted, when it declares any of each, so a selection of one combinable profile beside an alternative is rendered too.
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-09T09:59:27Z
+attempt: 1
+claim: decision 1 honoured: a release opts in with `runtimes.<name>.combinable`, a selection holds any of those names plus at most one profile outside the list, and a release without the field refuses a second name, so `.Profile` and `<PRODUCT>_PROFILE` keep their meaning for every existing bundle
+evidence: internal/domain/manifest.go:471-504
+action: decided
+```
+
+```divergence
+decision: 2
+grade: LOCKED
+kind: resolved
+at: 2026-11-09T09:59:27Z
+attempt: 1
+claim: decision 2 honoured: the installation records `profiles` at schema 18, the migration from 17 moves a non-empty `profile` into a one-element list and empties it, and `profile` is decoded and never written
+evidence: internal/infra/state/state.go:394-403
+action: decided
+```
+
+Built as planned, with the two entries above. The selection rules are in
+`RuntimeDecl.selection` (`internal/domain/manifest.go`), which `FilesFor`,
+`Release.RuntimeFilePaths` and `Release.Selection` share. `runtimeConfig` and
+`templateData` resolve the effective selection to layering order through it,
+so `.Profiles` and `<PRODUCT>_PROFILE` carry that order. `.Profile` is a value
+method on the render context, through `ports.OneProfile`.
+
+Where the build settled what the plan left open:
+
+- **`init` checks a selection in the write step,** which loads it against the
+  staged release and stores it in layering order. A check in the stage step,
+  as the plan had it, was the same refusal one step earlier: the sabotage
+  sweep removed it and every test stayed green, so it was taken out.
+- **The three-tier tutorial shows an overlay as a snippet** and not in
+  `testdata/bundle-web`. Declaring `combinable` there raises the example's
+  floor to 0.15.0 before any released manager reads it, which is the reason
+  the example bundle waited for 0.12.0 before declaring a preflight check.
+- **`release show`** marks a name `(combinable)`; **`release diff`** reports
+  `combinable` as one entry among the profile changes, its names joined in
+  layering order, so a reordering shows (decision 17).
+
+Tests that changed with the behaviour they pinned:
+
+- `internal/adapters/render/gotemplate/references_internal_test.go`: the row
+  for a field on a value with none used `.Profile.Name`. `.Profile` is now a
+  method, whose result the walker does not follow, so the row uses
+  `.Release.Vendor.Name`, and a new row pins that the profile fields pass.
+- `test/contract/statestore.go`: the round trip records two profiles, so the
+  battery pins that a selection keeps its order.
+- `internal/ui/views/fixtures_test.go`: the troubled status records two
+  profiles, and its goldens show `profile  embedded, xdns`.
+
+## Self-audit, 2026-11-09
+
+Scope: the branch against `fbaed469`: the domain (manifest, release,
+installation, describe), the state migration, `ops` (init, settings, apply,
+update, rollback, status, doctor, release diff and every `runtimeConfig`
+caller), the render port and adapter, the CLI flags and wizard, the status and
+release views, tests in `internal/...`, `test/suite`, `test/clitest` and
+`test/contract`, the regenerated schemas, seven doc pages, the changelog and
+this log.
+
+- **Sabotage:** twenty-one mutations, each run against the tests written for
+  it, each red:
+  - layering in the operator's order;
+  - two profiles outside `combinable` allowed;
+  - a duplicate allowed;
+  - the migration dropping the profile;
+  - the old field ignored at schema 18;
+  - selections compared in order;
+  - the run-together refusal on update skipped;
+  - `<PRODUCT>_PROFILE` joined with spaces;
+  - `.Profile` taking the first name;
+  - `.Installation.Profile` joining the names;
+  - the synthetic selection dropping the other profile;
+  - the floor not checked;
+  - `init` keeping the given order;
+  - `init` checking nothing;
+  - `doctor` not reading a report from before 18;
+  - `release diff` dropping `combinable`;
+  - `release show` dropping the suffix;
+  - `--profile` not trimmed;
+  - `config set` keeping the given order;
+  - the status view showing the setting's form;
+  - the hint naming no release.
+
+  Two needed a second run. The duplicate mutation first failed to compile,
+  which counts as red without proving anything; run in a form that builds, it
+  went red. The status view's survived: no test showed several profiles, so
+  the troubled fixture now records two.
+- **Docs:** every page a search for `profile` found was read; seven changed.
+  `just docs-check`: 44 pages, 160 checks, no drift.
+- **Residue:**
+  - `CombinableNames` across runtimes that disagree may name a set no single
+    runtime accepts. Only `release show`, `release diff` and the synthetic
+    render read it, and decision 18 leaves disagreement to the vendor.
+  - The decision 13 entry's evidence, `synthetic.go:90-104`, was written
+    before the doc comment above the function grew by three lines; the
+    function is at `:93-106`.
