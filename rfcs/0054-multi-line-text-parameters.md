@@ -330,6 +330,14 @@ $ morzer config edit rules
   that can be diffed and committed (RFC 0027), and a summary there would
   make it describe something other than the installation. `goccy/go-yaml`
   writes it as a block scalar (§3).
+- **A default is shown parsed,** in `config list`, `config get` and
+  `config edit`, so each shows what the deployment receives. Today
+  `ConfigList` parses a recorded value but echoes the default unparsed
+  ([`config.go:57`](../internal/lifecycle/ops/config.go)), while delivery
+  parses it (`ResolveParameters`). A text default written as a `|` block
+  ends in a newline, so it would print differently from what Compose gets.
+  Parsing the default fixes this for every type: a port default of `08`
+  lists as `8`, the value delivered.
 - **`status`** is unchanged, since it shows no parameters.
 - **The `config set` and `config edit` summary** gives a text parameter's
   line counts before and after, as in `set rules (42 → 44 lines)`.
@@ -501,7 +509,7 @@ floor's value is set by whichever manager release ships this.
 | 7 | `ASSUMED` | `config edit <name>` takes one `text` parameter and needs a terminal. It opens the effective value alone, plus a final newline, in a temporary directory that is removed afterwards. It follows RFC 0003 decision 20: an unchanged or emptied file changes nothing. The hint for an emptied file names `config set <name>=` only for a parameter with a default, since one with no default refuses an empty value as missing. A saved change is the `config set` operation. Other types are refused with a hint naming `config set`. |
 | 8 | `ASSUMED` | `config edit` holds no lock while the editor is open, and does not check whether the value changed meanwhile: last write wins, as with `config set` and `secret edit`. Holding the deployment lock for an editor session would block timers and every other operation for as long as the editor stays open. |
 | 9 | `ASSUMED` | `--set-file name=path` on `config set` and `init`, repeatable, with `-` for standard input once. It takes any parameter type, and refuses a dotted setting. Whatever the type, it refuses a file holding a NUL byte or invalid UTF-8 before the type's `Parse` runs, because `string` accepts both and decision 3's reasons apply to every value. One flag name on both commands, as in Helm's `--set-file`. Rejected: `name=@path`, because it changes the meaning of an existing value that starts with `@`. `init`'s equivalent command prints the flag, not the value. |
-| 10 | `ASSUMED` | `config list` shows the first line and `(N lines)`. `config get`, `--json` and `describe` show the whole value. `describe` must, because it is the installation document (RFC 0027). This departs from #315, which proposed a summary in `describe` and `status`; `status` shows no parameters today and is unchanged. |
+| 10 | `ASSUMED` | `config list` shows the first line and `(N lines)`. `config get`, `--json` and `describe` show the whole value. `describe` must, because it is the installation document (RFC 0027). This departs from #315, which proposed a summary in `describe` and `status`; `status` shows no parameters today and is unchanged. `config list`, `config get` and `config edit` show a default as `Parse` normalises it, for every type, as delivery already does. Today `ConfigList` echoes it (`config.go:57`). |
 | 11 | `OPEN` | Whether old and new values need a diff view. Recommended: no. The journal and the attestation hold parameter names, never values, for every type (`config.go:140`, `attestation.go:220`), so there is nothing there to diff. The `config set` and `config edit` summary gives line counts before and after (§5.5). |
 | 12 | `ASSUMED` | A manifest declaring `text` needs `compatibility.min_manager_version` of at least `TextParametersMinManagerVersion`, validated as `CombinableProfilesMinManagerVersion` is. This assumes the next release, 0.15.0, ships it. |
 | 13 | `ASSUMED` | The render check gives a text parameter without a default a two-line synthetic value. |
