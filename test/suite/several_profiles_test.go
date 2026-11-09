@@ -214,10 +214,23 @@ func TestAFailedUpdateUnderASelectionRestoresTheRecordedProfile(t *testing.T) {
 // and records a possible one in the release's layering order.
 func TestInitChecksTheSelectionAgainstTheRelease(t *testing.T) {
 	ctx := context.Background()
-	refused := newMachine(t, t.TempDir())
+	fresh := func(combinable bool) (*harness, string) {
+		h := newHarness(t)
+		h.setHookEnv()
+		realIdentity(t, h)
+		src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+		copyBundle(t, testBundlePath(t), src)
+		retargetManifest(t, src, h.Root)
+		if combinable {
+			withCombinableProfiles(t, src, true)
+		}
+		return h, src
+	}
+
+	refused, src := fresh(false)
 	_, err := ops.Init(ctx, refused.Deps, ops.InitOptions{
 		Product:         "demo",
-		ReleasePath:     testBundlePath(t),
+		ReleasePath:     src,
 		Profiles:        []string{"embedded", "external-db"},
 		NoRecoveryKey:   true,
 		GenerateSecrets: true,
@@ -228,17 +241,15 @@ func TestInitChecksTheSelectionAgainstTheRelease(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, exists, "a refused selection left an installation behind")
 
-	_, err = ops.Init(ctx, newMachine(t, t.TempDir()).Deps, ops.InitOptions{
+	empty, _ := fresh(false)
+	_, err = ops.Init(ctx, empty.Deps, ops.InitOptions{
 		Product: "demo", Profiles: []string{"embedded", ""}, NoRecoveryKey: true,
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "an empty profile name in the selection")
 
-	bundle := filepath.Join(t.TempDir(), "bundle")
-	copyBundle(t, testBundlePath(t), bundle)
-	withCombinableProfiles(t, bundle, true)
-	m := newMachine(t, t.TempDir())
-	_, err = ops.Init(ctx, m.Deps, ops.InitOptions{
+	h, bundle := fresh(true)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product:         "demo",
 		ReleasePath:     bundle,
 		Profiles:        []string{"xhttp-reality", "xdns", "embedded"},
@@ -246,7 +257,7 @@ func TestInitChecksTheSelectionAgainstTheRelease(t *testing.T) {
 		GenerateSecrets: true,
 	})
 	require.NoError(t, err)
-	inst, err := m.Deps.State.LoadInstallation(ctx)
+	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"embedded", "xdns", "xhttp-reality"}, inst.Profiles)
 }
