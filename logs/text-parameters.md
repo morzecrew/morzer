@@ -114,3 +114,29 @@ Decisions the spec does not settle:
   following decision 10's wording.
 
 Readiness gate: zero load-bearing gaps.
+
+## Build
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-09T14:48:51Z
+attempt: 1
+claim: a refused value's reason never reaches the operator. `printError` prints an error's Message and Hint and never its cause, and `mergeParameters` and `ResolveParameters` wrap a `Parse` refusal as `parameter "<name>"` with the type's description as the hint. So `config set http_port=70000` says only `parameter "http_port"`, and a text value over the limit would never say why. §5.1 writes the refusal as `parameter "rules": the value is …`. Both wrappers now carry the reason in the message, for every type, and keep the refusal's own hint where it has one.
+evidence: internal/cli/root.go:505-511
+action: decided
+proposal: ASSUMED — a refused parameter value names its reason in the message, `parameter "<name>": <reason>`, for every type. The hint is the refusal's own when it has one, and the type's description otherwise.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-09T15:12:41Z
+attempt: 2
+claim: the entry above was wrong for every type but `text`. An error's message travels beyond the terminal: `fleet publish` puts it in a row on a shared target, and the other types' refusals quote the value they refuse (`%q is not a port number`). With the reason in the message, `TestARowCarriesNoParameterValueOrSecret` found a parameter value in a published row. The type's description in the hint, and nothing quoted in the message, is what kept the value at home. A `text` refusal names a size or a byte class and never the value, so only it puts its reason in the message, as §5.1 writes.
+evidence: test/suite/fleet_test.go:136-161
+action: decided
+proposal: ASSUMED — supersedes the proposal above. A refused `text` value names its reason in the message, `parameter "<name>": <reason>`, with the refusal's own hint. The other types keep `parameter "<name>"` with the type's description as the hint, because their refusals quote the value, and a message reaches fleet rows.
+```
