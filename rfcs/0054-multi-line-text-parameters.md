@@ -1,7 +1,7 @@
 # RFC 0054 — Multi-line text parameters
 
-- **Status:** 📝 Draft — proposed 2026-11-09. Decisions 4, 5 and 11 are
-  `OPEN` for the author to rule.
+- **Status:** 📝 Draft — proposed 2026-11-09, and ruled by the author
+  2026-11-09: decisions 4, 5 and 11 as recommended.
 - **Scope:** Adds a `text` parameter type for multi-line values that are not
   secret, such as routing rules, allow and deny lists, or a fragment of a
   product's own configuration. It covers:
@@ -447,6 +447,7 @@ $ morzer config edit rules
 - **A diff view** of old and new values in the journal or the summary. The
   journal holds no parameter values (§3), and the operator has just seen the
   change in their editor. The summary gives line counts (decision 11).
+  Demand-gated: the author ruled that it can be added later.
 - **An optional parameter that may be empty.** A declaration with no default
   counts an empty value as missing, for every type, so `init` and
   `config set` refuse it. A vendor therefore cannot declare "empty unless the
@@ -487,14 +488,9 @@ $ morzer config edit rules
 
 ## 10. Unresolved questions
 
-The `OPEN` rows are for the author:
-
-- **Decision 4:** the size limit.
-- **Decision 5:** delivery to Compose and hooks.
-- **Decision 11:** whether a diff view is needed.
-
-These are #315's three open questions, each with a recommendation. The
-floor's value is set by whichever manager release ships this.
+#315's three open questions were decisions 4, 5 and 11. The author ruled
+all three as recommended on 2026-11-09. The floor's value is set by
+whichever manager release ships this.
 
 ## 11. Decisions
 
@@ -503,14 +499,14 @@ floor's value is set by whichever manager release ships this.
 | 1 | `LOCKED` | `text` is a new type in the closed parameter set (RFC 0007 decision 2), and not a secret (RFC 0007 decision 3, unchanged). The value is a string in `Installation.Parameters`, so neither the installation schema nor the hook ABI changes. Rejected: a flag on `string`, and narrowing `string` (§5.7). Reversing this after release breaks every bundle that declares the type. |
 | 2 | `ASSUMED` | `Parse` for `text` turns CRLF into LF, removes trailing newlines and trims nothing else. Leading whitespace is kept, unlike every other type, because a YAML fragment's indentation is its meaning. Removing trailing newlines is what makes an unchanged save a no-op whatever the editor adds. |
 | 3 | `ASSUMED` | `Parse` for `text` refuses invalid UTF-8 and NUL. Invalid bytes would be replaced on the state's JSON save, so the value would change silently. A NUL would make every Compose call and hook fail with `exec: environment variable contains NUL`. Both measured (§3). |
-| 4 | `OPEN` | The size limit. Recommended: 64 KiB per value, measured after normalisation, with no limit on the total (§9). Measured on Linux 6.6: a 128 KiB environment string fails `exec`, and every value is in the environment of every Compose call and hook. 64 KiB leaves room under that limit. Larger content is a file the bundle ships, or a secret. |
-| 5 | `OPEN` | How Compose and hooks get a text value. Recommended: `<PRODUCT>_PARAM_<NAME>`, as for every type. The manager passes the process environment and no env file (`compose.go:110`), and Compose 5.5.1 interpolates the value intact (§3). A product that needs a file gets one from a `configuration:` template, the mechanism that already renders files. Rejected: a `_FILE` path variable, which is a second delivery path (§5.7). |
+| 4 | `ASSUMED` | The size limit. Recommended: 64 KiB per value, measured after normalisation, with no limit on the total (§9). Measured on Linux 6.6: a 128 KiB environment string fails `exec`, and every value is in the environment of every Compose call and hook. 64 KiB leaves room under that limit. Larger content is a file the bundle ships, or a secret. Was `OPEN`; ruled by the author 2026-11-09: as recommended. |
+| 5 | `ASSUMED` | How Compose and hooks get a text value. Recommended: `<PRODUCT>_PARAM_<NAME>`, as for every type. The manager passes the process environment and no env file (`compose.go:110`), and Compose 5.5.1 interpolates the value intact (§3). A product that needs a file gets one from a `configuration:` template, the mechanism that already renders files. Rejected: a `_FILE` path variable, which is a second delivery path (§5.7). Was `OPEN`; ruled by the author 2026-11-09: as recommended. |
 | 6 | `ASSUMED` | Templates get `.Parameters.<name>` whole and a new `lines` function, which returns an empty list for an empty value. sprig's `splitList` is not added: its empty-value case yields one empty element. |
 | 7 | `ASSUMED` | `config edit <name>` takes one `text` parameter and needs a terminal. It opens the effective value alone, plus a final newline, in a temporary directory that is removed afterwards. It follows RFC 0003 decision 20: an unchanged or emptied file changes nothing. The hint for an emptied file names `config set <name>=` only for a parameter with a default, since one with no default refuses an empty value as missing. A saved change is the `config set` operation. Other types are refused with a hint naming `config set`. |
 | 8 | `ASSUMED` | `config edit` holds no lock while the editor is open, and does not check whether the value changed meanwhile: last write wins, as with `config set` and `secret edit`. Holding the deployment lock for an editor session would block timers and every other operation for as long as the editor stays open. |
 | 9 | `ASSUMED` | `--set-file name=path` on `config set` and `init`, repeatable, with `-` for standard input once. It takes any parameter type, and refuses a dotted setting. Whatever the type, it refuses a file holding a NUL byte or invalid UTF-8 before the type's `Parse` runs, because `string` accepts both and decision 3's reasons apply to every value. One flag name on both commands, as in Helm's `--set-file`. Rejected: `name=@path`, because it changes the meaning of an existing value that starts with `@`. `init`'s equivalent command prints the flag, not the value. |
 | 10 | `ASSUMED` | `config list` shows the first line and `(N lines)`. `config get`, `--json` and `describe` show the whole value. `describe` must, because it is the installation document (RFC 0027). This departs from #315, which proposed a summary in `describe` and `status`; `status` shows no parameters today and is unchanged. `config list`, `config get` and `config edit` show a default as `Parse` normalises it, for every type, as delivery already does. Today `ConfigList` echoes it (`config.go:57`). |
-| 11 | `OPEN` | Whether old and new values need a diff view. Recommended: no. The journal and the attestation hold parameter names, never values, for every type (`config.go:140`, `attestation.go:220`), so there is nothing there to diff. The `config set` and `config edit` summary gives line counts before and after (§5.5). |
+| 11 | `ASSUMED` | Whether old and new values need a diff view. Recommended: no. The journal and the attestation hold parameter names, never values, for every type (`config.go:140`, `attestation.go:220`), so there is nothing there to diff. The `config set` and `config edit` summary gives line counts before and after (§5.5). Was `OPEN`; ruled by the author 2026-11-09: as recommended. A diff view can be added later (§8). |
 | 12 | `ASSUMED` | A manifest declaring `text` needs `compatibility.min_manager_version` of at least `TextParametersMinManagerVersion`, validated as `CombinableProfilesMinManagerVersion` is. This assumes the next release, 0.15.0, ships it. |
 | 13 | `ASSUMED` | The render check gives a text parameter without a default a two-line synthetic value. |
 | 14 | `ASSUMED` | `release diff` describes a text default by its line count and the first 12 hex digits of its SHA-256. `changes` compares descriptions, so a change on any line is still listed, and the row stays one line. |
