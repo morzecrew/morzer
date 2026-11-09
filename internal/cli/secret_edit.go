@@ -60,6 +60,9 @@ func newSecretEditCommand(app *App) *cobra.Command {
 	}
 }
 
+// secretsUnchanged is what an aborted secret edit tells the operator.
+const secretsUnchanged = "no secrets were changed"
+
 func (a *App) editSecrets(ctx context.Context, names []string) error {
 	if !ui.IsTerminal(a.Stream.In) {
 		return domain.Usage("`secret edit` needs a terminal").
@@ -113,7 +116,7 @@ func (a *App) editSecretsWith(ctx context.Context, names, editor []string) error
 		if err := atomicfs.WriteFile(path, []byte(before[name]), 0o600); err != nil {
 			return err
 		}
-		if err := runEditor(ctx, editor, path); err != nil {
+		if err := runEditor(ctx, editor, path, secretsUnchanged); err != nil {
 			return err
 		}
 		value, err := readEditedValue(path, name, before[name])
@@ -129,7 +132,7 @@ func (a *App) editSecretsWith(ctx context.Context, names, editor []string) error
 		return err
 	}
 
-	if err := runEditor(ctx, editor, path); err != nil {
+	if err := runEditor(ctx, editor, path, secretsUnchanged); err != nil {
 		return err
 	}
 
@@ -416,12 +419,13 @@ func editorCommand() ([]string, error) {
 		WithHint("set $EDITOR or $VISUAL, or use `morzer secret set <name>`")
 }
 
-// runEditor hands the terminal to the editor.
+// runEditor hands the terminal to the editor. unchanged is the sentence that
+// tells the operator nothing was written, in the caller's terms.
 //
 // Not through internal/infra/exec: that runner captures output and imposes a
 // timeout, both of which are exactly wrong for a program the operator is
 // looking at. An editor session is as long as it takes.
-func runEditor(ctx context.Context, editor []string, path string) error {
+func runEditor(ctx context.Context, editor []string, path, unchanged string) error {
 	argv := append(append([]string{}, editor...), path)
 
 	cmd := osexec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // the operator's own $EDITOR
@@ -439,7 +443,7 @@ func runEditor(ctx context.Context, editor []string, path string) error {
 	// ExitError -- so testing that first would classify a ctrl-C as the
 	// operator quitting their editor with an error.
 	if ctx.Err() != nil {
-		return domain.Interrupted("the edit was cancelled; no secrets were changed")
+		return domain.Interrupted("the edit was cancelled; %s", unchanged)
 	}
 
 	// An editor exiting non-zero is how an operator says "forget it" --
@@ -449,7 +453,7 @@ func runEditor(ctx context.Context, editor []string, path string) error {
 	// message about an abort they did not perform.
 	var exitErr *osexec.ExitError
 	if errors.As(err, &exitErr) {
-		return domain.Usage("the editor exited with an error; no secrets were changed").
+		return domain.Usage("the editor exited with an error; %s", unchanged).
 			WithHint("nothing was written. The temporary file has been removed.")
 	}
 	return domain.Usage("cannot run the editor %q", argv[0]).

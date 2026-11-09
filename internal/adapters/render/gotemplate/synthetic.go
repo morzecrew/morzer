@@ -167,6 +167,10 @@ func syntheticValue(spec domain.ParameterSpec) string {
 		return "30s"
 	case domain.ParamBytes:
 		return "1MiB"
+	case domain.ParamText:
+		// Two lines, so a template that assumes one is rendered with
+		// more (RFC 0054 decision 13).
+		return "example\nexample"
 	case domain.ParamString:
 		return "example"
 	default:

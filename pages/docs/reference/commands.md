@@ -134,6 +134,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--require-signature` | Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or [shipped by the release](#the-key-a-release-ships); `--require-signature=false` turns it off and trusts no key the release ships. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
+| `--set-file` | Read a release parameter's value from a file, as `name=path`, or from standard input with `-`. Repeat for several. Refuses a file holding a NUL byte or invalid UTF-8. See [Text values](parameters.md#text-values). |
 | `--repair` | Restore missing directories on an existing installation. It restores a layout; `morzer config set installation.domains` and `installation.profile` are how the domains and the profile change afterwards. It finds the installation as every other command does, so `--product` is needed only on a machine with several, and secret state that already has a recovery recipient needs neither recovery flag. |
 | `--mode` | What this machine is for: `dev` for a sandbox, or production (the default). Fixed at creation and never changeable — see [unattended updates](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
 
@@ -1039,6 +1040,7 @@ Arguments that name something inside an installation complete from it:
 | `release show` | the versions in the release store, then file names |
 | `update --to`, `rollback --to` | the stored versions newer, or older, than the installed one |
 | `config get`, `config set`, `config unset` | the parameter and setting names, as `name=` for `set`; `unset` adds the stale values `config list` reports |
+| `config edit` | the text parameters |
 | `restore --backup`, `backup verify`, `backup target push` | this machine's backups, newest first |
 | `history` | the operations in the journal, newest first, with their type and status |
 

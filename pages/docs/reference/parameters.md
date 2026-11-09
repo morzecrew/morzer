@@ -33,6 +33,14 @@ does not accept is refused before anything is created:
         hint: log_level accepts debug, info, warn, error; default info -- Application log verbosity
 ```
 
+`--set-file name=path` reads a value from a file instead, and `-` reads it from
+standard input. It is how a multi-line [text value](#text-values) is given at
+install time:
+
+```sh
+morzer init --release ./bundle --set-file rules=./rules.txt
+```
+
 The chosen values are recorded in the installation's state, and shown in
 `installation.yaml`:
 
@@ -113,6 +121,7 @@ What still passes through is what a tool needs to run at all: `PATH`, `HOME`,
 | `enum` | one of the declared `values` | as written |
 | `duration` | `30s`, `5m`, `2h` | canonical form |
 | `bytes` | `512KiB`, `25MiB`, `2GiB` | canonical form |
+| `text` | several lines of UTF-8, up to 64 KiB | LF line endings, trailing newlines removed |
 
 Values are normalised, so ` 9000 ` and `9000` cannot become two different ports
 downstream. Port `0` is refused: Compose reads it as "pick any", and the health
@@ -129,6 +138,48 @@ check would then probe a port nothing is listening on.
     [Secret commands](secret-commands.md) and
     [How secrets work](../explanation/secrets.md).
 
+## Text values
+
+A `text` parameter holds several lines: routing rules, an allow list, a
+fragment of the product's own configuration. Line endings become LF and
+trailing newlines are removed, and nothing else is trimmed, so indentation
+survives. A value is at most 64 KiB once normalised, and a NUL byte or invalid
+UTF-8 is refused.
+
+Set one from a file, from standard input, or in your editor:
+
+```sh
+morzer config set --set-file rules=./rules.txt
+generate-rules | morzer config set --set-file rules=-
+morzer config edit rules
+```
+
+`--set-file` works for every type, and on `init` too. Whatever the type, it
+refuses a file holding a NUL byte or invalid UTF-8: no process environment can
+carry a NUL, and the recorded state is JSON, which would replace invalid bytes.
+
+`config edit <name>` opens one text parameter's value alone, as plain text, in
+`$VISUAL` or `$EDITOR`, and needs a terminal. Saving it runs `config set`.
+Saving it unchanged changes nothing, and so does emptying it. To clear a value,
+`config set rules=` records an empty one where the release declares a default,
+and `config unset rules` returns to that default. A parameter with no default
+cannot be left empty.
+
+What each view shows:
+
+| Where | A text value |
+| --- | --- |
+| `config list` | the first line and a count, such as `DOMAIN-SUFFIX,example.ru (42 lines)` |
+| `config get`, `config list --json` | the whole value |
+| `installation describe`, `installation.yaml` | the whole value, as a block scalar |
+| the `config set` summary | the line counts before and after, such as `set rules (42 → 44 lines)` |
+
+`config get rules > rules.txt` writes back what `--set-file rules=rules.txt`
+reads.
+
+A text value is not secret, like every parameter. Anything that must not be
+visible in `docker inspect` or `installation.yaml` is a secret.
+
 ## Changing one after install
 
 See [Changing configuration](../operating/changing-configuration.md) for the
@@ -142,6 +193,8 @@ on it.
 morzer config list                    # every parameter, its value, and where it came from
 morzer config get http_port           # the value alone, for a script
 morzer config set http_port=9000      # validate, record, re-create the dependants
+morzer config set --set-file rules=rules.txt   # a value from a file; - is stdin
+morzer config edit rules              # a text value in your editor
 morzer config unset http_port         # back to the release's default
 morzer config set http_port=9000 --dry-run   # the step list, and the config diff
 ```

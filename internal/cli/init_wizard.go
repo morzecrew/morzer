@@ -424,6 +424,12 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	// this goes into a provisioning script, where a command that reorders
 	// itself between runs is a diff nobody can read.
 	for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
+		// The flag a value came from, never a file's contents on the
+		// command line.
+		if path, ok := opts.ParameterFiles[name]; ok {
+			add("set-file", name+"="+path)
+			continue
+		}
 		add("set", name+"="+opts.Parameters[name])
 	}
 	add("recovery-recipient", opts.RecoveryRecipient)

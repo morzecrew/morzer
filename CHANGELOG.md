@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release does not declare was recorded, and refused by the first
   `apply`.
 
+- **A parameter can hold several lines, as `type: text`.** It takes UTF-8 text
+  of up to 64 KiB, keeps indentation, and reaches templates, Compose and hooks
+  whole, so a list of rules no longer has to be a secret. A release declaring
+  one needs `compatibility.min_manager_version: "0.15.0"`.
+
+- **`morzer config edit <name>` opens a text parameter in your editor.** Saving
+  it sets the value as `config set` does; saving it unchanged or empty changes
+  nothing.
+
+- **`--set-file name=path` sets a parameter from a file,** or from standard
+  input with `-`, on `config set` and `init`.
+
+- **Templates get `lines`,** which splits a text value for a `range`.
+
 ### Changed
 
 - **`installation.yaml` lists the deployment profiles under `profiles`.** Its
@@ -47,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--require-signature=false` to keep installing unsigned releases.
 
 ### Fixed
+
+- **`config list` and `config get` show a default as the deployment gets it.**
+  A default is normalised as every value is, so a port default of `08` lists
+  as `8`.
 
 - **`init --repair --release` checks the release against the installation's
   keys.** Given no `--signing-key`, it checked nothing, even where the

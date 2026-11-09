@@ -93,7 +93,7 @@ func TestAnEditorThatCannotStartSaysSo(t *testing.T) {
 
 	t.Run("a command that is not on PATH", func(t *testing.T) {
 		err := runEditor(context.Background(),
-			[]string{"morzer-no-such-editor-here"}, file)
+			[]string{"morzer-no-such-editor-here"}, file, secretsUnchanged)
 		require.Error(t, err)
 
 		de := domain.AsError(err)
@@ -108,7 +108,7 @@ func TestAnEditorThatCannotStartSaysSo(t *testing.T) {
 		script := filepath.Join(dir, "quit-with-error")
 		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 1\n"), 0o700))
 
-		err := runEditor(context.Background(), []string{script}, file)
+		err := runEditor(context.Background(), []string{script}, file, secretsUnchanged)
 		require.Error(t, err)
 		assert.Contains(t, domain.AsError(err).Message, "exited with an error")
 	})

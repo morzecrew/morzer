@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ParameterType is the closed set of types a parameter may declare.
@@ -25,12 +26,23 @@ const (
 	ParamEnum     ParameterType = "enum"
 	ParamDuration ParameterType = "duration"
 	ParamBytes    ParameterType = "bytes"
+
+	// ParamText is multi-line text that is not secret: routing rules, an
+	// allow list, a fragment of the product's own configuration (RFC 0054).
+	ParamText ParameterType = "text"
 )
 
 // ParameterTypes is every valid type, for error messages and the schema.
 var ParameterTypes = []ParameterType{
-	ParamPort, ParamInt, ParamBool, ParamString, ParamEnum, ParamDuration, ParamBytes,
+	ParamPort, ParamInt, ParamBool, ParamString, ParamEnum, ParamDuration, ParamBytes, ParamText,
 }
+
+// TextParameterLimit is the most a text value may hold once normalised.
+//
+// Every parameter is in the environment of every Compose call and hook, and on
+// Linux one environment string of 128 KiB fails exec with "argument list too
+// long" (RFC 0054 decision 4).
+const TextParameterLimit ByteSize = 64 * KiB
 
 // ParameterSpec is one knob a release exposes to the operator.
 //
@@ -125,6 +137,12 @@ func ValidateParameters(params map[string]ParameterSpec, v *validationErrors) {
 // Parse validates a raw value against the declaration and returns it
 // normalised, so `0x1f`, `08` and `31` do not become three different ports.
 func (p ParameterSpec) Parse(raw string) (string, error) {
+	// Before the trim every other type gets: a YAML fragment's leading
+	// indentation is its meaning.
+	if p.Type == ParamText {
+		return parseText(raw)
+	}
+
 	value := strings.TrimSpace(raw)
 
 	switch p.Type {
@@ -184,6 +202,76 @@ func (p ParameterSpec) Parse(raw string) (string, error) {
 	}
 }
 
+// parseText normalises a text value: every line ending, CRLF or a lone CR,
+// becomes LF and trailing newlines go, so an editor that adds a final newline
+// and one that does not save the same value, and an unchanged save is a no-op
+// (RFC 0054 decision 2). Nothing else is trimmed.
+func parseText(raw string) (string, error) {
+	if err := checkTextBytes(raw); err != nil {
+		return "", err
+	}
+	lf := strings.ReplaceAll(strings.ReplaceAll(raw, "\r\n", "\n"), "\r", "\n")
+	value := strings.TrimRight(lf, "\n")
+	if len(value) > int(TextParameterLimit) {
+		return "", Usage("the value is %s, and a text parameter holds at most %s",
+			ByteSize(len(value)), TextParameterLimit).
+			WithHint("every parameter is passed to each Compose call and hook in its environment")
+	}
+	return value, nil
+}
+
+// checkTextBytes refuses what no value can carry to where it is delivered:
+// invalid UTF-8, which the state's JSON save would replace, and a NUL, which
+// makes every Compose call and hook fail to start (RFC 0054 decision 3).
+func checkTextBytes(s string) error {
+	if !utf8.ValidString(s) {
+		return Usage("the value is not valid UTF-8").
+			WithHint("the state is saved as JSON, which would replace the invalid bytes")
+	}
+	if strings.ContainsRune(s, 0) {
+		return Usage("the value holds a NUL byte").
+			WithHint("no process environment can carry one, so no Compose call or hook could run")
+	}
+	return nil
+}
+
+// ParameterFileValue is a value read from a file for `--set-file`, refused
+// when it holds a NUL byte or invalid UTF-8, whatever the parameter's type.
+//
+// Here rather than in Parse: `string` accepts both, and narrowing it would
+// fail recorded values at the next apply (RFC 0054 decisions 9 and 15). A file
+// is the first way either could realistically arrive.
+func ParameterFileValue(name string, data []byte) (string, error) {
+	if err := checkTextBytes(string(data)); err != nil {
+		refused := AsError(err)
+		return "", ValidationError(err, "parameter %q: %s", name, refused.Message).
+			WithHint("%s", refused.Hint)
+	}
+	return string(data), nil
+}
+
+// LineCount is how many lines a normalised text value holds: none when empty.
+func LineCount(value string) int {
+	if value == "" {
+		return 0
+	}
+	return strings.Count(value, "\n") + 1
+}
+
+// FirstLine is a value up to its first newline.
+func FirstLine(value string) string {
+	first, _, _ := strings.Cut(value, "\n")
+	return first
+}
+
+// Lines says how many lines LineCount counted, as `1 line` or `3 lines`.
+func Lines(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return strconv.Itoa(n) + " lines"
+}
+
 // Parameters are the resolved values for one installation.
 //
 // Every declared parameter is present: an unset one holds its declared default.
@@ -230,8 +318,7 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 		}
 		value, err := spec.Parse(set[name])
 		if err != nil {
-			return nil, ValidationError(err, "parameter %q", name).
-				WithHint("%s", DescribeParameter(name, spec))
+			return nil, RefusedParameterValue(err, name, spec)
 		}
 		out[name] = value
 	}
@@ -316,6 +403,24 @@ func (p Parameters) ValidateAgainst(declared map[string]ParameterSpec) []string 
 	return stale
 }
 
+// RefusedParameterValue is a value its declaration refused.
+//
+// Only a `text` refusal puts its reason in the message, as `parameter "rules":
+// the value is 70.2KiB, ...`, with its own hint. The other types' refusals quote
+// the value they refuse, and an error's message travels beyond the terminal --
+// into a fleet row published to a shared target -- so theirs stays
+// `parameter "http_port"`, with the type's description as the hint. A text
+// refusal names a size or a byte class, never the value (RFC 0054 §5.1).
+func RefusedParameterValue(err error, name string, spec ParameterSpec) *Error {
+	if spec.Type != ParamText {
+		return ValidationError(err, "parameter %q", name).
+			WithHint("%s", DescribeParameter(name, spec))
+	}
+	reason := AsError(err)
+	return ValidationError(err, "parameter %q: %s", name, reason.Message).
+		WithHint("%s", reason.Hint)
+}
+
 // DescribeParameter is the hint shown when a value is refused.
 func DescribeParameter(name string, spec ParameterSpec) string {
 	var b strings.Builder
@@ -353,6 +458,15 @@ func ParseAssignments(args []string) (map[string]string, error) {
 		out[name] = value
 	}
 	return out, nil
+}
+
+func (m Manifest) declaresTextParameter() bool {
+	for _, spec := range m.Parameters {
+		if spec.Type == ParamText {
+			return true
+		}
+	}
+	return false
 }
 
 func isParameterType(t ParameterType) bool { return slices.Contains(ParameterTypes, t) }

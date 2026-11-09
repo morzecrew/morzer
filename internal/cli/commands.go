@@ -36,6 +36,7 @@ func newInitCommand(app *App) *cobra.Command {
 		requireSig     bool
 		signingKeys    []string
 		set            []string
+		setFiles       []string
 		mode           string
 	)
 
@@ -150,7 +151,15 @@ func newInitCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			files, paths, err := app.readParameterFiles(setFiles)
+			if err != nil {
+				return err
+			}
+			if params, err = mergeParameterFiles(params, files); err != nil {
+				return err
+			}
 			opts.Parameters = params
+			opts.ParameterFiles = paths
 
 			// Only at a terminal, only without --yes, and only when
 			// something it collects is actually missing. Everything
@@ -223,6 +232,8 @@ func newInitCommand(app *App) *cobra.Command {
 	f := cmd.Flags()
 	f.StringArrayVar(&set, "set", nil,
 		"set a release parameter, as name=value; repeat for several")
+	f.StringArrayVar(&setFiles, "set-file", nil,
+		"read a release parameter's value from a file, as name=path; - is standard input; repeat for several")
 	f.StringVar(&product, "product", "", "product name; taken from the release manifest when --release is given")
 	f.StringVar(&releasePath, "release", "", "release bundle to stage during init")
 	f.StringSliceVar(&profiles, "profile", nil,
