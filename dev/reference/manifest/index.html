@@ -2021,6 +2021,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#an-optional-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        An optional secret
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2783,6 +2794,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code>owner</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-optional-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        An optional secret
       </span>
     </span>
   </a>
@@ -4296,7 +4318,7 @@ by convention — declares what secrets exist, so <code>init</code> can provisio
 <tr>
 <td><code>required</code></td>
 <td>bool</td>
-<td>Whether <code>doctor</code> reports its absence as a failure.</td>
+<td>Whether <code>doctor</code> reports its absence as a failure. An unset secret that is not required renders as an empty file; see <a href="#an-optional-secret">below</a>.</td>
 </tr>
 <tr>
 <td><code>generator</code></td>
@@ -4366,6 +4388,25 @@ user:</p>
 <p>A schema that declares <code>owner</code> needs the manifest to declare
 <code>compatibility.min_manager_version: "0.6.0"</code> or later. An older manager then
 says it is too old, instead of calling <code>owner</code> an unknown field.</p>
+<h3 id="an-optional-secret">An optional secret<a class="headerlink" href="#an-optional-secret" title="Permanent link">&para;</a></h3>
+<p>A secret declared <code>required: false</code> that the operator has not set renders as
+an empty file, mode <code>0400</code>, with its declared <code>owner</code>. A Compose service that
+mounts it starts, and reads an empty file where a set secret would have a
+value:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">upstream6</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">IPv6 upstream credential, when the IPv6 proxy is on</span>
+<span class="w">    </span><span class="nt">required</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">    </span><span class="nt">services</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">gate</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Test for an empty file to tell "not set" from "set". There is no need for a
+generated placeholder that every consumer has to recognise. <code>secret list</code> and
+<code>doctor</code> report the secret as unset, and <code>secret set</code> fills the same file.
+Removing it with <code>secret remove</code> empties the file again.</p>
+<p>A release that relies on the empty file needs
+<code>compatibility.min_manager_version: "0.15.0"</code> or later. An older manager
+renders no file for an unset optional secret, so a service that mounts it fails
+at start.</p>
 <hr />
 <h2 id="validating-a-manifest">Validating a manifest<a class="headerlink" href="#validating-a-manifest" title="Permanent link">&para;</a></h2>
 <p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema for <code>selfhost/v1alpha1</code> ships with every release, generated from
