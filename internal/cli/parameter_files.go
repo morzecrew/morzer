@@ -22,8 +22,20 @@ func (a *App) readParameterFiles(assignments []string) (values, paths map[string
 	if err != nil {
 		return nil, nil, err
 	}
+	// Before anything is read: refused after the first read, a terminal
+	// user would be waiting for an EOF they did not know was needed.
+	var stdin []string
+	for _, name := range slices.Sorted(maps.Keys(paths)) {
+		if paths[name] == "-" {
+			stdin = append(stdin, name)
+		}
+	}
+	if len(stdin) > 1 {
+		return nil, nil, domain.Usage(
+			"--set-file reads standard input for both %s and %s, and it can be read once", stdin[0], stdin[1])
+	}
+
 	values = make(map[string]string, len(paths))
-	stdin := ""
 	for _, name := range slices.Sorted(maps.Keys(paths)) {
 		if ops.IsSettingName(name) {
 			return nil, nil, domain.Usage("%s is an installation setting, and settings have no file form", name).
@@ -33,11 +45,6 @@ func (a *App) readParameterFiles(assignments []string) (values, paths map[string
 		path := paths[name]
 		var data []byte
 		if path == "-" {
-			if stdin != "" {
-				return nil, nil, domain.Usage(
-					"--set-file reads standard input for both %s and %s, and it can be read once", stdin, name)
-			}
-			stdin = name
 			data, err = io.ReadAll(a.Stream.In)
 		} else {
 			data, err = os.ReadFile(path) //nolint:gosec // the operator names the file
