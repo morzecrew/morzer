@@ -330,6 +330,15 @@ unset:
 - **Merge semantics:** names not mentioned are untouched, and removal is
   explicit (`unset`). An authoritative "everything else to defaults" mode is
   left out: it turns an authority's omission into an outage.
+- **Each document is cumulative** (decision 24). It carries every value the
+  authority manages for this installation, and every name it wants unset,
+  not only what changed since the previous document. A machine applies only
+  the newest document it finds and can miss any number before it. A
+  document holding only a change to `y` would drop a change to `x`
+  published before it and never fetched. `state publish` builds the
+  document from the authority's whole record for the installation. Values
+  that already match change nothing: RFC 0056 runs no operation for a
+  change with nothing in it.
 - `serial` is compared with the last **applied** serial for this
   installation, which is stored locally. A document whose serial is not
   greater is refused as a replay.
@@ -645,6 +654,8 @@ need to know what a relay is.
   - signature checks: good, wrong key, wrong installation in the comment,
     tampered ciphertext;
   - serial monotonicity, against applied and refused;
+  - two documents published between polls: the second, being cumulative,
+    puts both changes in force;
   - expiry;
   - manageability: in the list, out of it, a setting morzer never allows;
   - age round trip to a machine recipient and an extra recipient;
@@ -774,6 +785,7 @@ exact refusal wording and the jitter's distribution.
 | 21 | `OPEN` | Should `installation.domains` be manageable at all? It re-creates every service and may change certificates; it's useful for dotdash's relays, but heavy. |
 | 22 | `OPEN` | Should a refused serial block newer serials whose changes include the refused one, or should every newer serial be tried? The draft tries every newer serial. |
 | 23 | `ASSUMED` | A refusal in the fleet row carries the step, a class and the names involved, never the error's text, which can quote a parameter value. The row's rule that it never carries a parameter value, a hostname or a secret stands, and the leak test covers the `sync` block. The full message stays in the local journal. |
+| 24 | `ASSUMED` | Each document is cumulative: every value the authority manages for the installation and every name it wants unset, every time. A machine applies only the newest and may miss any before it, so a delta document would lose a change published before it (§5.2). |
 
 ## 12. Phasing
 
