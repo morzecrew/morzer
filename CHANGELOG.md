@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-10
+
+A secret change no longer fails when a service the secret declares sits behind
+a profile that is not active. Installation state is unchanged, so 0.15.0 and
+0.15.1 run the same machine.
+
 ### Fixed
 
 - `secret set`, `generate`, `rotate` and `edit` no longer fail when a service
@@ -1395,7 +1401,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.15.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/morzecrew/morzer/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/morzecrew/morzer/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/morzecrew/morzer/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/morzecrew/morzer/compare/v0.12.0...v0.13.0
