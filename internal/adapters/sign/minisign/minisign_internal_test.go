@@ -171,6 +171,14 @@ func TestCheckCommentReturnsOnlyAVerifiedComment(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "morzer desired-state product=demo installation=inst_01 serial=7", comment)
 
+	// Only the line's own prefix is taken off: a comment that itself
+	// begins with it comes back as signed.
+	prefixed, err := signer.Sign(ctx, data, "trusted comment: as written")
+	require.NoError(t, err)
+	comment, ok = checker.CheckComment(data, prefixed.Encoded, key.Line)
+	require.True(t, ok)
+	assert.Equal(t, "trusted comment: as written", comment)
+
 	_, ok = checker.CheckComment([]byte("other bytes"), sig.Encoded, key.Line)
 	assert.False(t, ok, "a signature over other bytes was accepted")
 
