@@ -125,5 +125,6 @@ type SignatureChecker interface {
 // anything (RFC 0057 §5.3). That text is the signer's only because the
 // signature over it verified, so it is returned only then.
 type CommentChecker interface {
+	SignatureChecker
 	CheckComment(data []byte, signature []byte, publicKey string) (comment string, ok bool)
 }
