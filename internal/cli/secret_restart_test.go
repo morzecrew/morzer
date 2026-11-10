@@ -244,3 +244,23 @@ func TestRestartDependentsSkipsAServiceBehindAnInactiveProfile(t *testing.T) {
 	require.NoError(t, err, "the file vpn reads when its profile is turned on was not rendered")
 	assert.Equal(t, "ovpn", string(got))
 }
+
+// A runtime that cannot say which services the configuration defines fails
+// the change it would have restarted for, still saying it was stored: a
+// restart of the unfiltered services could name one Compose refuses.
+func TestRestartDependentsFailsWhenTheConfigurationCannotBeRead(t *testing.T) {
+	app, rt := restartApp(t, ports.ServiceState{Name: "app", State: ports.StateRunning})
+	store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+	require.True(t, ok)
+	store.Seed(map[string]string{
+		"db_password": "a-stored-password", "session_key": "a-stored-session-key",
+	})
+	rt.Fail = map[string]error{"Validate": domain.RuntimeError(errors.New("exit status 15"), "compose configuration is invalid")}
+
+	restarted, err := app.restartDependents(context.Background(), []string{"db_password"})
+	require.Error(t, err)
+	assert.Empty(t, restarted)
+	assert.Contains(t, domain.AsError(err).Message, "the change to db_password was stored")
+	assert.Equal(t, domain.ExitRuntime, domain.ExitCode(err))
+	assert.NotContains(t, rt.Calls, "Restart")
+}
