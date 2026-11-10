@@ -802,3 +802,20 @@ func TestALocalChangeIsRefusedWhenSyncTurnsOnWhileItWaits(t *testing.T) {
 		})
 	}
 }
+
+// An identity this machine cannot read is this machine's failure, not the
+// document's: nothing is refused, and the document applies once the identity
+// is back.
+func TestAnUnreadableIdentityRefusesNothing(t *testing.T) {
+	r := newSyncRig(t)
+	r.publish(t, 220, "parameters:\n  log_level: debug\n")
+	identity := r.h.Paths.AgeIdentityFile()
+	require.NoError(t, os.Rename(identity, identity+".away"))
+
+	_, err := r.sync(t)
+	require.Error(t, err)
+	assert.Nil(t, r.state(t).Refused, "a document was refused because this machine could not read its own key")
+
+	require.NoError(t, os.Rename(identity+".away", identity))
+	assert.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+}

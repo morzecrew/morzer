@@ -290,6 +290,11 @@ func (d *Deps) fetchDesiredState(
 	doc.digest = "sha256:" + hex.EncodeToString(sum[:])
 	var plain bytes.Buffer
 	if err := agecrypt.Decrypt(&plain, bytes.NewReader(body), d.Paths.AgeIdentityFile()); err != nil {
+		if errors.Is(err, agecrypt.ErrIdentityUnreadable) {
+			// This machine's own key, not the document: the cycle
+			// fails, and the next tries the document again.
+			return doc, "", err
+		}
 		return doc, "", &syncRefusal{
 			result: domain.SyncUndecryptable, step: "decrypt", class: string(domain.SyncUndecryptable), err: err,
 		}
