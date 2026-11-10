@@ -926,7 +926,7 @@ step "a target to publish the row to"
 step "fleet publish --dry-run shows the row and writes nothing"
 "${MORZER}" --root "${ROOT}" --json fleet publish --dry-run --target "file://${FLEET_TARGET}" >"${WORK}/fleet-dry.json" ||
 	fail "fleet publish --dry-run failed: $(cat "${WORK}/fleet-dry.json")"
-jq -e '.data.row.schema == 1 and .data.row.bound != ""' "${WORK}/fleet-dry.json" >/dev/null ||
+jq -e '.data.row.schema == 2 and .data.row.bound != ""' "${WORK}/fleet-dry.json" >/dev/null ||
 	fail "--dry-run described the row instead of producing it"
 [ -z "$(find "${FLEET_TARGET}" -name status.json -print -quit)" ] ||
 	fail "fleet publish --dry-run wrote a row"
