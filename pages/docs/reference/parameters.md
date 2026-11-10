@@ -187,7 +187,8 @@ operator's walkthrough. In short:
 
 `morzer config set` takes the deployment lock, validates the value, records it,
 re-renders the configuration and re-creates the services the release says depend
-on it.
+on it. A dependant behind a profile that is not active is not re-created: it
+reads the value when the profile is turned on and it is created.
 
 ```sh
 morzer config list                    # every parameter, its value, and where it came from

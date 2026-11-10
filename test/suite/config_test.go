@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 func TestConfigListReportsDefaultsAndOverrides(t *testing.T) {
@@ -320,4 +322,63 @@ func TestAFailedConfigSetRecreatesWithTheOldValue(t *testing.T) {
 	assert.NotEqual(t, "debug", last.Env["DEMO_PARAM_LOG_LEVEL"], "the undo re-created the services with the rejected value")
 	assert.True(t, h.Runtime.UpOptions[len(h.Runtime.UpOptions)-1].ForceRecreate)
 	assert.NotContains(t, renderedApplication(t, h), "log_level: debug")
+}
+
+// harnessWithLogLevelServices is the harness with log_level declaring
+// services, installed and applied. The bundle is patched before install, so
+// the release digest is the patched one's.
+func harnessWithLogLevelServices(t *testing.T, services string) *harness {
+	t.Helper()
+	h := newHarness(t)
+	path := filepath.Join(h.Release.Root, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	declared := "    description: Application log verbosity\n    services: [app]\n"
+	require.Contains(t, string(raw), declared)
+	patched := strings.Replace(string(raw), declared,
+		"    description: Application log verbosity\n    services: ["+services+"]\n", 1)
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	h.Release, err = release.Load(h.Release.Root)
+	require.NoError(t, err)
+
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	return h
+}
+
+// A parameter may declare a service only the overlay of an inactive profile
+// defines. Compose refuses to `up` a service no file defines, which unwound
+// the change, and starts one behind a Compose profile when it is named. So
+// `config set` re-creates only the declared services the configuration starts
+// under the active profiles; the rest read the value when they are created
+// (#328).
+func TestConfigSetRecreatesOnlyTheServicesTheProfilesDefine(t *testing.T) {
+	h := harnessWithLogLevelServices(t, "app, vpn")
+	before := len(h.Runtime.UpOptions)
+
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err, "a service behind an inactive profile unwound the change")
+	require.Len(t, h.Runtime.UpOptions, before+1)
+	assert.Equal(t, []string{"app"}, h.Runtime.UpOptions[before].Services)
+	assert.Equal(t, "set log_level; re-created app", result.Summary)
+}
+
+func TestConfigSetWithEveryServiceBehindAnInactiveProfileRecreatesNothing(t *testing.T) {
+	h := harnessWithLogLevelServices(t, "vpn")
+	before := len(h.Runtime.UpOptions)
+
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err)
+	assert.Len(t, h.Runtime.UpOptions, before, "a service no active profile defines was brought up")
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "debug", inst.Parameters["log_level"], "the change was not recorded")
+	assert.NotContains(t, result.Summary, "declares no dependent services",
+		"the release does declare one")
+	assert.Contains(t, result.Summary, "not in the active profiles, so nothing was re-created")
 }

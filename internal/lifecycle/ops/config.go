@@ -153,6 +153,8 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		result   engine.Result
 		running  bool
 		noChange bool
+		declared = affectedServices(rel, changed)
+		services = declared
 	)
 	runErr := d.withLock(ctx, opID, domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
 		// Everything again from the installation as it stands under the
@@ -180,7 +182,26 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		// record, even one whose services a killed `stop` left running.
 		running, _ = d.projectRunning(ctx, inst, rel, opts.Options)
 		running = running && inst.Stopped == nil
-		op.Steps = configSteps(d, inst, rel, next, changed, running)
+		declared = affectedServices(rel, changed)
+		services = declared
+		if running && len(declared) > 0 {
+			// Only those the configuration starts under the active
+			// profiles. Compose refuses to `up` a service no file defines
+			// -- one in the overlay of a profile that is not active --
+			// which would unwind the change, and starts one behind a
+			// Compose profile when it is named. Either reads the value
+			// when its profile is turned on and it is created (#328).
+			updated := inst
+			updated.Parameters = next
+			started, err := d.startedServices(ctx, updated, rel)
+			if err != nil {
+				return err
+			}
+			services = slices.DeleteFunc(slices.Clone(declared), func(s string) bool {
+				return !slices.Contains(started, s)
+			})
+		}
+		op.Steps = configSteps(d, inst, rel, next, services, running)
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
 		return err
 	})
@@ -190,7 +211,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 
 	out := Result{
 		Record: result.Record,
-		Summary: configSummary(summaryNames(rel, inst.Parameters, next, changed), affectedServices(rel, changed),
+		Summary: configSummary(summaryNames(rel, inst.Parameters, next, changed), services, declared,
 			opts.DryRun, running, inst.Stopped != nil),
 		Data: next,
 	}
@@ -350,7 +371,7 @@ func mergeParameters(
 // running what it was running.
 func configSteps(
 	d *Deps, inst domain.Installation, rel domain.Release,
-	next map[string]string, changed []string, running bool,
+	next map[string]string, services []string, running bool,
 ) []engine.Step {
 	updated := inst
 	updated.Parameters = next
@@ -364,7 +385,7 @@ func configSteps(
 	// only when something is running to re-create. A parameter with no
 	// declared services needs a full `apply`, which the summary says out
 	// loud rather than guessing at.
-	if services := affectedServices(rel, changed); len(services) > 0 && running {
+	if len(services) > 0 && running {
 		steps = append(steps, stepRecreateServices(d, inst, updated, rel, services))
 	}
 	return steps
@@ -502,7 +523,9 @@ func effectiveValue(spec domain.ParameterSpec, set map[string]string, name strin
 // A plan that reports "re-created app" has told the operator something untrue
 // about their deployment, and a change to a stopped deployment that reports the
 // same has told them the containers are already running the new value.
-func configSummary(changed, services []string, dryRun, running, stopped bool) string {
+// services are those re-created, declared every service the release says
+// reads the change.
+func configSummary(changed, services, declared []string, dryRun, running, stopped bool) string {
 	names := strings.Join(changed, ", ")
 	// `apply` is refused while an operator has the product stopped, so the
 	// command that applies the change is the one that ends the stop.
@@ -516,6 +539,13 @@ func configSummary(changed, services []string, dryRun, running, stopped bool) st
 	switch {
 	case dryRun && len(services) > 0 && running:
 		return "would set " + names + " and re-create " + strings.Join(services, ", ")
+	case running && len(services) == 0 && len(declared) > 0:
+		if dryRun {
+			return "would set " + names + "; the services that read it are not in the active " +
+				"profiles, so nothing would be re-created"
+		}
+		return "set " + names + "; the services that read it are not in the active profiles, " +
+			"so nothing was re-created"
 	case dryRun:
 		return "would set " + names + "; it would take effect on the next `morzer apply`"
 	case len(services) > 0 && running:

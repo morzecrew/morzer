@@ -311,7 +311,7 @@ parameters:
 | `required` | bool | | The operator must supply a value. Declaring it alongside a `default` is a validation error. |
 | `description` | string | | Shown when a value is refused, so the operator learns what is accepted. |
 | `values` | list | | The permitted set. Required for `enum`, an error for anything else. |
-| `services` | list | | Services to restart when the value changes. Empty means the change needs a full `apply`. |
+| `services` | list | | Services to re-create when the value changes, except one behind a profile that is not active. Empty means the change needs a full `apply`. |
 
 A declared parameter reaches three places, all under the same name:
 
