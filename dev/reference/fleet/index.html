@@ -18,7 +18,7 @@
         <link rel="prev" href="../support-bundle/">
       
       
-        <link rel="next" href="../../explanation/architecture/">
+        <link rel="next" href="../desired-state/">
       
       
         
@@ -961,6 +961,35 @@
     
   
   Several installations
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing from elsewhere
 
     
   </span>
@@ -2002,6 +2031,35 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../desired-state/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Desired state
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2678,11 +2736,22 @@ problem can still publish a row saying exactly that.</p>
 <td>the public half, for comparing a fingerprint by eye</td>
 </tr>
 <tr>
+<td><code>age_recipient</code></td>
+<td>this machine's age public key, which an authority encrypts <a href="../desired-state/">desired-state documents</a> to; trusted only from a row that verifies against the <a href="#the-roster">roster</a></td>
+</tr>
+<tr>
+<td><code>sync</code></td>
+<td>whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured</td>
+</tr>
+<tr>
 <td><code>published_at</code></td>
 <td>when this row was written</td>
 </tr>
 </tbody>
 </table>
+<p>Rows are schema 2, which added <code>age_recipient</code> and <code>sync</code>. A manager that reads
+schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
+manager you read the fleet with first.</p>
 <h2 id="what-the-row-never-carries">What the row never carries<a class="headerlink" href="#what-the-row-never-carries" title="Permanent link">&para;</a></h2>
 <p>Parameter values, hostnames, container logs, configuration content, and anything
 the <a href="../support-bundle/">support bundle</a> refuses. The payload is deliberately
@@ -2879,6 +2948,10 @@ locally journalled.</p>
 <p>A console that can act needs to know who may act, which is an authorisation
 model, which is a control plane. Every user of the fleet view will ask for this
 within a week. The refusal is the product.</p>
+<p><a href="../desired-state/">Desired state</a> does not change that. An authority may
+publish values for a machine, and only the machine applies them: to itself,
+within the names its release lets be managed, behind its own health checks.
+Nothing here or there acts on a remote machine.</p>
 <h2 id="a-sandbox-must-not-publish-into-a-production-prefix">A sandbox must not publish into a production prefix<a class="headerlink" href="#a-sandbox-must-not-publish-into-a-production-prefix" title="Permanent link">&para;</a></h2>
 <p>An installation imported from a production export keeps its id — deliberately,
 because restore checks against it — and a recovery export carries backup targets
@@ -2902,6 +2975,10 @@ list rather than one line per hazard:</p>
 <tr>
 <td><code>notify.targets</code></td>
 <td>report into production's alerting; a webhook URL is itself the credential, and it travels in the export</td>
+</tr>
+<tr>
+<td><code>sync.*</code></td>
+<td>read production's <a href="../desired-state/">desired-state documents</a>, which the matching id addresses; every sync setting and serial goes, target or not</td>
 </tr>
 </tbody>
 </table>
@@ -2974,13 +3051,13 @@ not.</p>
         
         
           
-          <a href="../../explanation/architecture/" class="md-footer__link md-footer__link--next" aria-label="Next: Architecture">
+          <a href="../desired-state/" class="md-footer__link md-footer__link--next" aria-label="Next: Desired state">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Architecture
+                Desired state
               </div>
             </div>
             <div class="md-footer__button md-icon">

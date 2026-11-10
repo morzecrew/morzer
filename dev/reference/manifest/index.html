@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing from elsewhere
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1927,6 +1956,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#managed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        managed
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2201,6 +2241,35 @@
     
   
   The fleet view
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../desired-state/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Desired state
 
     
   </span>
@@ -2699,6 +2768,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         backup
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managed" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        managed
       </span>
     </span>
   </a>
@@ -4094,6 +4174,51 @@ manager captures a database volume the hook already owns.</p>
 <p><code>hot</code> is a claim about the product, not a performance hint — see
 <a href="../../authoring/backing-up-volumes/">declaring volume consistency</a> for what it
 commits a vendor to. Bind mounts are never captured and have no declaration.</p>
+<h2 id="managed">managed<a class="headerlink" href="#managed" title="Permanent link">&para;</a></h2>
+<p>What a desired-state document an authority publishes may change on an
+installation that follows it. Absent, nothing is: a release opts in name by
+name, because only the vendor knows which values are safe to take from
+elsewhere.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">managed</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">parameters</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">dotdash_servers</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">dotdash_port</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">site</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">vless_clients</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">dotdash_short_id</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">settings</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">installation.profile</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">installation.domains</span><span class="p p-Indicator">]</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.16.0"</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parameters</code></td>
+<td>list</td>
+<td>Parameters a document may set or unset. Each must be declared under <code>parameters</code>.</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td>list</td>
+<td>Secrets a document may set or unset. Each must be declared by the secret schema, which <code>release verify</code> checks.</td>
+</tr>
+<tr>
+<td><code>settings</code></td>
+<td>list</td>
+<td>Settings a document may change: <code>installation.profile</code> and <code>installation.domains</code>, and no other. Trust, update, sync and policy settings, recipients and targets are never manageable, whatever a release lists.</td>
+</tr>
+</tbody>
+</table>
+<p>A document naming anything outside these lists is refused whole. Name a
+parameter here only if its value is safe to take from an authority: one that
+reaches a command line hands whoever holds the authority's key code execution
+on the machine.</p>
+<p>A release declaring <code>managed</code> needs <code>compatibility.min_manager_version</code> of at
+least <code>0.16.0</code>. The manifest is decoded strictly, so an older manager refuses
+the field rather than ignoring it.</p>
 <h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
 <p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, a <code>timeout</code>
 (default <code>120s</code>) and an optional <code>start_period</code>.</p>

@@ -52,6 +52,9 @@
         <loc>https://morzecrew.github.io/morzer/dev/operating/several-installations/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/operating/managing-from-elsewhere/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/operating/recovering-a-lost-machine/</loc>
       </url>
       <url>
@@ -119,6 +122,9 @@
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/reference/fleet/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/reference/desired-state/</loc>
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/explanation/architecture/</loc>

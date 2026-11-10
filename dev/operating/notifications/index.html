@@ -1123,6 +1123,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../managing-from-elsewhere/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing from elsewhere
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1897,6 +1926,35 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/desired-state/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Desired state
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2344,7 +2402,7 @@ morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w
 <p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
 the trade: you lose "unreachable host x" and keep the token out of your logs.</p>
 <h2 id="what-is-sent">What is sent<a class="headerlink" href="#what-is-sent" title="Permanent link">&para;</a></h2>
-<p>Four kinds of event, and no others:</p>
+<p>Six kinds of event, and no others:</p>
 <ul>
 <li><code>operation.finished</code> — the outcome of an <code>apply</code>, <code>update</code>, <code>rollback</code>,
   <code>config</code>, <code>backup</code> or <code>restore</code>, including <strong>failures</strong>.</li>
@@ -2357,6 +2415,12 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.</p
   <code>update --stage</code>. It is sent when the release is staged, before anything decides whether it installs itself, and it is the one
   event here that is not an outcome: it may be a decision waiting for a person
   who was not at the terminal when the timer ran.</li>
+<li><code>sync.refused</code> — a <a href="../managing-from-elsewhere/">desired-state document</a> was
+  refused: its serial, the step and the class, and the names it involved, never
+  the error's text. Sent once per document, since a refused one is not tried
+  again.</li>
+<li><code>sync.expired</code> — the desired-state document in force has expired and nothing
+  newer is published. Sent when a sync cycle first finds it so.</li>
 </ul>
 <p>The payload is the manager's own event <abbr title="JavaScript Object Notation">JSON</abbr>, the same shape <code>--log-format json</code>
 emits. A service wanting a different body gets a two-line receiver.</p>

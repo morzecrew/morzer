@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing from elsewhere
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -1941,6 +1970,35 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../desired-state/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Desired state
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2452,6 +2510,10 @@ the machine owns the key, and their statements verify too.</p>
 <td><code>predicate.inputs</code></td>
 <td>The files an operator passed to a task: name, size and sha256, never the content or the operator's path. Absent when there were none.</td>
 </tr>
+<tr>
+<td><code>predicate.desired_state</code></td>
+<td>The desired-state document a sync applied: its serial, the sha256 of its ciphertext, and the id of the authority's key that signed it. Never its content, which holds secret values. Absent on every other operation.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="configuration-names-always-values-never">Configuration: names always, values never<a class="headerlink" href="#configuration-names-always-values-never" title="Permanent link">&para;</a></h3>
@@ -2511,12 +2573,13 @@ persisted record to feed a new artifact would be the tail wagging the dog.</p>
 <h2 id="validating-one">Validating one<a class="headerlink" href="#validating-one" title="Permanent link">&para;</a></h2>
 <p>A <abbr title="JavaScript Object Notation">JSON</abbr> Schema ships with every release, generated from the Go types that produce
 the document rather than written alongside them:</p>
-<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v3.json
+<div class="highlight"><pre><span></span><code>schemas/morzer-attestation-v4.json
 </code></pre></div>
-<p>The predicate type is <code>https://morzecrew.github.io/morzer/attestation/v3</code>. v3
-adds <code>inputs</code> and nothing else, and v2 added <code>signature_verified_when_staged</code>.
-Statements written before them say <code>…/attestation/v2</code> or <code>…/attestation/v1</code>,
-validate against <code>schemas/morzer-attestation-v2.json</code> or
+<p>The predicate type is <code>https://morzecrew.github.io/morzer/attestation/v4</code>. v4
+adds <code>desired_state</code> and nothing else, v3 added <code>inputs</code>, and v2 added
+<code>signature_verified_when_staged</code>. Statements written before them say
+<code>…/attestation/v3</code>, <code>…/attestation/v2</code> or <code>…/attestation/v1</code>, validate against
+<code>schemas/morzer-attestation-v3.json</code>, <code>schemas/morzer-attestation-v2.json</code> or
 <code>schemas/morzer-attestation-v1.json</code>, which stay published unchanged, and are
 still read by <code>attest verify</code>.</p>
 <p>It pins <code>_type</code> and <code>predicateType</code> to single values, so a document from another

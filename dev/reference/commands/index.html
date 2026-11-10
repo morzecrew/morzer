@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Managing from elsewhere
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/recovering-a-lost-machine/" class="md-nav__link">
         
   
@@ -2257,6 +2286,35 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../desired-state/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-git-pull-request-arrow" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3"/><path d="M5 9v12"/><circle cx="19" cy="18" r="3"/><path d="m15 9-3-3 3-3"/><path d="M12 6h5a2 2 0 0 1 2 2v7"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Desired state
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3207,6 +3265,10 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <td>Manage where operation outcomes are reported.</td>
 </tr>
 <tr>
+<td><a href="../desired-state/#commands"><code>sync</code></a></td>
+<td>Follow the desired state an authority publishes.</td>
+</tr>
+<tr>
 <td><a href="#version"><code>version</code></a></td>
 <td>Print version, commit, and supported manifest API versions.</td>
 </tr>
@@ -3296,6 +3358,14 @@ run <code>apply</code> afterwards.</p>
 <tr>
 <td><code>--require-signature</code></td>
 <td>Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or <a href="#the-key-a-release-ships">shipped by the release</a>; <code>--require-signature=false</code> turns it off and trusts no key the release ships.</td>
+</tr>
+<tr>
+<td><code>--sync-target</code></td>
+<td>Target an authority publishes this installation's <a href="../desired-state/">desired state</a> to, as <code>config set sync.target</code> takes it. Sync stays off until <code>sync.enabled</code> is set.</td>
+</tr>
+<tr>
+<td><code>--sync-authority</code></td>
+<td>minisign public key a desired-state document must be signed with, as <code>config set sync.authority</code> takes it.</td>
 </tr>
 <tr>
 <td><code>--product</code></td>
