@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `secret set`, `generate`, `rotate` and `edit` no longer fail when a service
+  the secret declares is behind a profile that is not active. The value was
+  stored, yet the command exited 7. Only the services the active profiles
+  define restart; the others read the new file when their profile is turned
+  on.
+
 ## [0.15.0] - 2026-11-09
 
 An installation can run several deployment profiles together, and a parameter

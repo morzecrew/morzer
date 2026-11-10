@@ -349,6 +349,14 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Compose refuses a service the configuration does not define -- one
+	// behind an inactive profile, say -- and restarts nothing. A fake that
+	// restarted it would pass what fails on a real machine (#324).
+	for _, name := range services {
+		if !slices.Contains(r.ValidateResult.Services, name) {
+			return domain.RuntimeError(fmt.Errorf("no such service: %s", name), "cannot restart services")
+		}
+	}
 	r.Calls = append(r.Calls, "Restart:"+strings.Join(services, ","))
 	return nil
 }

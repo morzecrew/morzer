@@ -516,6 +516,22 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 		return nil, nil
 	}
 
+	// Only the services the active profiles define. Compose refuses to
+	// restart one it does not know, and one behind an inactive profile reads
+	// the rendered file when the profile is turned on and it is created. Left
+	// out quietly, not refused by name as `morzer restart` refuses it: the
+	// operator named a secret, not the service (#324).
+	configured, err := a.Deps.Runtime.Validate(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	services = slices.DeleteFunc(services, func(s string) bool {
+		return !slices.Contains(configured.Services, s)
+	})
+	if len(services) == 0 {
+		return nil, nil
+	}
+
 	// Rendered, and nothing restarted: a restart starts a stopped container,
 	// and an operator who ran `morzer stop` asked for the product to stay
 	// down until `morzer start`, which brings it back with the new value.

@@ -891,7 +891,7 @@ Each declaration:
 | `required` | bool | Whether `doctor` reports its absence as a failure. An unset secret that is not required renders as an empty file; see [below](#an-optional-secret). |
 | `generator` | table | How the manager may produce it: `kind`, `length`, `alphabet`. It does at `init`, and at the `update` whose release first declares the secret. |
 | `file` | string | Filename under the render directory. Defaults to `name`. |
-| `services` | list | Compose services that consume it. A rotation restarts exactly these. |
+| `services` | list | Compose services that consume it. A change restarts exactly these, except one behind a profile that is not active, which reads the file when the profile is turned on. |
 | `rotation_period` | duration | Advisory; `doctor` warns when a secret is older. |
 | `owner` | string | Numeric uid, or `uid:gid`, the rendered file is given to. Absent, the file is the manager's. See below. |
 
