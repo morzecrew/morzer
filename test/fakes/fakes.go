@@ -853,6 +853,11 @@ type SecretStore struct {
 	// Fail maps a method name to the error it should return.
 	Fail map[string]error
 
+	// RenderFailsAfterWriting makes the next Render write its files and
+	// then return this error, once: a render cut off part way, which leaves
+	// some files new.
+	RenderFailsAfterWriting error
+
 	Now func() time.Time
 }
 
@@ -912,6 +917,24 @@ func (s *SecretStore) Set(ctx context.Context, name string, value domain.Secret)
 	defer s.mu.Unlock()
 	s.values[name] = value.Reveal()
 	s.changed[name] = s.Now()
+	return nil
+}
+
+func (s *SecretStore) Restore(ctx context.Context, name string, value domain.Secret, changedAt time.Time) error {
+	if err := s.fail("Restore"); err != nil {
+		return err
+	}
+	if value.IsEmpty() {
+		return domain.SecretsError(nil, "refusing to restore an empty value for secret %q", name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values[name] = value.Reveal()
+	if changedAt.IsZero() {
+		delete(s.changed, name)
+	} else {
+		s.changed[name] = changedAt
+	}
 	return nil
 }
 
@@ -1007,7 +1030,18 @@ func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domai
 			"required secret(s) not set: %s", strings.Join(missing, ", "))
 	}
 
-	return renderToDisk(targetDir, schema, set)
+	files, err := renderToDisk(targetDir, schema, set)
+	if err != nil {
+		return files, err
+	}
+	s.mu.Lock()
+	failure := s.RenderFailsAfterWriting
+	s.RenderFailsAfterWriting = nil
+	s.mu.Unlock()
+	if failure != nil {
+		return nil, failure
+	}
+	return files, nil
 }
 
 func (s *SecretStore) Recipients(ctx context.Context) ([]ports.Recipient, error) {

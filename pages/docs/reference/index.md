@@ -25,6 +25,7 @@ here. The reference column points at the section that documents it; the
 | `morzer config` | Read and change the release parameters | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config list` (also `ls`) | Show every parameter the release declares | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config get` | Print one parameter's effective value | [parameters](parameters.md#changing-one-after-install) |
+| `morzer config apply` | Change settings, parameters and secrets together, as one operation | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config edit` | Edit a text parameter in $VISUAL or $EDITOR | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config set` | Change one or more parameters, or an installation setting | [parameters](parameters.md#changing-one-after-install) |
 | `morzer config unset` | Return parameters or a setting to their defaults | [parameters](parameters.md#changing-one-after-install) |

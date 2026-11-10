@@ -65,6 +65,13 @@ restarted: it reads the file when the profile is turned on and it is created.
 If the render or the restart fails, the error says the change was stored, and
 the exit code says which failed: `6` for the render, `7` for the runtime.
 
+A secret that changes together with a parameter or a setting, such as the
+credential for an upstream a profile turns on, is one
+[`config apply`](parameters.md#several-names-in-one-change) instead: one
+operation that puts every value back if a step fails. `secret set` takes no
+deployment lock and is not journalled, which keeps it the command for a single
+credential, including while an operation is stuck.
+
 ## secret generate
 
 ```sh

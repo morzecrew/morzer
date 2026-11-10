@@ -186,8 +186,9 @@ See [Changing configuration](../operating/changing-configuration.md) for the
 operator's walkthrough. In short:
 
 `morzer config set` takes the deployment lock, validates the value, records it,
-re-renders the configuration and re-creates the services the release says depend
-on it. A dependant behind a profile that is not active is not re-created: it
+re-renders the configuration, re-creates the services the release says depend
+on it, and then waits for the release's health checks. A check that fails undoes
+the change. With nothing re-created, there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
 reads the value when the profile is turned on and it is created.
 
 ```sh
@@ -210,6 +211,92 @@ NAME                 TYPE       VALUE            SOURCE
 http_port            port       9000             installation
 log_level            enum       info             release
 ```
+
+### Several names in one change
+
+`morzer config apply` changes settings, parameters and secrets together as one
+operation. It reads a change document on stdin:
+
+```yaml
+settings:
+  installation.profile: xdns,openvpn
+parameters:
+  upstream_protocol: openvpn
+secrets:
+  upstream_openvpn: |
+    client
+    remote vpn.example 1194
+unset:
+  settings: []
+  parameters: [legacy_proxy]
+  secrets: [upstream_socks_password]
+```
+
+```sh
+morzer config apply < change.yaml            # apply it
+morzer config apply --dry-run < change.yaml  # the steps, and the config diff
+```
+
+The document's rules:
+
+- **Stdin only.** There is no path argument, so a secret value never reaches
+  argv. A terminal on stdin is refused.
+- **Strict.** An unknown section, a list or a map where a value goes, a null,
+  a tag, an anchor and an alias are refused, each with its line. A syntax
+  error reports only its line and column, because the parser's message quotes
+  the document and the document holds secret values.
+- **A value is the text it was written as.** `9000` and `"9000"` are the same
+  value, `yes` stays `yes`, and `1.10` is not turned into `1.1`. The parameter's
+  own type then parses it, as `config set` does. A `text` value takes a block
+  scalar (`|`).
+- **An empty value is written `''`.** `name:` with nothing after it is
+  refused; to remove a value, list the name under `unset`.
+- **A secret value loses one trailing newline**, as a piped `secret set` value
+  does, so `|` stores the bytes `printf '%s\n' "$v" | morzer secret set` would.
+- **At most 1 MiB** in all.
+
+It is refused whole, before anything changes, for any of these, and every
+problem is listed at once:
+
+| Refused | Why |
+| --- | --- |
+| A setting `config set` does not know, or a value it refuses | as `config set` refuses it |
+| A parameter the release does not declare, or a value its type refuses | as `config set` refuses it |
+| A secret the release does not declare | `secret set` would store it unrendered; in a document it is more likely a typo |
+| An empty secret value | list it under `unset.secrets` to remove it |
+| Unsetting a secret the release declares `required`, without `--force` | as `secret remove` refuses it |
+| A name both set and unset | the document says two things about it |
+
+Unsetting a secret the release no longer declares is allowed when one is
+stored, as `config unset` clears a stale parameter.
+
+What it touches:
+
+- **A profile change on a running product** applies the release under the new
+  profiles, as [changing the profile](#changing-the-profile) does, and
+  re-creates every service.
+- **Otherwise, while it runs**, it re-creates once the union of every running
+  service (on a domain change), the services the changed parameters declare,
+  and the dependents of the changed secrets. Only services the active profiles
+  start are touched.
+- **A change of secrets alone** restarts their dependents, as `secret set`
+  does.
+- **While the product is stopped**, it records, stores and renders, and
+  `morzer start` brings the services up with the new values. **Before anything
+  is created**, it stores the secrets, and renders the configuration when the
+  change reaches it.
+
+After a re-create or a restart it waits for the release's health checks. If
+any step fails, every value is put back: the installation, each secret with
+the change time it had, the rendered files, and the services on the old
+values. If putting something back fails too, the operation ends needing manual
+intervention, as any operation whose undo fails does. The journal names what
+changed by section, never a value.
+
+While containers exist, removing a required secret fails even with `--force`:
+the secrets are loaded before they are rendered, a release missing a required
+one is refused there, and the change is undone. `--force` lets a document
+remove one before anything is created.
 
 ### Installation settings are not parameters
 

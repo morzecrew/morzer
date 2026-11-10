@@ -26,6 +26,7 @@ func newConfigCommand(app *App) *cobra.Command {
 	cmd.AddCommand(
 		newConfigListCommand(app),
 		newConfigGetCommand(app),
+		newConfigApplyCommand(app),
 		newConfigEditCommand(app),
 		newConfigSetCommand(app),
 		newConfigUnsetCommand(app),
@@ -188,7 +189,7 @@ func newConfigSetCommand(app *App) *cobra.Command {
 					"parameters and installation settings are set separately").
 					WithHint("a setting changes what the manager does; a parameter " +
 						"changes what the deployment runs, and re-creates services " +
-						"to do it")
+						"to do it. `morzer config apply` changes both in one operation")
 			}
 			if len(settings) > 0 {
 				return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,6 +73,32 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		require.NoError(t, err)
 		got, _ := set.Get("key")
 		assert.Equal(t, "second-value-here", got.Reveal())
+	})
+
+	t.Run("restore puts back the value and the change time given", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+
+		// A config apply that fails puts a secret back as it was. Through
+		// Set it would be stamped now, and doctor would read a credential
+		// nobody rotated as freshly rotated.
+		was := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+		require.NoError(t, store.Set(ctx, "db_password", domain.NewSecret("the-replacement-value")))
+		require.NoError(t, store.Restore(ctx, "db_password", domain.NewSecret("the-original-value"), was))
+
+		set, err := store.Load(ctx)
+		require.NoError(t, err)
+		got, _ := set.Get("db_password")
+		assert.Equal(t, "the-original-value", got.Reveal())
+		assert.True(t, was.Equal(lastChanged(t, store, "db_password")),
+			"a restored secret carries the change time it was given, %s; this one carries %s",
+			was, lastChanged(t, store, "db_password"))
+	})
+
+	t.Run("restore refuses an empty value", func(t *testing.T) {
+		store := newStore(t)
+		err := store.Restore(context.Background(), "empty", domain.NewSecret(""), time.Now())
+		require.Error(t, err, "an empty value is a removal, which Remove makes")
 	})
 
 	t.Run("remove is idempotent", func(t *testing.T) {
@@ -634,4 +661,18 @@ func assertOwner(t *testing.T, path string, uid, gid int) {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	require.True(t, ok, "this platform reports no owner")
 	assert.Equal(t, [2]int{uid, gid}, [2]int{int(st.Uid), int(st.Gid)}, "owner of %s", path)
+}
+
+// lastChanged is the change time the store reports for name.
+func lastChanged(t *testing.T, store ports.SecretStore, name string) time.Time {
+	t.Helper()
+	meta, err := store.Metadata(context.Background())
+	require.NoError(t, err)
+	for _, m := range meta {
+		if m.Name == name {
+			return m.LastChanged.Time
+		}
+	}
+	t.Fatalf("no metadata for %q", name)
+	return time.Time{}
 }

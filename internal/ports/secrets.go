@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -28,6 +29,13 @@ type SecretStore interface {
 	// unless spec.Overwrite is set -- silently regenerating a live
 	// credential is the kind of accident that takes a product down.
 	Generate(ctx context.Context, name string, spec GenSpec) error
+
+	// Restore puts a secret back as it was: the value, and the change time
+	// recorded with it. Not Set, which stamps now and would make a
+	// rolled-back credential read as freshly rotated (RFC 0056 §5.5). A zero
+	// changedAt records none, as for a secret stored before change times
+	// were kept.
+	Restore(ctx context.Context, name string, value domain.Secret, changedAt time.Time) error
 
 	// Remove deletes a secret. Removing an absent secret is not an error.
 	Remove(ctx context.Context, name string) error
