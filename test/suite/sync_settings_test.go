@@ -20,7 +20,6 @@ import (
 const (
 	authorityKey  = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
 	authorityKey2 = "RWT6zgAAAAAAAXRoaXMga2V5IGlzIGEgZml4dHVyZSBub3QgYSByZWFs"
-	ageRecipient  = "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
 )
 
 func setSettings(t *testing.T, h *harness, set map[string]string) error {
@@ -93,7 +92,6 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	h.Deps.Targets = registry
 	for name, value := range map[string]string{
 		"sync.interval":    "30s",
-		"sync.recipient":   "not-a-recipient",
 		"sync.target":      "gopher://example",
 		"sync.credentials": "bad name",
 	} {
@@ -101,18 +99,17 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	}
 
 	require.NoError(t, setSettings(t, h, map[string]string{
-		"sync.interval": "20m", "sync.recipient": ageRecipient, "sync.credentials": "sync_s3",
+		"sync.interval": "20m", "sync.credentials": "sync_s3",
 	}))
 	got := installation(t, h).Sync
 	assert.Equal(t, "20m0s", got.Interval)
-	assert.Equal(t, ageRecipient, got.Recipient)
 	assert.Equal(t, "sync_s3", got.Credentials)
 }
 
 // A document can never touch them: they are not among the settings morzer
 // lets a release make manageable.
 func TestNoSyncSettingIsManageable(t *testing.T) {
-	for _, name := range []string{"sync.target", "sync.credentials", "sync.authority", "sync.recipient",
+	for _, name := range []string{"sync.target", "sync.credentials", "sync.authority",
 		"sync.interval", "sync.enabled"} {
 		assert.False(t, domain.IsManageableSetting(name), name)
 	}

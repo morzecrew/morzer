@@ -379,3 +379,15 @@ evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md
 action: departed
 proposal: ASSUMED — while sync is enabled, a local `config set` or `config apply` naming a managed parameter or setting is refused unless --force, with the authority named; `secret set` is unchanged
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T19:04:41Z
+attempt: 1
+claim: the plan for PR A put `sync.recipient` on the machine side, and RFC 0057 §12 phases it in P5, with the facts it is for. Shipped in PR A it is a setting that does nothing, which an operator would set expecting facts to be published. It is taken out of PR A (it was committed in 18fbb6a6) and goes in with facts in PR C, with `init --sync-recipient`. The FleetRow `facts_digest` the plan listed for PR A moves with it, for the same reason.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:855-857
+action: decided
+proposal: UNLISTED — `sync.recipient`, `init --sync-recipient` and the row's `facts_digest` ship with facts (P5), not with the machine side
+```

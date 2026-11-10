@@ -27,10 +27,6 @@ type SyncConfig struct {
 	// Authority is the minisign public key a document must be signed with.
 	Authority string `yaml:"authority,omitempty" json:"authority,omitempty"`
 
-	// Recipient is the authority's age recipient, which this machine's
-	// published facts are encrypted to (RFC 0057 §5.10).
-	Recipient string `yaml:"recipient,omitempty" json:"recipient,omitempty"`
-
 	// Interval is how often the timer fetches, as a Go duration. Empty is
 	// DefaultSyncInterval.
 	Interval string `yaml:"interval,omitempty" json:"interval,omitempty"`
@@ -62,7 +58,7 @@ func (c SyncConfig) SyncInterval() time.Duration {
 
 // IsZero reports whether nothing about sync is configured or recorded.
 func (c SyncConfig) IsZero() bool {
-	return c.Target == "" && c.Credentials == "" && c.Authority == "" && c.Recipient == "" &&
+	return c.Target == "" && c.Credentials == "" && c.Authority == "" &&
 		c.Interval == "" && !c.Enabled && c.Applied == nil && c.Refused == nil && c.LastFetch == nil &&
 		c.LastReached.IsZero()
 }
