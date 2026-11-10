@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,6 +144,14 @@ func TestRestartDependentsRestartsNothingWhileStopped(t *testing.T) {
 	assert.Empty(t, restarted)
 	assert.NotContains(t, rt.Calls, "Restart")
 	assert.DirExists(t, app.Deps.Paths.SecretsRenderDir(), "the change was not rendered for start to pick up")
+
+	// Nor does it need the runtime to answer: the engine may be down along
+	// with the product, and nothing is restarted either way.
+	down := domain.RuntimeError(errors.New("cannot connect to the Docker daemon"), "the engine is down")
+	rt.Fail = map[string]error{"Status": down, "Validate": down}
+	restarted, err = app.restartDependents(ctx, []string{"db_password"})
+	require.NoError(t, err, "a stopped installation failed a stored change on an engine that is down")
+	assert.Empty(t, restarted)
 }
 
 // A secret no service declares is still rendered when it changes, so whatever

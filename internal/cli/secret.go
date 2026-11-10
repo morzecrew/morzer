@@ -521,26 +521,30 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	// the rendered file when the profile is turned on and it is created. Left
 	// out quietly, not refused by name as `morzer restart` refuses it: the
 	// operator named a secret, not the service (#324).
-	configured, err := a.Deps.Runtime.Validate(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	services = slices.DeleteFunc(services, func(s string) bool {
-		return !slices.Contains(configured.Services, s)
-	})
-	if len(services) == 0 {
-		return nil, nil
+	configured, validateErr := a.Deps.Runtime.Validate(ctx, cfg)
+	if validateErr == nil {
+		services = slices.DeleteFunc(services, func(s string) bool {
+			return !slices.Contains(configured.Services, s)
+		})
+		if len(services) == 0 {
+			return nil, nil
+		}
 	}
 
 	// Rendered, and nothing restarted: a restart starts a stopped container,
 	// and an operator who ran `morzer stop` asked for the product to stay
 	// down until `morzer start`, which brings it back with the new value.
+	// Checked before the runtime's answer is needed: the engine may be down
+	// along with the product, and then every declared service is named.
 	if inst.Stopped != nil {
 		a.notice(ui.Callout{Title: "not restarted", Body: []string{
 			fmt.Sprintf("%s is %s.", inst.Product, inst.Stopped.Describe()),
 			"`morzer start` brings " + strings.Join(services, ", ") + " back with the new value.",
 		}})
 		return nil, nil
+	}
+	if validateErr != nil {
+		return nil, validateErr
 	}
 
 	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {
