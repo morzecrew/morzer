@@ -160,19 +160,30 @@ func restartSteps(d *Deps, inst domain.Installation, rel domain.Release, service
 func (d *Deps) refuseUnstartedServices(
 	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
 ) error {
-	cfg, err := d.runtimeConfig(rel, inst, nil)
-	if err != nil {
-		return err
-	}
-	rendered, err := d.Runtime.Validate(ctx, cfg)
+	started, err := d.startedServices(ctx, inst, rel)
 	if err != nil {
 		return err
 	}
 	for _, name := range services {
-		if !slices.Contains(rendered.Services, name) {
+		if !slices.Contains(started, name) {
 			return domain.Usage("%s does not start a service named %q", rel.Version(), name).
-				WithHint("the services it starts are %s", strings.Join(rendered.Services, ", "))
+				WithHint("the services it starts are %s", strings.Join(started, ", "))
 		}
 	}
 	return nil
+}
+
+// startedServices is every service the configuration starts under inst's
+// profiles. Not one only an inactive profile's overlay defines, which Compose
+// does not know, nor one behind a Compose profile, which naming it starts.
+func (d *Deps) startedServices(ctx context.Context, inst domain.Installation, rel domain.Release) ([]string, error) {
+	cfg, err := d.runtimeConfig(rel, inst, nil)
+	if err != nil {
+		return nil, err
+	}
+	rendered, err := d.Runtime.Validate(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return rendered.Services, nil
 }

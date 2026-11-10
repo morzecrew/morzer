@@ -58,6 +58,7 @@ The last line is the one to read. It tells you which of two things happened:
 | --- | --- |
 | `re-created <services>` | The change is live. Those services are running with the new value. |
 | `takes effect on the next morzer apply` | Recorded, not yet live. Run `apply`. |
+| `not in the active profiles, so nothing was re-created` | Recorded. The services that read it start with it when their profile is turned on. |
 
 Which one you get is the release's decision: each parameter declares the
 services that depend on it, and one that declares none is a value read at

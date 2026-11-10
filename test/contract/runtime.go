@@ -188,6 +188,21 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 			"a defined service that is not started was refused")
 	})
 
+	t.Run("up refuses a service the configuration does not define", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+
+		// A parameter change re-creates the services the parameter
+		// declares, by name, and one may be defined only by the overlay of
+		// a profile that is not active. Compose refuses to bring it up,
+		// which unwinds the change, so the re-create must keep to what
+		// Validate lists (#328).
+		rendered, err := rt.Validate(ctx, cfg)
+		require.NoError(t, err)
+		require.NotContains(t, rendered.Services, "vpn")
+		assert.Error(t, rt.Up(ctx, cfg, ports.UpOptions{Services: []string{"vpn"}, ForceRecreate: true}),
+			"a service no file of the configuration defines was brought up")
+	})
+
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
 	runInspectionSuite(t, newRuntime)

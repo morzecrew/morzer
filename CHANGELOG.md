@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `config set` no longer fails when a service the parameter declares is behind
+  a profile that is not active. Its rollback failed the same way and left the
+  installation needing manual intervention. Only the services the active
+  profiles start are re-created.
+
 ## [0.15.1] - 2026-11-10
 
 A secret change no longer fails when a service the secret declares sits behind
