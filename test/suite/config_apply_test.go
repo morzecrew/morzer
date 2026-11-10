@@ -472,3 +472,33 @@ func slicesContainSuffix(list []string, suffix string) bool {
 	}
 	return false
 }
+
+// A render cut off after writing some files has not set what the undo reads
+// to know it rendered, so the undo renders again whenever the render ran.
+func TestARenderCutOffPartWayIsPutBack(t *testing.T) {
+	h := runningHarness(t)
+	h.Secrets.Seed(map[string]string{"smtp_password": "the-old-smtp-password-value"})
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	h.Secrets.RenderFailsAfterWriting = domain.SecretsError(nil, "injected: the disk filled part way")
+
+	_, err = configApply(t, h, mixedChange, ops.Options{})
+	require.Error(t, err)
+	assert.Equal(t, "the-old-smtp-password-value", renderedSecret(t, h, "smtp_password"),
+		"a file the cut-off render wrote kept the new value")
+}
+
+// Removing a required secret while containers exist fails at load-secrets,
+// which refuses a release missing one. Under `apply` that step aborts, since
+// nothing before it needs undoing; here the record and the stage do.
+func TestARefusedSecretLoadUndoesTheChange(t *testing.T) {
+	h := runningHarness(t)
+	_, err := configApply(t, h, "settings:\n  update.check: \"true\"\nunset:\n  secrets: [session_key]\n",
+		ops.Options{Force: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session_key")
+	got, present := storedSecret(t, h, "session_key")
+	assert.True(t, present, "the removed secret was not put back")
+	assert.Equal(t, "a-real-session-key-value", got)
+	assert.False(t, installation(t, h).Update.Check, "the recorded setting was not undone")
+}

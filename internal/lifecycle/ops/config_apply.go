@@ -455,7 +455,20 @@ func (d *Deps) changeSteps(
 	running, _ := d.projectRunning(ctx, before, rel, opts)
 	run.running = running && !run.stopped
 	if len(names.secretNames()) > 0 && d.containersExist(ctx, before, rel) {
-		steps = append(steps, stepLoadSecrets(d, after, rel), stepRenderSecrets(d, after, rel, opts))
+		// `apply`'s load aborts, since nothing before it there needs
+		// undoing. Here the record and the stage do: a release missing a
+		// required secret, which a forced unset can leave, undoes them.
+		load := stepLoadSecrets(d, after, rel)
+		load.OnFailure = engine.Compensate
+		// Marked before the render, which can write some files and fail
+		// before it says what it wrote: the undo then renders again.
+		render := stepRenderSecrets(d, after, rel, opts)
+		write := render.Execute
+		render.Execute = func(ctx context.Context, st *engine.State) error {
+			st.Set(keyRenderTried, true)
+			return write(ctx, st)
+		}
+		steps = append(steps, load, render)
 	}
 	if len(names.parameterNames()) > 0 || domainChange || profileChange {
 		steps = append(steps, stepRenderConfiguration(d, after, rel, Options{}))
@@ -523,6 +536,7 @@ type stagedSecret struct {
 const (
 	keyStagedForUndo = "config-apply-staged"
 	keyPutBackDone   = "config-apply-put-back"
+	keyRenderTried   = "config-apply-render-tried"
 )
 
 // stepStageSecrets stores the change's secrets, keeping what each name held.
@@ -581,7 +595,7 @@ func (d *Deps) priorSecrets(ctx context.Context, names []string) (map[string]sta
 
 // putSecretsBack is the secret half of every undo: each name the change
 // touched as it was, with its change time (RFC 0056 §5.5), then the files
-// rendered again if this operation rendered them. `apply`'s render-secrets
+// rendered again if this operation rendered them or began to. `apply`'s render-secrets
 // undo keeps the files while the product runs and removes them when nothing
 // runs, so without the render a failure would leave the store old and the
 // files new (decision 9). Once per operation: the re-create's undo runs it
@@ -607,7 +621,9 @@ func (d *Deps) putSecretsBack(ctx context.Context, st *engine.State, schema doma
 	if err := errors.Join(errs...); err != nil {
 		return err
 	}
-	if _, rendered := st.Get(engine.KeyRenderedFiles); rendered {
+	_, rendered := st.Get(engine.KeyRenderedFiles)
+	_, tried := st.Get(keyRenderTried)
+	if rendered || tried {
 		if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
 			return err
 		}
