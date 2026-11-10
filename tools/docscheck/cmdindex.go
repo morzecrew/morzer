@@ -91,6 +91,10 @@ var referencePage = map[string]string{
 	// and splitting them across two pages would put the payload on neither.
 	"fleet": "reference/fleet.md",
 
+	// The document, the cycle and both commands on one page, as fleet's:
+	// what `sync now` applies is what the page describes.
+	"sync": "reference/desired-state.md",
+
 	"ls":         "reference/installation-commands.md#installation-list",
 	"completion": "reference/commands.md#completion-install",
 }

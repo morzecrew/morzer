@@ -66,7 +66,7 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.
 
 ## What is sent
 
-Four kinds of event, and no others:
+Six kinds of event, and no others:
 
 - `operation.finished` — the outcome of an `apply`, `update`, `rollback`,
   `config`, `backup` or `restore`, including **failures**.
@@ -79,6 +79,12 @@ Four kinds of event, and no others:
   `update --stage`. It is sent when the release is staged, before anything decides whether it installs itself, and it is the one
   event here that is not an outcome: it may be a decision waiting for a person
   who was not at the terminal when the timer ran.
+- `sync.refused` — a [desired-state document](managing-from-elsewhere.md) was
+  refused: its serial, the step and the class, and the names it involved, never
+  the error's text. Sent once per document, since a refused one is not tried
+  again.
+- `sync.expired` — the desired-state document in force has expired and nothing
+  newer is published. Sent when a sync cycle first finds it so.
 
 The payload is the manager's own event JSON, the same shape `--log-format json`
 emits. A service wanting a different body gets a two-line receiver.
