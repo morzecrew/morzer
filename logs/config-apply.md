@@ -254,3 +254,54 @@ evidence: pages/docs/reference/commands.md:1036
 action: decided
 proposal: ASSUMED — config apply is documented in parameters.md and changing-configuration.md, with no row in the completion table
 ```
+
+Built as planned, with two placements that differ from the plan and from no
+decision: the change document's parser lives in `ops`
+(`internal/lifecycle/ops/change_document.go`), not `domain`, because the
+domain layer imports nothing but the standard library and semver
+(`.golangci.yml:31-45`). The type is `ConfigChange`, since `ops.Change` already
+names a release-diff row.
+
+Sabotage, each run and seen red (§6):
+
+- the secret undo dropped from the re-create: `TestConfigApplyUndoesEveryValueWhicheverStepFails`
+  (recreate-services, health-checks), "the undo brought the old services back
+  on the new secret file";
+- the render dropped from the secret undo: the same test, "the rendered file
+  kept the new value while the store went back";
+- the secrets staged before the restore point:
+  `TestAProfileChangeWithASecretAndAParameterIsOneOperation`, both the step
+  order and "the restore point brought the old profile up on the new secret
+  file";
+- a secret put back with `Set`: "the undo stamped the secret as changed now";
+- the whole store put back: `TestARollbackKeepsASecretSetMeanwhile`, "the
+  rollback undid a change it did not make";
+- the health checks left out: `TestConfigApplyIsOneOperation`, the health-checks
+  case, and `TestConfigSetUndoesAChangeThatFailsItsHealthChecks`.
+
+The first and the third passed until the tests read the secret file at the
+moment the undo brings services up, rather than after the whole undo.
+`Restore` in sops-age stamping now was also run, and the contract leg failed.
+
+## Self-audit (2026-11-10)
+
+Scope: `3c026b4d..HEAD`, the parser, `Restore`, the operation, `config set`
+as its caller, the CLI, the tests and the docs.
+
+- **Found and fixed:** the journal described the operation as "apply …",
+  where `config set` had always been "set …". The verb is "set" again for
+  every `config` operation.
+- **Checked, no change:**
+  - every validation problem is collected in a fixed order, and one problem is
+    returned with its own hint and exit code;
+  - the profile path refuses when the runtime cannot answer, as `SetSettings`
+    does;
+  - a change that renders no configuration files no statement (the decision 11
+    entry above);
+  - no secret value reaches the summary, the events, or any file but the
+    rendered secret (`TestConfigApplyLeaksNoSecretValue`).
+- **Not tested:** the terminal refusal, which a pipe cannot reach; and a
+  rollback whose own re-render fails, which ends at manual intervention as any
+  failed undo does.
+
+Drift count: 0.

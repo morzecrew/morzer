@@ -133,16 +133,27 @@ func TestConfigApplyUndoesEveryValueWhicheverStepFails(t *testing.T) {
 			require.NoError(t, err)
 			ups := len(h.Runtime.UpOptions)
 
-			switch failAt.method {
-			case "Up":
+			// What the secret file holds when the undo brings the old
+			// services back: the engine undoes the failed step first, so a
+			// re-create that did not put the secrets back itself would
+			// start them on the new file, whatever the stage's undo
+			// restores afterwards.
+			var ups2, atUndo []string
+			h.Runtime.OnCall = func(method string) {
+				if method != "Up" {
+					return
+				}
+				if ups2 = append(ups2, method); len(ups2) > 1 {
+					data, _ := os.ReadFile(filepath.Join(h.Paths.SecretsRenderDir(), "smtp_password"))
+					atUndo = append(atUndo, string(data))
+				}
 				// The error is taken before the hook runs, so only the
 				// first Up fails and the undo's Up goes through.
+				delete(h.Runtime.Fail, "Up")
+			}
+			switch failAt.method {
+			case "Up":
 				h.Runtime.Fail["Up"] = domain.RuntimeError(nil, "injected: the new value does not start")
-				h.Runtime.OnCall = func(method string) {
-					if method == "Up" {
-						delete(h.Runtime.Fail, "Up")
-					}
-				}
 			case "":
 				h.Health.FailingWaits = 1
 			default:
@@ -164,6 +175,13 @@ func TestConfigApplyUndoesEveryValueWhicheverStepFails(t *testing.T) {
 			if n := len(h.Runtime.UpConfigs); n > ups {
 				assert.NotEqual(t, "debug", h.Runtime.UpConfigs[n-1].Env["DEMO_PARAM_LOG_LEVEL"],
 					"the services were left on the new value")
+			}
+			for _, held := range atUndo {
+				assert.Equal(t, "the-old-smtp-password-value", held,
+					"the undo brought the old services back on the new secret file")
+			}
+			if failAt.step == "recreate-services" || failAt.step == "health-checks" {
+				assert.NotEmpty(t, atUndo, "the undo re-created nothing, so this proves nothing")
 			}
 		})
 	}
@@ -254,8 +272,19 @@ secrets:
 	t.Run("failing its health checks", func(t *testing.T) {
 		h := runningHarness(t)
 		h.Health.FailingWaits = 1
+		// The secret file each time services come up: the last is the
+		// restore point bringing the old profile back.
+		var atUp []string
+		h.Runtime.OnCall = func(method string) {
+			if method == "Up" {
+				atUp = append(atUp, renderedSecret(t, h, "db_password"))
+			}
+		}
 		_, err := configApply(t, h, change, ops.Options{})
 		require.Error(t, err)
+		require.Len(t, atUp, 2, "expected the new profile's up and the restore point's")
+		assert.Equal(t, "a-real-database-password", atUp[1],
+			"the restore point brought the old profile up on the new secret file")
 
 		inst := installation(t, h)
 		assert.Equal(t, []string{"embedded"}, inst.Profiles)

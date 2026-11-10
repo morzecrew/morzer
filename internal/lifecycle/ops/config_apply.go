@@ -192,7 +192,9 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange)
 		if op.Steps, err = d.changeSteps(ctx, &run, planned, change, opts); err != nil {
 			return err
 		}
-		op.Description = "apply " + strings.Join(planned.names.list(), ", ")
+		// "set", as `config set` has always described itself in the
+		// journal, whichever command ran it.
+		op.Description = "set " + strings.Join(planned.names.list(), ", ")
 		op.Flags = planned.names.flags()
 		maps.Copy(op.Flags, settingsFlags(inst, planned.after))
 		if result, err = d.Engine.Run(ctx, op, d.engineOptions(opts, inst.ID, nil)); err != nil {
