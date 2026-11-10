@@ -14,6 +14,7 @@ import (
 	signer "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The authority's side (RFC 0057 P4): `state publish` addresses a document to
@@ -211,4 +212,40 @@ func TestStatePublishStampsTheValidityGiven(t *testing.T) {
 	assert.Equal(t, a.h.Deps.Now().Add(time.Hour).UTC(), report.ExpiresAt.UTC())
 	a.syncOK(t)
 	assert.Equal(t, report.ExpiresAt, a.state(t).Applied.ExpiresAt)
+}
+
+// putFailing is a target that refuses to write one key.
+type putFailing struct {
+	ports.ObjectStore
+	suffix string
+}
+
+func (p putFailing) PutObject(ctx context.Context, ref ports.TargetRef, key string, data []byte) error {
+	if strings.HasSuffix(key, p.suffix) {
+		return assert.AnError
+	}
+	return p.ObjectStore.PutObject(ctx, ref, key, data)
+}
+
+// A publish cut off before its signature leaves the previous document in force:
+// the ciphertext is written first, and without its signature it is not a
+// document (decision 26).
+func TestAPublishCutOffBeforeItsSignatureLeavesThePreviousDocument(t *testing.T) {
+	a := newAuthorityRig(t)
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.Serial = 10
+	_, err := a.statePublish(t, opts)
+	require.NoError(t, err)
+	assert.Equal(t, domain.SyncOK, a.syncOK(t).Result)
+
+	objects := a.h.Deps.Objects
+	a.h.Deps.Objects = putFailing{ObjectStore: objects, suffix: ".minisig"}
+	opts.Serial, opts.Document = 11, []byte("parameters:\n  log_level: warn\n")
+	_, err = a.statePublish(t, opts)
+	require.Error(t, err)
+	a.h.Deps.Objects = objects
+
+	assert.Equal(t, domain.SyncCurrent, a.syncOK(t).Result)
+	assert.Equal(t, "debug", installation(t, a.h).Parameters["log_level"],
+		"a document whose signature was never written was applied")
 }
