@@ -322,6 +322,11 @@ func (s SecretSchema) ServicesFor(names []string) []string {
 
 var secretNamePattern = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
 
+// ValidSecretName reports whether name is spelled as a secret schema allows.
+func ValidSecretName(name string) bool {
+	return name != "" && strings.TrimLeft(name, secretNamePattern) == ""
+}
+
 // DeclaresOwner reports whether any secret names an owner.
 func (s SecretSchema) DeclaresOwner() bool {
 	return slices.ContainsFunc(s.Secrets, func(d SecretDeclaration) bool { return d.Owner.Set })

@@ -302,6 +302,9 @@ func (d *Deps) planChange(
 	if err := checkSignaturePolicy(inst, next); err != nil {
 		problems = append(problems, err)
 	}
+	if err := checkSyncPolicy(next); err != nil {
+		problems = append(problems, err)
+	}
 
 	// Parameters: each name on its own first, so every bad one is named,
 	// then the whole set through mergeParameters, which `config set` uses.
