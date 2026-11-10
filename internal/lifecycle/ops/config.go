@@ -123,117 +123,42 @@ type ConfigSetOptions struct {
 // plans under --dry-run, journals before and after each step, and unwinds what
 // it changed if a step fails. A parameter change alters what is running, so it
 // gets the same treatment as anything else that does.
+//
+// It is `config apply` with one entry (RFC 0056 decision 14), so it runs the
+// release's health checks after the re-create, as a change to several names
+// does, and a failing check undoes it.
+//
+// The last of RFC 0025 §4.1's five operations to attest, and the one an audit
+// reads most often: a parameter change alters what the deployment *is*
+// without moving a version, so nothing else in the record would show it
+// happened. It moves no version, so it carries no from_version and joins no
+// chain -- exactly like `apply`, and for the same reason.
 func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, error) {
 	if len(opts.Set) == 0 && len(opts.Unset) == 0 {
 		return Result{}, domain.Usage("nothing to change").
 			WithHint("pass name=value to set one, or `config unset <name>` to clear one")
 	}
 
-	inst, rel, err := d.currentInstallationAndRelease(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-
-	next, changed, err := mergeParameters(inst, rel, opts)
-	if err != nil {
-		return Result{}, err
-	}
-	if len(changed) == 0 {
-		return Result{Summary: "no change: every value already matches"}, nil
-	}
-
-	opID := d.newOpID()
-	op := engine.Operation{
-		ID:          opID,
-		Type:        domain.OpTypeConfig,
-		Description: "set " + strings.Join(changed, ", "),
-	}
-
-	var (
-		result   engine.Result
-		running  bool
-		noChange bool
-		declared = affectedServices(rel, changed)
-		services = declared
-	)
-	runErr := d.withLock(ctx, opID, domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
-		// Everything again from the installation as it stands under the
-		// lock. The steps save a whole installation, so building them from
-		// the copy read above would write away whatever landed while this
-		// waited -- another `config set`, a `notify target add`, or a
-		// `morzer stop`, whose record would then be gone and the next boot
-		// would start the product.
-		var err error
-		if inst, rel, err = d.currentInstallationAndRelease(ctx); err != nil {
-			return err
-		}
-		if next, changed, err = mergeParameters(inst, rel, opts); err != nil {
-			return err
-		}
-		if len(changed) == 0 {
-			noChange = true
-			return nil
-		}
-		// Asked once, before anything changes, because it decides both
-		// which steps run and what the summary may claim. Asking again
-		// afterwards would report on a deployment the operation had
-		// already altered. A runtime that cannot answer counts as not
-		// running: nothing is recreated. Nor is a product under a stop
-		// record, even one whose services a killed `stop` left running.
-		running, _ = d.projectRunning(ctx, inst, rel, opts.Options)
-		running = running && inst.Stopped == nil
-		declared = affectedServices(rel, changed)
-		services = declared
-		if running && len(declared) > 0 {
-			// Only those the configuration starts under the active
-			// profiles. Compose refuses to `up` a service no file defines
-			// -- one in the overlay of a profile that is not active --
-			// which would unwind the change, and starts one behind a
-			// Compose profile when it is named. Either reads the value
-			// when its profile is turned on and it is created (#328).
-			updated := inst
-			updated.Parameters = next
-			started, err := d.startedServices(ctx, updated, rel)
-			if err != nil {
-				return err
-			}
-			services = slices.DeleteFunc(slices.Clone(declared), func(s string) bool {
-				return !slices.Contains(started, s)
-			})
-		}
-		op.Steps = configSteps(d, inst, rel, next, services, running)
-		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, nil))
-		return err
+	run, err := d.runChange(ctx, opts.Options, ConfigChange{
+		Parameters: opts.Set,
+		Unset:      ConfigChangeUnset{Parameters: opts.Unset},
 	})
-	if noChange {
+	if err == nil && run.noChange {
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
+	if run.record.ID == "" && err != nil {
+		return Result{}, err
+	}
 
-	out := Result{Record: result.Record, Data: next}
+	out := Result{Record: run.record, Data: run.after.Parameters}
 	// Only for a change that ran: the summary is printed with the error too,
 	// and one that failed or was undone re-created nothing it could claim.
-	if runErr == nil {
-		out.Summary = configSummary(summaryNames(rel, inst.Parameters, next, changed), services, declared,
-			opts.DryRun, running, inst.Stopped != nil)
+	if err == nil {
+		out.Summary = configSummary(
+			summaryNames(run.rel, run.before.Parameters, run.after.Parameters, run.names.parameterNames()),
+			run.services, run.declared, opts.DryRun, run.running, run.stopped)
 	}
-	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
-
-	// The last of RFC 0025 §4.1's five operations to attest, and the one an
-	// audit reads most often: a parameter change alters what the deployment
-	// *is* without moving a version, so nothing else in the record would
-	// show it happened.
-	//
-	// It moves no version, so it carries no from_version and joins no
-	// chain -- exactly like `apply`, and for the same reason.
-	if !opts.DryRun {
-		attestConfig(ctx, d, result.Record, inst, rel, result.State)
-	}
-
-	if runErr != nil {
-		return out, runErr
-	}
-
-	return out, nil
+	return out, err
 }
 
 // attestConfig files the statement for a `config` operation that rendered the
@@ -366,30 +291,6 @@ func mergeParameters(
 
 	sort.Strings(changed)
 	return next, changed, nil
-}
-
-// configSteps is the change, ordered so a failure leaves the deployment
-// running what it was running.
-func configSteps(
-	d *Deps, inst domain.Installation, rel domain.Release,
-	next map[string]string, services []string, running bool,
-) []engine.Step {
-	updated := inst
-	updated.Parameters = next
-
-	steps := []engine.Step{
-		stepRecordParameters(d, inst, updated),
-		stepRenderConfiguration(d, updated, rel, Options{}),
-	}
-
-	// Only when the release says which services depend on the value, and
-	// only when something is running to re-create. A parameter with no
-	// declared services needs a full `apply`, which the summary says out
-	// loud rather than guessing at.
-	if len(services) > 0 && running {
-		steps = append(steps, stepRecreateServices(d, inst, updated, rel, services))
-	}
-	return steps
 }
 
 // stepRecordSettings is stepRecordParameters for a setting change, named for

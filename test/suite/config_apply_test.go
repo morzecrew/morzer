@@ -422,6 +422,19 @@ func TestConfigApplyLeaksNoSecretValue(t *testing.T) {
 	}))
 }
 
+// P2 (decision 14): `config set` of a parameter is the same operation, so it
+// waits for the release's health checks, and a failing one undoes it.
+func TestConfigSetUndoesAChangeThatFailsItsHealthChecks(t *testing.T) {
+	h := runningHarness(t)
+	h.Health.FailingWaits = 1
+	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.Error(t, err)
+	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
+	assert.Contains(t, stepIDs(configRecords(t, h)[0]), "health-checks")
+}
+
 func slicesContainSuffix(list []string, suffix string) bool {
 	for _, v := range list {
 		if strings.HasSuffix(v, suffix) {
