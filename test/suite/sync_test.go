@@ -22,6 +22,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -457,4 +458,45 @@ func TestALocalChangeToAManagedNameNeedsForce(t *testing.T) {
 	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
 	_, err = ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "warn"}})
 	require.NoError(t, err, "a managed name was refused with sync off")
+}
+
+// The row reports a refusal by serial, step, class and names, and its text,
+// which quotes the value refused, stays on the machine (decision 23). The row
+// also carries the recipient an authority encrypts to.
+func TestARowReportsSyncWithoutTheRefusalsText(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+	recipients, err := r.h.Secrets.Recipients(ctx)
+	require.NoError(t, err)
+	var machine string
+	for _, rc := range recipients {
+		if rc.Kind == ports.RecipientMachine {
+			machine = rc.PublicKey
+		}
+	}
+	require.NotEmpty(t, machine)
+	r.publish(t, 110, "parameters:\n  log_level: PARAM-VALUE-MUST-NOT-TRAVEL\n")
+	report, err := r.sync(t)
+	require.Error(t, err)
+	assert.Equal(t, domain.SyncInvalid, report.Result)
+	require.Contains(t, r.state(t).Refused.Message, "PARAM-VALUE-MUST-NOT-TRAVEL",
+		"the refusal does not quote the value, so this test proves nothing")
+
+	inst := installation(t, r.h)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + r.offsite}}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+	_, err = ops.FleetPublish(ctx, r.h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+
+	row, body := publishedRow(t, r.offsite, inst)
+	assert.NotContains(t, string(body), "PARAM-VALUE-MUST-NOT-TRAVEL", "a refusal's text reached the row")
+	assert.Equal(t, 2, row.Schema)
+	assert.Equal(t, machine, row.AgeRecipient)
+	require.NotNil(t, row.Sync)
+	assert.Equal(t, domain.MinisignKeyID(r.key), row.Sync.AuthorityKeyID)
+	require.NotNil(t, row.Sync.Refused)
+	assert.Equal(t, int64(110), row.Sync.Refused.Serial)
+	assert.Equal(t, "invalid", row.Sync.Refused.Class)
+	assert.Equal(t, []string{"log_level"}, row.Sync.Refused.Names)
+	assert.Equal(t, domain.SyncInvalid, row.Sync.LastFetch.Result)
 }

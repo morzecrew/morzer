@@ -29,7 +29,7 @@ const (
 	// (RFC 0026 decision 4), and it cannot say that about a document which
 	// does not state its version -- it would have to guess from the fields
 	// present, which is indistinguishable from a truncated write.
-	FleetSchemaVersion = 1
+	FleetSchemaVersion = 2
 
 	// FleetPrefix is the key namespace rows live under on a target.
 	//
@@ -95,6 +95,16 @@ type FleetRow struct {
 	// Never the trust anchor. See FleetBound.
 	SigningKey string `json:"signing_key,omitempty"`
 
+	// AgeRecipient is this machine's age public key, which an authority
+	// encrypts its desired-state documents to (RFC 0057 §5.4). Schema 2.
+	// Trusted only as far as the row is: through the roster's key for
+	// this installation, never through the row's own SigningKey.
+	AgeRecipient string `json:"age_recipient,omitempty"`
+
+	// Sync is what this installation did with an authority's documents
+	// (RFC 0057 §5.9), absent when it follows none. Schema 2.
+	Sync *FleetSync `json:"sync,omitempty"`
+
 	// PublishedAt is when this row was written, and it is what stops an
 	// older row from silently becoming current.
 	//
@@ -103,6 +113,86 @@ type FleetRow struct {
 	// machine and a fast one -- would otherwise leave whichever finished
 	// last in place regardless of which observed the newer state.
 	PublishedAt Time `json:"published_at"`
+}
+
+// FleetSync is the row's view of an installation's sync: serials, steps,
+// classes and names, and never a refusal's text, which can quote a parameter
+// value (RFC 0057 decision 23).
+type FleetSync struct {
+	Enabled        bool               `json:"enabled"`
+	AuthorityKeyID string             `json:"authority_key_id,omitempty"`
+	Applied        *FleetSyncDocument `json:"applied,omitempty"`
+	Refused        *FleetSyncDocument `json:"refused,omitempty"`
+	LastFetch      *SyncFetch         `json:"last_fetch,omitempty"`
+}
+
+// FleetSyncDocument is one document as the row reports it.
+type FleetSyncDocument struct {
+	Serial    int64    `json:"serial"`
+	At        Time     `json:"at"`
+	ExpiresAt Time     `json:"expires_at,omitzero"`
+	Step      string   `json:"step,omitempty"`
+	Class     string   `json:"class,omitempty"`
+	Names     []string `json:"names,omitempty"`
+}
+
+// maxFleetSyncNames bounds the names a refusal lists in a row. A document is
+// the authority's, and the row is read in a terminal.
+const maxFleetSyncNames = 32
+
+// fleetSync is the block built field by field from what state records, so a
+// field added there reaches the row only by being named here.
+func fleetSync(c SyncConfig) *FleetSync {
+	if c.Target == "" && c.Authority == "" {
+		return nil
+	}
+	doc := func(d *SyncDocument) *FleetSyncDocument {
+		if d == nil {
+			return nil
+		}
+		return &FleetSyncDocument{
+			Serial: d.Serial, At: d.At, ExpiresAt: d.ExpiresAt,
+			Step: d.Step, Class: d.Class, Names: d.Names,
+		}
+	}
+	out := &FleetSync{
+		Enabled: c.Enabled, AuthorityKeyID: MinisignKeyID(c.Authority),
+		Applied: doc(c.Applied), Refused: doc(c.Refused),
+	}
+	if c.LastFetch != nil {
+		fetch := *c.LastFetch
+		out.LastFetch = &fetch
+	}
+	return out.bounded()
+}
+
+// bounded is the block with its text made safe to render, detached from the
+// one it was built from.
+func (s *FleetSync) bounded() *FleetSync {
+	if s == nil {
+		return nil
+	}
+	out := *s
+	out.AuthorityKeyID = boundedText(out.AuthorityKeyID)
+	doc := func(d *FleetSyncDocument) *FleetSyncDocument {
+		if d == nil {
+			return nil
+		}
+		b := *d
+		b.Step, b.Class = boundedText(b.Step), boundedText(b.Class)
+		b.Names = nil
+		for _, name := range d.Names[:min(len(d.Names), maxFleetSyncNames)] {
+			b.Names = append(b.Names, boundedText(name))
+		}
+		return &b
+	}
+	out.Applied, out.Refused = doc(s.Applied), doc(s.Refused)
+	if s.LastFetch != nil {
+		fetch := *s.LastFetch
+		fetch.Result = SyncOutcome(boundedText(string(fetch.Result)))
+		out.LastFetch = &fetch
+	}
+	return &out
 }
 
 // FleetHealth is what the runtime said, or that it did not answer.
@@ -164,6 +254,7 @@ type FleetRowInputs struct {
 	Health         FleetHealth
 	Drift          FleetDrift
 	LastOperation  *FleetOperation
+	AgeRecipient   string
 	PublishedAt    Time
 }
 
@@ -191,8 +282,10 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		// which an operator can hand-edit, and nothing between that file
 		// and this row checks its shape -- FleetKey validates the product
 		// and the id, and Validate only checks fields are non-empty.
-		SigningKey:  boundedText(in.Installation.Signing.PublicKey),
-		PublishedAt: in.PublishedAt,
+		SigningKey:   boundedText(in.Installation.Signing.PublicKey),
+		AgeRecipient: boundedText(in.AgeRecipient),
+		Sync:         fleetSync(in.Installation.Sync),
+		PublishedAt:  in.PublishedAt,
 	}
 
 	row.Health = FleetHealth{
@@ -394,6 +487,8 @@ func (r FleetRow) Bounded() FleetRow {
 	r.Version = boundedText(r.Version)
 	r.ManagerVersion = boundedText(r.ManagerVersion)
 	r.SigningKey = boundedText(r.SigningKey)
+	r.AgeRecipient = boundedText(r.AgeRecipient)
+	r.Sync = r.Sync.bounded()
 	r.Health.Problem = boundedText(r.Health.Problem)
 	r.Drift.Problem = boundedText(r.Drift.Problem)
 

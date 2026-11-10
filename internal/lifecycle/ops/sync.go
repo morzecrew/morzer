@@ -406,7 +406,8 @@ func (d *Deps) refuseDocument(
 	if opts.DryRun {
 		return report, nil
 	}
-	message := domain.AsError(refusal.err).Message
+	// The whole chain, which names the value refused: kept locally only.
+	message := refusal.err.Error()
 	if d.Redactor != nil {
 		message = d.Redactor.Apply(message)
 	}
