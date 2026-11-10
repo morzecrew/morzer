@@ -2,9 +2,10 @@
 
 - **Status:** 📝 Draft — proposed 2026-11-10 from dotdash's needs (a network
   of servers, relays, canaries and clients that share facts). It was adopted
-  the same day, with §3 checked against the code. The `OPEN` rows are the
-  author's to rule. Four of them (decisions 11–14) are where the draft meets
-  `LOCKED` decisions of RFC 0026 and RFC 0027.
+  the same day, with §3 checked against the code. Ruled by the author
+  2026-11-10: decisions 11–15, where the draft meets ruled decisions of RFC
+  0025, RFC 0026 and RFC 0027, as recommended. Decisions 18–22, the draft's
+  own questions, stay `OPEN`.
 - **Scope:** How one party (an *authority*) can change the parameters, secrets
   and selected settings of many installations without any of them accepting
   an inbound connection, running an agent, or trusting anything but a key
@@ -28,8 +29,8 @@
   - the manifest gains `managed` and `published`;
   - the installation gains the `sync.*` settings and the last applied and
     refused serials, which is a state schema bump;
-  - the fleet row gains `age_recipient` and a `sync` block, and possibly
-    `facts` (decision 14);
+  - the fleet row gains `age_recipient` and a `sync` block, and a signed
+    `facts.age` object is published beside it (decision 14);
   - the attestation predicate gains the document's serial, digest and
     authority key id, which is a v4 predicate (decision 15);
   - new commands: `sync now`, `sync status`, `state publish`, `state ls` and
@@ -37,9 +38,9 @@
 
   **Reverses or amends:** [RFC 0027](0027-desired-state-in-a-repository.md)
   decision 5 ("no pull, no watch, no schedule") and
-  [RFC 0026](0026-fleet-as-a-read-model.md) decisions 2 and 8. It also meets
-  RFC 0026 decision 6b, the roster as the reader's trust anchor. Each is a
-  row in §11.
+  [RFC 0026](0026-fleet-as-a-read-model.md) decisions 2 and 8. It keeps RFC
+  0026 decision 6b, the roster as the trust anchor, which the draft would
+  have bypassed. Each is a row in §11.
 - **Related:**
   - [fleet.md](../pages/docs/reference/fleet.md): read-only by design; this
     RFC keeps that. Nothing here acts on a remote machine.
@@ -367,32 +368,29 @@ The fleet row gains two public fields:
 ```json
 "age_recipient": "age1...",          // this machine's, for desired state
 "sync": { ... },                      // §5.9
-"facts": "-----BEGIN AGE ENCRYPTED FILE-----..."   // §5.10, decision 14
 ```
 
-The row is already signed by the machine key. The authority pins the
-machine key the first time it sees an installation (trust on first use, as
-an operator does today when accepting a release key), and from then on
-trusts recipient changes only in rows signed by that key or by a recorded
-successor. When a machine is rebuilt (`installation import`), its new
-recipient appears in its next row; documents encrypted to the old recipient
-fail to decrypt and are reported as such (§5.9) until the authority
-re-encrypts.
+The row is already signed by the machine key. The authority trusts that key
+only from the roster, the file `fleet ls --expect` already reads, which
+lists each installation with the key it signs with (decision 13). A row whose
+signature does not check out against the roster's key is never used: its
+recipient is not encrypted to, and `state publish` refuses the installation.
+When a machine is rebuilt (`installation import`), it signs with a new key
+and has a new recipient. Its new key enters the roster out of band, as
+`fleet.md` describes for any new key. Until then, documents encrypted to the
+old recipient fail to decrypt and are reported as such (§5.9).
 
 This closes the loop without a listener. The authority reads what it needs
 to write from the read-only view, and writes to the same place the machine
 already reads from.
 
-**This meets RFC 0026 decision 6b (decision 13).** The roster, not the row,
-is the reader's trust anchor. A row that carries the key verifying it
-verifies itself, and another machine with write access to the bucket holds a
-valid key of its own. Pinned on first sight, such a writer can post a row
-for an installation id the authority has not seen. The authority would then
-encrypt documents to it, shared keys included. The alternative this RFC
-recommends is that `state publish` trusts a machine key only from the
-roster, which RFC 0026 already maintains out of band. A rebuilt machine's
-new key enters the roster the same way. A successor recorded in a row is
-provenance, not trust (RFC 0028).
+**Why the roster, and not the row (RFC 0026 decision 6b).** A row that
+carries the key verifying it verifies itself, and another machine with write
+access to the bucket holds a valid key of its own. The draft pinned a key on
+first sight. Then such a writer could post a row for an installation id the
+authority had not seen, and the authority would encrypt documents to it,
+shared keys included. A successor recorded in a row is provenance, not trust
+(RFC 0028), so a rebuilt machine is a roster change too.
 
 ### 5.5 Configuring sync on a machine
 
@@ -493,8 +491,9 @@ Each tick (`sync.interval`, with jitter):
 4. Apply (§5.7) with the manageability check on.
 5. Publish the fleet row with the outcome (§5.9). The operation's
    attestation names the document's serial, its digest, and the authority's
-   key id. The v3 predicate has no field for these and refuses one it does
-   not name, so this is a v4 predicate (decision 15).
+   key id, in a `desired_state` block of a v4 predicate that RFC 0025
+   defines. The v3 predicate has no field for these and refuses one it does
+   not name (decision 15).
 
 The sync timer and `update.auto_apply` never run concurrently: both take the
 deployment lock. The one that cannot take it exits 0 and tries again at its
@@ -552,30 +551,30 @@ published:
   for every reader of the bucket. Without `sync.recipient`, nothing is
   published.
 - The facts are signed with the machine key, so the authority knows they
-  come from the machine key it trusts.
+  come from the key the roster lists for that installation.
 - Facts are meant to be public halves and addresses. morzer can't tell a
   secret from a fact; a vendor that publishes a credential publishes it to
   the authority, and the docs say so.
 - A task run without arguments must find what it needs itself. dotdash's
   `relay-entry` would read the relay's address from its domain under the
   `own-site` profile.
-- **Where they live is decision 14.** The draft puts them in the row as
-  `facts`. fleet.md says the row never carries hostnames or parameter
-  values, and RFC 0026 decision 8 says the row holds no new state. The
-  recommendation is a separate object beside the row,
-  `fleet/<product>/<id>/facts.age` with its `.minisig`. The row then stays a
-  row, the same write-only credential publishes both, and fleet.md's rule is
-  restated as "never in plaintext".
+- **They are published beside the row, not in it** (decision 14), as
+  `fleet/<product>/<id>/facts.age` with its `.minisig`. The draft put them in
+  the row. fleet.md says the row never carries hostnames or parameter
+  values, and RFC 0026 decision 8 says the row holds no new state. Beside it,
+  the row stays a row, and the same write-only credential publishes both.
+  fleet.md's rule is restated as "never in plaintext".
 
 With this, adding a relay is:
 
 1. On the new machine: `morzer init dotdash-relay … --sync-target s3://… \
    --sync-authority RWQ… --sync-recipient age1…`, and its DNS record.
-2. Its first fleet row appears with its age recipient and facts.
-3. The authority sees an installation it hasn't pinned and asks whether to
-   accept it. Accepting pins the machine key. Under decision 13's
-   recommendation, the machine key is added to the roster instead, out of
-   band, as `fleet.md` describes.
+2. Its first fleet row appears with its age recipient, and its facts
+   beside it.
+3. The authority adds the machine's key to the roster, out of band, as
+   `fleet.md` describes (`fleet publish --dry-run --json` prints it on the
+   machine). Until it does, `state ls` reports the row as unexpected and
+   `state publish` refuses the installation.
 4. The authority publishes the relay's document (the servers, their public
    key, the devices of its pool), and new documents for each server, adding
    the relay's line to `relays`.
@@ -591,27 +590,29 @@ morzer gains commands that need no installation of their own, as `fleet ls`
 already is:
 
 ```sh
-morzer state publish --target s3://bucket/prefix --product dotdash-relay \
-  --installation inst_... --file state.yaml --key ./authority.minisign.key
-morzer state ls --target s3://bucket/prefix   # fleet rows joined with sync outcomes
+morzer state publish --target s3://bucket/prefix --expect roster.yaml \
+  --product dotdash-relay --installation inst_... --file state.yaml \
+  --key ./authority.minisign.key
+morzer state ls --target s3://bucket/prefix --expect roster.yaml   # rows joined with sync outcomes
 ```
 
 - **`publish`** reads the installation's fleet row and checks the row's
-  signature against the pinned machine key. In the draft, on first contact
-  it pins the key (TOFU) after printing it; decision 13 recommends the
-  roster instead. It takes `age_recipient` from the row, stamps a serial (a
+  signature against the key the roster lists for it. An installation the
+  roster does not list, or a row that does not verify, is refused
+  (decision 13). It takes `age_recipient` from the row, stamps a serial (a
   timestamp unless given), and fills `expires_at` from a default validity,
   `--valid-for`, defaulting to 7 days. Then it encrypts, signs and uploads.
   `--file` names a plaintext document on the authority's machine. That
   machine holds the authority key already, and every value in the document
   is one it chose to send.
 - **`ls`** shows, per installation, the applied and refused serials and the
-  reasons, which is the read the authority needs to know it worked, and new
-  installations it hasn't pinned yet.
+  reasons, which is the read the authority needs to know it worked. A row
+  the roster does not list is shown as unexpected, as `fleet ls` shows it.
 - **`state facts`** decrypts an installation's facts with the authority's
   age identity and prints them, for a manager to read.
 
-A product's own manager (for dotdash, the roster in its part 7) is just a
+A product's own manager (for dotdash, the device roster in its part 7, not
+morzer's `roster.yaml`) is just a
 program that computes documents and calls `state publish`. morzer doesn't
 need to know what a relay is.
 
@@ -633,8 +634,9 @@ need to know what a relay is.
 - **Signing the plaintext:** the machine would decrypt unsigned input before
   knowing it's genuine. Signing the ciphertext lets it verify first.
 - **Trusting a machine key from its row on first sight** (the draft's
-  §5.4): one prompt instead of a roster entry. A writer to the bucket can
-  pose as a new installation and receive shared secrets (decision 13).
+  §5.4): one prompt instead of a roster entry. Rejected: a writer to the
+  bucket can pose as a new installation and receive shared secrets
+  (decision 13).
 
 ## 6. Tests
 
@@ -671,8 +673,7 @@ need to know what a relay is.
     it as new, `state facts` prints its facts, and a document built from
     them reaches another installation and applies.
   - A second machine with write access posts a row for an unknown
-    installation id: `state publish` refuses it until the roster lists it
-    (under decision 13's recommendation).
+    installation id: `state publish` refuses it until the roster lists it.
 - **Leaks:** no parameter value, hostname or secret appears in a fleet
   row's `sync` block, including a refusal whose error quoted a value. This
   extends `TestARowCarriesNoParameterValueOrSecret`. No secret value appears
@@ -688,7 +689,7 @@ need to know what a relay is.
   `sync` block, the refusal reasons.
 - **`reference/manifest.md`:** `managed`, `published`.
 - **`reference/fleet.md`:**
-  - `age_recipient`, `sync`, and wherever decision 14 puts `facts`;
+  - `age_recipient`, `sync`, and the `facts.age` object beside the row;
   - "What this will never do" and "What the row never carries", restated
     as decisions 12 and 14 rule;
   - the sandbox drop list, with `sync.*`.
@@ -722,9 +723,10 @@ need to know what a relay is.
   authority code execution. `release verify` should warn about parameters a
   template uses unquoted in a command (best effort).
 - **A writer to the bucket posing as a machine.** Every machine that
-  publishes rows can write to the bucket. Under the draft's first-sight
-  pinning, one of them can post a row for an id the authority has not seen
-  and receive the documents meant for it (decision 13).
+  publishes rows can write to the bucket. The roster closes this: a row for
+  an installation it does not list, or signed by another key, is never
+  encrypted to (decision 13). It costs a roster entry per new or rebuilt
+  machine, which is the out-of-band step RFC 0026 already requires.
 - **A hostile target** can withhold documents (freezing) or serve old ones;
   replay is refused by serial, and freezing is surfaced by expiry and
   `doctor`. It can't read or forge documents.
@@ -740,10 +742,10 @@ need to know what a relay is.
 
 ## 10. Unresolved questions
 
-The draft's five questions are decisions 18–22. The places where it meets
-ruled decisions of other RFCs are decisions 11–15. All of them are `OPEN`
-for the author. Implementation is free to settle the exact refusal wording
-and the jitter's distribution.
+The draft's five questions are decisions 18–22, and stay `OPEN` for the
+author. Decisions 11–15, where it met ruled decisions of other RFCs, were
+ruled on 2026-11-10 as recommended. Implementation is free to settle the
+exact refusal wording and the jitter's distribution.
 
 ## 11. Decisions
 
@@ -758,12 +760,12 @@ and the jitter's distribution.
 | 7 | `LOCKED` | Every change of several names is one operation, RFC 0056's `config apply`. Restarts and re-creations cover active services only. The local form reads stdin (RFC 0056 decision 2). `config set` of a parameter is a caller and the `secret` commands are not (RFC 0056 decisions 14 and 15). |
 | 8 | `ASSUMED` | The fleet row carries `age_recipient` and the `sync` outcome; `doctor` warns on expiry and a target unreachable too long. |
 | 9 | `ASSUMED` | Defaults: interval 15 minutes with jitter; validity 7 days. |
-| 10 | `ASSUMED` | A release may name a task whose output becomes the machine's facts, encrypted to the authority's recipient and signed with the machine key. Where they are published is decision 14. |
-| 11 | `OPEN` | This reverses RFC 0027 decision 5 (`LOCKED`: no pull, no watch, no schedule) for documents signed by a locally pinned authority key. Its gate is the pinned key, the release's `managed` list and the health checks, as 0016's gate is for updates. Recommended: reverse, as the draft proposes. |
-| 12 | `OPEN` | This amends RFC 0026 decisions 2 and 8 (both `LOCKED`). The reader, `fleet ls`, still cannot act. `state publish` is a new writer whose documents each machine applies to itself, within its release's `managed` names, behind its own health checks. The row gains the `sync` block and `age_recipient`, which are new state. Recommended: amend both, with fleet.md's "What this will never do" restated to say a writer may propose values and only the machine applies them. |
-| 13 | `OPEN` | How the authority trusts a machine's key and recipient. The draft pins the key from the row on first sight. RFC 0026 decision 6b (`LOCKED`) makes the roster the trust anchor, because a bucket writer holds a valid key of its own and could pose as a new installation to receive shared secrets (§5.4). Recommended: keep 6b; `state publish` refuses an installation the roster does not list, and a rebuilt machine's new key enters the roster out of band. |
-| 14 | `OPEN` | Where facts are published. The draft puts them in the row. fleet.md says the row never carries hostnames or parameter values, and RFC 0026 decision 8 says it holds no new state. Recommended: a separate signed object, `fleet/<product>/<id>/facts.age`, written with the same write-only credential, and fleet.md's rule restated as "never in plaintext". |
-| 15 | `OPEN` | The attestation's document fields. A sync's statement names the document's serial, digest and authority key id. The v3 predicate refuses a field it does not name (`attestation.go:39-44`), so this is a v4 predicate that RFC 0025 defines. Recommended: a `desired_state` block in v4, present only on a sync's statement. |
+| 10 | `ASSUMED` | A release may name a task whose output becomes the machine's facts, encrypted to the authority's recipient and signed with the machine key. They are published beside the row (decision 14). |
+| 11 | `LOCKED` | This reverses RFC 0027 decision 5 (`LOCKED`: no pull, no watch, no schedule) for documents signed by a locally pinned authority key. Its gate is the pinned key, the release's `managed` list and the health checks, as 0016's gate is for updates. Reversing this back withdraws sync from every installation that relies on it. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 12 | `LOCKED` | This amends RFC 0026 decisions 2 and 8 (both `LOCKED`). The reader, `fleet ls`, still cannot act. `state publish` is a new writer whose documents each machine applies to itself, within its release's `managed` names, behind its own health checks. The row gains the `sync` block and `age_recipient`, which are new state. fleet.md's "What this will never do" is restated: a writer may propose values, and only the machine applies them. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 13 | `LOCKED` | The authority trusts a machine's key, and so its recipient, only from the roster (`--expect`), keeping RFC 0026 decision 6b (`LOCKED`). `state publish` refuses an installation the roster does not list or a row that does not verify against its key, and a rebuilt machine's new key enters the roster out of band. Rejected: the draft's first-sight pinning, under which a bucket writer holding a valid key of its own could pose as a new installation and receive shared secrets (§5.4). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 14 | `ASSUMED` | Facts are a separate signed object beside the row, `fleet/<product>/<id>/facts.age` with its `.minisig`, written with the same write-only credential. fleet.md's "the row never carries" stands for the row and is restated as "never in plaintext" for the bucket. Rejected: the draft's `facts` field in the row, which RFC 0026 decision 8 and fleet.md rule out. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 15 | `ASSUMED` | A sync's statement names the document's serial, digest and authority key id in a `desired_state` block of a v4 predicate, present only on a sync's statement. The v3 predicate refuses a field it does not name (`attestation.go:39-44`), so RFC 0025 defines v4. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 16 | `ASSUMED` | `installation import --mode dev` drops `sync.*` with the backup and notify targets, through `SandboxDrops` (RFC 0026 decision 7). The rule is reach: a sandbox keeps production's installation id and would read production's documents prefix. |
 | 17 | `ASSUMED` | `sync.target` takes its own credential, read-only and scoped to `state/<product>/<installation-id>/`. The fleet credential stays write-only (`fleet.md:78-82`). |
 | 18 | `OPEN` | Is a timestamp serial enough, or should the authority keep a counter per installation? Timestamps need no state on the authority's side, but two authority machines could issue out of order. |
@@ -781,14 +783,16 @@ and the jitter's distribution.
    it removes the workarounds dotdash shipped (a three-step upstream switch,
    parameters that declare no services).
 2. **P2, fleet `age_recipient`.** One public field, and the roster as the
-   reading side's trust anchor (decision 13).
+   authority's trust anchor for it (decision 13).
 3. **P3, sync on the machine.** Settings, timer, fetch, verify, decrypt,
    apply, the `sync` block, `doctor`, the `managed` manifest field, and
    `sync.*` in the sandbox drop list.
 4. **P4, the authority's commands.** `state publish`, `state ls` and
    `state facts`.
-5. **P5, facts.** The `published` manifest field and `sync.recipient`. With
-   it, adding a machine needs nothing copied by hand.
+5. **P5, facts.** The `published` manifest field, `sync.recipient`, and the
+   `facts.age` object beside the row. With it, adding a machine needs
+   nothing copied by hand beyond its roster entry.
 
 Each phase ships and is useful alone. P1 is worth doing even if P3 never
-lands. P2 onwards waits for decisions 11–15.
+lands. P4 needs the v4 predicate (decision 15) only for its attestation
+fields.
