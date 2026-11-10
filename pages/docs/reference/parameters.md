@@ -187,8 +187,8 @@ operator's walkthrough. In short:
 
 `morzer config set` takes the deployment lock, validates the value, records it,
 re-renders the configuration, re-creates the services the release says depend
-on it, and waits for the release's health checks. A check that fails undoes the
-change. A dependant behind a profile that is not active is not re-created: it
+on it, and then waits for the release's health checks. A check that fails undoes
+the change. With nothing re-created, there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
 reads the value when the profile is turned on and it is created.
 
 ```sh
@@ -283,12 +283,20 @@ What it touches:
   does.
 - **While the product is stopped**, it records, stores and renders, and
   `morzer start` brings the services up with the new values. **Before anything
-  is created**, it renders the configuration and stores the secrets.
+  is created**, it stores the secrets, and renders the configuration when the
+  change reaches it.
 
 After a re-create or a restart it waits for the release's health checks. If
 any step fails, every value is put back: the installation, each secret with
 the change time it had, the rendered files, and the services on the old
-values. The journal names what changed by section, never a value.
+values. If putting something back fails too, the operation ends needing manual
+intervention, as any operation whose undo fails does. The journal names what
+changed by section, never a value.
+
+While containers exist, removing a required secret fails even with `--force`:
+the secrets are loaded before they are rendered, a release missing a required
+one is refused there, and the change is undone. `--force` lets a document
+remove one before anything is created.
 
 ### Installation settings are not parameters
 

@@ -112,7 +112,9 @@ the secret set while its profile is off, the profile on while the old upstream
 is still selected. As one operation it is one record, one render, one
 re-create of everything the change reaches, and one health check. If any step
 fails, every value is put back, a secret with the change time it had, and the
-old services come back on the old values.
+old services come back on the old values. If putting something back fails as
+well, the operation ends needing manual intervention, as any operation whose
+undo fails does, and `morzer history` shows which step it stopped at.
 
 The summary names what changed and what was re-created or restarted:
 
