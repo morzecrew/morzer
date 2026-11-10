@@ -41,6 +41,10 @@ type syncRig struct {
 	key       string
 	recipient string
 	notified  *recordingNotifier
+
+	// write puts one object where the machine reads: a file under offsite,
+	// unless a test points the machine at another target.
+	write func(t *testing.T, key string, data []byte)
 }
 
 func newSyncRig(t *testing.T) *syncRig {
@@ -68,6 +72,12 @@ func newSyncRig(t *testing.T) *syncRig {
 	applyBaseline(t, h)
 
 	r := &syncRig{h: h, offsite: filepath.Join(t.TempDir(), "offsite"), notified: &recordingNotifier{}}
+	r.write = func(t *testing.T, key string, data []byte) {
+		t.Helper()
+		path := filepath.Join(r.offsite, filepath.FromSlash(key))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, data, 0o644))
+	}
 	h.Deps.Notifier = r.notified
 	r.recipient, err = sopsage.GenerateIdentity(h.Paths.AgeIdentityFile())
 	require.NoError(t, err)
@@ -109,16 +119,11 @@ func (r *syncRig) seal(t *testing.T, doc, recipient string) []byte {
 func (r *syncRig) put(t *testing.T, serial int64, sealed []byte, by *signer.Signer, comment string) {
 	t.Helper()
 	docKey, sigKey := domain.DesiredStateKeys(r.inst.Product, r.inst.ID, serial)
-	write := func(key string, data []byte) {
-		path := filepath.Join(r.offsite, filepath.FromSlash(key))
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-		require.NoError(t, os.WriteFile(path, data, 0o644))
-	}
-	write(docKey, sealed)
+	r.write(t, docKey, sealed)
 	if by != nil {
 		sig, err := by.Sign(context.Background(), sealed, comment)
 		require.NoError(t, err)
-		write(sigKey, sig.Encoded)
+		r.write(t, sigKey, sig.Encoded)
 	}
 }
 
