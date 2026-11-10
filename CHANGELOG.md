@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A sync's attestation names the document it applied, in a `desired_state`
   block of the new v4 predicate. `attest verify` still reads v3, v2 and v1
   statements.
+- `morzer state publish` encrypts and signs a desired-state document for one
+  installation. It addresses only a machine whose fleet row verifies against
+  the key the roster lists, and keeps the newest three documents.
+- `morzer state ls` shows what each installation applied and refused, and
+  `morzer state key generate` makes the authority's key.
 
 ### Changed
 
