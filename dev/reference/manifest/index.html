@@ -3482,7 +3482,7 @@ optional <code>default</code>, and — for an enum — the <code>values</code> i
 <td><code>services</code></td>
 <td>list</td>
 <td style="text-align: center;"></td>
-<td>Services to restart when the value changes. Empty means the change needs a full <code>apply</code>.</td>
+<td>Services to re-create when the value changes, except one behind a profile that is not active. Empty means the change needs a full <code>apply</code>.</td>
 </tr>
 </tbody>
 </table>
