@@ -195,7 +195,10 @@ func (d *Deps) fetchDesiredState(
 	cfg := inst.Sync
 	target, err := d.resolveTarget(ctx, domain.BackupTargetConfig{URL: cfg.Target, Credentials: cfg.Credentials})
 	if err != nil {
-		return doc, "", err
+		// Recorded as a target this machine cannot reach, which is what
+		// `doctor` reports, rather than a tick failing where nobody looks.
+		d.warnf("cannot reach the sync target: %s", domain.AsError(err).Message)
+		return doc, domain.SyncUnreachable, nil
 	}
 	// Listed without the trailing slash, which an object key may not end
 	// in, and filtered by the slashed prefix, so a neighbouring id that

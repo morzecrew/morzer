@@ -571,3 +571,20 @@ func TestALocalFailureBeforeTheOperationRefusesNothing(t *testing.T) {
 	assert.Equal(t, "plan", report.Step)
 	assert.Equal(t, int64(131), r.state(t).Refused.Serial)
 }
+
+// A target whose credential cannot be resolved is a target this machine cannot
+// reach: recorded so, and `doctor` says so, rather than every tick failing
+// where nobody reads it.
+func TestATargetWithoutItsCredentialIsReportedUnreachable(t *testing.T) {
+	r := newSyncRig(t)
+	inst := installation(t, r.h)
+	inst.Sync.Credentials = "sync_s3_never_set"
+	require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	assert.Equal(t, domain.SyncUnreachable, r.syncOK(t).Result)
+	report, err := ops.Doctor(context.Background(), r.h.Deps)
+	require.NoError(t, err)
+	check := findCheck(t, report, "sync.authority")
+	assert.Equal(t, "warn", check.Status)
+	assert.Contains(t, check.Message, "never answered")
+}
