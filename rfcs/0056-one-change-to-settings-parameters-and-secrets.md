@@ -1,7 +1,8 @@
 # RFC 0056 — One change to settings, parameters and secrets
 
-- **Status:** 📝 Draft — proposed 2026-11-10, and ruled by the author
-  2026-11-10: decisions 13, 14 and 15 as recommended.
+- **Status:** ✅ Complete — shipped 2026-11-10 in #333: P1 and P2. Ruled by
+  the author 2026-11-10: decisions 13, 14 and 15 as recommended. Rows 17–22
+  were added by execution.
 - **Scope:** Adds one operation that changes installation settings, operator
   parameters and secrets together. It reads a change document on stdin and
   records, renders, converges and health-checks once. If any step fails, it
@@ -531,6 +532,12 @@ exact plan text and the order of validation messages.
 | 14 | `ASSUMED` | `config set` of a parameter becomes a one-name caller of this operation, as P2, and with it `config unset` of a parameter and `config edit`. That gives one implementation, and `config set` gains the health checks of decision 8. It also makes `config set` slower by the time the checks take. `config set` of a setting keeps `SetSettings`, which is deliberately not an engine operation for a setting that reaches no service (§5.7). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 15 | `ASSUMED` | `secret set`, `generate`, `rotate` and `edit` do not become callers, for now. They would take the deployment lock, wait behind an update, be refused while an operation is unfinished, and become journalled. That changes when a credential can be rotated during an incident. Revisit if the desired-state design needs secret changes journalled. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 16 | `ASSUMED` | A killed manager leaves an unfinished record that `gateUnfinished` holds, as every operation does. Whole-or-nothing covers a failed step, not a kill, because undo state lives in memory and persisting it would put secret values on disk (§9). |
+| 17 | `ASSUMED` | Containers that exist with none running, and no stop record, are a case §5.3 does not cover. `config apply` converges only when something runs, as `config set` does, and renders the secret files whenever any container exists, as `secret set` does, so a container that comes back reads the new files. Added by execution 2026-11-10 — see logs/config-apply.md (decision 6, 2026-11-10T15:25:04Z). |
+| 18 | `ASSUMED` | The `config` statement of decision 11 is filed only when the operation rendered the configuration, as `SetSettings` files it, since the statement digests that render. A change of secrets alone, or of settings that reach no service, files none. Added by execution 2026-11-10 — see logs/config-apply.md (decision 11, 2026-11-10T15:25:04Z). |
+| 19 | `ASSUMED` | `unset.secrets` may name a secret the release does not declare when one is stored, as `config unset` may name a stale parameter, so a document can clean up after a release that dropped a secret. A name neither declared nor stored is refused as a typo. Added by execution 2026-11-10 — see logs/config-apply.md (decision 5, 2026-11-10T15:25:04Z). |
+| 20 | `ASSUMED` | `config apply` refuses a terminal on stdin, with a hint to pipe or redirect the document: a document is not typed at a prompt, and reading would wait for an end of file nobody sends. Added by execution 2026-11-10 — see logs/config-apply.md (unlisted, 2026-11-10T15:25:04Z). |
+| 21 | `ASSUMED` | `config apply`'s reference is in `parameters.md` beside `config set`, with a how-to in `changing-configuration.md`, where §7 named `commands.md`: `commands.md` documents no config command. It gets no row in `commands.md`'s completion table, which lists commands that take arguments. Added by execution 2026-11-10 — see logs/config-apply.md (unlisted, 2026-11-10T15:49:06Z, and its correction, 2026-11-10T15:50:01Z). |
+| 22 | `ASSUMED` | While containers exist, removing a required secret fails even with `--force`: `load-secrets` refuses a release missing one, and the change is undone, because the borrowed step compensates here where `apply` aborts. `--force` removes one before anything is created. Decision 5's `--force` holds only for that case. Added by execution 2026-11-10 — see logs/config-apply.md (Review, 2026-11-10). |
 
 ## 12. Phasing
 
