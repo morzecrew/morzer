@@ -200,6 +200,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkInstallationFileMatchesState(),
 		d.checkDiskSpace(),
 		d.checkStagedInputs(),
+		d.checkSync(inst),
 	)
 
 	current, currentErr := d.State.CurrentRelease(ctx)
@@ -793,6 +794,49 @@ func (d *Deps) checkRecoveryRecipient() preflight.Check {
 					"no offline recovery recipient: if this VM is lost, its secrets are lost")
 			}
 			return preflight.OK("%d recipient(s), %d for recovery", len(recipients), recovery)
+		},
+	}
+}
+
+// checkSync reports an authority this installation no longer hears from: the
+// document in force expiring or expired, or a target that has not answered
+// for three intervals (RFC 0057 §5.9). Withholding documents is the one thing
+// a hostile target can do, and this is where it shows.
+func (d *Deps) checkSync(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "sync.authority",
+		Category:    preflight.CategoryConfig,
+		Description: "the authority this installation follows is heard from",
+		Run: func(ctx context.Context) events.CheckResult {
+			s := inst.Sync
+			if !s.Enabled {
+				return preflight.OK("sync is not enabled")
+			}
+			now := d.now()
+			silent := 3 * s.SyncInterval()
+			switch {
+			case s.LastReached.IsZero() && s.LastFetch != nil:
+				return preflight.Warn("check sync.target and its credential, then `morzer sync now`",
+					"the sync target has never answered")
+			case !s.LastReached.IsZero() && now.Sub(s.LastReached.Time) > silent:
+				return preflight.Warn("check sync.target and its credential, then `morzer sync now`",
+					"the sync target has not answered since %s, more than three intervals",
+					s.LastReached.Format(time.RFC3339))
+			}
+			a := s.Applied
+			if a == nil {
+				return preflight.OK("no document applied yet")
+			}
+			switch {
+			case a.ExpiresAt.IsZero():
+			case !now.Before(a.ExpiresAt.Time):
+				return preflight.Warn("the authority has published nothing newer; it publishes the next document",
+					"desired-state document %d expired at %s", a.Serial, a.ExpiresAt.Format(time.RFC3339))
+			case a.ExpiresAt.Sub(now) < 24*time.Hour:
+				return preflight.Warn("the authority publishes the next document before then",
+					"desired-state document %d expires at %s, within a day", a.Serial, a.ExpiresAt.Format(time.RFC3339))
+			}
+			return preflight.OK("document %d applied", a.Serial)
 		},
 	}
 }

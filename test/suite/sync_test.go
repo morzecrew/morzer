@@ -500,3 +500,39 @@ func TestARowReportsSyncWithoutTheRefusalsText(t *testing.T) {
 	assert.Equal(t, []string{"log_level"}, row.Sync.Refused.Names)
 	assert.Equal(t, domain.SyncInvalid, row.Sync.LastFetch.Result)
 }
+
+// `doctor` warns when the authority goes quiet: the document in force near or
+// past its expiry, or a target that has not answered for three intervals.
+func TestDoctorWarnsWhenTheAuthorityGoesQuiet(t *testing.T) {
+	r := newSyncRig(t)
+	r.publish(t, 120, "parameters:\n  log_level: debug\n")
+	r.syncOK(t)
+	doctor := func(at time.Time) checkResult {
+		t.Helper()
+		r.h.Deps.Now = func() time.Time { return at }
+		report, err := ops.Doctor(context.Background(), r.h.Deps)
+		require.NoError(t, err)
+		return findCheck(t, report, "sync.authority")
+	}
+	reached := func(at time.Time) {
+		inst := installation(t, r.h)
+		inst.Sync.LastReached = domain.NewTime(at)
+		require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+	}
+
+	assert.Equal(t, "ok", doctor(time.Date(2026, 8, 3, 12, 30, 0, 0, time.UTC)).Status)
+
+	silent := doctor(time.Date(2026, 8, 3, 12, 46, 0, 0, time.UTC))
+	assert.Equal(t, "warn", silent.Status)
+	assert.Contains(t, silent.Message, "has not answered since")
+
+	reached(time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC))
+	soon := doctor(time.Date(2026, 8, 9, 12, 5, 0, 0, time.UTC))
+	assert.Equal(t, "warn", soon.Status)
+	assert.Contains(t, soon.Message, "within a day")
+
+	reached(time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC))
+	expired := doctor(time.Date(2026, 8, 11, 12, 5, 0, 0, time.UTC))
+	assert.Equal(t, "warn", expired.Status)
+	assert.Contains(t, expired.Message, "document 120 expired")
+}
