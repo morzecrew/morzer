@@ -137,7 +137,10 @@ morzer sync now --dry-run
 
 Runs one cycle and prints its outcome. Refused while `sync.enabled` is off.
 Exits non-zero when a document's operation failed and was undone; every other
-outcome, a refusal included, is reported and exits 0.
+outcome, a refusal included, is reported and exits 0. A failure of the
+machine's own before the operation runs, such as a secret store it cannot read,
+also exits non-zero: it refuses nothing, and the next tick tries the document
+again.
 
 | Flag | Meaning |
 | --- | --- |

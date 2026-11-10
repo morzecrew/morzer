@@ -155,9 +155,16 @@ func SyncNow(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, error)
 	case errors.As(err, &refusal):
 		return d.refuseDocument(ctx, inst, opts, keyID, now, doc.serial, refusal)
 	case err != nil:
+		ran := run.record.ID != ""
 		failure := &syncRefusal{
 			result: domain.SyncFailed, step: failedStep(err), class: failureClass(err),
 			names: run.names.list(), err: err,
+		}
+		if !ran && failure.class != "invalid" {
+			// This machine's own failure before anything ran, such as
+			// a store it cannot read: not the document's doing, so it
+			// is not refused, and the next tick tries it again.
+			return SyncReport{Result: domain.SyncFailed, Serial: doc.serial}, err
 		}
 		if failure.class == "invalid" {
 			failure.result = domain.SyncInvalid
@@ -167,6 +174,11 @@ func SyncNow(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, error)
 		}
 		report, recordErr := d.refuseDocument(ctx, inst, opts, keyID, now, doc.serial, failure)
 		report.OperationID = run.record.ID
+		if !ran {
+			// Refused for what it says, as a refusal before the
+			// operation is: reported, and not a failed command.
+			return report, recordErr
+		}
 		return report, errors.Join(err, recordErr)
 	}
 	report.NoChange, report.DryRun = run.noChange, opts.DryRun

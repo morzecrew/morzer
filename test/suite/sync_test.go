@@ -487,7 +487,7 @@ func TestARowReportsSyncWithoutTheRefusalsText(t *testing.T) {
 	require.NotEmpty(t, machine)
 	r.publish(t, 110, "parameters:\n  log_level: PARAM-VALUE-MUST-NOT-TRAVEL\n")
 	report, err := r.sync(t)
-	require.Error(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, domain.SyncInvalid, report.Result)
 	require.Contains(t, r.state(t).Refused.Message, "PARAM-VALUE-MUST-NOT-TRAVEL",
 		"the refusal does not quote the value, so this test proves nothing")
@@ -545,4 +545,29 @@ func TestDoctorWarnsWhenTheAuthorityGoesQuiet(t *testing.T) {
 	expired := doctor(time.Date(2026, 8, 11, 12, 5, 0, 0, time.UTC))
 	assert.Equal(t, "warn", expired.Status)
 	assert.Contains(t, expired.Message, "document 120 expired")
+}
+
+// A failure of this machine's own before the operation runs is not the
+// document's doing: the cycle fails, nothing is refused, and the next tick
+// applies the document once the machine recovers. A value the document gets
+// wrong is the document's, and is refused like any other refusal.
+func TestALocalFailureBeforeTheOperationRefusesNothing(t *testing.T) {
+	r := newSyncRig(t)
+	r.publish(t, 130, "secrets:\n  db_password: from-the-authority\n")
+	r.h.Secrets.Fail = map[string]error{"Load": domain.SecretsError(nil, "the secret store cannot be read")}
+
+	_, err := r.sync(t)
+	require.Error(t, err)
+	assert.Nil(t, r.state(t).Refused, "a document was refused for this machine's own failure")
+	assert.Empty(t, r.notified.kinds())
+
+	r.h.Secrets.Fail = nil
+	assert.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	r.publish(t, 131, "parameters:\n  log_level: loud\n")
+	report, err := r.sync(t)
+	require.NoError(t, err, "a refused document exited as a failure")
+	assert.Equal(t, domain.SyncInvalid, report.Result)
+	assert.Equal(t, "plan", report.Step)
+	assert.Equal(t, int64(131), r.state(t).Refused.Serial)
 }
