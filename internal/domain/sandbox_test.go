@@ -115,6 +115,18 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Backup":         drop("a sandbox must not write into production's bucket"),
 		"Backup.Targets": drop("targets and their credentials; fleet rows go to the same list"),
 
+		"Sync":             drop("a sandbox must not follow production's authority"),
+		"Sync.Target":      drop("production's documents prefix, which a sandbox keeps the id to read"),
+		"Sync.Credentials": keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Authority":   keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Recipient":   keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Interval":    keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Enabled":     keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Applied":     keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.Refused":     keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.LastFetch":   keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.LastReached": keep("cleared with sync.target by the same drop: production's record"),
+
 		// Not on the drop list, and handled harder than dropping would
 		// be: `installation import` calls SucceedSigning, which retires
 		// the key as a predecessor and clears the current one, so the

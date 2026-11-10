@@ -385,6 +385,7 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 		"Update": "carried: a channel configured after `init` is not this command's to drop",
 		"Notify": "carried: alerting configured after `init` is not this command's to drop",
 		"Backup": "carried: targets configured after `init` are not this command's to drop",
+		"Sync":   "carried: the authority and target are set locally after `init`, and the serials are a record",
 
 		"Signing":         "carried, except when this run minted a key -- see buildInstallation",
 		"AttestationSalt": "carried: re-minting breaks the configuration-digest chain",

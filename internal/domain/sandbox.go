@@ -84,6 +84,23 @@ func SandboxDrops() []SandboxDrop {
 			Count: func(i Installation) int { return len(i.Notify.Targets) },
 			Drop:  func(i *Installation) { i.Notify.Targets = nil },
 		},
+		{
+			// A sandbox keeps production's installation id, so with this
+			// it would read production's documents and apply them, and
+			// report its refusals where production's authority looks
+			// (RFC 0057 decision 16). The whole block goes with the
+			// target: without one there is nothing to follow.
+			Field: "sync.target",
+			Noun:  "sync target",
+			Why:   "follow production's authority",
+			Count: func(i Installation) int {
+				if i.Sync.Target != "" {
+					return 1
+				}
+				return 0
+			},
+			Drop: func(i *Installation) { i.Sync = SyncConfig{} },
+		},
 	}
 }
 

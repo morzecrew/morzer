@@ -310,6 +310,7 @@ that should match, and reviewing what changed after somebody ran `config set`.
 | `signing` | Machine identity. The public half is derived from the key file, and a rebuilt machine is honestly a different signer. |
 | `attestation_salt` | Minted, not chosen — and publishing it in a file meant for a git repository would make the digest it salts brute-forceable again. |
 | `stopped` | An operation's record, not a choice: `morzer stop` writes it and `morzer start` clears it, and a document applied on another machine must not stop that one. |
+| `sync` | Trust set locally and root-only, and a record of the documents the machine applied. A committed file must not hand a machine to an authority. |
 
 Every field of an installation is either carried by the document or excluded
 with a reason, and that accounting is checked against the struct in both

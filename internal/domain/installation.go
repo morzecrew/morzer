@@ -118,7 +118,7 @@ import (
 // Bumped to 18 for `profiles`, which replaces `profile` (RFC 0053 decision 2).
 // An older manager would ignore the list, deploy the base files and remove the
 // overlays' services.
-const InstallationSchemaVersion = 18
+const InstallationSchemaVersion = 19
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18
@@ -408,6 +408,10 @@ type Installation struct {
 	// bucket, and a manifest that named one would be a vendor deciding where
 	// an operator's data is kept.
 	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
+
+	// Sync is how this installation follows desired-state documents an
+	// authority publishes for it, and what it last did with one (RFC 0057).
+	Sync SyncConfig `yaml:"sync" json:"sync,omitempty"`
 
 	// Signing is this machine's signing identity. Every field in it may be
 	// empty on a real installation -- see Signing.
