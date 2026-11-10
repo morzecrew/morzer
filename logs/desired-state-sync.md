@@ -391,3 +391,82 @@ evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md
 action: decided
 proposal: UNLISTED — `sync.recipient`, `init --sync-recipient` and the row's `facts_digest` ship with facts (P5), not with the machine side
 ```
+
+```divergence
+decision: 8
+grade: ASSUMED
+class: drift
+at: 2026-11-10T19:31:00Z
+attempt: 1
+claim: §5.8 step 5 has a cycle publish the fleet row with its outcome, and the cycle as first built did not: the outcome reached the row only at the next hourly fleet publish. Found by the self-audit, not while building, and fixed in 78ed5bb2 and 85933e3b.
+evidence: internal/lifecycle/ops/sync.go:108
+action: departed
+proposal: ASSUMED — unchanged; a cycle publishes the row to the installation's backup targets when its outcome is news (a document applied or refused, or a result unlike the last), and a cycle that recorded nothing publishes none
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T19:31:00Z
+attempt: 1
+claim: §5.7 records a document as refused when its operation fails at any step, and is silent on a failure before any step runs. A refused serial is never tried again, so refusing a document for this machine's own failure, such as a secret store it cannot read, would make the authority republish it. Only a failure the document caused is a refusal there; any other fails the cycle, refuses nothing, and the next tick tries again. Found by the self-audit; fixed in 2028d975.
+evidence: internal/lifecycle/ops/sync.go:194-198
+action: decided
+proposal: UNLISTED — before the operation runs, only a document's own invalid content refuses it; a failure of the machine's own refuses nothing and exits non-zero
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T19:31:00Z
+attempt: 1
+claim: §5.9 has doctor warn on a target unreachable for three intervals, and is silent on a target that cannot be resolved at all, such as one whose credential secret is missing. That target failed every tick and recorded nothing, so doctor warned of nothing. It is recorded as unreachable with the reason as a warning. Found by the self-audit; fixed in 9ded0c10.
+evidence: internal/lifecycle/ops/sync.go:229-233
+action: decided
+proposal: UNLISTED — a sync target that cannot be resolved is recorded as unreachable
+```
+
+## Self-audit, 2026-11-10
+
+Scope: the whole branch against origin/main 09a3c3d3, 24 commits, about 4,300
+lines across source, tests, docs and the changelog.
+
+Findings, each fixed on the branch with a test that failed first:
+
+1. **A cycle stopped under the lock reported an operation that never ran.** A
+   cycle that waited and found its document applied meanwhile, or refused
+   under a newly installed release, sent `operation.finished` as a failed
+   `config`. Fixed in 3c456836.
+2. **A local failure before the operation refused the document for good**
+   (spec-gap entry above). Fixed in 2028d975, which also made an invalid
+   value refused before the operation exit 0, as the docs said it would.
+3. **A target with a missing credential was silent** (spec-gap entry above).
+   Fixed in 9ded0c10.
+4. **No row was published after a cycle**, which §5.8 step 5 asks for (drift
+   entry above). Fixed in 78ed5bb2, with 85933e3b for a cycle that recorded
+   nothing.
+5. **A refusal found while the authority was re-pinned was notified** although
+   it was rightly not recorded. Fixed in 33161c49.
+
+Checks performed:
+
+- Sabotage, 19 mutations of the load-bearing checks: signature verification,
+  the comment's product, installation and serial, the envelope match, expiry,
+  replay, a refused serial not retried, the complete pair, the serial recorded,
+  the stale check under the lock, managed names, the local refusal of a managed
+  name, the row's field-by-field copy, doctor's silence window, expired
+  notified once, the row publish, the no-operation report, the watermark
+  cleared on a re-pin, and the notify-only-when-written guard. All 19 killed.
+- Coverage of the new code with the suite and the unit tests together, which
+  found the dry-run paths, a target failing part way, a re-pin mid-cycle and
+  `sync status`'s printer untested. Each now has a test.
+- `go test ./...`, `golangci-lint run ./...`, the docs check, the changelog
+  validator, and the docker-tagged scoped-credential test against RustFS.
+
+What I would still distrust: the jitter and period of the sync timer are
+checked as rendered unit text, never against a running systemd; and the
+scoped-credential test proves one RustFS policy shape, not every store's.
+
+**Drift count: 1.**
