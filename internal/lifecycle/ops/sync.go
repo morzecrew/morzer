@@ -496,8 +496,11 @@ func (d *Deps) recordFetch(
 	if opts.DryRun {
 		return nil
 	}
-	wasExpired := inst.Sync.LastFetch != nil && inst.Sync.LastFetch.Result == domain.SyncExpired
+	// Read under the lock, from the record as it stands: another cycle
+	// may have recorded the expiry, and notified it, while this waited.
+	wasExpired := false
 	wrote, err := d.updateSync(ctx, inst.Sync.Authority, opts, func(s *domain.SyncConfig) {
+		wasExpired = s.LastFetch != nil && s.LastFetch.Result == domain.SyncExpired
 		s.LastFetch = &domain.SyncFetch{At: now, Result: outcome}
 		if outcome != domain.SyncUnreachable {
 			s.LastReached = now

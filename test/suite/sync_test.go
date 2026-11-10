@@ -850,3 +850,25 @@ func TestADocumentAppliedBeforeAUnitFailureIsNotRefused(t *testing.T) {
 	assert.Nil(t, state.Refused, "an applied document was recorded as refused")
 	assert.Equal(t, domain.SyncOK, report.Result)
 }
+
+// An expiry another cycle recorded while this one waited for the lock is not
+// notified twice.
+func TestAnExpiryRecordedMeanwhileIsNotNotifiedAgain(t *testing.T) {
+	r := newSyncRig(t)
+	r.publish(t, 240, "parameters:\n  log_level: debug\n")
+	r.syncOK(t)
+	r.notified.events = nil
+	r.h.Deps.Now = func() time.Time { return time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC) }
+	once := false
+	r.h.Locker.BeforeAcquire = func() {
+		if once {
+			return
+		}
+		once = true
+		inst := installation(t, r.h)
+		inst.Sync.LastFetch = &domain.SyncFetch{At: domain.NewTime(r.h.Deps.Now()), Result: domain.SyncExpired}
+		require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+	}
+	assert.Equal(t, domain.SyncExpired, r.syncOK(t).Result)
+	assert.Empty(t, r.notified.kinds(), "an expiry another cycle recorded was notified again")
+}
