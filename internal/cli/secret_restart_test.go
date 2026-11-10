@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,6 +144,14 @@ func TestRestartDependentsRestartsNothingWhileStopped(t *testing.T) {
 	assert.Empty(t, restarted)
 	assert.NotContains(t, rt.Calls, "Restart")
 	assert.DirExists(t, app.Deps.Paths.SecretsRenderDir(), "the change was not rendered for start to pick up")
+
+	// Nor does it need the runtime to answer: the engine may be down along
+	// with the product, and nothing is restarted either way.
+	down := domain.RuntimeError(errors.New("cannot connect to the Docker daemon"), "the engine is down")
+	rt.Fail = map[string]error{"Status": down, "Validate": down}
+	restarted, err = app.restartDependents(ctx, []string{"db_password"})
+	require.NoError(t, err, "a stopped installation failed a stored change on an engine that is down")
+	assert.Empty(t, restarted)
 }
 
 // A secret no service declares is still rendered when it changes, so whatever
@@ -190,4 +199,48 @@ func TestASecretNoServiceDeclaresIsStillRendered(t *testing.T) {
 	_, err = app.restartDependents(ctx, []string{"not_declared"})
 	require.NoError(t, err)
 	assert.NotContains(t, told.String(), "rendered file", "a file that does not exist was said to hold the value")
+}
+
+// A declared service behind an inactive profile is not in the configuration,
+// and Compose refuses to restart a service it does not know. The secret is
+// stored and rendered, so it is not a failure: the service reads the file when
+// the profile is turned on and it is created. Only the active ones restart
+// (#324).
+func TestRestartDependentsSkipsAServiceBehindAnInactiveProfile(t *testing.T) {
+	ctx := context.Background()
+	bundle := t.TempDir()
+	require.NoError(t, os.CopyFS(bundle, os.DirFS(filepath.Join("..", "..", "testdata", "bundle"))))
+	schemaPath := filepath.Join(bundle, "secrets.schema.yaml")
+	schema, err := os.ReadFile(schemaPath)
+	require.NoError(t, err)
+	schema = append(schema, []byte(
+		"  - name: shared_token\n    description: read by app and by vpn\n    required: false\n    services: [app, vpn]\n"+
+			"  - name: upstream_openvpn\n    description: read only by vpn\n    required: false\n    services: [vpn]\n")...)
+	require.NoError(t, os.WriteFile(schemaPath, schema, 0o600))
+
+	// vpn is left out of the configured services: its profile is off.
+	app, rt := restartAppAt(t, bundle, ports.ServiceState{Name: "app", State: ports.StateRunning})
+	store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+	require.True(t, ok)
+	store.Seed(map[string]string{
+		"db_password": "a-stored-password", "session_key": "a-stored-session-key",
+		"shared_token": "t", "upstream_openvpn": "ovpn",
+	})
+
+	restarted, err := app.restartDependents(ctx, []string{"shared_token"})
+	require.NoError(t, err, "a service behind an inactive profile failed a change that was stored")
+	assert.Equal(t, []string{"app"}, restarted)
+	assert.Contains(t, rt.Calls, "Restart:app")
+
+	var told bytes.Buffer
+	app.Stream.Err = &told
+	rt.Calls = nil
+	restarted, err = app.restartDependents(ctx, []string{"upstream_openvpn"})
+	require.NoError(t, err, "a secret read only behind an inactive profile could not be set")
+	assert.Empty(t, restarted)
+	assert.NotContains(t, rt.Calls, "Restart", "a restart naming no service restarts every one")
+	assert.NotContains(t, told.String(), "No service declares", "the release does declare one")
+	got, err := os.ReadFile(filepath.Join(app.Deps.Paths.SecretsRenderDir(), "upstream_openvpn"))
+	require.NoError(t, err, "the file vpn reads when its profile is turned on was not rendered")
+	assert.Equal(t, "ovpn", string(got))
 }
