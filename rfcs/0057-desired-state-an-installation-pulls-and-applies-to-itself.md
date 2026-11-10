@@ -371,9 +371,19 @@ unset:
 - Layout on the target, beside the fleet rows:
 
   ```text
-  state/<product>/<installation-id>/state.age
-  state/<product>/<installation-id>/state.age.minisig
+  state/<product>/<installation-id>/<serial>.age
+  state/<product>/<installation-id>/<serial>.age.minisig
   ```
+
+- **Each pair is written once and never replaced** (decision 26). The
+  ciphertext is written first and its signature last. A machine lists its
+  prefix and takes the highest serial that has both objects. A pair whose
+  signature has not been written yet is not a document yet. So a publish cut
+  off part way leaves the previous document in force, and no fetch pairs one
+  document's ciphertext with another's signature. A pair whose name and
+  trusted comment name different serials is refused as `bad-signature`.
+  `state publish` removes all but the newest three pairs once the new one is
+  complete.
 
 - Both machine and authority keys are those morzer already uses: age for
   data, minisign for statements. No new cryptography.
@@ -429,8 +439,8 @@ morzer config set sync.enabled=true
   else.
 - `morzer sync now` runs one cycle immediately; `morzer sync status` prints
   the last applied and refused serials with reasons.
-- **`sync.target` takes its own credential**, read-only and scoped to
-  `state/<product>/<installation-id>/`. The fleet credential is write-only
+- **`sync.target` takes its own credential**, read-only with listing, and
+  scoped to `state/<product>/<installation-id>/`. The fleet credential is write-only
   by recommendation (`fleet.md:78-82`) and cannot read. A machine that can
   list other installations' documents learns which installations exist,
   even though it cannot read them (decision 17).
@@ -496,9 +506,9 @@ becomes one `config apply` with a secret, a parameter and the profile.
 
 Each tick (`sync.interval`, with jitter):
 
-1. Fetch `state.age.minisig` and `state.age` for this installation. Absent:
-   nothing to do (not an error). Unreachable: record that, and change
-   nothing.
+1. List this installation's prefix and fetch the newest complete pair,
+   `<serial>.age` and `<serial>.age.minisig`. No complete pair: nothing to
+   do (not an error). Unreachable: record that, and change nothing.
 2. Verify the signature against `sync.authority`. Check the trusted
    comment's product and installation against this machine's, and its serial
    against the last applied and last refused.
@@ -666,6 +676,9 @@ need to know what a relay is.
     puts both changes in force;
   - an apply that fails and is undone leaves the previous serial stored,
     and the serial is in the same record write as the change;
+  - a pair whose signature was never written is skipped, and the previous
+    document stays in force; a pair whose name and trusted comment disagree
+    is refused;
   - expiry;
   - manageability: in the list, out of it, a setting morzer never allows;
   - age round trip to a machine recipient and an extra recipient;
@@ -788,7 +801,7 @@ exact refusal wording and the jitter's distribution.
 | 14 | `ASSUMED` | Facts are a separate signed object beside the row, `fleet/<product>/<id>/facts.age` with its `.minisig`, written with the same write-only credential. fleet.md's "the row never carries" stands for the row and is restated as "never in plaintext" for the bucket. Rejected: the draft's `facts` field in the row, which RFC 0026 decision 8 and fleet.md rule out. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 15 | `ASSUMED` | A sync's statement names the document's serial, digest and authority key id in a `desired_state` block of a v4 predicate, present only on a sync's statement. The v3 predicate refuses a field it does not name (`attestation.go:39-44`), so RFC 0025 defines v4. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 16 | `ASSUMED` | `installation import --mode dev` drops `sync.*` with the backup and notify targets, through `SandboxDrops` (RFC 0026 decision 7). The rule is reach: a sandbox keeps production's installation id and would read production's documents prefix. |
-| 17 | `ASSUMED` | `sync.target` takes its own credential, read-only and scoped to `state/<product>/<installation-id>/`. The fleet credential stays write-only (`fleet.md:78-82`). |
+| 17 | `ASSUMED` | `sync.target` takes its own credential, read-only with listing, and scoped to `state/<product>/<installation-id>/`. The fleet credential stays write-only (`fleet.md:78-82`). |
 | 18 | `OPEN` | Is a timestamp serial enough, or should the authority keep a counter per installation? Timestamps need no state on the authority's side, but two authority machines could issue out of order. |
 | 19 | `OPEN` | Per-group documents (§5.12): leave for later, or design the layout to allow `state/<product>/groups/<name>/` now? |
 | 20 | `OPEN` | The document size limit, given text parameters such as a device list of thousands of lines. Assumed: 1 MiB after decryption, RFC 0056's bound for a change document. A `text` parameter is bounded at 64 KiB on its own (RFC 0054 decision 4), so a large list is a secret, bounded at 1 MiB. |
@@ -797,6 +810,7 @@ exact refusal wording and the jitter's distribution.
 | 23 | `ASSUMED` | A refusal in the fleet row carries the step, a class and the names involved, never the error's text, which can quote a parameter value. The row's rule that it never carries a parameter value, a hostname or a secret stands, and the leak test covers the `sync` block. The full message stays in the local journal. |
 | 24 | `ASSUMED` | Each document is cumulative: every value the authority manages for the installation and every name it wants unset, every time. A machine applies only the newest and may miss any before it, so a delta document would lose a change published before it (§5.2). |
 | 25 | `ASSUMED` | The applied serial is written in the operation's record step, in the same installation write as the settings and parameters, for every document, and its undo restores the previous serial. A change and its serial commit together, so a crash cannot leave a change in force under an older watermark that a replay could pass (§5.2). |
+| 26 | `ASSUMED` | A document is a pair named by its serial, `<serial>.age` and `<serial>.age.minisig`, written once, ciphertext first and signature last. A machine applies the highest serial with both objects, and a pair whose name and trusted comment disagree is refused. A publish cut off part way leaves the previous document in force, where two replaced objects would leave a mismatched pair until the authority republished (§5.3). |
 
 ## 12. Phasing
 
