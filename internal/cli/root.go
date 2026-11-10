@@ -630,6 +630,9 @@ func newRootCommand(app *App) *cobra.Command {
 		grouped(groupOperate, installationScope(newConfigCommand(app))),
 		grouped(groupOperate, installationScope(newSecretCommand(app))),
 		grouped(groupOperate, installationScope(newNotifyCommand(app))),
+		// Beside config, whose operation it runs with a change made
+		// elsewhere (RFC 0057).
+		grouped(groupOperate, installationScope(newSyncCommand(app))),
 		grouped(groupOperate, machineScope(newDoctorCommand(app))),
 		// Beside doctor: both are where an operator looks after
 		// something went wrong, one at the machine and one at the past.

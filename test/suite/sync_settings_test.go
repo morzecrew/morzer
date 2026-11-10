@@ -9,6 +9,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
+	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -141,4 +142,30 @@ func TestTheSyncTimerFollowsTheSwitch(t *testing.T) {
 
 	require.NoError(t, setSettings(t, h, map[string]string{"sync.enabled": "false"}))
 	assert.NotContains(t, h.Supervisor.Installed, timer, "sync was turned off and its timer stayed")
+}
+
+// `init` records the target and the authority to follow, checked as `config
+// set` checks them, and leaves sync off: the target's credential may not be a
+// secret yet.
+func TestInitRecordsWhatToFollow(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	realIdentity(t, h)
+	h.Deps.Verifier = minisign.New()
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, SyncAuthority: "not-a-key",
+	})
+	require.Error(t, err)
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists, "a malformed authority was refused after the installation existed")
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, SyncTarget: "file:///srv/state", SyncAuthority: " " + authorityKey + "\n",
+	})
+	require.NoError(t, err)
+	got := installation(t, h).Sync
+	assert.Equal(t, "file:///srv/state", got.Target)
+	assert.Equal(t, authorityKey, got.Authority)
+	assert.False(t, got.Enabled)
 }

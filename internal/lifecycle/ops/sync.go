@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"slices"
@@ -487,4 +488,70 @@ func refuseManagedLocally(inst domain.Installation, rel domain.Release, hasRel b
 		strings.Join(managed, ", "), domain.MinisignKeyID(inst.Sync.Authority)).
 		WithHint("change it in what the authority publishes; --force changes it here, " +
 			"until the authority's next document sets it back")
+}
+
+// SyncStatusReport is what `sync status` prints: the settings, the watermark
+// and the last cycle, with a refusal's own text. Local output, so the text is
+// here when the row never carries it (decision 23).
+type SyncStatusReport struct {
+	Enabled        bool                 `json:"enabled"`
+	Target         string               `json:"target,omitempty"`
+	AuthorityKeyID string               `json:"authority_key_id,omitempty"`
+	Interval       string               `json:"interval"`
+	Applied        *domain.SyncDocument `json:"applied,omitempty"`
+	Refused        *domain.SyncDocument `json:"refused,omitempty"`
+	LastFetch      *domain.SyncFetch    `json:"last_fetch,omitempty"`
+	LastReached    domain.Time          `json:"last_reached,omitzero"`
+}
+
+// SyncStatus reads what sync last did. It changes nothing.
+func SyncStatus(ctx context.Context, d *Deps) (SyncStatusReport, error) {
+	inst, err := d.loadInstallation(ctx)
+	if err != nil {
+		return SyncStatusReport{}, err
+	}
+	s := inst.Sync
+	return SyncStatusReport{
+		Enabled: s.Enabled, Target: s.Target, AuthorityKeyID: domain.MinisignKeyID(s.Authority),
+		Interval: s.SyncInterval().String(),
+		Applied:  s.Applied, Refused: s.Refused, LastFetch: s.LastFetch, LastReached: s.LastReached,
+	}, nil
+}
+
+// Summary is the cycle's outcome in one line.
+func (r SyncReport) Summary() string {
+	switch {
+	case r.Skipped != "":
+		return r.Skipped + "; skipping this tick"
+	case r.Step != "":
+		line := fmt.Sprintf("desired-state document %d was refused at %s: %s", r.Serial, r.Step, r.Class)
+		if len(r.Names) > 0 {
+			line += " (" + strings.Join(r.Names, ", ") + ")"
+		}
+		return line + "; `morzer sync status` shows why"
+	}
+	switch r.Result {
+	case domain.SyncOK:
+		switch {
+		case r.DryRun:
+			return fmt.Sprintf("would apply desired-state document %d", r.Serial)
+		case r.NoChange:
+			return fmt.Sprintf("applied desired-state document %d: every value already matched", r.Serial)
+		}
+		return fmt.Sprintf("applied desired-state document %d", r.Serial)
+	case domain.SyncCurrent:
+		return fmt.Sprintf("nothing newer than desired-state document %d is published", r.Serial)
+	case domain.SyncAbsent:
+		return "no desired-state document is published for this installation"
+	case domain.SyncUnreachable:
+		return "the sync target did not answer; nothing changed"
+	case domain.SyncBadSignature:
+		return fmt.Sprintf("the newest pair (%d) is not a document the authority signed for this installation; "+
+			"nothing changed", r.Serial)
+	case domain.SyncReplay:
+		return fmt.Sprintf("the newest document (%d) is older than the one applied; nothing changed", r.Serial)
+	case domain.SyncExpired:
+		return fmt.Sprintf("desired-state document %d has expired, and nothing newer is published", r.Serial)
+	}
+	return string(r.Result)
 }

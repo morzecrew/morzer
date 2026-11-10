@@ -151,6 +151,7 @@ func TestASyncAppliesTheNewestCompleteDocument(t *testing.T) {
 	report := r.syncOK(t)
 	assert.Equal(t, domain.SyncOK, report.Result)
 	assert.Equal(t, int64(100), report.Serial)
+	assert.Equal(t, "applied desired-state document 100", report.Summary())
 
 	assert.Equal(t, "debug", installation(t, r.h).Parameters["log_level"])
 	secret, _ := storedSecret(t, r.h, "db_password")
@@ -257,6 +258,7 @@ func TestADocumentReachingPastManagedIsRefusedWhole(t *testing.T) {
 	report := r.syncOK(t)
 	assert.Equal(t, domain.SyncUnmanageable, report.Result)
 	assert.Equal(t, []string{"update.check", "http_port"}, report.Names)
+	assert.Contains(t, report.Summary(), "document 20 was refused at validate: unmanageable (update.check, http_port)")
 	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"], "a refused document was partly applied")
 
 	state := r.state(t)
