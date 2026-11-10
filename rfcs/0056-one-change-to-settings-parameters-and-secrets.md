@@ -1,7 +1,7 @@
 # RFC 0056 — One change to settings, parameters and secrets
 
-- **Status:** 📝 Draft — proposed 2026-11-10. The `OPEN` rows are the author's
-  to rule.
+- **Status:** 📝 Draft — proposed 2026-11-10, and ruled by the author
+  2026-11-10: decisions 13, 14 and 15 as recommended.
 - **Scope:** Adds one operation that changes installation settings, operator
   parameters and secrets together. It reads a change document on stdin and
   records, renders, converges and health-checks once. If any step fails, it
@@ -11,11 +11,11 @@
   - the operation's steps and how each one is undone;
   - how a secret is put back without looking freshly rotated;
   - what `--dry-run`, the journal and the attestation show;
-  - whether `config set` and the `secret` commands become callers of the new
-    operation.
+  - `config set` of a parameter as a one-name caller of the new operation,
+    and why the `secret` commands stay as they are.
 
   **Contract changes:**
-  - a new command, named by decision 13;
+  - a new command, `config apply`;
   - the `SecretStore` port gains a write that keeps a given `changed_at`.
 
   Neither the manifest, nor the installation schema, nor the hook ABI changes.
@@ -72,9 +72,9 @@ step fails, every value is put back, the files are rendered again and the
 services are converged again. A secret goes back with its previous
 `changed_at`, so `doctor` does not read a rollback as a rotation.
 
-`config set` keeps working as it does. Whether it becomes a one-name caller of
-the same operation is decision 14. Whether the `secret` commands do is
-decision 15.
+`config set` of a parameter becomes a one-name caller of the same operation,
+and so gains the release's health checks (decision 14). `config set` of a
+setting, and the `secret` commands, keep working as they do (decision 15).
 
 ## 2. Motivation
 
@@ -316,7 +316,10 @@ Without a profile change, on a running product:
 
 With a profile change, the steps are those of `planSettings`. Steps 1 and 2
 come first, and `apply`'s steps follow under the new profiles. While the
-product is stopped, or nothing runs, steps 5 and 6 are left out.
+product is stopped, or nothing runs, steps 5 and 6 are left out. They are
+also left out when the change reaches no service, such as a change of
+settings alone that touches neither the domains nor the profiles. Steps 2 and
+3 run only for a change that holds secrets.
 
 A setting that changes the supervisor's units reconciles them after the
 operation succeeds, as `SetSettings` does. A failure there comes after the
@@ -361,17 +364,22 @@ is last-writer-wins, the rule `config set` and `secret edit` already follow
 
 ### 5.7 `config set` and the `secret` commands as callers
 
-`config set name=value` is a change with one entry. Making it a caller of
-this operation gives one implementation instead of two. It would also give
-`config set` the release's health checks, which it does not run today
-(decision 14).
+`config set <parameter>=value` is a change with one entry, so it becomes a
+caller of this operation. That gives one implementation instead of two, and
+gives `config set` the release's health checks, which it does not run today
+(decision 14). `config unset` of a parameter and `config edit` reach it
+through the same `ConfigSet` (`config.go:250`, `config_edit.go:56`).
 
-The `secret` commands are a larger step (decision 15). As callers they would
+`config set <setting>=value` keeps `SetSettings`. Most settings change what
+the manager does next and reach no service, which is why `SetSettings` is
+deliberately not an engine operation (`settings.go:611`). The three that
+reach the deployment or the trust policy are journalled as they are today.
+
+The `secret` commands stay as they are (decision 15). As callers they would
 take the deployment lock. They would then wait behind an update and be
 refused while an operation is unfinished. They would also become journalled.
 That changes when an operator can rotate a credential during an incident,
-which is exactly when an unfinished operation is likeliest. This RFC
-recommends leaving them as they are.
+which is exactly when an unfinished operation is likeliest.
 
 ### 5.8 Alternatives considered
 
@@ -467,18 +475,17 @@ recommends leaving them as they are.
   profiles re-creates every service, as each of those does alone today. The
   plan shows it before anything runs.
 - **Health checks add time.** A change waits for the release's checks, which
-  `config set` does not today. If `config set` becomes a caller (decision
-  14), it waits too.
-- **Read as `morzer apply`.** The name is decision 13.
+  `config set` does not today. As a caller (decision 14), `config set` waits
+  too.
+- **Read as `morzer apply`.** `config apply` sits under `config`, and its help
+  and reference say it applies a change document, not the installation. The
+  name was ruled with this risk named (decision 13).
 
 ## 10. Unresolved questions
 
-- The command's name (decision 13).
-- Whether `config set` becomes a caller in this work or later (decision 14).
-- Whether the `secret` commands become callers (decision 15).
-
-Implementation is free to settle the exact plan text and the order of
-validation messages.
+#330's three open questions were decisions 13, 14 and 15. The author ruled
+all three as recommended on 2026-11-10. Implementation is free to settle the
+exact plan text and the order of validation messages.
 
 ## 11. Decisions
 
@@ -496,9 +503,9 @@ validation messages.
 | 10 | `ASSUMED` | `--dry-run` prints the steps and the configuration diff. A secret appears by name with `set` or `removed`, never a value, a length or a fingerprint. |
 | 11 | `ASSUMED` | The journal record names every changed name by section in its flags, never a value. The operation is attested as a `config` operation (RFC 0025) and sends one notification. |
 | 12 | `ASSUMED` | A setting that changes the supervisor's units reconciles them after the operation succeeds, as `SetSettings` does. A failure there is reported, not undone. |
-| 13 | `OPEN` | The command's name. Recommended: `config apply`, because it is a `config` operation and reads as one. Alternatives: `config change`, or an `apply` flag, which RFC 0027 decision 3 reserves for a desired state. Risk: read as `morzer apply`. |
-| 14 | `OPEN` | Whether `config set` becomes a one-name caller of this operation. Recommended: yes, as P2. That gives one implementation, and `config set` gains the health checks of decision 8. It also makes `config set` slower by the time the checks take. |
-| 15 | `OPEN` | Whether `secret set`, `generate`, `rotate` and `edit` become callers. Recommended: no, for now. They would take the deployment lock, wait behind an update, be refused while an operation is unfinished, and become journalled. That changes when a credential can be rotated during an incident. Revisit if the desired-state design needs secret changes journalled. |
+| 13 | `ASSUMED` | The command is `config apply`, because it is a `config` operation and reads as one. Rejected: `config change`, and an `apply` flag, which RFC 0027 decision 3 reserves for a desired state. Risk: read as `morzer apply` (§9). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 14 | `ASSUMED` | `config set` of a parameter becomes a one-name caller of this operation, as P2, and with it `config unset` of a parameter and `config edit`. That gives one implementation, and `config set` gains the health checks of decision 8. It also makes `config set` slower by the time the checks take. `config set` of a setting keeps `SetSettings`, which is deliberately not an engine operation for a setting that reaches no service (§5.7). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
+| 15 | `ASSUMED` | `secret set`, `generate`, `rotate` and `edit` do not become callers, for now. They would take the deployment lock, wait behind an update, be refused while an operation is unfinished, and become journalled. That changes when a credential can be rotated during an incident. Revisit if the desired-state design needs secret changes journalled. Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 16 | `ASSUMED` | A killed manager leaves an unfinished record that `gateUnfinished` holds, as every operation does. Whole-or-nothing covers a failed step, not a kill, because undo state lives in memory and persisting it would put secret values on disk (§9). |
 
 ## 12. Phasing
@@ -508,6 +515,7 @@ validation messages.
   none of this.
 - **P1.** The operation and its command: decisions 1–12 and 16,
   `SecretStore.Restore` with its contract leg, and the docs in §7.
-- **P2.** `config set` as a caller, if decision 14 is ruled yes.
-- **P3.** The `secret` commands as callers, only if decision 15 is ruled
-  yes.
+- **P2.** `config set`, `config unset` and `config edit` of a parameter as
+  callers (decision 14).
+
+The `secret` commands are not scheduled (decision 15).
