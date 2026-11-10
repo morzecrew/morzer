@@ -342,6 +342,14 @@ unset:
 - `serial` is compared with the last **applied** serial for this
   installation, which is stored locally. A document whose serial is not
   greater is refused as a replay.
+- **The applied serial commits with the change** (decision 25). It is
+  written in the operation's record step, in the same installation write as
+  the settings and parameters (RFC 0056 §5.4, step 1). That step runs for
+  every document, including one that holds only secrets. Its undo puts the
+  previous serial back. So no crash can leave serial 20 applied under a
+  stored watermark of 10, where a still-valid serial 15 would be accepted
+  as newer. A killed operation leaves an unfinished record that holds the
+  next sync, as every operation does (RFC 0056 decision 16).
 - `expires_at` bounds how long a captured document stays valid, and lets a
   machine notice an authority gone quiet (§5.9).
 - Size limit: 1 MiB after decryption, the bound RFC 0056 decision 4 sets for
@@ -656,6 +664,8 @@ need to know what a relay is.
   - serial monotonicity, against applied and refused;
   - two documents published between polls: the second, being cumulative,
     puts both changes in force;
+  - an apply that fails and is undone leaves the previous serial stored,
+    and the serial is in the same record write as the change;
   - expiry;
   - manageability: in the list, out of it, a setting morzer never allows;
   - age round trip to a machine recipient and an extra recipient;
@@ -786,6 +796,7 @@ exact refusal wording and the jitter's distribution.
 | 22 | `OPEN` | Should a refused serial block newer serials whose changes include the refused one, or should every newer serial be tried? The draft tries every newer serial. |
 | 23 | `ASSUMED` | A refusal in the fleet row carries the step, a class and the names involved, never the error's text, which can quote a parameter value. The row's rule that it never carries a parameter value, a hostname or a secret stands, and the leak test covers the `sync` block. The full message stays in the local journal. |
 | 24 | `ASSUMED` | Each document is cumulative: every value the authority manages for the installation and every name it wants unset, every time. A machine applies only the newest and may miss any before it, so a delta document would lose a change published before it (§5.2). |
+| 25 | `ASSUMED` | The applied serial is written in the operation's record step, in the same installation write as the settings and parameters, for every document, and its undo restores the previous serial. A change and its serial commit together, so a crash cannot leave a change in force under an older watermark that a replay could pass (§5.2). |
 
 ## 12. Phasing
 
