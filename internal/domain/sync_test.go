@@ -28,6 +28,9 @@ func TestOnlySerialNamedPairsUnderThePrefixAreDocuments(t *testing.T) {
 		doc:                                 {serial: 42, ok: true},
 		sig:                                 {serial: 42, sig: true, ok: true},
 		prefix + "+5.age":                   {},
+		prefix + "007.age":                  {},
+		prefix + "01.age.minisig":           {},
+		prefix + "0.age":                    {},
 		prefix + "05x.age":                  {},
 		prefix + "7.yaml":                   {},
 		prefix + "sub/7.age":                {},
@@ -53,6 +56,8 @@ func TestADesiredStateCommentReadsBack(t *testing.T) {
 		"timestamp:1794310000\tfile:7.age",
 		"morzer desired-state product=demo installation=inst_01",
 		"morzer desired-state product=demo installation=inst_01 serial=+7",
+		"morzer desired-state product=demo installation=inst_01 serial=07",
+		"morzer desired-state product=demo installation=inst_01 serial=0",
 		"morzer fleet-row product=demo installation=inst_01 serial=7",
 		"morzer desired-state product= installation=inst_01 serial=7",
 	} {

@@ -159,8 +159,11 @@ func ParseDesiredStateComment(comment string) (product, installationID string, s
 	return values["product"], values["installation"], n, true
 }
 
-// parseSerial reads a serial: digits only, so `+5` and `05x` are refused rather
-// than read as five.
+// parseSerial reads a serial: a positive whole number in its one decimal
+// spelling. `+5` and `05x` are refused rather than read as five, and so are
+// `007` and `0`: the pair for a serial is fetched by the name DesiredStateKeys
+// spells, so a listing must not take another spelling for it, and zero is
+// below every serial an envelope may carry.
 func parseSerial(s string) (int64, error) {
 	if s == "" || strings.TrimLeft(s, "0123456789") != "" {
 		return 0, ValidationError(nil, "serial %q is not a whole number", s)
@@ -168,6 +171,9 @@ func parseSerial(s string) (int64, error) {
 	n, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0, ValidationError(err, "serial %q is out of range", s)
+	}
+	if n <= 0 || strconv.FormatInt(n, 10) != s {
+		return 0, ValidationError(nil, "serial %q is not a positive number in its decimal form", s)
 	}
 	return n, nil
 }
