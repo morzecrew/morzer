@@ -588,3 +588,32 @@ func TestATargetWithoutItsCredentialIsReportedUnreachable(t *testing.T) {
 	assert.Equal(t, "warn", check.Status)
 	assert.Contains(t, check.Message, "never answered")
 }
+
+// A cycle publishes the fleet row when its outcome is news (§5.8 step 5): a
+// document applied or refused, or a result unlike the last. A cycle that found
+// what the last one found writes nothing.
+func TestACyclePublishesTheRowWhenItsOutcomeIsNews(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+	fleet := filepath.Join(t.TempDir(), "fleet")
+	inst := installation(t, r.h)
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: "file://" + fleet}}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+	key, err := domain.FleetKey(inst.Product, inst.ID)
+	require.NoError(t, err)
+	rowPath := filepath.Join(fleet, filepath.FromSlash(key))
+
+	r.publish(t, 140, "parameters:\n  log_level: debug\n")
+	r.syncOK(t)
+	row, _ := publishedRow(t, fleet, inst)
+	require.NotNil(t, row.Sync)
+	require.NotNil(t, row.Sync.Applied, "the row does not report the document applied")
+	assert.Equal(t, int64(140), row.Sync.Applied.Serial)
+
+	// The first `current` changes the row's last fetch; the second is the
+	// cycle with nothing new.
+	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
+	require.NoError(t, os.Remove(rowPath))
+	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
+	assert.NoFileExists(t, rowPath, "a cycle with nothing new published a row")
+}

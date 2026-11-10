@@ -162,7 +162,7 @@ full text, and what the last cycle found.
 
 | Where | What |
 | --- | --- |
-| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text |
+| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
 | [Statement](attestations.md) | a `desired_state` block naming the document's serial, ciphertext digest and the authority's key id |
 | [Notifications](../operating/notifications.md#what-is-sent) | `sync.refused` once per refused document, `sync.expired` when a cycle first finds the document in force expired |
 | `doctor` | `sync.authority` warns when the document in force expires within a day or has expired, or the target has not answered for more than three intervals |

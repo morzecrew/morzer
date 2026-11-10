@@ -91,8 +91,36 @@ type fetchedDocument struct {
 	change    ConfigChange
 }
 
-// SyncNow runs one cycle.
+// SyncNow runs one cycle, and publishes the fleet row when its outcome is news
+// (§5.8 step 5): a document applied or refused, or a result unlike the last
+// cycle's. One that found what the last one found writes nothing.
 func SyncNow(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, error) {
+	var last domain.SyncOutcome
+	if inst, err := d.loadInstallation(ctx); err == nil && inst.Sync.LastFetch != nil {
+		last = inst.Sync.LastFetch.Result
+	}
+	report, err := syncCycle(ctx, d, opts)
+	news := report.Result != last || report.Step != "" || (report.Result == domain.SyncOK && !report.NoChange)
+	if report.Result != "" && news && !opts.DryRun && report.Skipped == "" {
+		d.publishSyncOutcome(ctx)
+	}
+	return report, err
+}
+
+// publishSyncOutcome publishes this installation's row to the targets it
+// already publishes to. A row that did not leave fails nothing, as `fleet
+// publish` does not.
+func (d *Deps) publishSyncOutcome(ctx context.Context) {
+	inst, err := d.loadInstallation(ctx)
+	if err != nil || !inst.Backup.HasTargets() {
+		return
+	}
+	if _, err := FleetPublish(ctx, d, FleetPublishOptions{}); err != nil {
+		d.warnf("cannot publish the fleet row: %s", domain.AsError(err).Message)
+	}
+}
+
+func syncCycle(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return SyncReport{}, err
