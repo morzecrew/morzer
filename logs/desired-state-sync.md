@@ -509,3 +509,87 @@ by two cycles (8ee05261); a sandbox keeping sync settings without a target
 (4ff22896). The acceptance scenario's row-schema check moved to 2 (ba780aaa).
 
 **Drift count: 2.**
+
+## Build, PR B (P4)
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T20:59:59Z
+attempt: 1
+claim: §5.11 has `state publish` stamp the serial and the expiry into a document `--file` names, and does not say what the file holds. It holds a change document without the envelope: the command writes the envelope, checks the file as a change document, and checks the whole document as a machine will read it before anything is encrypted.
+evidence: internal/lifecycle/ops/state.go:256
+action: decided
+proposal: UNLISTED — `state publish --file` takes a change document; the envelope is the command's, and the composed document is checked before it is encrypted
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T20:59:59Z
+attempt: 1
+claim: §5.3 writes each pair once and §5.7 refuses a serial not newer than the last applied, and neither says what `state publish` does with such a serial. It refuses one not newer than the newest complete pair on the target, and one already present there, since the machine would refuse it as a replay.
+evidence: internal/lifecycle/ops/state.go:165
+action: decided
+proposal: UNLISTED — `state publish` refuses a serial not newer than the newest published, and one already published
+```
+
+```divergence
+decision: 26
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-10T20:59:59Z
+attempt: 1
+claim: decision 26 has `state publish` keep the newest three pairs and does not say how it removes the rest or what a failed removal means. It removes each pair's signature before its ciphertext, so a pair half removed is not a document, removes lone objects below the cutoff too, and reports a failed removal without failing the publish, which has already written its document.
+evidence: internal/lifecycle/ops/state.go:269
+action: departed
+proposal: ASSUMED — a prune removes each signature before its ciphertext, and its failure is reported, never a failed publish
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T20:59:59Z
+attempt: 1
+claim: §5.3 lets the authority encrypt to additional recipients, such as its own key, and §5.11 names no flag for them. `state publish --recipient`, repeatable, adds them beside the machine's.
+evidence: internal/lifecycle/ops/state.go:68
+action: decided
+proposal: UNLISTED — `state publish --recipient <age1...>` encrypts to it as well as the machine
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T20:59:59Z
+attempt: 1
+claim: §6 lists acceptance-rig cases for P4, and the rig is a shell scenario that runs the demo product on its port. This PR builds them as docker-tagged suite tests against a real object store instead, which run here and in CI's container job: publish through the roster, apply with a credential that reads only one prefix, `state ls`, and pruning. The rig's cases that need two products, a rebuilt machine or facts are left for the acceptance rig, the last of them for P5.
+evidence: test/suite/sync_docker_test.go:83
+action: decided
+proposal: UNLISTED — P4's end-to-end cases run as docker-tagged suite tests against a real object store; the rig gains the multi-product and rebuild cases later
+```
+
+## Self-audit, PR B, 2026-11-10
+
+Scope: `ObjectStore.DeleteObject` in every transport and the contract, the
+`state` operations, commands and view, docs, changelog and tests.
+
+- Sabotage, 12 mutations: all killed but two, each an equivalent mutant.
+  Taking out `state publish`'s check that the row verified survives, because
+  `fleetRowAt` hands back no row for any unverified one once the roster keys
+  the entry, and an unkeyed entry is refused before. Writing the signature
+  before the ciphertext survives, because a machine needs both objects of a
+  pair, so neither order ever exposes half of one. The check and the order
+  stay, as the decision states them.
+- The object contract's two new legs pass on the fake, localdir, the registry,
+  RustFS and the SSH server.
+- `go test ./...`, lint, the docs check and the changelog validator pass.
+
+What I would still distrust: a prune against a store whose listing lags its
+writes, and an authority publishing from two machines at once, which the
+serial check reads before it writes.
+
+**Drift count: 2.**
