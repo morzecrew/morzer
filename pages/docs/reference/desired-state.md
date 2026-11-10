@@ -158,6 +158,72 @@ Prints the target, the authority's key id, the interval, the last document
 applied and when it expires, the last refused with its step, class, names and
 full text, and what the last cycle found.
 
+## The authority's commands
+
+`state` needs no installation of its own, as `fleet ls` needs none. It runs
+where the authority's key is.
+
+### state key generate
+
+```sh
+morzer state key generate ./authority.key
+```
+
+Writes a new minisign secret key, unencrypted and `0400`, and prints the public
+key the machines pin as `sync.authority`. It refuses a path that exists. A key
+from `minisign -G -W` serves too; one with a password does not, since `state
+publish` runs without a prompt.
+
+### state publish
+
+```sh
+morzer state publish --target s3://acme-state/demo --expect ./roster.yaml \
+    --product demo --installation inst_01M72B61SSWFT54B6KTJC26YD0 \
+    --file ./demo.yaml --key ./authority.key
+```
+
+In order:
+
+1. Reads the installation's fleet row from the target, and refuses an
+   installation the roster does not list, a roster entry with no key, and a
+   row that does not verify against the roster's key.
+2. Reads the document, a change document without the envelope, and checks it.
+3. Stamps the envelope: the serial, the issue time, and the expiry.
+4. Encrypts the whole document to the row's `age_recipient`, and to any
+   `--recipient`. It refuses a ciphertext over 1 MiB, the most a machine
+   reads.
+5. Signs the ciphertext with the trusted comment that names it.
+6. Writes the ciphertext, then the signature, and removes everything below
+   the newest three complete pairs, each signature before its ciphertext.
+
+A serial not newer than the newest published is refused, since a pair is
+written once. A failed prune fails nothing: the next publish prunes again.
+
+| Flag | Meaning |
+| --- | --- |
+| `--target` | The target the installation publishes its row to and pulls from. Required. |
+| `--expect` | The [roster](fleet.md#the-roster). Required. |
+| `--product`, `--installation` | Which installation the document is for. Required. |
+| `--file` | The document, or `-` for stdin. Required. |
+| `--key` | The authority's minisign secret key. Required. |
+| `--serial` | The serial. Default: the time in milliseconds. |
+| `--valid-for` | How long the document stays valid. Default `168h`. |
+| `--recipient` | An age recipient to encrypt to as well, such as the authority's own. Repeat for several. |
+| `--credentials-file` | The target's credentials, as `fleet ls` takes them. |
+| `--dry-run` | Everything but the writes. |
+
+### state ls
+
+```sh
+morzer state ls --target s3://acme-state/demo --expect ./roster.yaml
+```
+
+Every fleet row on the target, as `fleet ls` reads them, with the newest
+document published for each installation, the serial it applied, the one it
+refused with the step and class, and its last fetch. A row the roster does not
+list is shown as unexpected. Without `--expect`, nothing a row says is
+authenticated, and the signature column says so.
+
 ## What it reports
 
 | Where | What |

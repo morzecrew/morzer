@@ -110,6 +110,11 @@ here. The reference column points at the section that documents it; the
 | `morzer fleet` | See several machines without running a control plane | [fleet](fleet.md#the-fleet-view) |
 | `morzer fleet publish` | Write this installation's row to the targets it already uses | [fleet](fleet.md#the-fleet-view) |
 | `morzer fleet ls` (also `list`) | Read every installation's row off a target | [fleet](fleet.md#the-fleet-view) |
+| `morzer state` | Publish desired state for installations that follow an authority | [desired-state](desired-state.md#desired-state) |
+| `morzer state key` | Make the authority's signing key | [desired-state](desired-state.md#desired-state) |
+| `morzer state key generate` | Write a new authority signing key; show its public key | [desired-state](desired-state.md#state-key-generate) |
+| `morzer state publish` | Encrypt and sign a document for one installation, where it pulls it | [desired-state](desired-state.md#state-publish) |
+| `morzer state ls` (also `list`) | Show what each installation applied and refused | [desired-state](desired-state.md#state-ls) |
 | `morzer version` | Print version, commit, and supported manifest API versions | [commands](commands.md#version) |
 | `morzer self-update` | Replace this manager with a newer published release | [commands](commands.md#self-update) |
 | `morzer completion install` | Write the completion script where this shell will read it | [commands](commands.md#completion-install) |

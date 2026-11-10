@@ -95,6 +95,9 @@ var referencePage = map[string]string{
 	// what `sync now` applies is what the page describes.
 	"sync": "reference/desired-state.md",
 
+	// The authority's side of the same document, on the same page.
+	"state": "reference/desired-state.md",
+
 	"ls":         "reference/installation-commands.md#installation-list",
 	"completion": "reference/commands.md#completion-install",
 }

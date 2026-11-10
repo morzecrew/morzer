@@ -97,6 +97,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`restore`](#restore) | Restore from a backup. |
 | [`notify`](#notify) | Manage where operation outcomes are reported. |
 | [`sync`](desired-state.md#commands) | Follow the desired state an authority publishes. |
+| [`state`](desired-state.md#the-authoritys-commands) | Publish desired state for installations that follow an authority. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
 | [`self-update`](#self-update) | Replace this manager with a newer published release. |
 | [`completion install`](#completion-install) | Put the shell completion script where your shell reads it. |
