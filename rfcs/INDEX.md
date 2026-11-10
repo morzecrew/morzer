@@ -128,7 +128,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0057**. Before creating an RFC, glance at the table
+The next free number is **0058**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -195,6 +195,7 @@ number in the filename in sync.
 | [0054](0054-multi-line-text-parameters.md) | Multi-line text parameters | 📝 Draft | A parameter type for multi-line values that are not secret, such as routing rules or allow lists: what it accepts, how an operator sets and edits one, and how templates, Compose and hooks receive it. |
 | [0055](0055-macos-as-a-host-for-an-installation.md) | macOS as a host for an installation | 📝 Draft | Making macOS a supported host for an installation that runs unattended, opted into per release, in place of RFC 0029's development-only tier. |
 | [0056](0056-one-change-to-settings-parameters-and-secrets.md) | One change to settings, parameters and secrets | 📝 Draft | One operation that changes installation settings, parameters and secrets together from a document on stdin: recorded, rendered, converged and health-checked once, and undone whole on failure. |
+| [0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md) | Desired state an installation pulls and applies to itself | 📝 Draft | An installation pulling a signed, encrypted change addressed to it from a target, and applying it to itself as one operation, so one authority can manage many machines without anything listening. |
 
 ## Status legend
 
