@@ -371,6 +371,14 @@ func TestConfigSetWithEveryServiceBehindAnInactiveProfileRecreatesNothing(t *tes
 	h := harnessWithLogLevelServices(t, "vpn")
 	before := len(h.Runtime.UpOptions)
 
+	plan, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Options: ops.Options{DryRun: true},
+		Set:     map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, plan.Summary, "not in the active profiles, so nothing would be re-created",
+		"a plan claimed what the change would do in the wrong tense or not at all")
+
 	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
 		Set: map[string]string{"log_level": "debug"},
 	})
