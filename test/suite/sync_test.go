@@ -819,3 +819,26 @@ func TestAnUnreadableIdentityRefusesNothing(t *testing.T) {
 	require.NoError(t, os.Rename(identity+".away", identity))
 	assert.Equal(t, domain.SyncOK, r.syncOK(t).Result)
 }
+
+// A document whose operation succeeded is applied, even when reconciling the
+// units afterwards fails: the change is in force and its serial committed with
+// it, so recording it refused would contradict the state.
+func TestADocumentAppliedBeforeAUnitFailureIsNotRefused(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+	r.h.Deps.Supervisor = r.h.Supervisor
+	r.h.Supervisor.Present = true
+	units, err := r.h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, r.h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+	r.h.Supervisor.Fail = map[string]error{"InstallUnits": assert.AnError}
+
+	r.publish(t, 230, "settings:\n  installation.domains: other.example\n")
+	report, err := r.sync(t)
+	require.Error(t, err, "a unit failure was not reported")
+	state := r.state(t)
+	require.NotNil(t, state.Applied)
+	assert.Equal(t, int64(230), state.Applied.Serial)
+	assert.Nil(t, state.Refused, "an applied document was recorded as refused")
+	assert.Equal(t, domain.SyncOK, report.Result)
+}

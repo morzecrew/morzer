@@ -185,6 +185,11 @@ func syncCycle(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, erro
 		return SyncReport{}, err
 	case errors.As(err, &refusal):
 		return d.refuseDocument(ctx, inst, opts, keyID, now, doc.serial, refusal)
+	case err != nil && run.record.Status == domain.StatusSucceeded:
+		// Applied: the operation succeeded and its serial committed with
+		// it, and what failed came after, such as reconciling the units.
+		// Reported, and not recorded as a refusal the state contradicts.
+		return SyncReport{Result: domain.SyncOK, Serial: doc.serial, OperationID: run.record.ID}, err
 	case err != nil:
 		ran := run.record.ID != ""
 		failure := &syncRefusal{
