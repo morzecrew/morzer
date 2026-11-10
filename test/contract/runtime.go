@@ -165,6 +165,29 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 			"a one-shot named explicitly must be reported even though nothing starts it")
 	})
 
+	t.Run("restart refuses a service the configuration does not define", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}))
+
+		// A secret change restarts the services its secret declares, and
+		// one may be defined only by the overlay of a profile that is not
+		// active. Compose does not know it and restarts nothing, so the
+		// restart must keep to what Validate lists (#324). A runtime that
+		// restarted it anyway would hide that from every test built on it.
+		rendered, err := rt.Validate(ctx, cfg)
+		require.NoError(t, err)
+		require.NotContains(t, rendered.Services, "vpn")
+		assert.Error(t, rt.Restart(ctx, cfg, []string{"vpn"}),
+			"a service no file of the configuration defines was restarted")
+		assert.NoError(t, rt.Restart(ctx, cfg, rendered.Services),
+			"a service the configuration defines could not be restarted")
+
+		// One behind a Compose profile is defined, and has no container
+		// to restart.
+		assert.NoError(t, rt.Restart(ctx, cfg, []string{"migrate"}),
+			"a defined service that is not started was refused")
+	})
+
 	runQuiesceSuite(t, newRuntime)
 	runVolumeSuite(t, newRuntime)
 	runInspectionSuite(t, newRuntime)

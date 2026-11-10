@@ -349,11 +349,14 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// Compose refuses a service the configuration does not define -- one
-	// behind an inactive profile, say -- and restarts nothing. A fake that
-	// restarted it would pass what fails on a real machine (#324).
+	// Compose refuses a service no file of the configuration defines -- one
+	// in the overlay of a profile that is not active -- and restarts
+	// nothing. A fake that restarted it would pass what fails on a real
+	// machine (#324). One defined behind a Compose profile, with no
+	// container, it skips; here that is a service with an image that
+	// ValidateResult leaves out, as ServiceImages reads it.
 	for _, name := range services {
-		if !slices.Contains(r.ValidateResult.Services, name) {
+		if _, defined := r.Images[name]; !defined && !slices.Contains(r.ValidateResult.Services, name) {
 			return domain.RuntimeError(fmt.Errorf("no such service: %s", name), "cannot restart services")
 		}
 	}
