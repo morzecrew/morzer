@@ -771,6 +771,20 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		inst.Notify = existing.Notify
 		inst.Backup = existing.Backup
 
+		// And the authority this machine follows, with its serials. The
+		// flags outrank it when given, as --backup-schedule outranks the
+		// carried Policy, and a new authority clears the serials, as
+		// `config set sync.authority` does (RFC 0057 decision 27).
+		target, authority := inst.Sync.Target, inst.Sync.Authority
+		inst.Sync = existing.Sync
+		if target != "" {
+			inst.Sync.Target = target
+		}
+		if authority != "" && authority != existing.Sync.Authority {
+			inst.Sync.Authority = authority
+			inst.Sync.Applied, inst.Sync.Refused = nil, nil
+		}
+
 		// A repair inherits the mode rather than resetting it. `init
 		// --repair` on a sandbox is re-creating directories, not
 		// deciding what the machine is for -- and the state store
