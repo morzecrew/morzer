@@ -142,7 +142,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 	run, err := d.runChange(ctx, opts.Options, ConfigChange{
 		Parameters: opts.Set,
 		Unset:      ConfigChangeUnset{Parameters: opts.Unset},
-	})
+	}, changeExtras{})
 	if err == nil && run.noChange {
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
@@ -173,7 +173,7 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 // configuration: a parameter change, or a domain change (RFC 0042).
 func attestConfig(
 	ctx context.Context, d *Deps, rec domain.OperationRecord,
-	before domain.Installation, rel domain.Release, st *engine.State,
+	before domain.Installation, rel domain.Release, st *engine.State, desired *domain.AttestedDesiredState,
 ) {
 	// The record is read for one field -- the scheme the installed
 	// release came from -- and a failure to read it must not cost
@@ -190,9 +190,10 @@ func attestConfig(
 			domain.AsError(err).Message)
 		current = domain.ReleaseRecord{}
 	}
-	emitAttestation(ctx, d, rec,
-		attestationInputs(attestedParameters(ctx, d, before), rel, current,
-			domain.Version{}, renderedConfigFor(st)))
+	in := attestationInputs(attestedParameters(ctx, d, before), rel, current,
+		domain.Version{}, renderedConfigFor(st))
+	in.DesiredState = desired
+	emitAttestation(ctx, d, rec, in)
 }
 
 // attestedParameters is the parameter set as it actually stands now.

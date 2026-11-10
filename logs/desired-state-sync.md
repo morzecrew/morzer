@@ -307,3 +307,15 @@ evidence: internal/domain/attestation.go:44
 action: departed
 proposal: ASSUMED — the v4 predicate adds a desired_state block, built with RFC 0057 P3; rows for RFC 0025 record it
 ```
+
+```divergence
+decision: 15
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-10T18:21:54Z
+attempt: 1
+claim: decision 15 has a sync's statement name the document it applied, but RFC 0056 row 18 files a config statement only when the configuration was rendered, and a document that changes only secrets renders none. A sync therefore files its statement whenever its operation ran, and with nothing rendered the statement carries no rendered digest, which is omitted rather than computed over nothing.
+evidence: internal/domain/attestation.go:444
+action: departed
+proposal: ASSUMED — a sync's operation always files its statement with desired_state; the rendered digest is present only when it rendered the configuration
+```

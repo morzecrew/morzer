@@ -905,7 +905,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	if ran {
 		d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, err)
 		if plan.render && !opts.DryRun {
-			attestConfig(ctx, d, result.Record, prior, plan.rel, result.State)
+			attestConfig(ctx, d, result.Record, prior, plan.rel, result.State, nil)
 		}
 	}
 	if err != nil {
