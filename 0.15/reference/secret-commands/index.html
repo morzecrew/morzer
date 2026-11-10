@@ -2494,9 +2494,10 @@ changed. When the deployment has no containers at all, as before the first
 <code>apply</code>, they restart nothing and render nothing: whatever creates them renders
 first. A container that exists in any state, stopped or unhealthy included, is
 rendered for and restarted. So a release with several values only you have can be given them
-one at a time. If the render or the restart fails, the error says the change
-was stored, and the exit code says which failed: <code>6</code> for the render, <code>7</code> for
-the runtime.</p>
+one at a time. A declared service behind a profile that is not active is not
+restarted: it reads the file when the profile is turned on and it is created.
+If the render or the restart fails, the error says the change was stored, and
+the exit code says which failed: <code>6</code> for the render, <code>7</code> for the runtime.</p>
 <h2 id="secret-generate">secret generate<a class="headerlink" href="#secret-generate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>generate<span class="w"> </span>&lt;name&gt;
 </code></pre></div>

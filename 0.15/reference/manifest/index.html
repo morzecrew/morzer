@@ -4333,7 +4333,7 @@ by convention — declares what secrets exist, so <code>init</code> can provisio
 <tr>
 <td><code>services</code></td>
 <td>list</td>
-<td>Compose services that consume it. A rotation restarts exactly these.</td>
+<td>Compose services that consume it. A change restarts exactly these, except one behind a profile that is not active, which reads the file when the profile is turned on.</td>
 </tr>
 <tr>
 <td><code>rotation_period</code></td>
