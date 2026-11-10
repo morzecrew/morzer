@@ -1182,6 +1182,11 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// opt-in does not arise.
 		FleetTimer: inst.Backup.HasTargets(),
 
+		// While sync is on, and only then (RFC 0057 §5.8): a timer
+		// with no authority to follow would fetch nothing it could use.
+		SyncTimer:    inst.Sync.Enabled,
+		SyncInterval: inst.Sync.SyncInterval(),
+
 		// Whenever someone is configured to be told or its findings are
 		// exported, and not when the operator turned it off (RFC 0043
 		// decision 4, RFC 0047 decision 3): a scheduled `doctor` with

@@ -77,6 +77,8 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 		UpdateTimer:    true,
 		FleetSchedule:  "Wed *-*-* 06:00:00",
 		FleetTimer:     true,
+		SyncTimer:      true,
+		SyncInterval:   7 * time.Minute,
 		// Not set here: it is the one field whose effect is a unit's
 		// *absence*, which the case below asserts instead.
 	})
@@ -98,13 +100,14 @@ func TestUnitsCarriesEveryFieldIntoTheRendering(t *testing.T) {
 		"Mon *-*-* 04:00:00",
 		"Tue *-*-* 05:00:00",
 		"Wed *-*-* 06:00:00",
+		"OnUnitActiveSec=420",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("%q reached no unit, so `Units` dropped it on the way in", want)
 		}
 	}
 	for _, want := range []string{
-		"demo.service", "demo-backup.timer", "demo-update.timer", "demo-fleet.timer",
+		"demo.service", "demo-backup.timer", "demo-update.timer", "demo-fleet.timer", "demo-sync.timer",
 	} {
 		if !names[want] {
 			t.Errorf("%s was not rendered", want)

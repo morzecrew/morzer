@@ -467,6 +467,14 @@ type UnitParams struct {
 	// fails on every tick is one an operator stops reading.
 	FleetTimer bool
 
+	// SyncTimer generates the sync pair at all, while `sync.enabled` is
+	// (RFC 0057 §5.8).
+	SyncTimer bool
+
+	// SyncInterval is the sync timer's period. Zero renders
+	// domain.DefaultSyncInterval.
+	SyncInterval time.Duration
+
 	// DoctorSchedule is an OnCalendar expression for the doctor timer.
 	DoctorSchedule string
 
@@ -512,6 +520,8 @@ func UpdateServiceUnitName(product string) string  { return product + "-update.s
 func UpdateTimerUnitName(product string) string    { return product + "-update.timer" }
 func FleetServiceUnitName(product string) string   { return product + "-fleet.service" }
 func FleetTimerUnitName(product string) string     { return product + "-fleet.timer" }
+func SyncServiceUnitName(product string) string    { return product + "-sync.service" }
+func SyncTimerUnitName(product string) string      { return product + "-sync.timer" }
 func DoctorServiceUnitName(product string) string  { return product + "-doctor.service" }
 func DoctorTimerUnitName(product string) string    { return product + "-doctor.timer" }
 func MetricsServiceUnitName(product string) string { return product + "-metrics.service" }
@@ -689,6 +699,53 @@ RandomizedDelaySec=900
 [Install]
 WantedBy=timers.target
 `
+
+// syncServiceTemplate runs one sync cycle (RFC 0057 §5.8).
+//
+// `--unattended` makes a tick that cannot take the lock exit 0, as an update
+// tick does: an operator's apply is in the way and the next tick is soon. No
+// Restart=, like every tick here: a refused document is recorded and is not
+// tried again, so a restart would only fetch it twice.
+const syncServiceTemplate = `[Unit]
+Description={{.Description}}
+After=network-online.target {{.Product}}.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{.ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+TimeoutStartSec=3600
+StandardOutput=journal
+StandardError=journal
+`
+
+// syncTimerTemplate schedules it every interval after the last tick, rather
+// than on a calendar: the interval is a duration (`sync.interval`), and a
+// machine that was off has nothing to catch up, since only the newest document
+// is ever applied. The delay spreads machines that read one bucket, by up to a
+// third of the interval.
+const syncTimerTemplate = `[Unit]
+Description={{.Description}}
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{.SyncPeriodSeconds}}
+RandomizedDelaySec={{.SyncJitterSeconds}}
+
+[Install]
+WantedBy=timers.target
+`
+
+// SyncPeriodSeconds is the sync timer's period, in whole seconds.
+func (p UnitParams) SyncPeriodSeconds() int64 {
+	if p.SyncInterval <= 0 {
+		return int64(domain.DefaultSyncInterval.Seconds())
+	}
+	return int64(p.SyncInterval.Seconds())
+}
+
+// SyncJitterSeconds is a third of the period.
+func (p UnitParams) SyncJitterSeconds() int64 { return p.SyncPeriodSeconds() / 3 }
 
 // doctorServiceTemplate runs the scheduled `doctor` (RFC 0043 §5.4): it sends
 // the outbox, runs every check and notifies one `doctor.finished` when one
@@ -869,6 +926,17 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 		)
 	}
 
+	if p.SyncTimer {
+		specs = append(specs,
+			unitSpec{SyncServiceUnitName(p.Product), syncServiceTemplate,
+				p.Product + " sync", false},
+			// The timer is enabled and the service is not: enabling a
+			// oneshot runs it at every boot.
+			unitSpec{SyncTimerUnitName(p.Product), syncTimerTemplate,
+				p.Product + " scheduled sync", true},
+		)
+	}
+
 	if p.DoctorTimer {
 		specs = append(specs,
 			unitSpec{DoctorServiceUnitName(p.Product), doctorServiceTemplate,
@@ -937,6 +1005,8 @@ func UnitNames(product string) []string {
 		UpdateTimerUnitName(product),
 		FleetServiceUnitName(product),
 		FleetTimerUnitName(product),
+		SyncServiceUnitName(product),
+		SyncTimerUnitName(product),
 		DoctorServiceUnitName(product),
 		DoctorTimerUnitName(product),
 		MetricsServiceUnitName(product),
@@ -978,6 +1048,8 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		UpdateJitter:     params.UpdateJitter,
 		FleetSchedule:    params.FleetSchedule,
 		FleetTimer:       params.FleetTimer,
+		SyncTimer:        params.SyncTimer,
+		SyncInterval:     params.SyncInterval,
 		DoctorSchedule:   params.DoctorSchedule,
 		DoctorTimer:      params.DoctorTimer,
 		MetricsDir:       params.MetricsDir,

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
@@ -1104,5 +1105,51 @@ func TestTheDoctorTimerIsGeneratedOnlyWhenAskedFor(t *testing.T) {
 	params.DoctorSchedule = "daily\nUnit=evil.service"
 	if _, err := systemd.BuildUnits(params); err == nil {
 		t.Error("a doctor schedule with a line break was rendered")
+	}
+}
+
+// The sync pair exists only while sync is on, ticks every interval after the
+// last tick with a third of it as spread, and runs the unattended cycle, which
+// exits 0 when another operation holds the lock (RFC 0057 §5.8).
+func TestTheSyncTimerTicksEveryInterval(t *testing.T) {
+	off, err := systemd.BuildUnits(systemd.UnitParams{Product: "demo", ManagerPath: "/usr/local/bin/morzer"})
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+	for _, u := range off {
+		if u.Name == systemd.SyncTimerUnitName("demo") || u.Name == systemd.SyncServiceUnitName("demo") {
+			t.Errorf("%s was generated with sync off", u.Name)
+		}
+	}
+
+	for interval, want := range map[time.Duration][2]string{
+		0:                {"OnUnitActiveSec=900\n", "RandomizedDelaySec=300\n"},
+		10 * time.Minute: {"OnUnitActiveSec=600\n", "RandomizedDelaySec=200\n"},
+	} {
+		units, err := systemd.BuildUnits(systemd.UnitParams{
+			Product: "demo", ManagerPath: "/usr/local/bin/morzer", SyncTimer: true, SyncInterval: interval,
+		})
+		if err != nil {
+			t.Fatalf("BuildUnits: %v", err)
+		}
+		byName := map[string]ports.Unit{}
+		for _, u := range units {
+			byName[u.Name] = u
+		}
+		timer, service := byName[systemd.SyncTimerUnitName("demo")], byName[systemd.SyncServiceUnitName("demo")]
+		for _, line := range want {
+			if !strings.Contains(string(timer.Contents), line) {
+				t.Errorf("interval %s: the sync timer has no %q:\n%s", interval, line, timer.Contents)
+			}
+		}
+		if !timer.Enable || service.Enable {
+			t.Error("the sync timer must be enabled and its oneshot service not")
+		}
+		if !strings.Contains(string(service.Contents), "/usr/local/bin/morzer sync now --unattended") {
+			t.Errorf("the sync service does not run the unattended cycle:\n%s", service.Contents)
+		}
+		if strings.Contains(string(service.Contents), "Restart=") {
+			t.Errorf("the sync service restarts on failure:\n%s", service.Contents)
+		}
 	}
 }

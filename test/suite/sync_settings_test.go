@@ -11,6 +11,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // The sync settings (RFC 0057 §5.5): local and root-only, and refused when
@@ -115,4 +116,32 @@ func TestNoSyncSettingIsManageable(t *testing.T) {
 		"sync.interval", "sync.enabled"} {
 		assert.False(t, domain.IsManageableSetting(name), name)
 	}
+}
+
+// The sync timer is installed while sync is on and taken away when it is
+// turned off, by the setting change itself.
+func TestTheSyncTimerFollowsTheSwitch(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.Deps.Supervisor = h.Supervisor
+	h.Supervisor.Present = true
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	ctx := context.Background()
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+
+	timer := "demo-sync.timer"
+	require.NotContains(t, h.Supervisor.Installed, timer)
+	require.NoError(t, setSettings(t, h, map[string]string{
+		"sync.target":    "file://" + t.TempDir(),
+		"sync.authority": authorityKey,
+		"sync.enabled":   "true",
+	}))
+	assert.Contains(t, h.Supervisor.Installed, timer, "sync was turned on and nothing schedules it")
+
+	require.NoError(t, setSettings(t, h, map[string]string{"sync.enabled": "false"}))
+	assert.NotContains(t, h.Supervisor.Installed, timer, "sync was turned off and its timer stayed")
 }
