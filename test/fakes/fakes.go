@@ -1070,6 +1070,18 @@ func (s *SecretStore) AddRecipient(ctx context.Context, r ports.Recipient) error
 	return nil
 }
 
+// SetMachineRecipient replaces this machine's own recipient, for a test whose
+// documents are encrypted to a real identity.
+func (s *SecretStore) SetMachineRecipient(publicKey string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, r := range s.recipients {
+		if r.Kind == ports.RecipientMachine {
+			s.recipients[i].PublicKey = publicKey
+		}
+	}
+}
+
 func (s *SecretStore) RemoveRecipient(ctx context.Context, r ports.Recipient) error {
 	if err := s.fail("RemoveRecipient"); err != nil {
 		return err
