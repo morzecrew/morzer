@@ -161,7 +161,7 @@ problem can still publish a row saying exactly that.
 | `last_operation` | id, kind, outcome and when |
 | `signing_key` | the public half, for comparing a fingerprint by eye |
 | `age_recipient` | this machine's age public key, which an authority encrypts [desired-state documents](desired-state.md) to; trusted only from a row that verifies against the [roster](#the-roster) |
-| `sync` | whether the machine follows an authority, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when it follows none |
+| `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured |
 | `published_at` | when this row was written |
 
 Rows are schema 2, which added `age_recipient` and `sync`. A manager that reads
@@ -364,7 +364,7 @@ list rather than one line per hazard:
 | --- | --- |
 | `backup.targets` | write into production's bucket — and fleet rows go to the same targets, so this covers them too |
 | `notify.targets` | report into production's alerting; a webhook URL is itself the credential, and it travels in the export |
-| `sync.target` | read production's [desired-state documents](desired-state.md), which the matching id addresses; the rest of `sync.*` goes with it |
+| `sync.*` | read production's [desired-state documents](desired-state.md), which the matching id addresses; every sync setting and serial goes, target or not |
 
 The list is a list because the second thing to drop was the same field as the
 first, by luck. Every field of an installation is classified in a test, so a

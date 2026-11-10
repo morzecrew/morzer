@@ -88,13 +88,14 @@ func SandboxDrops() []SandboxDrop {
 			// A sandbox keeps production's installation id, so with this
 			// it would read production's documents and apply them, and
 			// report its refusals where production's authority looks
-			// (RFC 0057 decision 16). The whole block goes with the
-			// target: without one there is nothing to follow.
+			// (RFC 0057 decision 16). The whole block goes, target or
+			// not: the authority, the credential's name and the serials
+			// are production's too.
 			Field: "sync.target",
-			Noun:  "sync target",
+			Noun:  "sync configuration",
 			Why:   "follow production's authority",
 			Count: func(i Installation) int {
-				if i.Sync.Target != "" {
+				if i.Sync != (SyncConfig{}) {
 					return 1
 				}
 				return 0

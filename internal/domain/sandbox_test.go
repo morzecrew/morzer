@@ -321,3 +321,16 @@ func TestTheDropSummaryAgreesWithItsCount(t *testing.T) {
 		"dropped 2 backup targets -- a sandbox must not write into production's bucket",
 		domain.DescribeSandboxDrops(dropped))
 }
+
+// A sandbox drops every sync setting, whether or not a target is among them:
+// an authority, a credential name and production's serials are production's.
+func TestASandboxDropsSyncWithoutATarget(t *testing.T) {
+	in := domain.Installation{Sync: domain.SyncConfig{
+		Authority: "RWQkey", Credentials: "sync_s3",
+		Applied: &domain.SyncDocument{Serial: 7},
+	}}
+	out, dropped := in.Sandboxed()
+	assert.Equal(t, domain.SyncConfig{}, out.Sync)
+	require.Len(t, dropped, 1)
+	assert.Equal(t, "sync.target", dropped[0].Field)
+}
