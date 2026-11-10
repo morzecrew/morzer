@@ -313,10 +313,11 @@ func TestAFailedConfigSetRecreatesWithTheOldValue(t *testing.T) {
 		}
 	}
 
-	_, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
 		Set: map[string]string{"log_level": "debug"},
 	})
 	require.Error(t, err)
+	assert.NotContains(t, result.Summary, "re-created", "a change that was undone was reported as live")
 
 	last := h.Runtime.UpConfigs[len(h.Runtime.UpConfigs)-1]
 	assert.NotEqual(t, "debug", last.Env["DEMO_PARAM_LOG_LEVEL"], "the undo re-created the services with the rejected value")
@@ -381,4 +382,26 @@ func TestConfigSetWithEveryServiceBehindAnInactiveProfileRecreatesNothing(t *tes
 	assert.NotContains(t, result.Summary, "declares no dependent services",
 		"the release does declare one")
 	assert.Contains(t, result.Summary, "not in the active profiles, so nothing was re-created")
+}
+
+// A configuration that cannot be read fails `config set` before anything is
+// recorded, and the summary printed with the error does not claim the
+// services were re-created.
+func TestConfigSetFailsBeforeRecordingWhenTheConfigurationCannotBeRead(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	before := len(h.Runtime.UpOptions)
+	h.Runtime.Fail["Validate"] = domain.RuntimeError(nil, "injected: compose configuration is invalid")
+
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.Error(t, err)
+	assert.NotContains(t, result.Summary, "re-created", "a change that never ran was reported as live")
+	assert.Len(t, h.Runtime.UpOptions, before)
+	inst, err := h.Deps.State.LoadInstallation(context.Background())
+	require.NoError(t, err)
+	assert.NotEqual(t, "debug", inst.Parameters["log_level"], "a change that failed before its steps was recorded")
 }

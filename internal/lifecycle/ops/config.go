@@ -209,11 +209,12 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
 
-	out := Result{
-		Record: result.Record,
-		Summary: configSummary(summaryNames(rel, inst.Parameters, next, changed), services, declared,
-			opts.DryRun, running, inst.Stopped != nil),
-		Data: next,
+	out := Result{Record: result.Record, Data: next}
+	// Only for a change that ran: the summary is printed with the error too,
+	// and one that failed or was undone re-created nothing it could claim.
+	if runErr == nil {
+		out.Summary = configSummary(summaryNames(rel, inst.Parameters, next, changed), services, declared,
+			opts.DryRun, running, inst.Stopped != nil)
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
 
