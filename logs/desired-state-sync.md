@@ -470,3 +470,42 @@ checked as rendered unit text, never against a running systemd; and the
 scoped-credential test proves one RustFS policy shape, not every store's.
 
 **Drift count: 1.**
+
+```divergence
+decision: 22
+grade: OPEN
+class: drift
+at: 2026-11-10T20:05:11Z
+attempt: 1
+claim: §5.7 says only a serial newer than a refused one is considered, and the cycle skipped only the refused serial itself. With the refused pair withdrawn, an older document the authority had signed, or an older refused one, passed both checks and was applied. Found in review; fixed in 91570d2d.
+evidence: internal/lifecycle/ops/sync.go:259
+action: decided
+proposal: OPEN, ruled 2026-11-10 — every serial newer than both the last applied and the last refused is tried; one below either is a replay
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T20:05:11Z
+attempt: 1
+claim: as with a local failure before the operation, the RFC is silent on a machine that cannot read its own age identity, and the cycle recorded the authentic document as undecryptable, which is never tried again. A missing, unreadable or malformed identity now fails the cycle and refuses nothing; a ciphertext no identity matches is still refused. Found in review; fixed in bf6b51a4.
+evidence: internal/lifecycle/ops/sync.go:299
+action: decided
+proposal: UNLISTED — an identity this machine cannot read refuses no document; only a ciphertext its identity does not match is undecryptable
+```
+
+## Review, 2026-11-10
+
+Found in review of #335 and fixed, each with a test that failed first:
+the decision 22 drift above; a non-canonical or zero serial (abaf1c4b);
+`init --repair` dropping the sync block (69591510); the wizard's printed
+command without `--sync-*` (509c05f1); hand-edited state not validated
+(e4914996); `.` and `..` as credential names (1f1653b9); the local refusal
+skipped under the lock (c6d6245b); the identity spec-gap above (bf6b51a4); an
+applied document recorded as refused after a unit failure (2650c6f8); a
+no-op document not publishing the row (ca9e9d58); `sync.expired` sent twice
+by two cycles (8ee05261); a sandbox keeping sync settings without a target
+(4ff22896). The acceptance scenario's row-schema check moved to 2 (ba780aaa).
+
+**Drift count: 2.**
