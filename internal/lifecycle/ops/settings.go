@@ -869,19 +869,7 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 	}
 	if plan.profile && len(plan.services) > 0 {
 		plan.converged, plan.under = true, profileName(after.Profiles)
-		keep := stepRestorePoint(d, before, current, true)
-		keep.Description = "keep " + profileName(before.Profiles) + " to bring back on failure"
-		plan.steps = append(plan.steps, keep)
-		// Apply's checks abort, since in `apply` nothing before them
-		// needs undoing. Here the profile is already recorded. Not
-		// record-state, which fails with the new profile's services up
-		// under the new profile's record.
-		for _, step := range applySteps(d, after, plan.rel, Options{ForceRecreate: true}) {
-			if step.OnFailure == engine.Abort && step.ID != "record-state" {
-				step.OnFailure = engine.Compensate
-			}
-			plan.steps = append(plan.steps, step)
-		}
+		plan.steps = append(plan.steps, convergeUnderProfiles(d, before, after, current, plan.rel)...)
 		return plan, nil
 	}
 	plan.steps = append(plan.steps, stepRenderConfiguration(d, after, plan.rel, Options{}))
@@ -889,6 +877,31 @@ func (d *Deps) planSettings(ctx context.Context, before, after domain.Installati
 		plan.steps = append(plan.steps, stepRecreateServices(d, before, after, plan.rel, plan.services))
 	}
 	return plan, nil
+}
+
+// convergeUnderProfiles is a profile change on a running product: a restore
+// point that brings the old profiles' services back on failure, then apply's
+// steps under the new profiles. staged runs between the two, so that its undo
+// comes before the restore point's: `config apply` puts its secrets back there,
+// before the restore point renders them for the old services (RFC 0056 §5.4).
+func convergeUnderProfiles(
+	d *Deps, before, after domain.Installation, current domain.ReleaseRecord, rel domain.Release,
+	staged ...engine.Step,
+) []engine.Step {
+	keep := stepRestorePoint(d, before, current, true)
+	keep.Description = "keep " + profileName(before.Profiles) + " to bring back on failure"
+	steps := append([]engine.Step{keep}, staged...)
+	// Apply's checks abort, since in `apply` nothing before them needs
+	// undoing. Here the profile is already recorded. Not record-state, which
+	// fails with the new profile's services up under the new profile's
+	// record.
+	for _, step := range applySteps(d, after, rel, Options{ForceRecreate: true}) {
+		if step.OnFailure == engine.Abort && step.ID != "record-state" {
+			step.OnFailure = engine.Compensate
+		}
+		steps = append(steps, step)
+	}
+	return steps
 }
 
 // runningServices names each service with a running container, once however
