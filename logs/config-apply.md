@@ -305,3 +305,27 @@ as its caller, the CLI, the tests and the docs.
   failed undo does.
 
 Drift count: 0.
+
+## Review (2026-11-10)
+
+Found by review on #333, missed by the build and the self-audit:
+
+- `load-secrets` kept `apply`'s Abort, so a refused load left the record and
+  the stage in place. It compensates in `config apply` (0c7d7a92).
+- A render cut off part way skipped the undo's re-render. The undo now renders
+  again whenever the render began (0c7d7a92).
+- With nothing running, `config set` said the release declares no dependent
+  services, a regression from P2. It is given the declared services again
+  (11b74d0f).
+- A failed `config set` returned the values it put back as its data
+  (11b74d0f).
+- The docs promised a complete undo without saying what a failed undo
+  leaves, made the health checks unconditional, and said a configuration is
+  rendered before anything is created whatever the change (cb0933cc).
+
+Rule drawn: a step borrowed from `apply` keeps `apply`'s failure mode, which
+assumes nothing before it needs undoing, so it has to be checked step by step
+where something does. `convergeUnderProfiles` already did that for the
+profile path.
+
+Drift count: 0.
