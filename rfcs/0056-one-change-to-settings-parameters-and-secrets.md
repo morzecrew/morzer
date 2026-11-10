@@ -302,7 +302,12 @@ Without a profile change, on a running product:
    write. Undo: save the previous installation.
 2. **stage secrets.** First the previous value and `changed_at` of every
    name the change touches are read into the operation's state. Then each
-   name is set or removed. Undo: §5.5.
+   name is set or removed. Undo: put each name back (§5.5), then render the
+   secret files again from the restored store if they exist. The render is
+   part of this undo because `apply`'s render-secrets undo does not put
+   files back: it keeps them while the product runs and removes the
+   directory when nothing runs (`apply.go:467-473`). Without it, a failure
+   at step 4 would leave the store old and the rendered files new.
 3. **render secrets.** This is `apply`'s step, with its undo.
 4. **render configuration.** This is `apply`'s step. It keeps a backup of
    each file it replaces.
@@ -314,8 +319,13 @@ Without a profile change, on a running product:
 6. **health checks.** This is `apply`'s step. A failure undoes everything
    before it.
 
-With a profile change, the steps are those of `planSettings`. Steps 1 and 2
-come first, and `apply`'s steps follow under the new profiles. While the
+With a profile change, the steps are those of `planSettings`, in this order:
+step 1, then the restore point, then step 2, then `apply`'s steps under the
+new profiles. Step 2 comes after the restore point so that its undo runs
+first. The restore point's undo re-renders the secrets from the store and
+brings the old profiles' services up (`restorePreviousRuntime`,
+`update.go`). With the store not yet put back, those services would start
+with the new secrets. While the
 product is stopped, or nothing runs, steps 5 and 6 are left out. They are
 also left out when the change reaches no service, such as a change of
 settings alone that touches neither the domains nor the profiles. Steps 2 and
@@ -356,8 +366,12 @@ is last-writer-wins, the rule `config set` and `secret edit` already follow
   `configSummary` already is.
 - **The journal record** names every changed setting, parameter and secret in
   its flags, by section, and never a value.
-- **The attestation** is a `config` statement, as `config set` files one
-  (RFC 0025). A secret enters it by name only.
+- **The attestation** is the `config` statement `config set` files, with
+  its schema unchanged (RFC 0025). v3's `config` holds parameter names and a
+  rendered digest (`AttestedConfig`, `attestation.go:219`). Each schema
+  version refuses a field it does not name (`attestation.go:39-44`), so
+  secret names stay out of it. They are in the journal record. A statement
+  that names them is a v4 predicate (§8).
 - **One notification** is sent for the operation.
 - **Exit codes** are the ones `config set` returns: compensated on an
   undone failure, and manual intervention when an undo fails.
@@ -412,6 +426,10 @@ which is exactly when an unfinished operation is likeliest.
   check. The services come up under the new profiles. The same document with
   the health checks failing leaves the old profiles running with the old
   values.
+- **The undo order.** A failure at the configuration render leaves the
+  store and the rendered secret files both old. A profile change that fails
+  its health checks brings the old profiles' services up reading the old
+  secret files.
 - **A rollback keeps `changed_at`.** A secret's `LastChanged` after a failed
   change equals its value before the change. This is a `SecretStore`
   contract leg, run against the fake and against sops-age.
@@ -429,6 +447,8 @@ which is exactly when an unfinished operation is likeliest.
   with several problems, which reports all of them at once.
 - **Sabotage.** Each of these must turn the suite red:
   - drop the secret undo from step 5;
+  - drop the render from the secret stage's undo;
+  - stage the secrets before the restore point;
   - put a secret back with `Set`;
   - restore the encrypted file whole;
   - leave the health checks out.
@@ -458,6 +478,10 @@ which is exactly when an unfinished operation is likeliest.
   `morzer update`, which has its own plan and rollback.
 - **Recipients.** Adding or removing one re-encrypts the state and is not a
   change to the deployment.
+- **Secret names in the attestation.** The v3 `config` predicate has no
+  field for them and refuses one it does not name. Naming them is a v4
+  predicate, with a schema an auditor validates against, and belongs to RFC
+  0025.
 - **Several documents, or several installations, in one call.**
 
 ## 9. Risks
@@ -499,9 +523,9 @@ exact plan text and the order of validation messages.
 | 6 | `ASSUMED` | What is touched (§5.3): a profile change runs `apply`'s steps behind a restore point. Otherwise, while running, the union of every running service on a domain change, the parameters' declared services and the secrets' dependents is kept to what `startedServices` lists after the change, and re-created. A change of secrets alone restarts. While stopped, or before anything is created, nothing is converged. |
 | 7 | `ASSUMED` | A secret is put back by name, with its previous value and `changed_at`, through a new `SecretStore.Restore`. A name that was absent is removed. It is not a byte restore of the encrypted file, which would undo a concurrent `secret set` of another name (§5.5). |
 | 8 | `ASSUMED` | The release's health checks run after the converge, and their failure undoes the change. `config set` today relies on `up --wait` alone. |
-| 9 | `ASSUMED` | The re-create's undo puts back the secrets, the rendered secret files and the configuration files before it re-creates with the previous installation. The engine undoes the failed step first, as `stepRecreateServices` already handles for configuration files (#239). |
+| 9 | `ASSUMED` | The re-create's undo puts back the secrets, the rendered secret files and the configuration files before it re-creates with the previous installation. The engine undoes the failed step first, as `stepRecreateServices` already handles for configuration files (#239). The secret stage's own undo also renders the files again, since `apply`'s render-secrets undo never puts them back. On a profile change the stage comes after the restore point, so its undo runs before the restore point brings the old services up (§5.4). |
 | 10 | `ASSUMED` | `--dry-run` prints the steps and the configuration diff. A secret appears by name with `set` or `removed`, never a value, a length or a fingerprint. |
-| 11 | `ASSUMED` | The journal record names every changed name by section in its flags, never a value. The operation is attested as a `config` operation (RFC 0025) and sends one notification. |
+| 11 | `ASSUMED` | The journal record names every changed name by section in its flags, never a value. The operation files the `config` statement `config set` files, with the v3 predicate unchanged, so secret names are in the journal and not the attestation (§5.6). It sends one notification. |
 | 12 | `ASSUMED` | A setting that changes the supervisor's units reconciles them after the operation succeeds, as `SetSettings` does. A failure there is reported, not undone. |
 | 13 | `ASSUMED` | The command is `config apply`, because it is a `config` operation and reads as one. Rejected: `config change`, and an `apply` flag, which RFC 0027 decision 3 reserves for a desired state. Risk: read as `morzer apply` (§9). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
 | 14 | `ASSUMED` | `config set` of a parameter becomes a one-name caller of this operation, as P2, and with it `config unset` of a parameter and `config edit`. That gives one implementation, and `config set` gains the health checks of decision 8. It also makes `config set` slower by the time the checks take. `config set` of a setting keeps `SetSettings`, which is deliberately not an engine operation for a setting that reaches no service (§5.7). Was `OPEN`; ruled by the author 2026-11-10: as recommended. |
