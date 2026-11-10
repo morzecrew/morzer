@@ -56,13 +56,6 @@ func (c SyncConfig) SyncInterval() time.Duration {
 	return DefaultSyncInterval
 }
 
-// IsZero reports whether nothing about sync is configured or recorded.
-func (c SyncConfig) IsZero() bool {
-	return c.Target == "" && c.Credentials == "" && c.Authority == "" &&
-		c.Interval == "" && !c.Enabled && c.Applied == nil && c.Refused == nil && c.LastFetch == nil &&
-		c.LastReached.IsZero()
-}
-
 // SyncDocument is one document's serial and what became of it.
 type SyncDocument struct {
 	Serial         int64  `yaml:"serial" json:"serial"`

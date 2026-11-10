@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -616,4 +617,114 @@ func TestACyclePublishesTheRowWhenItsOutcomeIsNews(t *testing.T) {
 	require.NoError(t, os.Remove(rowPath))
 	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
 	assert.NoFileExists(t, rowPath, "a cycle with nothing new published a row")
+}
+
+// failingObjects is a target that answers the listing or the fetch with err.
+type failingObjects struct {
+	ports.ObjectStore
+	list, get error
+}
+
+func (f failingObjects) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix string) ([]string, error) {
+	if f.list != nil {
+		return nil, f.list
+	}
+	return f.ObjectStore.ObjectKeys(ctx, ref, prefix)
+}
+
+func (f failingObjects) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	if f.get != nil {
+		return nil, f.get
+	}
+	return f.ObjectStore.GetObject(ctx, ref, key)
+}
+
+// A target that does not answer, or loses a pair between the listing and the
+// fetch, changes nothing and refuses nothing.
+func TestATargetThatFailsPartWayChangesNothing(t *testing.T) {
+	for name, tc := range map[string]struct {
+		objects func(ports.ObjectStore) ports.ObjectStore
+		want    domain.SyncOutcome
+		reached bool
+	}{
+		"the listing fails": {
+			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, list: assert.AnError} },
+			want:    domain.SyncUnreachable,
+		},
+		"the fetch fails": {
+			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, get: assert.AnError} },
+			want:    domain.SyncUnreachable, reached: true,
+		},
+		"the pair is gone by the fetch": {
+			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, get: fs.ErrNotExist} },
+			want:    domain.SyncAbsent, reached: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newSyncRig(t)
+			r.publish(t, 170, "parameters:\n  log_level: debug\n")
+			r.h.Deps.Objects = tc.objects(r.h.Deps.Objects)
+			assert.Equal(t, tc.want, r.syncOK(t).Result)
+			state := r.state(t)
+			assert.Nil(t, state.Refused)
+			assert.Nil(t, state.Applied)
+			assert.Equal(t, tc.want, state.LastFetch.Result)
+			assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"])
+		})
+	}
+}
+
+// An authority re-pinned while a cycle waited for the lock wins: the old key's
+// document is not applied, and its refusal is neither recorded nor notified.
+func TestAnAuthorityRepinnedMidCycleWins(t *testing.T) {
+	repin := func(r *syncRig) func() {
+		once := false
+		return func() {
+			if once {
+				return
+			}
+			once = true
+			inst := installation(t, r.h)
+			inst.Sync.Authority = authorityKey2
+			require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+		}
+	}
+
+	r := newSyncRig(t)
+	r.publish(t, 180, "parameters:\n  log_level: debug\n")
+	r.h.Locker.BeforeAcquire = repin(r)
+	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
+	assert.Nil(t, r.state(t).Applied)
+	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"])
+
+	r = newSyncRig(t)
+	r.publish(t, 181, "parameters:\n  http_port: \"9000\"\n")
+	r.h.Locker.BeforeAcquire = repin(r)
+	assert.Equal(t, domain.SyncUnmanageable, r.syncOK(t).Result)
+	assert.Nil(t, r.state(t).Refused, "the old key's refusal was recorded under the new key")
+	assert.Empty(t, r.notified.kinds())
+}
+
+// A dry run fetches, verifies and plans, and changes and records nothing.
+func TestADryRunAppliesAndRecordsNothing(t *testing.T) {
+	r := newSyncRig(t)
+	dry := ops.SyncOptions{Options: ops.Options{DryRun: true}}
+
+	r.publish(t, 190, "parameters:\n  log_level: debug\n")
+	report, err := ops.SyncNow(context.Background(), r.h.Deps, dry)
+	require.NoError(t, err)
+	assert.Equal(t, domain.SyncOK, report.Result)
+	assert.True(t, report.DryRun)
+	assert.Equal(t, "would apply desired-state document 190", report.Summary())
+	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"])
+	assert.Nil(t, r.state(t).Applied)
+
+	r.publish(t, 191, "parameters:\n  http_port: \"9000\"\n")
+	report, err = ops.SyncNow(context.Background(), r.h.Deps, dry)
+	require.NoError(t, err)
+	assert.Equal(t, domain.SyncUnmanageable, report.Result)
+	state := r.state(t)
+	assert.Nil(t, state.Refused)
+	assert.Nil(t, state.LastFetch)
+	assert.Empty(t, r.notified.kinds())
 }

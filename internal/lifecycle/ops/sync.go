@@ -463,12 +463,12 @@ func (d *Deps) refuseDocument(
 		Step: refusal.step, Class: refusal.class, Names: refusal.names,
 		OperationID: domain.AsError(refusal.err).OpID, Message: message,
 	}
-	err := d.updateSync(ctx, inst.Sync.Authority, opts, func(s *domain.SyncConfig) {
+	wrote, err := d.updateSync(ctx, inst.Sync.Authority, opts, func(s *domain.SyncConfig) {
 		s.Refused = &refused
 		s.LastFetch = &domain.SyncFetch{At: now, Result: refusal.result}
 		s.LastReached = now
 	})
-	if err == nil {
+	if wrote {
 		d.notify(ctx, events.SyncRefused(inst.Product, refused))
 	}
 	return report, err
@@ -483,33 +483,39 @@ func (d *Deps) recordFetch(
 		return nil
 	}
 	wasExpired := inst.Sync.LastFetch != nil && inst.Sync.LastFetch.Result == domain.SyncExpired
-	err := d.updateSync(ctx, inst.Sync.Authority, opts, func(s *domain.SyncConfig) {
+	wrote, err := d.updateSync(ctx, inst.Sync.Authority, opts, func(s *domain.SyncConfig) {
 		s.LastFetch = &domain.SyncFetch{At: now, Result: outcome}
 		if outcome != domain.SyncUnreachable {
 			s.LastReached = now
 		}
 	})
-	if err == nil && outcome == domain.SyncExpired && !wasExpired && inst.Sync.Applied != nil {
+	if wrote && outcome == domain.SyncExpired && !wasExpired && inst.Sync.Applied != nil {
 		d.notify(ctx, events.SyncExpired(inst.Product, *inst.Sync.Applied))
 	}
 	return err
 }
 
 // updateSync changes the sync record under the lock, from the installation as
-// it stands. Nothing is written when the authority was re-pinned meanwhile:
-// what this cycle found belongs to the old key.
-func (d *Deps) updateSync(ctx context.Context, authority string, opts SyncOptions, change func(*domain.SyncConfig)) error {
-	return d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
+// it stands, and reports whether it wrote. Nothing is written when the
+// authority was re-pinned meanwhile: what this cycle found belongs to the old
+// key, and so is nothing to notify about either.
+func (d *Deps) updateSync(
+	ctx context.Context, authority string, opts SyncOptions, change func(*domain.SyncConfig),
+) (bool, error) {
+	wrote := false
+	err := d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, opts.Options, func(ctx context.Context) error {
 		inst, err := d.loadInstallation(ctx)
-		if err != nil {
+		if err != nil || inst.Sync.Authority != authority {
 			return err
 		}
-		if inst.Sync.Authority != authority {
-			return nil
-		}
 		change(&inst.Sync)
-		return d.saveInstallation(ctx, inst)
+		if err := d.saveInstallation(ctx, inst); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
 	})
+	return wrote, err
 }
 
 // refuseManagedLocally refuses a local change to a name the release lets an
