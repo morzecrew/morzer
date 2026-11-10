@@ -648,16 +648,22 @@ func TestATargetThatFailsPartWayChangesNothing(t *testing.T) {
 		reached bool
 	}{
 		"the listing fails": {
-			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, list: assert.AnError} },
-			want:    domain.SyncUnreachable,
+			objects: func(o ports.ObjectStore) ports.ObjectStore {
+				return failingObjects{ObjectStore: o, list: assert.AnError}
+			},
+			want: domain.SyncUnreachable,
 		},
 		"the fetch fails": {
-			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, get: assert.AnError} },
-			want:    domain.SyncUnreachable, reached: true,
+			objects: func(o ports.ObjectStore) ports.ObjectStore {
+				return failingObjects{ObjectStore: o, get: assert.AnError}
+			},
+			want: domain.SyncUnreachable, reached: true,
 		},
 		"the pair is gone by the fetch": {
-			objects: func(o ports.ObjectStore) ports.ObjectStore { return failingObjects{ObjectStore: o, get: fs.ErrNotExist} },
-			want:    domain.SyncAbsent, reached: true,
+			objects: func(o ports.ObjectStore) ports.ObjectStore {
+				return failingObjects{ObjectStore: o, get: fs.ErrNotExist}
+			},
+			want: domain.SyncAbsent, reached: true,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
