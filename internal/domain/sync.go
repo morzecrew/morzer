@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"encoding/base64"
+	"encoding/binary"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,7 +46,7 @@ type SyncConfig struct {
 	// LastFetch is the last cycle's outcome, and LastReached when the
 	// target last answered, which `doctor` compares with Interval.
 	LastFetch   *SyncFetch `yaml:"last_fetch,omitempty" json:"last_fetch,omitempty"`
-	LastReached Time       `yaml:"last_reached,omitempty" json:"last_reached,omitempty"`
+	LastReached Time       `yaml:"last_reached,omitempty" json:"last_reached,omitzero"`
 }
 
 // DefaultSyncInterval is how often a machine fetches when it is not told.
@@ -72,12 +75,23 @@ type SyncDocument struct {
 
 	// ExpiresAt is the document's own expiry, for an applied one, so that
 	// `doctor` can say the authority has gone quiet.
-	ExpiresAt Time `yaml:"expires_at,omitempty" json:"expires_at,omitempty"`
+	ExpiresAt Time `yaml:"expires_at,omitempty" json:"expires_at,omitzero"`
 
-	// Step and Class say where and why a refused one stopped. Never the
-	// error's text, which can quote a parameter value (decision 23).
-	Step  string `yaml:"step,omitempty" json:"step,omitempty"`
-	Class string `yaml:"class,omitempty" json:"class,omitempty"`
+	// Step, Class and Names say where and why a refused one stopped, and
+	// which names it involved. Never the error's text, which can quote a
+	// parameter value (decision 23).
+	Step  string   `yaml:"step,omitempty" json:"step,omitempty"`
+	Class string   `yaml:"class,omitempty" json:"class,omitempty"`
+	Names []string `yaml:"names,omitempty" json:"names,omitempty"`
+
+	// OperationID is the operation that applied or refused it, when one
+	// ran, whose journal record holds the full account.
+	OperationID string `yaml:"operation_id,omitempty" json:"operation_id,omitempty"`
+
+	// Message is the refusal's own text, redacted of secret values, for
+	// `sync status`. Local only: it can quote a parameter value, so the
+	// fleet row's block is built field by field and never carries it.
+	Message string `yaml:"message,omitempty" json:"message,omitempty"`
 }
 
 // SyncFetch is what one cycle found at the target.
@@ -185,4 +199,15 @@ func ParseDesiredStateKey(prefix, key string) (serial int64, sig bool, ok bool) 
 		return n, false, err == nil
 	}
 	return 0, false, false
+}
+
+// MinisignKeyID is the id of a minisign public key as minisign prints it: the
+// eight id bytes read as a little-endian integer, in uppercase hex. Empty when
+// key is not one.
+func MinisignKeyID(key string) string {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(key))
+	if err != nil || len(raw) != 42 || raw[0] != 'E' || raw[1] != 'd' {
+		return ""
+	}
+	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(raw[2:10]))
 }

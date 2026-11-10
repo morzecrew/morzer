@@ -149,8 +149,16 @@ type changeExtras struct {
 	// step's one write, so the fields commit with the change and are undone
 	// with it. A sync's serial goes here (RFC 0057 decision 25). Set, the
 	// record step runs even for a change of secrets alone, and the fields
-	// are written even when no value changes.
-	record func(*domain.Installation)
+	// are written even when no value changes. Called under the lock, so an
+	// error here, such as a serial another sync has since applied, stops
+	// the change before anything runs.
+	record func(*domain.Installation) error
+
+	// check refuses the change against the release it would apply under,
+	// before it is planned: a sync's managed names (RFC 0057 §5.6). Run
+	// again under the lock, because a release installed while this waited
+	// is the one the change applies under.
+	check func(rel domain.Release, hasRel bool) error
 
 	// desiredState is the document a sync applied, which its statement
 	// names (RFC 0057 decision 15). Set, the statement is filed whether or
@@ -169,6 +177,11 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 	inst, rel, hasRel, err := d.changeTarget(ctx, change)
 	if err != nil {
 		return run, err
+	}
+	if extras.check != nil {
+		if err := extras.check(rel, hasRel); err != nil {
+			return run, err
+		}
 	}
 	planned, err := d.planChange(ctx, inst, rel, hasRel, change, opts.Force)
 	if err != nil {
@@ -196,11 +209,18 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		if inst, rel, hasRel, err = d.changeTarget(ctx, change); err != nil {
 			return err
 		}
+		if extras.check != nil {
+			if err := extras.check(rel, hasRel); err != nil {
+				return err
+			}
+		}
 		if planned, err = d.planChange(ctx, inst, rel, hasRel, change, opts.Force); err != nil {
 			return err
 		}
 		if extras.record != nil {
-			extras.record(&planned.after)
+			if err := extras.record(&planned.after); err != nil {
+				return err
+			}
 		}
 		run.before, run.after, run.rel, run.names = inst, planned.after, rel, planned.names
 		if planned.names.empty() {
