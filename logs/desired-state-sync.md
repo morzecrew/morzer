@@ -319,3 +319,63 @@ evidence: internal/domain/attestation.go:444
 action: departed
 proposal: ASSUMED — a sync's operation always files its statement with desired_state; the rendered digest is present only when it rendered the configuration
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T18:41:36Z
+attempt: 1
+claim: §5.8 says a pair whose name and comment disagree is refused as bad-signature, and §5.7 that a refused serial is not retried, without saying whether a pair that fails its signature is recorded as refused. Its serial is anybody's who can write to the bucket, so recording it would let a writer with no key refuse serials on the authority's behalf. A bad-signature outcome is recorded in last_fetch only, and only a serial whose signature verified is ever recorded as refused. Entry written after the code, in the same commit.
+evidence: internal/lifecycle/ops/sync.go:29-33
+action: decided
+proposal: UNLISTED — only an authenticated serial is recorded as refused; a pair that fails its signature, or whose signed comment names another installation or serial, moves no watermark
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-10T18:41:36Z
+attempt: 1
+claim: §5.5 says `sync now` runs one cycle immediately and does not say whether it runs while sync.enabled is false. A cycle applies documents, and the switch is the operator's way to stop that, so `sync now` is refused while the switch is off. Entry written after the code, in the same commit.
+evidence: internal/lifecycle/ops/sync.go:100-102
+action: decided
+proposal: UNLISTED — `sync now` is refused while sync.enabled is false, with the settings that turn it on as the hint
+```
+
+```divergence
+decision: 23
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-10T18:41:36Z
+attempt: 1
+claim: decision 23 keeps a refusal's full message "in the local journal", but a document refused before its operation ran (decrypt, parse, expiry, managed names) has no journal record. The message, redacted of secret values, is kept beside the refusal in installation state, with the operation id when one ran. The fleet row's block is built field by field and never carries it.
+evidence: internal/domain/sync.go:91-94
+action: departed
+proposal: ASSUMED — the refusal's message is kept in local state beside the refused serial, never in the row
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-10T18:41:36Z
+attempt: 1
+claim: an object store's listing prefix may not end in a slash (blob.guardObjectKey refuses what path.Clean changes), so the documents prefix is listed as `state/<product>/<id>` and the keys are filtered by the slashed prefix. A scoped read credential's policy names that prefix, which the docs say.
+evidence: internal/adapters/target/blob/object.go:89-98
+action: decided
+proposal: UNLISTED — the machine lists `state/<product>/<id>` and reads only keys directly under `state/<product>/<id>/`
+```
+
+```divergence
+decision: 6
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-10T18:41:36Z
+attempt: 1
+claim: decision 6 is missing from the plan for PR A, and it is machine side. It says a local `config set` on a managed name "warns while sync is enabled ... --force proceeds", which only means something if, without --force, the change does not proceed. It is built as a refusal naming the authority's key id, which --force overrides, for `config set` and `config apply`. The `secret` commands stay as they are (RFC 0056 decision 15).
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:817
+action: departed
+proposal: ASSUMED — while sync is enabled, a local `config set` or `config apply` naming a managed parameter or setting is refused unless --force, with the authority named; `secret set` is unchanged
+```

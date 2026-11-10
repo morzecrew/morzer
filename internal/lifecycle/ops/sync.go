@@ -463,3 +463,27 @@ func (d *Deps) updateSync(ctx context.Context, authority string, opts SyncOption
 		return d.saveInstallation(ctx, inst)
 	})
 }
+
+// refuseManagedLocally refuses a local change to a name the release lets an
+// authority manage, while this installation follows one (decision 6): the
+// authority's next document would set it back. --force proceeds.
+func refuseManagedLocally(inst domain.Installation, rel domain.Release, hasRel bool, change ConfigChange, force bool) error {
+	if force || !inst.Sync.Enabled || !hasRel {
+		return nil
+	}
+	var managed []string
+	for _, section := range []string{"settings", "parameters", "secrets"} {
+		for _, name := range changeSection(change, section) {
+			if rel.Manifest.Managed.Allows(section, name) {
+				managed = append(managed, sectionName(section, name))
+			}
+		}
+	}
+	if len(managed) == 0 {
+		return nil
+	}
+	return domain.Usage("%s managed by the authority this installation follows (key %s)",
+		strings.Join(managed, ", "), domain.MinisignKeyID(inst.Sync.Authority)).
+		WithHint("change it in what the authority publishes; --force changes it here, " +
+			"until the authority's next document sets it back")
+}

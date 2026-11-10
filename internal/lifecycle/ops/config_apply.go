@@ -182,6 +182,8 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		if err := extras.check(rel, hasRel); err != nil {
 			return run, err
 		}
+	} else if err := refuseManagedLocally(inst, rel, hasRel, change, opts.Force); err != nil {
+		return run, err
 	}
 	planned, err := d.planChange(ctx, inst, rel, hasRel, change, opts.Force)
 	if err != nil {

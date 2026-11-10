@@ -731,6 +731,27 @@ type SetSettingsOptions struct {
 	Unset []string
 }
 
+// refuseManagedSettings is decision 6 of RFC 0057 for settings, which reads
+// the release only when a changed setting could be managed at all.
+func (d *Deps) refuseManagedSettings(ctx context.Context, inst domain.Installation, changed []string, force bool) error {
+	if force || !inst.Sync.Enabled || !slices.ContainsFunc(changed, domain.IsManageableSetting) {
+		return nil
+	}
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return err
+	}
+	rel, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		return err
+	}
+	change := ConfigChange{Settings: map[string]string{}}
+	for _, name := range changed {
+		change.Settings[name] = ""
+	}
+	return refuseManagedLocally(inst, rel, true, change, force)
+}
+
 // SetSettings records installation settings.
 //
 // Not an engine operation, and the difference from ConfigSet is the reason: a
@@ -797,6 +818,9 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		return Result{}, err
 	}
 	if err := checkSyncPolicy(next); err != nil {
+		return Result{}, err
+	}
+	if err := d.refuseManagedSettings(ctx, inst, changed, opts.Force); err != nil {
 		return Result{}, err
 	}
 

@@ -425,3 +425,36 @@ func TestADocumentAppliedWhileACycleWaitedIsNotAppliedTwice(t *testing.T) {
 	assert.Len(t, configRecords(t, r.h), before)
 	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"])
 }
+
+// While sync is on, a local change to a name the authority manages is refused
+// unless forced (decision 6): the authority's next document would set it back.
+// Names it does not manage change as before.
+func TestALocalChangeToAManagedNameNeedsForce(t *testing.T) {
+	r := newSyncRig(t)
+	ctx := context.Background()
+
+	_, err := ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "log_level managed by the authority this installation follows (key "+
+		domain.MinisignKeyID(r.key)+")")
+	_, err = configApply(t, r.h, "secrets:\n  db_password: changed-here\n", ops.Options{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "secret db_password managed by the authority")
+	_, err = ops.SetSettings(ctx, r.h.Deps, ops.SetSettingsOptions{Set: map[string]string{"installation.domains": "other.example"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "installation.domains managed by the authority")
+
+	_, err = ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"http_port": "9000"}})
+	require.NoError(t, err, "a name the authority does not manage was refused")
+	_, err = ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{
+		Options: ops.Options{Force: true}, Set: map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "debug", installation(t, r.h).Parameters["log_level"])
+
+	inst := installation(t, r.h)
+	inst.Sync.Enabled = false
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+	_, err = ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "warn"}})
+	require.NoError(t, err, "a managed name was refused with sync off")
+}
