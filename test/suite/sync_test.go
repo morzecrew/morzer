@@ -764,3 +764,41 @@ func TestDoctorIsNotFooledByAVeryLongInterval(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", findCheck(t, report, "sync.authority").Status)
 }
+
+// The local refusal of a managed name holds under the lock: sync turned on
+// while a change waited for it is sync on for that change.
+func TestALocalChangeIsRefusedWhenSyncTurnsOnWhileItWaits(t *testing.T) {
+	ctx := context.Background()
+	for name, change := range map[string]func(r *syncRig) error{
+		"config set": func(r *syncRig) error {
+			_, err := ops.ConfigSet(ctx, r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+			return err
+		},
+		"a setting": func(r *syncRig) error {
+			_, err := ops.SetSettings(ctx, r.h.Deps, ops.SetSettingsOptions{
+				Set: map[string]string{"installation.domains": "other.example"},
+			})
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newSyncRig(t)
+			inst := installation(t, r.h)
+			inst.Sync.Enabled = false
+			require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+			once := false
+			r.h.Locker.BeforeAcquire = func() {
+				if once {
+					return
+				}
+				once = true
+				on := installation(t, r.h)
+				on.Sync.Enabled = true
+				require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, on))
+			}
+			err := change(r)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "managed by the authority")
+		})
+	}
+}

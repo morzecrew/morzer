@@ -878,6 +878,11 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if err := checkSyncPolicy(fresh); err != nil {
 			return err
 		}
+		// Again under the lock: sync turned on while this waited is
+		// sync on for this change.
+		if err := d.refuseManagedSettings(ctx, prior, changed, opts.Force); err != nil {
+			return err
+		}
 
 		switch {
 		case len(changed) > 0 && journalled(prior, fresh):
