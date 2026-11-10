@@ -301,6 +301,13 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Compose refuses to bring up a service no file of the configuration
+	// defines, as Restart does, and starts nothing (#328).
+	for _, name := range opts.Services {
+		if !r.defines(name) {
+			return domain.RuntimeError(fmt.Errorf("no such service: %s", name), "cannot start services")
+		}
+	}
 	r.UpCount++
 	r.UpConfigs = append(r.UpConfigs, cfg)
 	r.UpOptions = append(r.UpOptions, opts)
@@ -356,12 +363,20 @@ func (r *Runtime) Restart(ctx context.Context, cfg ports.RuntimeConfig, services
 	// container, it skips; here that is a service with an image that
 	// ValidateResult leaves out, as ServiceImages reads it.
 	for _, name := range services {
-		if _, defined := r.Images[name]; !defined && !slices.Contains(r.ValidateResult.Services, name) {
+		if !r.defines(name) {
 			return domain.RuntimeError(fmt.Errorf("no such service: %s", name), "cannot restart services")
 		}
 	}
 	r.Calls = append(r.Calls, "Restart:"+strings.Join(services, ","))
 	return nil
+}
+
+// defines reports whether a file of the configuration defines the service:
+// one it starts, or one with an image that ValidateResult leaves out, behind
+// a Compose profile. Called with r.mu held.
+func (r *Runtime) defines(name string) bool {
+	_, behindProfile := r.Images[name]
+	return behindProfile || slices.Contains(r.ValidateResult.Services, name)
 }
 
 func (r *Runtime) Stop(ctx context.Context, cfg ports.RuntimeConfig, services []string, timeout time.Duration) error {
