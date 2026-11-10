@@ -734,3 +734,19 @@ func TestADryRunAppliesAndRecordsNothing(t *testing.T) {
 	assert.Nil(t, state.LastFetch)
 	assert.Empty(t, r.notified.kinds())
 }
+
+// Only a serial newer than the last refused is considered (§5.7). With the
+// refused pair withdrawn, an older document the authority signed is not
+// applied in its place, and neither is an older refused one.
+func TestNothingAtOrBelowTheLastRefusedIsConsidered(t *testing.T) {
+	r := newSyncRig(t)
+	r.publish(t, 200, "parameters:\n  log_level: debug\n")
+	r.publish(t, 210, "parameters:\n  http_port: \"9000\"\n")
+	assert.Equal(t, domain.SyncUnmanageable, r.syncOK(t).Result)
+
+	require.NoError(t, os.RemoveAll(filepath.Join(r.offsite, "state")))
+	r.publish(t, 200, "parameters:\n  log_level: debug\n")
+	assert.Equal(t, domain.SyncReplay, r.syncOK(t).Result)
+	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"],
+		"a document older than the one refused was applied")
+}

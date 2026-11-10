@@ -250,7 +250,10 @@ func (d *Deps) fetchDesiredState(
 	switch {
 	case serial == applied || serial == refused:
 		return doc, currentOrExpired(cfg, keyID, serial, now), nil
-	case serial < applied:
+	case serial < applied || serial < refused:
+		// Only a serial newer than both is considered (§5.7): one the
+		// authority has since superseded, or one older than a refusal,
+		// is not applied in their place.
 		return doc, domain.SyncReplay, nil
 	}
 

@@ -87,7 +87,7 @@ Each tick, or `morzer sync now`:
 1. List the prefix and take the newest complete pair. None: `absent`. No answer:
    `unreachable`.
 2. Compare its serial with the watermark: the same as the last applied or
-   refused is `current`, and lower than the last applied is `replay`.
+   refused is `current`, and lower than either is `replay`.
 3. Verify the signature against `sync.authority`, then check that the trusted
    comment names this product, this installation and the pair's serial.
    Otherwise `bad-signature`.
@@ -112,7 +112,7 @@ one is.
 | `absent` | no complete pair is published | no |
 | `unreachable` | the target did not answer, or an object could not be read, as one over 1 MiB | no |
 | `bad-signature` | the newest pair is not a document the authority signed for this installation and serial | no |
-| `replay` | the newest document is older than the one applied | no |
+| `replay` | the newest document is older than the one applied or the one refused | no |
 | `expired` | the newest document has expired, or the one in force has and nothing newer is published | the newest, when it is the one expired |
 | `undecryptable` | the document is not encrypted to this machine, as after a rebuild | yes |
 | `invalid` | the document does not parse, names another installation inside, or a value is refused | yes |
