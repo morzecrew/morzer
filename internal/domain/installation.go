@@ -1176,6 +1176,18 @@ func (i Installation) Validate() error {
 	// is written, in the same shape as require_signature above -- a machine
 	// that accepts the setting and then refuses to act on every tick is
 	// worse than one that refuses the setting.
+	// The rules `config set` keeps, for state edited by hand: sync on
+	// with nothing to follow, as auto-apply with no signature required
+	// below, and an interval no timer can tick on (RFC 0057 §5.5).
+	if i.Sync.Enabled && (i.Sync.Target == "" || i.Sync.Authority == "") {
+		v.add("sync.enabled", "needs sync.target and sync.authority, or there is nothing to follow")
+	}
+	if i.Sync.Interval != "" {
+		if d, err := time.ParseDuration(i.Sync.Interval); err != nil || d < MinSyncInterval {
+			v.add("sync.interval", "is not a duration of at least %s", MinSyncInterval)
+		}
+	}
+
 	if i.Update.AutoApply && !i.Policy.RequireSignature {
 		v.add("update.auto_apply",
 			"needs policy.require_signature, because it hands the vendor "+

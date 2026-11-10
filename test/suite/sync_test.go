@@ -750,3 +750,17 @@ func TestNothingAtOrBelowTheLastRefusedIsConsidered(t *testing.T) {
 	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"],
 		"a document older than the one refused was applied")
 }
+
+// Three intervals of a very long interval is not a negative duration: a target
+// that answered a moment ago is heard from, whatever the interval.
+func TestDoctorIsNotFooledByAVeryLongInterval(t *testing.T) {
+	r := newSyncRig(t)
+	inst := installation(t, r.h)
+	inst.Sync.Interval = "900000h0m0s"
+	inst.Sync.LastReached = domain.NewTime(r.h.Deps.Now())
+	inst.Sync.LastFetch = &domain.SyncFetch{At: inst.Sync.LastReached, Result: domain.SyncAbsent}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+	report, err := ops.Doctor(context.Background(), r.h.Deps)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", findCheck(t, report, "sync.authority").Status)
+}

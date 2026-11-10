@@ -45,12 +45,17 @@ type SyncConfig struct {
 	LastReached Time       `yaml:"last_reached,omitempty" json:"last_reached,omitzero"`
 }
 
-// DefaultSyncInterval is how often a machine fetches when it is not told.
-const DefaultSyncInterval = 15 * time.Minute
+// DefaultSyncInterval is how often a machine fetches when it is not told, and
+// MinSyncInterval the shortest interval it is ever told.
+const (
+	DefaultSyncInterval = 15 * time.Minute
+	MinSyncInterval     = time.Minute
+)
 
-// SyncInterval is the configured interval, or the default.
+// SyncInterval is the configured interval, or the default for one that is not
+// a duration of at least MinSyncInterval, which Validate refuses anyway.
 func (c SyncConfig) SyncInterval() time.Duration {
-	if d, err := time.ParseDuration(c.Interval); err == nil && d > 0 {
+	if d, err := time.ParseDuration(c.Interval); err == nil && d >= MinSyncInterval {
 		return d
 	}
 	return DefaultSyncInterval

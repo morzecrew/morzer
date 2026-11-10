@@ -75,3 +75,28 @@ func TestMinisignKeyIDIsTheSignersID(t *testing.T) {
 	assert.Empty(t, domain.MinisignKeyID("RWQnot-a-key"))
 	assert.Empty(t, domain.MinisignKeyID(""))
 }
+
+// State edited by hand meets the rules `config set` keeps: sync on needs a
+// target and an authority, as `update.auto_apply` needs a signature
+// requirement, and an interval below a minute is refused rather than handed to
+// a timer as a period of nothing.
+func TestAnInstallationsSyncBlockIsValidated(t *testing.T) {
+	base := domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion, ID: "inst_01", Product: "demo",
+	}
+	require.NoError(t, base.Validate())
+
+	on := base
+	on.Sync = domain.SyncConfig{Enabled: true, Target: "file:///srv/state"}
+	err := on.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sync.enabled")
+
+	fast := base
+	fast.Sync.Interval = "500ms"
+	err = fast.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sync.interval")
+	assert.Equal(t, domain.DefaultSyncInterval, fast.Sync.SyncInterval(),
+		"a reader was handed an interval below the minimum")
+}

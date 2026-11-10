@@ -813,12 +813,14 @@ func (d *Deps) checkSync(inst domain.Installation) preflight.Check {
 				return preflight.OK("sync is not enabled")
 			}
 			now := d.now()
-			silent := 3 * s.SyncInterval()
+			// Divided rather than multiplied, so a very long interval
+			// cannot overflow into a negative window.
+			silent := func(since time.Duration) bool { return since/3 > s.SyncInterval() }
 			switch {
 			case s.LastReached.IsZero() && s.LastFetch != nil:
 				return preflight.Warn("check sync.target and its credential, then `morzer sync now`",
 					"the sync target has never answered")
-			case !s.LastReached.IsZero() && now.Sub(s.LastReached.Time) > silent:
+			case !s.LastReached.IsZero() && silent(now.Sub(s.LastReached.Time)):
 				return preflight.Warn("check sync.target and its credential, then `morzer sync now`",
 					"the sync target has not answered since %s, more than three intervals",
 					s.LastReached.Format(time.RFC3339))

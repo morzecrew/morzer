@@ -488,10 +488,11 @@ var settings = map[string]setting{
 		Stored:      func(i domain.Installation) string { return i.Sync.Interval },
 		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
 			interval, err := time.ParseDuration(strings.TrimSpace(raw))
-			if err != nil || interval < time.Minute {
-				return domain.Usage("%q is not a duration of at least 1m", raw)
+			if err != nil || interval < domain.MinSyncInterval {
+				return domain.Usage("%q is not a duration of at least %s", raw, domain.MinSyncInterval)
 			}
-			i.Sync.Interval = interval.String()
+			// Whole seconds, which is what a timer ticks in.
+			i.Sync.Interval = interval.Round(time.Second).String()
 			return nil
 		},
 		Clear: func(i *domain.Installation) { i.Sync.Interval = "" },

@@ -104,6 +104,10 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	}))
 	got := installation(t, h).Sync
 	assert.Equal(t, "20m0s", got.Interval)
+
+	// Whole seconds, which is what the timer ticks in.
+	require.NoError(t, setSettings(t, h, map[string]string{"sync.interval": "1m0.4s"}))
+	assert.Equal(t, "1m0s", installation(t, h).Sync.Interval)
 	assert.Equal(t, "sync_s3", got.Credentials)
 }
 
