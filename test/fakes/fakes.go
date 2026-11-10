@@ -915,6 +915,24 @@ func (s *SecretStore) Set(ctx context.Context, name string, value domain.Secret)
 	return nil
 }
 
+func (s *SecretStore) Restore(ctx context.Context, name string, value domain.Secret, changedAt time.Time) error {
+	if err := s.fail("Restore"); err != nil {
+		return err
+	}
+	if value.IsEmpty() {
+		return domain.SecretsError(nil, "refusing to restore an empty value for secret %q", name)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values[name] = value.Reveal()
+	if changedAt.IsZero() {
+		delete(s.changed, name)
+	} else {
+		s.changed[name] = changedAt
+	}
+	return nil
+}
+
 func (s *SecretStore) Generate(ctx context.Context, name string, spec ports.GenSpec) error {
 	if err := s.fail("Generate"); err != nil {
 		return err

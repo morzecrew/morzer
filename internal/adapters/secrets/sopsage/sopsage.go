@@ -338,6 +338,33 @@ func (s *Store) Set(ctx context.Context, name string, value domain.Secret) error
 	return s.save(ctx, doc, []string{value.Reveal()})
 }
 
+func (s *Store) Restore(ctx context.Context, name string, value domain.Secret, changedAt time.Time) error {
+	if err := validateName(name); err != nil {
+		return err
+	}
+	if value.IsEmpty() {
+		return domain.SecretsError(nil, "refusing to restore an empty value for secret %q", name)
+	}
+	unlock, err := s.exclusive(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	doc, err := s.load(ctx)
+	if err != nil {
+		return err
+	}
+	doc.Values[name] = value.Reveal()
+	meta := entryMeta{}
+	if !changedAt.IsZero() {
+		meta.ChangedAt = changedAt.UTC().Format(time.RFC3339)
+	}
+	doc.Meta[name] = meta
+
+	return s.save(ctx, doc, []string{value.Reveal()})
+}
+
 func (s *Store) Generate(ctx context.Context, name string, spec ports.GenSpec) error {
 	if err := validateName(name); err != nil {
 		return err
