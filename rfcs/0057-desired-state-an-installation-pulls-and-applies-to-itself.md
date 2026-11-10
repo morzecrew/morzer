@@ -437,6 +437,12 @@ morzer config set sync.enabled=true
 - Changing `sync.authority` is a local, root-only act. A document can never
   carry it (§5.6), so a compromised authority can't hand itself to someone
   else.
+- **The stored serials belong to the authority key** (decision 27). They
+  are kept with the key id that signed them, and changing `sync.authority`
+  clears them, journalled with the change. A compromised authority may have
+  published a very high serial before the operator re-pinned. Without the
+  reset, every ordinary serial from the new authority would be refused
+  against that watermark, so re-pinning alone would not restore sync.
 - `morzer sync now` runs one cycle immediately; `morzer sync status` prints
   the last applied and refused serials with reasons.
 - **`sync.target` takes its own credential**, read-only with listing, and
@@ -679,6 +685,8 @@ need to know what a relay is.
   - a pair whose signature was never written is skipped, and the previous
     document stays in force; a pair whose name and trusted comment disagree
     is refused;
+  - after a document with a very high serial, re-pinning `sync.authority`
+    lets the new authority's ordinary serial apply;
   - expiry;
   - manageability: in the list, out of it, a setting morzer never allows;
   - age round trip to a machine recipient and an extra recipient;
@@ -811,6 +819,7 @@ exact refusal wording and the jitter's distribution.
 | 24 | `ASSUMED` | Each document is cumulative: every value the authority manages for the installation and every name it wants unset, every time. A machine applies only the newest and may miss any before it, so a delta document would lose a change published before it (§5.2). |
 | 25 | `ASSUMED` | The applied serial is written in the operation's record step, in the same installation write as the settings and parameters, for every document, and its undo restores the previous serial. A change and its serial commit together, so a crash cannot leave a change in force under an older watermark that a replay could pass (§5.2). |
 | 26 | `ASSUMED` | A document is a pair named by its serial, `<serial>.age` and `<serial>.age.minisig`, written once, ciphertext first and signature last. A machine applies the highest serial with both objects, and a pair whose name and trusted comment disagree is refused. A publish cut off part way leaves the previous document in force, where two replaced objects would leave a mismatched pair until the authority republished (§5.3). |
+| 27 | `ASSUMED` | The applied and refused serials are stored with the authority key id that signed them, and changing `sync.authority` clears them in the same journalled change. A compromised key's very high serial cannot outlive it and lock out the new authority (§5.5). |
 
 ## 12. Phasing
 
