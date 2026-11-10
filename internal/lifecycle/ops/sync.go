@@ -100,7 +100,10 @@ func SyncNow(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, error)
 		last = inst.Sync.LastFetch.Result
 	}
 	report, err := syncCycle(ctx, d, opts)
+	// A failure of the machine's own records nothing, so it changes no row.
+	recorded := report.Result != domain.SyncFailed || report.Step != ""
 	news := report.Result != last || report.Step != "" || (report.Result == domain.SyncOK && !report.NoChange)
+	news = news && recorded
 	if report.Result != "" && news && !opts.DryRun && report.Skipped == "" {
 		d.publishSyncOutcome(ctx)
 	}
