@@ -1,0 +1,83 @@
+package domain_test
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/morzecrew/morzer/internal/domain"
+)
+
+// What a release lets a desired-state document change (RFC 0057 §5.6).
+
+func managedManifest(managed domain.ManagedSpec) *domain.Manifest {
+	m := validManifestWithParameters(map[string]domain.ParameterSpec{
+		"site": {Type: domain.ParamString},
+	})
+	m.Managed = managed
+	m.Compatibility.MinManagerVersion = domain.MustParseVersion(domain.DesiredStateMinManagerVersion)
+	return m
+}
+
+// `managed` is refused by an older manager, which decodes the manifest
+// strictly, so a release declaring it needs the manager that reads it.
+func TestManagedNeedsTheFloor(t *testing.T) {
+	m := managedManifest(domain.ManagedSpec{Parameters: []string{"site"}})
+	assertNoManagedProblem(t, m)
+
+	m.Compatibility.MinManagerVersion = domain.MustParseVersion("0.15.0")
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be at least "+domain.DesiredStateMinManagerVersion+
+		", because the release declares managed")
+
+	plain := validManifestWithParameters(map[string]domain.ParameterSpec{"site": {Type: domain.ParamString}})
+	if err := plain.Validate(); err != nil {
+		assert.NotContains(t, err.Error(), "managed")
+	}
+}
+
+func TestManagedNamesWhatTheReleaseDeclaresAndNothingMorzerForbids(t *testing.T) {
+	for managed, want := range map[*domain.ManagedSpec]string{
+		{Parameters: []string{"no_such"}}:                 `managed.parameters: names "no_such", which the release does not declare`,
+		{Parameters: []string{"site", "site"}}:            `managed.parameters: names "site" twice`,
+		{Settings: []string{"release.require_signature"}}: `managed.settings: names "release.require_signature"`,
+		{Settings: []string{"sync.authority"}}:            `managed.settings: names "sync.authority"`,
+		{Settings: []string{"update.auto_apply"}}:         `managed.settings: names "update.auto_apply"`,
+		{Secrets: []string{"a", "a"}}:                     `managed.secrets: names "a" twice`,
+	} {
+		err := managedManifest(*managed).Validate()
+		require.Error(t, err, "%+v", *managed)
+		assert.Contains(t, err.Error(), want)
+	}
+
+	ok := managedManifest(domain.ManagedSpec{
+		Parameters: []string{"site"},
+		Secrets:    []string{"token"},
+		Settings:   []string{"installation.profile", "installation.domains"},
+	})
+	assertNoManagedProblem(t, ok)
+	assert.True(t, ok.Managed.Allows("parameters", "site"))
+	assert.True(t, ok.Managed.Allows("settings", "installation.domains"))
+	assert.False(t, ok.Managed.Allows("parameters", "other"))
+	assert.False(t, ok.Managed.Allows("secrets", "site"))
+}
+
+// A managed secret is checked against the schema, which the manifest alone
+// cannot see.
+func TestManagedSecretsAreDeclaredByTheSchema(t *testing.T) {
+	m := managedManifest(domain.ManagedSpec{Secrets: []string{"token", "missing"}})
+	schema := domain.SecretSchema{Secrets: []domain.SecretDeclaration{{Name: "token"}}}
+	assert.Equal(t, []string{"missing"}, m.ManagedSecretsUndeclared(schema))
+}
+
+// assertNoManagedProblem: the smallest manifest the helper builds fails on
+// fields of its own, so only the messages about managed are read.
+func assertNoManagedProblem(t *testing.T, m *domain.Manifest) {
+	t.Helper()
+	if err := m.Validate(); err != nil {
+		assert.NotContains(t, err.Error(), "managed")
+		assert.NotContains(t, err.Error(), "min_manager_version")
+	}
+}
