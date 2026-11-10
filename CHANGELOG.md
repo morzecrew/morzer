@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `config apply` changes settings, parameters and secrets together as one
+  operation, from a document on stdin. It records, renders, re-creates and
+  health-checks once, and puts every value back if a step fails, a secret with
+  the change time it had.
+
+### Changed
+
+- `config set`, `config unset` and `config edit` of a parameter wait for the
+  release's health checks after re-creating its services, and undo the change
+  if a check fails.
+
 ### Fixed
 
 - `config set` no longer fails when a service the parameter declares is behind

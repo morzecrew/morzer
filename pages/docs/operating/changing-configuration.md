@@ -41,13 +41,15 @@ hint:  it declares: http_port, log_level
 
 `config set` is an operation, not a file edit. It takes the deployment lock,
 plans under `--dry-run`, journals before and after each step, and unwinds what
-it changed if a step fails:
+it changed if a step fails. After the re-create it waits for the release's
+health checks, and a check that fails undoes the change:
 
 ```console
 $ morzer config set http_port=9000
-[1/3] record parameters
-[2/3] render configuration
-[3/3] re-create app
+[1/4] record parameters
+[2/4] render configuration
+[3/4] re-create app
+[4/4] wait for health checks
 
 set http_port; re-created app
 ```
@@ -83,12 +85,55 @@ Shows the step list and a diff of any configuration file that would change,
 the same diff [`config diff`](#a-hand-edit-is-replaced) shows. A plan never
 claims a service was re-created; it says what *would* happen.
 
+## Change several at once
+
+A change that touches settings, parameters and secrets together is one
+`config apply`. It reads a change document on stdin and applies all of it as
+one operation, or none of it:
+
+```yaml title="switch-to-openvpn.yaml"
+settings:
+  installation.profile: xdns,openvpn
+parameters:
+  upstream_protocol: openvpn
+secrets:
+  upstream_openvpn: |
+    client
+    remote vpn.example 1194
+```
+
+```sh
+morzer config apply --dry-run < switch-to-openvpn.yaml   # the steps, and the config diff
+morzer config apply < switch-to-openvpn.yaml
+```
+
+Done as three commands, every state in between would have to work on its own:
+the secret set while its profile is off, the profile on while the old upstream
+is still selected. As one operation it is one record, one render, one
+re-create of everything the change reaches, and one health check. If any step
+fails, every value is put back, a secret with the change time it had, and the
+old services come back on the old values.
+
+The summary names what changed and what was re-created or restarted:
+
+```text
+applied installation.profile, upstream_protocol, secret upstream_openvpn and re-created every service under the profiles xdns and openvpn
+```
+
+`config set` and `secret set` stay the simpler tool for one name. `secret set`
+does not take the deployment lock, so it is the one to reach for while an
+operation is stuck. The document is read from stdin and never from argv, so
+pipe a credential from where it lives rather than keeping the document with
+the value in it. [The parameters reference](../reference/parameters.md#several-names-in-one-change)
+has the document's rules.
+
 ## What is not a parameter
 
 | You want to change | How |
 | --- | --- |
 | A port, a log level, a limit | `config set`, if the release declares it |
 | A credential | [`morzer secret`](secrets.md) — never a parameter |
+| Several of these together, a credential included | [`config apply`](#change-several-at-once), one operation for all of them |
 | The deployment profiles | [`config set installation.profile=<names>`](../reference/parameters.md#changing-the-profile), comma-separated, which applies the release under them; `apply --profile` for one run |
 | The keys a release must be signed with | [`release trust add` / `remove`](../reference/release-commands.md#release-trust) |
 | How many pre-update backups to keep | `config set retention.pre_update_backups=<n>` |

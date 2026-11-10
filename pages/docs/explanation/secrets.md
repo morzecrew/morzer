@@ -87,6 +87,7 @@ Deliberately short, and deliberately enumerated:
 | Manager memory | during an operation | the process lifetime |
 | `/run/<product>/secrets/*` | while the product runs | tmpfs, `0400`, cleared on reboot |
 | A `secret edit` session | while your editor is open | its own `0700` directory, overwritten and removed however the editor exits |
+| A `config apply` document | while the operation runs | the manager's memory: read from stdin, never from argv, and never written to disk by the manager |
 
 The tmpfs assumption is load-bearing. On memory-backed storage the bytes are
 pages of RAM: a reboot clears them, and overwriting them destroys them. On a
