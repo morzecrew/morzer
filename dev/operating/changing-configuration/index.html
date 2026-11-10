@@ -878,6 +878,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#change-several-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Change several at once
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-not-a-parameter" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2156,6 +2167,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#change-several-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Change several at once
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-is-not-a-parameter" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2312,11 +2334,13 @@ declare, and a typo is refused by name:</p>
 <h2 id="change-one">Change one<a class="headerlink" href="#change-one" title="Permanent link">&para;</a></h2>
 <p><code>config set</code> is an operation, not a file edit. It takes the deployment lock,
 plans under <code>--dry-run</code>, journals before and after each step, and unwinds what
-it changed if a step fails:</p>
+it changed if a step fails. After the re-create it waits for the release's
+health checks, and a check that fails undoes the change:</p>
 <div class="highlight"><pre><span></span><code><span class="gp">$ </span>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">http_port</span><span class="o">=</span><span class="m">9000</span>
-<span class="go">[1/3] record parameters</span>
-<span class="go">[2/3] render configuration</span>
-<span class="go">[3/3] re-create app</span>
+<span class="go">[1/4] record parameters</span>
+<span class="go">[2/4] render configuration</span>
+<span class="go">[3/4] re-create app</span>
+<span class="go">[4/4] wait for health checks</span>
 
 <span class="go">set http_port; re-created app</span>
 </code></pre></div>
@@ -2360,6 +2384,39 @@ a secret reaches a container as a mounted file, and restarting re-reads it.</p>
 <p>Shows the step list and a diff of any configuration file that would change,
 the same diff <a href="#a-hand-edit-is-replaced"><code>config diff</code></a> shows. A plan never
 claims a service was re-created; it says what <em>would</em> happen.</p>
+<h2 id="change-several-at-once">Change several at once<a class="headerlink" href="#change-several-at-once" title="Permanent link">&para;</a></h2>
+<p>A change that touches settings, parameters and secrets together is one
+<code>config apply</code>. It reads a change document on stdin and applies all of it as
+one operation, or none of it:</p>
+<div class="highlight"><span class="filename">switch-to-openvpn.yaml</span><pre><span></span><code><span class="nt">settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">installation.profile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xdns,openvpn</span>
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">upstream_protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openvpn</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">upstream_openvpn</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">client</span>
+<span class="w">    </span><span class="no">remote vpn.example 1194</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>apply<span class="w"> </span>--dry-run<span class="w"> </span>&lt;<span class="w"> </span>switch-to-openvpn.yaml<span class="w">   </span><span class="c1"># the steps, and the config diff</span>
+morzer<span class="w"> </span>config<span class="w"> </span>apply<span class="w"> </span>&lt;<span class="w"> </span>switch-to-openvpn.yaml
+</code></pre></div>
+<p>Done as three commands, every state in between would have to work on its own:
+the secret set while its profile is off, the profile on while the old upstream
+is still selected. As one operation it is one record, one render, one
+re-create of everything the change reaches, and one health check. If any step
+fails, every value is put back, a secret with the change time it had, and the
+old services come back on the old values. If putting something back fails as
+well, the operation ends needing manual intervention, as any operation whose
+undo fails does, and <code>morzer history</code> shows which step it stopped at.</p>
+<p>The summary names what changed and what was re-created or restarted:</p>
+<div class="highlight"><pre><span></span><code>applied installation.profile, upstream_protocol, secret upstream_openvpn and re-created every service under the profiles xdns and openvpn
+</code></pre></div>
+<p><code>config set</code> and <code>secret set</code> stay the simpler tool for one name. <code>secret set</code>
+does not take the deployment lock, so it is the one to reach for while an
+operation is stuck. The document is read from stdin and never from argv, so
+pipe a credential from where it lives rather than keeping the document with
+the value in it. <a href="../../reference/parameters/#several-names-in-one-change">The parameters reference</a>
+has the document's rules.</p>
 <h2 id="what-is-not-a-parameter">What is not a parameter<a class="headerlink" href="#what-is-not-a-parameter" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2376,6 +2433,10 @@ claims a service was re-created; it says what <em>would</em> happen.</p>
 <tr>
 <td>A credential</td>
 <td><a href="../secrets/"><code>morzer secret</code></a> — never a parameter</td>
+</tr>
+<tr>
+<td>Several of these together, a credential included</td>
+<td><a href="#change-several-at-once"><code>config apply</code></a>, one operation for all of them</td>
 </tr>
 <tr>
 <td>The deployment profiles</td>

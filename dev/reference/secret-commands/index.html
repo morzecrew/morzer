@@ -2498,6 +2498,12 @@ one at a time. A declared service behind a profile that is not active is not
 restarted: it reads the file when the profile is turned on and it is created.
 If the render or the restart fails, the error says the change was stored, and
 the exit code says which failed: <code>6</code> for the render, <code>7</code> for the runtime.</p>
+<p>A secret that changes together with a parameter or a setting, such as the
+credential for an upstream a profile turns on, is one
+<a href="../parameters/#several-names-in-one-change"><code>config apply</code></a> instead: one
+operation that puts every value back if a step fails. <code>secret set</code> takes no
+deployment lock and is not journalled, which keeps it the command for a single
+credential, including while an operation is stuck.</p>
 <h2 id="secret-generate">secret generate<a class="headerlink" href="#secret-generate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>generate<span class="w"> </span>&lt;name&gt;
 </code></pre></div>

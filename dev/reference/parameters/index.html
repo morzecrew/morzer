@@ -1704,6 +1704,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#several-names-in-one-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several names in one change
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#installation-settings-are-not-parameters" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2273,6 +2284,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#several-names-in-one-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several names in one change
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#installation-settings-are-not-parameters" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2647,8 +2669,9 @@ visible in <code>docker inspect</code> or <code>installation.yaml</code> is a se
 <p>See <a href="../../operating/changing-configuration/">Changing configuration</a> for the
 operator's walkthrough. In short:</p>
 <p><code>morzer config set</code> takes the deployment lock, validates the value, records it,
-re-renders the configuration and re-creates the services the release says depend
-on it. A dependant behind a profile that is not active is not re-created: it
+re-renders the configuration, re-creates the services the release says depend
+on it, and then waits for the release's health checks. A check that fails undoes
+the change. With nothing re-created, there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
 reads the value when the profile is turned on and it is created.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>list<span class="w">                    </span><span class="c1"># every parameter, its value, and where it came from</span>
 morzer<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>http_port<span class="w">           </span><span class="c1"># the value alone, for a script</span>
@@ -2666,6 +2689,107 @@ against the bundle:</p>
 http_port            port       9000             installation
 log_level            enum       info             release
 </code></pre></div>
+<h3 id="several-names-in-one-change">Several names in one change<a class="headerlink" href="#several-names-in-one-change" title="Permanent link">&para;</a></h3>
+<p><code>morzer config apply</code> changes settings, parameters and secrets together as one
+operation. It reads a change document on stdin:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">settings</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">installation.profile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xdns,openvpn</span>
+<span class="nt">parameters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">upstream_protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openvpn</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">upstream_openvpn</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">client</span>
+<span class="w">    </span><span class="no">remote vpn.example 1194</span>
+<span class="nt">unset</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">settings</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<span class="w">  </span><span class="nt">parameters</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">legacy_proxy</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">upstream_socks_password</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>apply<span class="w"> </span>&lt;<span class="w"> </span>change.yaml<span class="w">            </span><span class="c1"># apply it</span>
+morzer<span class="w"> </span>config<span class="w"> </span>apply<span class="w"> </span>--dry-run<span class="w"> </span>&lt;<span class="w"> </span>change.yaml<span class="w">  </span><span class="c1"># the steps, and the config diff</span>
+</code></pre></div>
+<p>The document's rules:</p>
+<ul>
+<li><strong>Stdin only.</strong> There is no path argument, so a secret value never reaches
+  argv. A terminal on stdin is refused.</li>
+<li><strong>Strict.</strong> An unknown section, a list or a map where a value goes, a null,
+  a tag, an anchor and an alias are refused, each with its line. A syntax
+  error reports only its line and column, because the parser's message quotes
+  the document and the document holds secret values.</li>
+<li><strong>A value is the text it was written as.</strong> <code>9000</code> and <code>"9000"</code> are the same
+  value, <code>yes</code> stays <code>yes</code>, and <code>1.10</code> is not turned into <code>1.1</code>. The parameter's
+  own type then parses it, as <code>config set</code> does. A <code>text</code> value takes a block
+  scalar (<code>|</code>).</li>
+<li><strong>An empty value is written <code>''</code>.</strong> <code>name:</code> with nothing after it is
+  refused; to remove a value, list the name under <code>unset</code>.</li>
+<li><strong>A secret value loses one trailing newline</strong>, as a piped <code>secret set</code> value
+  does, so <code>|</code> stores the bytes <code>printf '%s\n' "$v" | morzer secret set</code> would.</li>
+<li><strong>At most 1 MiB</strong> in all.</li>
+</ul>
+<p>It is refused whole, before anything changes, for any of these, and every
+problem is listed at once:</p>
+<table>
+<thead>
+<tr>
+<th>Refused</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A setting <code>config set</code> does not know, or a value it refuses</td>
+<td>as <code>config set</code> refuses it</td>
+</tr>
+<tr>
+<td>A parameter the release does not declare, or a value its type refuses</td>
+<td>as <code>config set</code> refuses it</td>
+</tr>
+<tr>
+<td>A secret the release does not declare</td>
+<td><code>secret set</code> would store it unrendered; in a document it is more likely a typo</td>
+</tr>
+<tr>
+<td>An empty secret value</td>
+<td>list it under <code>unset.secrets</code> to remove it</td>
+</tr>
+<tr>
+<td>Unsetting a secret the release declares <code>required</code>, without <code>--force</code></td>
+<td>as <code>secret remove</code> refuses it</td>
+</tr>
+<tr>
+<td>A name both set and unset</td>
+<td>the document says two things about it</td>
+</tr>
+</tbody>
+</table>
+<p>Unsetting a secret the release no longer declares is allowed when one is
+stored, as <code>config unset</code> clears a stale parameter.</p>
+<p>What it touches:</p>
+<ul>
+<li><strong>A profile change on a running product</strong> applies the release under the new
+  profiles, as <a href="#changing-the-profile">changing the profile</a> does, and
+  re-creates every service.</li>
+<li><strong>Otherwise, while it runs</strong>, it re-creates once the union of every running
+  service (on a domain change), the services the changed parameters declare,
+  and the dependents of the changed secrets. Only services the active profiles
+  start are touched.</li>
+<li><strong>A change of secrets alone</strong> restarts their dependents, as <code>secret set</code>
+  does.</li>
+<li><strong>While the product is stopped</strong>, it records, stores and renders, and
+  <code>morzer start</code> brings the services up with the new values. <strong>Before anything
+  is created</strong>, it stores the secrets, and renders the configuration when the
+  change reaches it.</li>
+</ul>
+<p>After a re-create or a restart it waits for the release's health checks. If
+any step fails, every value is put back: the installation, each secret with
+the change time it had, the rendered files, and the services on the old
+values. If putting something back fails too, the operation ends needing manual
+intervention, as any operation whose undo fails does. The journal names what
+changed by section, never a value.</p>
+<p>While containers exist, removing a required secret fails even with <code>--force</code>:
+the secrets are loaded before they are rendered, a release missing a required
+one is refused there, and the change is undone. <code>--force</code> lets a document
+remove one before anything is created.</p>
 <h3 id="installation-settings-are-not-parameters">Installation settings are not parameters<a class="headerlink" href="#installation-settings-are-not-parameters" title="Permanent link">&para;</a></h3>
 <p>A parameter is declared by the vendor and reaches the deployment. An
 <strong>installation setting</strong> is your arrangement with the manager — whether it may
