@@ -289,7 +289,10 @@ type Checker struct{}
 
 func NewChecker() *Checker { return &Checker{} }
 
-var _ ports.SignatureChecker = (*Checker)(nil)
+var (
+	_ ports.SignatureChecker = (*Checker)(nil)
+	_ ports.CommentChecker   = (*Checker)(nil)
+)
 
 // Check reports whether signature was made over data by publicKey.
 func (c *Checker) Check(data []byte, signature []byte, publicKey string) bool {
@@ -303,4 +306,22 @@ func (c *Checker) Check(data []byte, signature []byte, publicKey string) bool {
 	}
 	ok, err := pk.Verify(data, sig)
 	return err == nil && ok
+}
+
+// CheckComment is Check, returning the trusted comment when the signature
+// verified. Verify checks the global signature over the comment too, so the
+// text is the signer's.
+func (c *Checker) CheckComment(data []byte, signature []byte, publicKey string) (string, bool) {
+	pk, err := gominisign.NewPublicKey(strings.TrimSpace(publicKey))
+	if err != nil {
+		return "", false
+	}
+	sig, err := gominisign.DecodeSignature(string(signature))
+	if err != nil {
+		return "", false
+	}
+	if ok, err := pk.Verify(data, sig); err != nil || !ok {
+		return "", false
+	}
+	return strings.TrimPrefix(sig.TrustedComment, "trusted comment: "), true
 }
