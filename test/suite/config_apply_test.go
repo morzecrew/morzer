@@ -502,3 +502,28 @@ func TestARefusedSecretLoadUndoesTheChange(t *testing.T) {
 	assert.Equal(t, "a-real-session-key-value", got)
 	assert.False(t, installation(t, h).Update.Check, "the recorded setting was not undone")
 }
+
+// With nothing running, `config set` says the change waits for the next
+// apply, not that the release declares no dependent services.
+func TestConfigSetWithNothingRunningSaysItWaitsForApply(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "set log_level; nothing is running, so it takes effect on the next `morzer apply`", result.Summary)
+}
+
+// A failed `config set` reports no data: the values it would have recorded
+// were put back, and a JSON reader would take them for what is in force.
+func TestAFailedConfigSetReportsNoValues(t *testing.T) {
+	h := runningHarness(t)
+	h.Health.FailingWaits = 1
+	result, err := ops.ConfigSet(context.Background(), h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"log_level": "debug"},
+	})
+	require.Error(t, err)
+	assert.Nil(t, result.Data, "a failed change reported the values it put back")
+}

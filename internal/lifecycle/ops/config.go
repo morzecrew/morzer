@@ -150,13 +150,21 @@ func ConfigSet(ctx context.Context, d *Deps, opts ConfigSetOptions) (Result, err
 		return Result{}, err
 	}
 
-	out := Result{Record: run.record, Data: run.after.Parameters}
+	out := Result{Record: run.record}
 	// Only for a change that ran: the summary is printed with the error too,
-	// and one that failed or was undone re-created nothing it could claim.
+	// and one that failed or was undone re-created nothing it could claim, nor
+	// recorded the values it would have.
 	if err == nil {
+		// Not running, nothing is filtered: the declared services are what
+		// the next `apply` re-creates.
+		services := run.services
+		if !run.running {
+			services = run.declared
+		}
 		out.Summary = configSummary(
 			summaryNames(run.rel, run.before.Parameters, run.after.Parameters, run.names.parameterNames()),
-			run.services, run.declared, opts.DryRun, run.running, run.stopped)
+			services, run.declared, opts.DryRun, run.running, run.stopped)
+		out.Data = run.after.Parameters
 	}
 	return out, err
 }
