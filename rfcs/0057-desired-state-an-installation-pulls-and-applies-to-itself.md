@@ -29,8 +29,9 @@
   - the manifest gains `managed` and `published`;
   - the installation gains the `sync.*` settings and the last applied and
     refused serials, which is a state schema bump;
-  - the fleet row gains `age_recipient` and a `sync` block, and a signed
-    `facts.age` object is published beside it (decision 14);
+  - the fleet row gains `age_recipient`, a `sync` block and `facts_digest`,
+    and a signed `facts.age` object is published beside it (decisions 14
+    and 28);
   - the attestation predicate gains the document's serial, digest and
     authority key id, which is a v4 predicate (decision 15);
   - new commands: `sync now`, `sync status`, `state publish`, `state ls` and
@@ -390,11 +391,12 @@ unset:
 
 ### 5.4 How the authority learns a machine's recipient
 
-The fleet row gains two public fields:
+The fleet row gains three public fields:
 
 ```json
 "age_recipient": "age1...",          // this machine's, for desired state
 "sync": { ... },                      // §5.9
+"facts_digest": "sha256:...",         // §5.10, the facts object this row vouches for
 ```
 
 The row is already signed by the machine key. The authority trusts that key
@@ -583,8 +585,16 @@ published:
   authority's that is set locally beside `sync.authority`. A short id is not
   for every reader of the bucket. Without `sync.recipient`, nothing is
   published.
-- The facts are signed with the machine key, so the authority knows they
-  come from the key the roster lists for that installation.
+- **The facts are authenticated and bound to the row** (decision 28). The
+  facts object is signed with the machine key, and its trusted comment
+  carries the installation id. The fleet row, signed with the same key,
+  names the facts' digest in `facts_digest`. The authority uses facts only
+  when their signature verifies against the key the roster lists, and their
+  digest is the one the newest verified row names. A bucket writer can put
+  back an older, correctly signed pair; its digest is not the row's, so it
+  is refused. A replayed row is the fleet view's existing staleness, which
+  its publish time shows. Decryption authenticates nothing: anyone who
+  knows the authority's recipient can encrypt to it.
 - Facts are meant to be public halves and addresses. morzer can't tell a
   secret from a fact; a vendor that publishes a credential publishes it to
   the authority, and the docs say so.
@@ -641,8 +651,11 @@ morzer state ls --target s3://bucket/prefix --expect roster.yaml   # rows joined
 - **`ls`** shows, per installation, the applied and refused serials and the
   reasons, which is the read the authority needs to know it worked. A row
   the roster does not list is shown as unexpected, as `fleet ls` shows it.
-- **`state facts`** decrypts an installation's facts with the authority's
-  age identity and prints them, for a manager to read.
+- **`state facts`** checks an installation's facts as decision 28 says
+  before it decrypts them with the authority's age identity and prints
+  them, for a manager to read: the signature against the roster's key, and
+  the digest against the newest verified row's `facts_digest`. A facts
+  object that fails either check is reported and never printed.
 
 A product's own manager (for dotdash, the device roster in its part 7, not
 morzer's `roster.yaml`) is just a
@@ -693,6 +706,9 @@ need to know what a relay is.
   - fleet row fields;
   - facts: the task's output encrypted to `sync.recipient`, a failed run
     keeping the previous facts, nothing published without a recipient;
+  - facts replaced by an older signed pair, and facts a third party
+    encrypted to the authority's recipient: `state facts` refuses both and
+    prints nothing;
   - the dev-mode drop list includes `sync.*`, through the test that already
     classifies every installation field (RFC 0026 decision 7).
 - **`config apply`:** RFC 0056 §6 owns the operation's tests. This RFC adds
@@ -820,6 +836,7 @@ exact refusal wording and the jitter's distribution.
 | 25 | `ASSUMED` | The applied serial is written in the operation's record step, in the same installation write as the settings and parameters, for every document, and its undo restores the previous serial. A change and its serial commit together, so a crash cannot leave a change in force under an older watermark that a replay could pass (§5.2). |
 | 26 | `ASSUMED` | A document is a pair named by its serial, `<serial>.age` and `<serial>.age.minisig`, written once, ciphertext first and signature last. A machine applies the highest serial with both objects, and a pair whose name and trusted comment disagree is refused. A publish cut off part way leaves the previous document in force, where two replaced objects would leave a mismatched pair until the authority republished (§5.3). |
 | 27 | `ASSUMED` | The applied and refused serials are stored with the authority key id that signed them, and changing `sync.authority` clears them in the same journalled change. A compromised key's very high serial cannot outlive it and lock out the new authority (§5.5). |
+| 28 | `ASSUMED` | Facts are used only when their signature verifies against the roster's key for the installation and their digest is the `facts_digest` the newest verified fleet row names. An older signed pair put back by a bucket writer, or facts a writer encrypted to the authority's recipient, are refused. `state facts` checks both before it decrypts or prints anything (§5.10). |
 
 ## 12. Phasing
 
