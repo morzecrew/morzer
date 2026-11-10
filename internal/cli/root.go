@@ -672,6 +672,10 @@ func newRootCommand(app *App) *cobra.Command {
 		// the machines", and an operator who has found one is looking
 		// for the other.
 		grouped(groupMachine, perCommandScope(newFleetCommand(app))),
+		// Beside fleet, whose rows it reads: the authority's side of
+		// desired state, which acts through documents the machines pull
+		// (RFC 0057 §5.11).
+		grouped(groupMachine, machineScope(newStateCommand(app))),
 		grouped(groupMachine, machineScope(newVersionCommand(app))),
 		grouped(groupMachine, machineScope(newSelfUpdateCommand(app))),
 	)

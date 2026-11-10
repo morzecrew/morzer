@@ -323,9 +323,12 @@ type StateListOptions struct {
 
 // StateReport is what `state ls` answers, and the `--json` shape.
 type StateReport struct {
-	Targets     []string   `json:"targets"`
-	Rows        []StateRow `json:"rows"`
-	Limitations []string   `json:"limitations"`
+	Targets []string   `json:"targets"`
+	Rows    []StateRow `json:"rows"`
+
+	// Expected is how many installations the roster named.
+	Expected    int      `json:"expected,omitempty"`
+	Limitations []string `json:"limitations"`
 }
 
 // StateRow is one installation: the newest document published for it, and
@@ -367,7 +370,7 @@ func StateList(ctx context.Context, d *Deps, opts StateListOptions) (StateReport
 		byName[t.String()] = t
 	}
 
-	report := StateReport{Targets: fleet.Targets, Limitations: fleet.Limitations}
+	report := StateReport{Targets: fleet.Targets, Expected: fleet.Expected, Limitations: fleet.Limitations}
 	for _, f := range fleet.Rows {
 		row := StateRow{
 			Target: f.Target, Product: f.Product, InstallationID: f.InstallationID,
