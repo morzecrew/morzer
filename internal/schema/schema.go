@@ -46,12 +46,13 @@ const (
 	// predicateType URI inside it, and it can move independently of the
 	// manifest surface. Coupling its filename to `v1alpha1` would promise a
 	// lockstep that does not exist.
-	AttestationSchemaFile = "morzer-attestation-v3.json"
+	AttestationSchemaFile = "morzer-attestation-v4.json"
 
-	// AttestationV2SchemaFile and AttestationV1SchemaFile are the schemas
-	// statements written before v3 validate against. Published and kept,
-	// never regenerated: they describe documents already on machines and in
-	// buckets, and those do not change.
+	// AttestationV3SchemaFile, AttestationV2SchemaFile and
+	// AttestationV1SchemaFile are the schemas statements written before v4
+	// validate against. Published and kept, never regenerated: they describe
+	// documents already on machines and in buckets, and those do not change.
+	AttestationV3SchemaFile = "morzer-attestation-v3.json"
 	AttestationV2SchemaFile = "morzer-attestation-v2.json"
 	AttestationV1SchemaFile = "morzer-attestation-v1.json"
 )
@@ -437,6 +438,9 @@ var requiredFields = map[reflect.Type][]string{
 	// always written: one without the digest says a file was used and not
 	// which.
 	reflect.TypeOf(domain.AttestedInput{}): {"name", "size", "sha256"},
+	// A sync's document is named by all three, always: a serial without the
+	// digest says a document was applied and not which bytes.
+	reflect.TypeOf(domain.AttestedDesiredState{}): {"serial", "digest", "authority_key_id"},
 }
 
 // schemaFor renders a Go type as a JSON Schema node.
