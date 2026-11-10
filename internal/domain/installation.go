@@ -118,7 +118,7 @@ import (
 // Bumped to 18 for `profiles`, which replaces `profile` (RFC 0053 decision 2).
 // An older manager would ignore the list, deploy the base files and remove the
 // overlays' services.
-const InstallationSchemaVersion = 18
+const InstallationSchemaVersion = 19
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18
@@ -408,6 +408,10 @@ type Installation struct {
 	// bucket, and a manifest that named one would be a vendor deciding where
 	// an operator's data is kept.
 	Backup BackupConfig `yaml:"backup" json:"backup,omitempty"`
+
+	// Sync is how this installation follows desired-state documents an
+	// authority publishes for it, and what it last did with one (RFC 0057).
+	Sync SyncConfig `yaml:"sync" json:"sync,omitempty"`
 
 	// Signing is this machine's signing identity. Every field in it may be
 	// empty on a real installation -- see Signing.
@@ -1172,6 +1176,18 @@ func (i Installation) Validate() error {
 	// is written, in the same shape as require_signature above -- a machine
 	// that accepts the setting and then refuses to act on every tick is
 	// worse than one that refuses the setting.
+	// The rules `config set` keeps, for state edited by hand: sync on
+	// with nothing to follow, as auto-apply with no signature required
+	// below, and an interval no timer can tick on (RFC 0057 §5.5).
+	if i.Sync.Enabled && (i.Sync.Target == "" || i.Sync.Authority == "") {
+		v.add("sync.enabled", "needs sync.target and sync.authority, or there is nothing to follow")
+	}
+	if i.Sync.Interval != "" {
+		if d, err := time.ParseDuration(i.Sync.Interval); err != nil || d < MinSyncInterval {
+			v.add("sync.interval", "is not a duration of at least %s", MinSyncInterval)
+		}
+	}
+
 	if i.Update.AutoApply && !i.Policy.RequireSignature {
 		v.add("update.auto_apply",
 			"needs policy.require_signature, because it hands the vendor "+

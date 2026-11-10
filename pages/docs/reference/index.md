@@ -50,6 +50,9 @@ here. The reference column points at the section that documents it; the
 | `morzer notify target remove` | Stop reporting to a webhook | [commands](commands.md#notify-target) |
 | `morzer notify target list` | List the webhooks this deployment reports to | [commands](commands.md#notify-target) |
 | `morzer notify flush` | Send the notifications a target has still to accept | [commands](commands.md#notify-flush) |
+| `morzer sync` | Follow the desired state an authority publishes | [desired-state](desired-state.md#desired-state) |
+| `morzer sync now` | Run one sync cycle | [desired-state](desired-state.md#sync-now) |
+| `morzer sync status` | Show what sync last applied, refused and fetched | [desired-state](desired-state.md#sync-status) |
 | `morzer doctor` | Run read-only diagnostics | [commands](commands.md#doctor) |
 | `morzer history` | List the operations this installation ran, newest first | [commands](commands.md#history) |
 | `morzer logs` | Read the deployment's logs | [commands](commands.md#logs) |

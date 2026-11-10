@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
@@ -47,33 +49,78 @@ func (c ConfigChange) IsEmpty() bool {
 // key, a list or a map where a value goes, a null, a tag, an anchor or an
 // alias is refused, each with its line.
 func ParseConfigChange(data []byte) (ConfigChange, error) {
+	change, _, err := parseChangeDocument(data, nil)
+	return change, err
+}
+
+// DesiredStateEnvelope is what a desired-state document says about itself,
+// around the change it carries (RFC 0057 §5.2).
+type DesiredStateEnvelope struct {
+	APIVersion   string
+	Kind         string
+	Product      string
+	Installation string
+	Serial       int64
+	IssuedAt     time.Time
+	ExpiresAt    time.Time
+}
+
+// ParseDesiredState reads a decrypted desired-state document: the envelope,
+// and the change, which is a change document's body and is read by the same
+// rules. Every envelope field is required.
+func ParseDesiredState(data []byte) (DesiredStateEnvelope, ConfigChange, error) {
+	var env DesiredStateEnvelope
+	change, seen, err := parseChangeDocument(data, &env)
+	if err != nil {
+		return env, change, err
+	}
+	for _, key := range []string{"api_version", "kind", "product", "installation", "serial", "issued_at", "expires_at"} {
+		if !seen[key] {
+			return env, change, domain.Usage("the desired-state document has no %s", key)
+		}
+	}
+	switch {
+	case env.Kind != domain.DesiredStateKind:
+		return env, change, domain.Usage("the document is of kind %q, not %s", env.Kind, domain.DesiredStateKind)
+	case env.APIVersion != string(domain.APIVersionV1Alpha1):
+		return env, change, domain.Usage("the document's api_version %q is not %s", env.APIVersion,
+			domain.APIVersionV1Alpha1)
+	case !env.ExpiresAt.After(env.IssuedAt):
+		return env, change, domain.Usage("the document expires before it was issued")
+	}
+	return env, change, nil
+}
+
+// parseChangeDocument walks a document's top level. With env, the envelope
+// keys are read into it; without, they are unknown sections like any other.
+func parseChangeDocument(data []byte, env *DesiredStateEnvelope) (ConfigChange, map[string]bool, error) {
 	change := ConfigChange{}
+	seen := map[string]bool{}
 	if len(data) > ChangeDocumentLimit {
-		return change, domain.Usage("the change document is larger than 1 MiB")
+		return change, seen, domain.Usage("the change document is larger than 1 MiB")
 	}
 	file, err := parser.ParseBytes(data, 0)
 	if err != nil {
-		return change, notYAML(err)
+		return change, seen, notYAML(err)
 	}
 	if len(file.Docs) > 1 {
-		return change, domain.Usage("the change document holds %d YAML documents; it is one", len(file.Docs))
+		return change, seen, domain.Usage("the change document holds %d YAML documents; it is one", len(file.Docs))
 	}
 	if len(file.Docs) == 0 || file.Docs[0].Body == nil {
-		return change, nil
+		return change, seen, nil
 	}
 	top, err := mappingOf(file.Docs[0].Body, "the change document")
 	if err != nil || top == nil {
-		return change, err
+		return change, seen, err
 	}
 
-	seen := map[string]bool{}
 	for _, entry := range top.Values {
 		key, err := keyOf(entry)
 		if err != nil {
-			return change, err
+			return change, seen, err
 		}
 		if seen[key] {
-			return change, lineError(entry.Key, "%q appears twice", key)
+			return change, seen, lineError(entry.Key, "%q appears twice", key)
 		}
 		seen[key] = true
 		switch key {
@@ -94,14 +141,56 @@ func ParseConfigChange(data []byte) (ConfigChange, error) {
 		case "unset":
 			change.Unset, err = unsetLists(entry.Value)
 		default:
-			return change, lineError(entry.Key, "%q is not a section of a change document", key).
+			if env != nil && isEnvelopeKey(key) {
+				err = readEnvelope(env, key, entry.Value)
+				break
+			}
+			return change, seen, lineError(entry.Key, "%q is not a section of a change document", key).
 				WithHint("the sections are settings, parameters, secrets and unset")
 		}
 		if err != nil {
-			return change, err
+			return change, seen, err
 		}
 	}
-	return change, nil
+	return change, seen, nil
+}
+
+func isEnvelopeKey(key string) bool {
+	return slices.Contains([]string{"api_version", "kind", "product", "installation", "serial", "issued_at", "expires_at"}, key)
+}
+
+func readEnvelope(env *DesiredStateEnvelope, key string, node ast.Node) error {
+	text, ok := scalarText(node)
+	if !ok || text == "" {
+		return lineError(node, "%s is not a single value", key)
+	}
+	switch key {
+	case "api_version":
+		env.APIVersion = text
+	case "kind":
+		env.Kind = text
+	case "product":
+		env.Product = text
+	case "installation":
+		env.Installation = text
+	case "serial":
+		n, err := strconv.ParseInt(text, 10, 64)
+		if err != nil || n <= 0 || strings.TrimLeft(text, "0123456789") != "" {
+			return lineError(node, "serial %q is not a positive whole number", text)
+		}
+		env.Serial = n
+	case "issued_at", "expires_at":
+		t, err := time.Parse(time.RFC3339, text)
+		if err != nil {
+			return lineError(node, "%s %q is not an RFC 3339 time", key, text)
+		}
+		if key == "issued_at" {
+			env.IssuedAt = t
+		} else {
+			env.ExpiresAt = t
+		}
+	}
+	return nil
 }
 
 // mappingOf returns node as a mapping, or nil for an empty section.

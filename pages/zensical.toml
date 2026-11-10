@@ -54,6 +54,7 @@ nav = [
         "operating/looking-inside.md",
         "operating/asking-for-help.md",
         "operating/several-installations.md",
+        "operating/managing-from-elsewhere.md",
         "operating/recovering-a-lost-machine.md",
     ] },
     { "Authoring" = [
@@ -81,6 +82,7 @@ nav = [
         "reference/attestations.md",
         "reference/support-bundle.md",
         "reference/fleet.md",
+        "reference/desired-state.md",
     ] },
     { "Explanation" = [
         "explanation/architecture.md",

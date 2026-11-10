@@ -460,6 +460,11 @@ func checkBundleIntegrity(rel domain.Release, runtime ports.Runtime) error {
 	if err != nil {
 		return err
 	}
+	if undeclared := rel.Manifest.ManagedSecretsUndeclared(schema); len(undeclared) > 0 {
+		return domain.ValidationError(nil,
+			"managed.secrets names %s, which the secret schema does not declare",
+			strings.Join(undeclared, ", "))
+	}
 	if err := checkTemplateReferences(rel, schema); err != nil {
 		return err
 	}

@@ -440,6 +440,8 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	for _, k := range opts.SigningKeys {
 		add("signing-key", k)
 	}
+	add("sync-target", opts.SyncTarget)
+	add("sync-authority", opts.SyncAuthority)
 	if opts.RequireSignature {
 		args = append(args, "--require-signature")
 	}

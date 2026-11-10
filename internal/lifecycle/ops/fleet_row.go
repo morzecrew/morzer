@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // Deriving the row (RFC 0026 decision 8: no new state).
@@ -51,8 +52,28 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 	in.Health = d.fleetHealth(ctx, inst, current, currentErr)
 	in.Drift = d.fleetDrift(ctx, inst, current, currentErr)
 	in.LastOperation = d.fleetLastOperation(ctx)
+	in.AgeRecipient = d.machineRecipient(ctx)
 
 	return domain.NewFleetRow(in)
+}
+
+// machineRecipient is this machine's own age recipient, or empty when the
+// store cannot say. Published on every row, so an authority can address a
+// machine before it follows anything (RFC 0057 §5.4).
+func (d *Deps) machineRecipient(ctx context.Context) string {
+	if d.Secrets == nil {
+		return ""
+	}
+	recipients, err := d.Secrets.Recipients(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, r := range recipients {
+		if r.Kind == ports.RecipientMachine {
+			return r.PublicKey
+		}
+	}
+	return ""
 }
 
 // fleetSigningKey resolves the key that will sign the row, minting one only

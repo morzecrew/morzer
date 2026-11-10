@@ -131,6 +131,9 @@ var installationFieldsNotDescribed = map[string]string{
 
 	"Stopped": "an operation's record, not desired state: `morzer stop` writes it and " +
 		"`morzer start` clears it, and a document applied elsewhere must not stop that machine (RFC 0040)",
+
+	"Sync": "trust set locally and root-only, never by a document, and a record of what the " +
+		"machine last applied: a committed file must not hand a machine to an authority (RFC 0057)",
 }
 
 // Describe assembles the document from an installation, the release it is

@@ -212,6 +212,30 @@
       ],
       "type": "string"
     },
+    "managed": {
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "secrets": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "settings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "metadata": {
       "additionalProperties": false,
       "properties": {

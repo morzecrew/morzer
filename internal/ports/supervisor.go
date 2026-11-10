@@ -174,6 +174,14 @@ type UnitParams struct {
 	// every tick is a unit an operator learns to ignore.
 	FleetTimer bool
 
+	// SyncTimer asks for the sync pair at all: true while `sync.enabled`
+	// is (RFC 0057 §5.8).
+	SyncTimer bool
+
+	// SyncInterval is how often the sync timer ticks, from
+	// `sync.interval`. Zero is the supervisor's default.
+	SyncInterval time.Duration
+
 	// DoctorSchedule is an OnCalendar expression for the doctor timer
 	// (RFC 0043 §5.4). Empty takes the supervisor's default.
 	DoctorSchedule string

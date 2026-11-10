@@ -741,6 +741,37 @@ manager captures a database volume the hook already owns.
 [declaring volume consistency](../authoring/backing-up-volumes.md) for what it
 commits a vendor to. Bind mounts are never captured and have no declaration.
 
+## managed
+
+What a desired-state document an authority publishes may change on an
+installation that follows it. Absent, nothing is: a release opts in name by
+name, because only the vendor knows which values are safe to take from
+elsewhere.
+
+```yaml
+managed:
+  parameters: [dotdash_servers, dotdash_port, site]
+  secrets: [vless_clients, dotdash_short_id]
+  settings: [installation.profile, installation.domains]
+compatibility:
+  min_manager_version: "0.16.0"
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `parameters` | list | Parameters a document may set or unset. Each must be declared under `parameters`. |
+| `secrets` | list | Secrets a document may set or unset. Each must be declared by the secret schema, which `release verify` checks. |
+| `settings` | list | Settings a document may change: `installation.profile` and `installation.domains`, and no other. Trust, update, sync and policy settings, recipients and targets are never manageable, whatever a release lists. |
+
+A document naming anything outside these lists is refused whole. Name a
+parameter here only if its value is safe to take from an authority: one that
+reaches a command line hands whoever holds the authority's key code execution
+on the machine.
+
+A release declaring `managed` needs `compatibility.min_manager_version` of at
+least `0.16.0`. The manifest is decoded strictly, so an older manager refuses
+the field rather than ignoring it.
+
 ## health
 
 `checks` is a list; each entry has a unique `name`, a `type`, a `timeout`

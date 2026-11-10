@@ -115,3 +115,16 @@ type SignatureChecker interface {
 	// caller would treat differently.
 	Check(data []byte, signature []byte, publicKey string) bool
 }
+
+// CommentChecker is a SignatureChecker that also returns the trusted comment a
+// verified signature carries. Optional and type-asserted, as the runtime's
+// capabilities are.
+//
+// A desired-state document names its product, installation and serial in the
+// comment so a machine can drop one meant for another before it decrypts
+// anything (RFC 0057 §5.3). That text is the signer's only because the
+// signature over it verified, so it is returned only then.
+type CommentChecker interface {
+	SignatureChecker
+	CheckComment(data []byte, signature []byte, publicKey string) (comment string, ok bool)
+}

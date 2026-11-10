@@ -35,6 +35,8 @@ func newInitCommand(app *App) *cobra.Command {
 		repair         bool
 		requireSig     bool
 		signingKeys    []string
+		syncTarget     string
+		syncAuthority  string
 		set            []string
 		setFiles       []string
 		mode           string
@@ -138,6 +140,8 @@ func newInitCommand(app *App) *cobra.Command {
 				GenerateSecrets:   generate,
 				RequireSignature:  requireSig,
 				SigningKeys:       signingKeys,
+				SyncTarget:        syncTarget,
+				SyncAuthority:     syncAuthority,
 				Repair:            repair,
 				// Unset and false differ: unset requires a signature
 				// whenever a key is trusted, false says not to.
@@ -253,6 +257,11 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&requireSig, "require-signature", false,
 		"refuse any release that is not signed by a trusted key; on whenever a key is trusted, "+
 			"and =false turns it off and trusts no key the release ships")
+	f.StringVar(&syncTarget, "sync-target", "",
+		"target URL an authority publishes this installation's desired state to; "+
+			"sync stays off until sync.enabled is set")
+	f.StringVar(&syncAuthority, "sync-authority", "",
+		"minisign public key a desired-state document must be signed with")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
 		"what this machine is for: dev for a sandbox, or production (the default). "+

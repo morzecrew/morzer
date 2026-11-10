@@ -401,6 +401,10 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 				i.Profile = ""
 			}
 			i.SchemaVersion = 18
+		case 18:
+			// 18 -> 19 added `sync` (RFC 0057). Nothing to convert:
+			// absent follows no authority, as before.
+			i.SchemaVersion = 19
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

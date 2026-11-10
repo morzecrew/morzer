@@ -13,8 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation, from a document on stdin. It records, renders, re-creates and
   health-checks once, and puts every value back if a step fails, a secret with
   the change time it had.
+- A machine can follow an authority's desired state: documents published for
+  one installation, signed with the authority's minisign key and encrypted to
+  the machine. A timer fetches the newest, verifies its signature before
+  reading it, and applies it as one `config apply`; nothing listens.
+- The `sync.*` settings configure it, locally only. `morzer sync now` runs a
+  cycle, and `morzer sync status` shows what was applied and refused, and why.
+  `init --sync-target` and `--sync-authority` record what to follow.
+- A release lists what a desired-state document may change in a `managed`
+  section, of parameters, secrets and `installation.domains` or
+  `installation.profile`. A release without one lets nothing be managed, and a
+  document naming anything else is refused whole. `managed` needs
+  `min_manager_version` 0.16.0.
+- While sync is on, `config set` and `config apply` refuse to change a managed
+  name unless given `--force`, since the authority's next document would set it
+  back.
+- A refused document reaches notify targets as `sync.refused`, and one in force
+  that expired as `sync.expired`. `doctor` warns when the document in force
+  expires within a day, or when the target has not answered for three
+  intervals.
+- A sync's attestation names the document it applied, in a `desired_state`
+  block of the new v4 predicate. `attest verify` still reads v3, v2 and v1
+  statements.
 
 ### Changed
+
+- Fleet rows are schema 2 and carry `age_recipient`, the machine's age public
+  key, and a `sync` block. A manager that reads schema 1 refuses a schema 2
+  row, so upgrade the manager that reads the fleet first.
+- Installation state moves from schema 18 to 19, so a 0.15 manager refuses a
+  machine this version has run on.
+- `installation import --mode dev` also drops `sync.*`.
 
 - `config set`, `config unset` and `config edit` of a parameter wait for the
   release's health checks after re-creating its services, and undo the change

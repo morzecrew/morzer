@@ -53,6 +53,18 @@ const (
 	// sent only when a check warns or fails (RFC 0043 decision 6). It
 	// carries the worst level, and the checks that are not ok.
 	KindDoctorFinished Kind = "doctor.finished"
+
+	// KindSyncRefused says a desired-state document was refused: its
+	// serial, the step and the class, never the error's text (RFC 0057
+	// §5.9). Sent once per document, since a refused serial is not tried
+	// again.
+	KindSyncRefused Kind = "sync.refused"
+
+	// KindSyncExpired says the document in force has expired and the
+	// authority has published nothing newer: an authority gone quiet, or a
+	// target withholding what it publishes. Sent when a cycle first finds
+	// it so.
+	KindSyncExpired Kind = "sync.expired"
 )
 
 // AllKinds is every event kind, so a consumer that must classify all of them
@@ -73,6 +85,8 @@ var AllKinds = []Kind{
 	KindCheck,
 	KindUpdateStaged,
 	KindDoctorFinished,
+	KindSyncRefused,
+	KindSyncExpired,
 }
 
 // Level classifies a message for presenters that style by severity.
@@ -282,6 +296,28 @@ func UpdateStaged(name, version, ref, summary string) Event {
 		Message: sprintf("%s %s is staged from %s and is waiting to be installed",
 			name, version, ref),
 		Detail: summary,
+	}
+}
+
+// SyncRefused is a desired-state document refused. The names ride in Detail,
+// and nothing here quotes a value.
+func SyncRefused(product string, doc domain.SyncDocument) Event {
+	return Event{
+		Kind: KindSyncRefused, At: time.Now(), Level: LevelError,
+		Description: product + " sync",
+		Message: sprintf("desired-state document %d was refused at %s: %s",
+			doc.Serial, doc.Step, doc.Class),
+		Detail: strings.Join(doc.Names, ", "),
+	}
+}
+
+// SyncExpired is the document in force past its expiry, with nothing newer.
+func SyncExpired(product string, doc domain.SyncDocument) Event {
+	return Event{
+		Kind: KindSyncExpired, At: time.Now(), Level: LevelWarn,
+		Description: product + " sync",
+		Message: sprintf("desired-state document %d expired at %s, and nothing newer is published",
+			doc.Serial, doc.ExpiresAt.Format(time.RFC3339)),
 	}
 }
 

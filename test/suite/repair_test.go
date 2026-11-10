@@ -56,6 +56,11 @@ func TestARepairKeepsWhatTheOperatorConfigured(t *testing.T) {
 	inst.Update.Check = true
 	inst.Domains = []string{"app.example"}
 	inst.Policy.BackupSchedule = "Mon *-*-* 04:00:00"
+	inst.Sync = domain.SyncConfig{
+		Target: "s3://state/demo", Credentials: "sync_s3", Authority: authorityKey,
+		Interval: "20m0s", Enabled: true,
+		Applied: &domain.SyncDocument{Serial: 7, AuthorityKeyID: domain.MinisignKeyID(authorityKey)},
+	}
 	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
 
 	// A schedule of spaces is "not given", not "blank it". `--backup-schedule`
@@ -82,6 +87,21 @@ func TestARepairKeepsWhatTheOperatorConfigured(t *testing.T) {
 		"the repair dropped the update channel")
 	assert.True(t, after.Update.Check)
 	assert.Equal(t, "Mon *-*-* 04:00:00", after.Policy.BackupSchedule)
+	assert.Equal(t, inst.Sync, after.Sync,
+		"the repair dropped what this machine follows, so it silently stopped syncing")
+
+	// A new authority given to a repair outranks the carried one and starts
+	// its own watermark; the rest of the block stays.
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub, SyncAuthority: authorityKey2,
+	})
+	require.NoError(t, err)
+	after, err = h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, authorityKey2, after.Sync.Authority)
+	assert.Nil(t, after.Sync.Applied, "a new authority inherited the old one's serials")
+	assert.Equal(t, inst.Sync.Target, after.Sync.Target)
+	assert.True(t, after.Sync.Enabled)
 
 	// And the other half of that rule: a schedule that *was* given outranks
 	// the carried Policy. Without this the branch above is only ever tested
@@ -385,6 +405,7 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 		"Update": "carried: a channel configured after `init` is not this command's to drop",
 		"Notify": "carried: alerting configured after `init` is not this command's to drop",
 		"Backup": "carried: targets configured after `init` are not this command's to drop",
+		"Sync":   "carried: the authority and target are set locally after `init`, and the serials are a record",
 
 		"Signing":         "carried, except when this run minted a key -- see buildInstallation",
 		"AttestationSalt": "carried: re-minting breaks the configuration-digest chain",

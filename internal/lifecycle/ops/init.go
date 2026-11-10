@@ -90,6 +90,13 @@ type InitOptions struct {
 	// on a default the operator did not intend.
 	Parameters map[string]string
 
+	// SyncTarget and SyncAuthority are `sync.target` and `sync.authority`,
+	// checked as `config set` checks them (RFC 0057 §5.5). Sync is still
+	// off until `sync.enabled` is set, which can wait for the target's
+	// credential to be a secret.
+	SyncTarget    string
+	SyncAuthority string
+
 	// ParameterFiles are the paths `--set-file` read values from, by
 	// parameter name. Init reads only Parameters, which already holds the
 	// values; these are for the wizard's equivalent command, which prints the
@@ -152,6 +159,20 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	if err := d.checkSigningKeys(opts.SigningKeys); err != nil {
 		return Result{}, err
 	}
+	// And the authority to follow, by the same rules `config set` has, so
+	// a malformed one is refused before anything exists.
+	var follow domain.Installation
+	for _, s := range []struct{ name, value string }{
+		{"sync.target", opts.SyncTarget}, {"sync.authority", opts.SyncAuthority},
+	} {
+		if s.value == "" {
+			continue
+		}
+		if err := settings[s.name].Apply(ctx, d, &follow, s.value); err != nil {
+			return Result{}, err
+		}
+	}
+	opts.SyncTarget, opts.SyncAuthority = follow.Sync.Target, follow.Sync.Authority
 
 	// A parameter can only be checked against a release that declares it,
 	// and the whole value of declaring one is that setting it wrong is
@@ -618,6 +639,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		Domains:       opts.Domains,
 		Policy:        domain.DefaultPolicy(),
 		Parameters:    opts.Parameters,
+		Sync:          domain.SyncConfig{Target: opts.SyncTarget, Authority: opts.SyncAuthority},
 	}
 	runtime, err := d.runtimeForNewInstallation(st)
 	if err != nil {
@@ -748,6 +770,20 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		inst.Update = existing.Update
 		inst.Notify = existing.Notify
 		inst.Backup = existing.Backup
+
+		// And the authority this machine follows, with its serials. The
+		// flags outrank it when given, as --backup-schedule outranks the
+		// carried Policy, and a new authority clears the serials, as
+		// `config set sync.authority` does (RFC 0057 decision 27).
+		target, authority := inst.Sync.Target, inst.Sync.Authority
+		inst.Sync = existing.Sync
+		if target != "" {
+			inst.Sync.Target = target
+		}
+		if authority != "" && authority != existing.Sync.Authority {
+			inst.Sync.Authority = authority
+			inst.Sync.Applied, inst.Sync.Refused = nil, nil
+		}
 
 		// A repair inherits the mode rather than resetting it. `init
 		// --repair` on a sandbox is re-creating directories, not

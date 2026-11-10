@@ -160,7 +160,13 @@ problem can still publish a row saying exactly that.
 | `drift` | how many configuration targets differ — a count, never a diff |
 | `last_operation` | id, kind, outcome and when |
 | `signing_key` | the public half, for comparing a fingerprint by eye |
+| `age_recipient` | this machine's age public key, which an authority encrypts [desired-state documents](desired-state.md) to; trusted only from a row that verifies against the [roster](#the-roster) |
+| `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured |
 | `published_at` | when this row was written |
+
+Rows are schema 2, which added `age_recipient` and `sync`. A manager that reads
+schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
+manager you read the fleet with first.
 
 ## What the row never carries
 
@@ -338,6 +344,11 @@ A console that can act needs to know who may act, which is an authorisation
 model, which is a control plane. Every user of the fleet view will ask for this
 within a week. The refusal is the product.
 
+[Desired state](desired-state.md) does not change that. An authority may
+publish values for a machine, and only the machine applies them: to itself,
+within the names its release lets be managed, behind its own health checks.
+Nothing here or there acts on a remote machine.
+
 ## A sandbox must not publish into a production prefix
 
 An installation imported from a production export keeps its id — deliberately,
@@ -353,6 +364,7 @@ list rather than one line per hazard:
 | --- | --- |
 | `backup.targets` | write into production's bucket — and fleet rows go to the same targets, so this covers them too |
 | `notify.targets` | report into production's alerting; a webhook URL is itself the credential, and it travels in the export |
+| `sync.*` | read production's [desired-state documents](desired-state.md), which the matching id addresses; every sync setting and serial goes, target or not |
 
 The list is a list because the second thing to drop was the same field as the
 first, by luck. Every field of an installation is classified in a test, so a

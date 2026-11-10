@@ -153,3 +153,42 @@ func TestCallersRacingToMintAllGetTheWinnersKey(t *testing.T) {
 		}
 	}
 }
+
+// The trusted comment is returned only for a signature that verified, and
+// only as the signer wrote it: a comment edited after signing fails the global
+// signature, so it is never read as the signer's.
+func TestCheckCommentReturnsOnlyAVerifiedComment(t *testing.T) {
+	ctx := context.Background()
+	signer := New(filepath.Join(t.TempDir(), "authority.key"), "authority")
+	key, err := signer.EnsureKey(ctx)
+	require.NoError(t, err)
+	data := []byte("the document's ciphertext")
+	sig, err := signer.Sign(ctx, data, "morzer desired-state product=demo installation=inst_01 serial=7")
+	require.NoError(t, err)
+
+	checker := NewChecker()
+	comment, ok := checker.CheckComment(data, sig.Encoded, key.Line)
+	require.True(t, ok)
+	assert.Equal(t, "morzer desired-state product=demo installation=inst_01 serial=7", comment)
+
+	// Only the line's own prefix is taken off: a comment that itself
+	// begins with it comes back as signed.
+	prefixed, err := signer.Sign(ctx, data, "trusted comment: as written")
+	require.NoError(t, err)
+	comment, ok = checker.CheckComment(data, prefixed.Encoded, key.Line)
+	require.True(t, ok)
+	assert.Equal(t, "trusted comment: as written", comment)
+
+	_, ok = checker.CheckComment([]byte("other bytes"), sig.Encoded, key.Line)
+	assert.False(t, ok, "a signature over other bytes was accepted")
+
+	forged := strings.Replace(string(sig.Encoded), "serial=7", "serial=9", 1)
+	comment, ok = checker.CheckComment(data, []byte(forged), key.Line)
+	assert.False(t, ok, "a comment edited after signing was read as the signer's: %q", comment)
+
+	other := New(filepath.Join(t.TempDir(), "other.key"), "other")
+	otherKey, err := other.EnsureKey(ctx)
+	require.NoError(t, err)
+	_, ok = checker.CheckComment(data, sig.Encoded, otherKey.Line)
+	assert.False(t, ok, "a signature was accepted against another key")
+}

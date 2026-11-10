@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
@@ -418,6 +419,117 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Update.Channel = "" },
 	},
+
+	// Desired state (RFC 0057). Local and root-only: none is manageable by
+	// a document (domain.ManageableSettings), so a compromised authority
+	// cannot move the machine to another authority or target. Whether
+	// sync.enabled has an authority and a target to follow is asked of the
+	// whole command's result, by checkSyncPolicy.
+	"sync.target": {
+		Description: "where this installation's desired-state documents are, as a backup target URL",
+		Read:        func(i domain.Installation) string { return i.Sync.Target },
+		Apply: func(_ context.Context, d *Deps, i *domain.Installation, raw string) error {
+			ref, err := ports.TargetURL(strings.TrimSpace(raw))
+			if err != nil {
+				return err
+			}
+			// The registry's answer, as `backup target add` gets it: which
+			// transports a build has is not this layer's to list.
+			if d.Targets != nil && !slices.Contains(d.Targets.Schemes(), ref.Scheme) {
+				return domain.Usage("%s is not a transport this build has", ref.Scheme).
+					WithHint("this build supports: %s", strings.Join(d.Targets.Schemes(), ", "))
+			}
+			i.Sync.Target = ref.String()
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Target = "" },
+	},
+	"sync.credentials": {
+		Description: "the secret holding sync.target's credential document, as `backup target add --credentials` names one",
+		Read:        func(i domain.Installation) string { return i.Sync.Credentials },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			raw = strings.TrimSpace(raw)
+			if !domain.ValidSecretName(raw) {
+				return domain.Usage("%q is not a secret name", raw)
+			}
+			i.Sync.Credentials = raw
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Credentials = "" },
+	},
+	"sync.authority": {
+		Description: "the minisign public key a desired-state document must be signed with",
+		Read:        func(i domain.Installation) string { return i.Sync.Authority },
+		// A new authority starts a watermark of its own: a compromised key
+		// may have published a very high serial before it was replaced,
+		// and every ordinary serial from its successor would be refused
+		// against it (decision 27).
+		Apply: func(_ context.Context, d *Deps, i *domain.Installation, raw string) error {
+			raw = strings.TrimSpace(raw)
+			if err := d.checkSigningKeys([]string{raw}); err != nil {
+				return err
+			}
+			if raw != i.Sync.Authority {
+				i.Sync.Applied, i.Sync.Refused = nil, nil
+			}
+			i.Sync.Authority = raw
+			return nil
+		},
+		Clear: func(i *domain.Installation) {
+			if i.Sync.Authority != "" {
+				i.Sync.Applied, i.Sync.Refused = nil, nil
+			}
+			i.Sync.Authority = ""
+		},
+	},
+	"sync.interval": {
+		Description: "how often the sync timer fetches, a duration of at least 1m; 15m when unset",
+		Read:        func(i domain.Installation) string { return i.Sync.SyncInterval().String() },
+		Stored:      func(i domain.Installation) string { return i.Sync.Interval },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			interval, err := time.ParseDuration(strings.TrimSpace(raw))
+			if err != nil || interval < domain.MinSyncInterval {
+				return domain.Usage("%q is not a duration of at least %s", raw, domain.MinSyncInterval)
+			}
+			// Whole seconds, which is what a timer ticks in.
+			i.Sync.Interval = interval.Round(time.Second).String()
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Interval = "" },
+	},
+	"sync.enabled": {
+		Description: "fetch and apply desired-state documents on a timer; needs sync.authority and sync.target",
+		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Sync.Enabled) },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Sync.Enabled = v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Enabled = false },
+	},
+}
+
+// checkSyncPolicy refuses following documents with no key to check them
+// against or nowhere to fetch them from, as `update.auto_apply` is refused
+// without a signature requirement (RFC 0057 §5.5). Asked of the whole
+// command's result, as checkSignaturePolicy is: settings apply in name order,
+// and `sync.enabled` sorts before `sync.target`.
+func checkSyncPolicy(after domain.Installation) error {
+	if !after.Sync.Enabled {
+		return nil
+	}
+	switch {
+	case after.Sync.Authority == "":
+		return domain.Usage("sync.enabled needs sync.authority, the key a document must be signed with").
+			WithHint("set it with `morzer config set sync.authority=<minisign public key>`")
+	case after.Sync.Target == "":
+		return domain.Usage("sync.enabled needs sync.target, where the documents are").
+			WithHint("set it with `morzer config set sync.target=<url> sync.credentials=<secret>`")
+	}
+	return nil
 }
 
 // retentionCount reads a retention override. The release's own count is what
@@ -606,6 +718,27 @@ type SetSettingsOptions struct {
 	Unset []string
 }
 
+// refuseManagedSettings is decision 6 of RFC 0057 for settings, which reads
+// the release only when a changed setting could be managed at all.
+func (d *Deps) refuseManagedSettings(ctx context.Context, inst domain.Installation, changed []string, force bool) error {
+	if force || !inst.Sync.Enabled || !slices.ContainsFunc(changed, domain.IsManageableSetting) {
+		return nil
+	}
+	current, err := d.State.CurrentRelease(ctx)
+	if err != nil || current.IsZero() {
+		return err
+	}
+	rel, err := d.resolveCurrentRelease(ctx, current)
+	if err != nil {
+		return err
+	}
+	change := ConfigChange{Settings: map[string]string{}}
+	for _, name := range changed {
+		change.Settings[name] = ""
+	}
+	return refuseManagedLocally(inst, rel, true, change, force)
+}
+
 // SetSettings records installation settings.
 //
 // Not an engine operation, and the difference from ConfigSet is the reason: a
@@ -669,6 +802,12 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	// recomputes the list under the lock.
 	sort.Strings(changed)
 	if err := checkSignaturePolicy(inst, next); err != nil {
+		return Result{}, err
+	}
+	if err := checkSyncPolicy(next); err != nil {
+		return Result{}, err
+	}
+	if err := d.refuseManagedSettings(ctx, inst, changed, opts.Force); err != nil {
 		return Result{}, err
 	}
 
@@ -736,6 +875,14 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		if err := checkSignaturePolicy(prior, fresh); err != nil {
 			return err
 		}
+		if err := checkSyncPolicy(fresh); err != nil {
+			return err
+		}
+		// Again under the lock: sync turned on while this waited is
+		// sync on for this change.
+		if err := d.refuseManagedSettings(ctx, prior, changed, opts.Force); err != nil {
+			return err
+		}
 
 		switch {
 		case len(changed) > 0 && journalled(prior, fresh):
@@ -774,7 +921,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	if ran {
 		d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, err)
 		if plan.render && !opts.DryRun {
-			attestConfig(ctx, d, result.Record, prior, plan.rel, result.State)
+			attestConfig(ctx, d, result.Record, prior, plan.rel, result.State, nil)
 		}
 	}
 	if err != nil {
@@ -791,7 +938,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 // write: see SetSettings.
 func journalled(before, after domain.Installation) bool {
 	return !slices.Equal(before.Domains, after.Domains) || !sameProfiles(before.Profiles, after.Profiles) ||
-		signatureDropped(before, after)
+		signatureDropped(before, after) || before.Sync.Authority != after.Sync.Authority
 }
 
 func signatureDropped(before, after domain.Installation) bool {
@@ -799,11 +946,20 @@ func signatureDropped(before, after domain.Installation) bool {
 }
 
 // settingsFlags is the journal's record of a downgrade (RFC 0042 decision 5).
+// It records a change of the sync authority too, which hands the machine to
+// whoever holds the new key (RFC 0057 decision 4).
 func settingsFlags(before, after domain.Installation) map[string]string {
-	if !signatureDropped(before, after) {
+	flags := map[string]string{}
+	if signatureDropped(before, after) {
+		flags["release.require_signature"] = "false"
+	}
+	if before.Sync.Authority != after.Sync.Authority {
+		flags["sync.authority"] = after.Sync.Authority
+	}
+	if len(flags) == 0 {
 		return nil
 	}
-	return map[string]string{"release.require_signature": "false"}
+	return flags
 }
 
 // settingsPlan is what a journalled setting change runs, and what its summary
@@ -1017,6 +1173,11 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// target. The phone-home question that made update checking
 		// opt-in does not arise.
 		FleetTimer: inst.Backup.HasTargets(),
+
+		// While sync is on, and only then (RFC 0057 §5.8): a timer
+		// with no authority to follow would fetch nothing it could use.
+		SyncTimer:    inst.Sync.Enabled,
+		SyncInterval: inst.Sync.SyncInterval(),
 
 		// Whenever someone is configured to be told or its findings are
 		// exported, and not when the operator turned it off (RFC 0043

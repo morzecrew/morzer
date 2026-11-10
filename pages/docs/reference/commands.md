@@ -96,6 +96,7 @@ picture: what two deployments share, and what `doctor` says about it.
 | [`backup`](#backup) | Back up the database, files, configuration and secret state. |
 | [`restore`](#restore) | Restore from a backup. |
 | [`notify`](#notify) | Manage where operation outcomes are reported. |
+| [`sync`](desired-state.md#commands) | Follow the desired state an authority publishes. |
 | [`version`](#version) | Print version, commit, and supported manifest API versions. |
 | [`self-update`](#self-update) | Replace this manager with a newer published release. |
 | [`completion install`](#completion-install) | Put the shell completion script where your shell reads it. |
@@ -132,6 +133,8 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |
 | `--signing-key` | minisign public key a release signature must verify against. Repeat for several. Given one, `init` requires a signature and ignores a key the release ships. On a repair it is checked beside the installation's keys and not recorded, and requires a signature only with `--require-signature`. |
 | `--require-signature` | Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or [shipped by the release](#the-key-a-release-ships); `--require-signature=false` turns it off and trusts no key the release ships. |
+| `--sync-target` | Target an authority publishes this installation's [desired state](desired-state.md) to, as `config set sync.target` takes it. Sync stays off until `sync.enabled` is set. |
+| `--sync-authority` | minisign public key a desired-state document must be signed with, as `config set sync.authority` takes it. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
 | `--set-file` | Read a release parameter's value from a file, as `name=path`, or from standard input with `-`. Repeat for several. Refuses a file holding a NUL byte or invalid UTF-8. See [Text values](parameters.md#text-values). |

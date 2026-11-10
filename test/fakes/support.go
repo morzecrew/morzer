@@ -706,6 +706,9 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		if strings.HasPrefix(name, params.Product+"-fleet.") && !params.FleetTimer {
 			continue
 		}
+		if strings.HasPrefix(name, params.Product+"-sync.") && !params.SyncTimer {
+			continue
+		}
 		if strings.HasPrefix(name, params.Product+"-doctor.") && !params.DoctorTimer {
 			continue
 		}
@@ -742,6 +745,8 @@ func (s *Supervisor) ManagedUnitNames(product string) []string {
 		product + "-update.timer",
 		product + "-fleet.service",
 		product + "-fleet.timer",
+		product + "-sync.service",
+		product + "-sync.timer",
 		product + "-doctor.service",
 		product + "-doctor.timer",
 		product + "-metrics.service",

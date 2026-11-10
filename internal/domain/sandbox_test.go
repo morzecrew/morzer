@@ -115,6 +115,17 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Backup":         drop("a sandbox must not write into production's bucket"),
 		"Backup.Targets": drop("targets and their credentials; fleet rows go to the same list"),
 
+		"Sync":             drop("a sandbox must not follow production's authority"),
+		"Sync.Target":      drop("production's documents prefix, which a sandbox keeps the id to read"),
+		"Sync.Credentials": keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Authority":   keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Interval":    keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Enabled":     keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Applied":     keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.Refused":     keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.LastFetch":   keep("cleared with sync.target by the same drop: production's record"),
+		"Sync.LastReached": keep("cleared with sync.target by the same drop: production's record"),
+
 		// Not on the drop list, and handled harder than dropping would
 		// be: `installation import` calls SucceedSigning, which retires
 		// the key as a predecessor and clears the current one, so the
@@ -309,4 +320,17 @@ func TestTheDropSummaryAgreesWithItsCount(t *testing.T) {
 	assert.Equal(t,
 		"dropped 2 backup targets -- a sandbox must not write into production's bucket",
 		domain.DescribeSandboxDrops(dropped))
+}
+
+// A sandbox drops every sync setting, whether or not a target is among them:
+// an authority, a credential name and production's serials are production's.
+func TestASandboxDropsSyncWithoutATarget(t *testing.T) {
+	in := domain.Installation{Sync: domain.SyncConfig{
+		Authority: "RWQkey", Credentials: "sync_s3",
+		Applied: &domain.SyncDocument{Serial: 7},
+	}}
+	out, dropped := in.Sandboxed()
+	assert.Equal(t, domain.SyncConfig{}, out.Sync)
+	require.Len(t, dropped, 1)
+	assert.Equal(t, "sync.target", dropped[0].Field)
 }

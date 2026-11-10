@@ -233,3 +233,14 @@ func TestEquivalentCommandPrintsTheFileAValueCameFrom(t *testing.T) {
 	assert.Contains(t, got, "--set http_port=9000")
 	assert.NotContains(t, got, "a\nb")
 }
+
+// The authority to follow is a choice the printed line must carry: without it
+// a provisioning script built from the line makes a machine that follows
+// nothing.
+func TestEquivalentCommandCarriesWhatToFollow(t *testing.T) {
+	got := EquivalentCommand(ops.InitOptions{
+		Product: "demo", SyncTarget: "s3://acme-state/demo", SyncAuthority: "RWQkey",
+	})
+	assert.Contains(t, got, "--sync-target s3://acme-state/demo")
+	assert.Contains(t, got, "--sync-authority RWQkey")
+}

@@ -261,6 +261,9 @@ can reach what it needs to.
 - **Notify targets.** A webhook URL is itself the credential, so a sandbox that
   kept them would page the customer's on-call about a machine that exists in
   order to be broken.
+- **The sync target.** A sandbox that kept it would read and apply the
+  [desired state](managing-from-elsewhere.md) an authority publishes for
+  production, under the matching id.
 
 The drop is a [single list](../reference/fleet.md#a-sandbox-must-not-publish-into-a-production-prefix)
 rather than a special case per hazard, and it is reported rather than silent.

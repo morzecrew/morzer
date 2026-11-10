@@ -419,8 +419,9 @@ func TestEverySchemaIsCheckedIn(t *testing.T) {
 		schema.SecretSchemaFile,
 		schema.InstallationDocumentSchemaFile,
 		schema.AttestationSchemaFile,
-		// Kept, never regenerated: statements written before v3
+		// Kept, never regenerated: statements written before v4
 		// validate against them.
+		schema.AttestationV3SchemaFile,
 		schema.AttestationV2SchemaFile,
 		schema.AttestationV1SchemaFile,
 	}, found,

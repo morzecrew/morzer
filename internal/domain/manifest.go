@@ -245,6 +245,12 @@ type Manifest struct {
 	// `"bundle": {}` in `release show --json`.
 	Bundle BundleSpec `yaml:"bundle" json:"bundle,omitzero"`
 
+	// Managed names what a desired-state document an authority publishes
+	// may change (RFC 0057 §5.6). Absent, nothing is: a release opts in
+	// name by name, because only the vendor knows which values are safe to
+	// take from elsewhere.
+	Managed ManagedSpec `yaml:"managed" json:"managed,omitzero"`
+
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
@@ -759,6 +765,86 @@ const CombinableProfilesMinManagerVersion = "0.15.0"
 // parameter of type `text`, which an older one refuses as an unknown type
 // (RFC 0054 decision 12).
 const TextParametersMinManagerVersion = "0.15.0"
+
+// DesiredStateMinManagerVersion is the manager release that reads `managed`,
+// which an older one refuses as an unknown field: the manifest is decoded
+// strictly, so it is not ignored as RFC 0057 §5.6 supposed.
+const DesiredStateMinManagerVersion = "0.16.0"
+
+// ManagedSpec is what a desired-state document may change.
+type ManagedSpec struct {
+	Parameters []string `yaml:"parameters" json:"parameters,omitempty"`
+	Secrets    []string `yaml:"secrets" json:"secrets,omitempty"`
+	Settings   []string `yaml:"settings" json:"settings,omitempty"`
+}
+
+// IsZero reports whether the release lets nothing be managed.
+func (s ManagedSpec) IsZero() bool {
+	return len(s.Parameters) == 0 && len(s.Secrets) == 0 && len(s.Settings) == 0
+}
+
+// Allows reports whether a document may change name in section, which is
+// "parameters", "secrets" or "settings".
+func (s ManagedSpec) Allows(section, name string) bool {
+	switch section {
+	case "parameters":
+		return slices.Contains(s.Parameters, name)
+	case "secrets":
+		return slices.Contains(s.Secrets, name)
+	case "settings":
+		return slices.Contains(s.Settings, name) && IsManageableSetting(name)
+	}
+	return false
+}
+
+// ManagedSecretsUndeclared is every managed secret the schema does not
+// declare. Checked where the release is loaded with its schema, which the
+// manifest alone cannot see.
+func (m Manifest) ManagedSecretsUndeclared(schema SecretSchema) []string {
+	var out []string
+	for _, name := range m.Managed.Secrets {
+		if _, ok := schema.Declaration(name); !ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func validateManaged(m *Manifest, v *validationErrors) {
+	for _, list := range []struct {
+		field string
+		names []string
+	}{
+		{"managed.parameters", m.Managed.Parameters},
+		{"managed.secrets", m.Managed.Secrets},
+		{"managed.settings", m.Managed.Settings},
+	} {
+		seen := map[string]bool{}
+		for _, name := range list.names {
+			if seen[name] {
+				v.add(list.field, "names %q twice", name)
+			}
+			seen[name] = true
+		}
+	}
+	for _, name := range m.Managed.Parameters {
+		if _, ok := m.Parameters[name]; !ok {
+			v.add("managed.parameters", "names %q, which the release does not declare", name)
+		}
+	}
+	for _, name := range m.Managed.Settings {
+		if !IsManageableSetting(name) {
+			v.add("managed.settings", "names %q; a document may change only %s",
+				name, strings.Join(ManageableSettings, " and "))
+		}
+	}
+	if minimum := MustParseVersion(DesiredStateMinManagerVersion); !m.Managed.IsZero() &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares managed, which an older "+
+				"manager refuses as an unknown field", minimum)
+	}
+}
 
 // Named manifest operations the lifecycle layer looks up by convention.
 const (
@@ -1472,6 +1558,8 @@ func (m *Manifest) Validate() error {
 			"must be at least %s, because a parameter has type %q, which an older "+
 				"manager refuses as an unknown type", minimum, ParamText)
 	}
+
+	validateManaged(m, &v)
 
 	if m.Bundle.UncompressedSize < 0 {
 		v.add("bundle.uncompressed_size", "must not be negative, got %s",

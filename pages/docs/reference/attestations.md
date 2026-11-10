@@ -69,6 +69,7 @@ the machine owns the key, and their statements verify too.
 | `predicate.config` | Parameter **names**, and a digest of the rendered configuration. |
 | `predicate.steps` | Each step, its outcome, and how long it took. |
 | `predicate.inputs` | The files an operator passed to a task: name, size and sha256, never the content or the operator's path. Absent when there were none. |
+| `predicate.desired_state` | The desired-state document a sync applied: its serial, the sha256 of its ciphertext, and the id of the authority's key that signed it. Never its content, which holds secret values. Absent on every other operation. |
 
 ### Configuration: names always, values never
 
@@ -126,13 +127,14 @@ A JSON Schema ships with every release, generated from the Go types that produce
 the document rather than written alongside them:
 
 ```text
-schemas/morzer-attestation-v3.json
+schemas/morzer-attestation-v4.json
 ```
 
-The predicate type is `https://morzecrew.github.io/morzer/attestation/v3`. v3
-adds `inputs` and nothing else, and v2 added `signature_verified_when_staged`.
-Statements written before them say `…/attestation/v2` or `…/attestation/v1`,
-validate against `schemas/morzer-attestation-v2.json` or
+The predicate type is `https://morzecrew.github.io/morzer/attestation/v4`. v4
+adds `desired_state` and nothing else, v3 added `inputs`, and v2 added
+`signature_verified_when_staged`. Statements written before them say
+`…/attestation/v3`, `…/attestation/v2` or `…/attestation/v1`, validate against
+`schemas/morzer-attestation-v3.json`, `schemas/morzer-attestation-v2.json` or
 `schemas/morzer-attestation-v1.json`, which stay published unchanged, and are
 still read by `attest verify`.
 

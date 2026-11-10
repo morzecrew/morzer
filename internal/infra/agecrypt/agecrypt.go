@@ -18,6 +18,8 @@
 package agecrypt
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -29,6 +31,12 @@ import (
 
 // Extension marks an encrypted artifact inside a backup.
 const Extension = ".age"
+
+// ErrIdentityUnreadable is a Decrypt that failed before it saw the ciphertext:
+// the identity is missing, unreadable or not an identity. A caller that keeps
+// a record of what would not decrypt tells this apart, since it is a fault of
+// the machine and not of what it was given.
+var ErrIdentityUnreadable = errors.New("the age identity cannot be read")
 
 // Encrypt writes the contents of src to dst, encrypted to every recipient.
 //
@@ -80,12 +88,13 @@ func Encrypt(dst io.Writer, src io.Reader, recipients []string) error {
 // stored bytes rather than the plaintext.
 func Decrypt(dst io.Writer, src io.Reader, identityPath string) error {
 	if identityPath == "" {
-		return domain.SecretsError(nil, "no age identity was given to decrypt with")
+		return domain.SecretsError(ErrIdentityUnreadable, "no age identity was given to decrypt with")
 	}
 
 	f, err := os.Open(identityPath)
 	if err != nil {
-		return domain.SecretsError(err, "cannot read the age identity at %s", identityPath).
+		return domain.SecretsError(fmt.Errorf("%w: %w", ErrIdentityUnreadable, err),
+			"cannot read the age identity at %s", identityPath).
 			WithHint("restore it from your backup, or pass --identity <key> to use " +
 				"the offline recovery key instead")
 	}
@@ -97,7 +106,7 @@ func Decrypt(dst io.Writer, src io.Reader, identityPath string) error {
 		// ("unknown identity type: %q"), and the offending line of an
 		// identity file is a private key. The path is what the operator
 		// needs; the bytes are what a log must never hold.
-		return domain.SecretsError(nil, "the age identity at %s is not valid", identityPath).
+		return domain.SecretsError(ErrIdentityUnreadable, "the age identity at %s is not valid", identityPath).
 			WithHint("the file should contain a line starting with AGE-SECRET-KEY-")
 	}
 

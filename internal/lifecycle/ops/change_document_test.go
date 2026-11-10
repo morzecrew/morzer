@@ -3,6 +3,7 @@ package ops_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,4 +110,55 @@ func TestABrokenChangeDocumentQuotesNoValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "not valid YAML")
 	assert.NotContains(t, err.Error(), "hunter2-MUST-NOT-PRINT")
 	assert.NotContains(t, domain.AsError(err).Hint, "hunter2-MUST-NOT-PRINT")
+}
+
+const envelope = `api_version: selfhost/v1alpha1
+kind: desired-state
+product: demo
+installation: inst_01
+serial: 1794310000123
+issued_at: 2026-11-10T12:00:00Z
+expires_at: 2026-11-17T12:00:00Z
+`
+
+// A desired-state document is a change document's body inside an envelope,
+// which ParseDesiredState reads and ParseConfigChange refuses.
+func TestADesiredStateDocumentCarriesAnEnvelope(t *testing.T) {
+	env, change, err := ops.ParseDesiredState([]byte(envelope + "parameters:\n  site: example.com\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "demo", env.Product)
+	assert.Equal(t, "inst_01", env.Installation)
+	assert.Equal(t, int64(1794310000123), env.Serial)
+	assert.Equal(t, "2026-11-17T12:00:00Z", env.ExpiresAt.UTC().Format(time.RFC3339))
+	assert.Equal(t, map[string]string{"site": "example.com"}, change.Parameters)
+
+	_, err = ops.ParseConfigChange([]byte(envelope))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"api_version" is not a section of a change document`)
+}
+
+func TestADesiredStateEnvelopeIsComplete(t *testing.T) {
+	for _, tc := range []struct{ drop, replace, want string }{
+		{drop: "serial: 1794310000123\n", want: "has no serial"},
+		{drop: "expires_at: 2026-11-17T12:00:00Z\n", want: "has no expires_at"},
+		{replace: "kind: desired-state", want: `of kind "other"`},
+		{replace: "serial: 1794310000123", want: `serial "-5" is not a positive whole number`},
+		{replace: "expires_at: 2026-11-17T12:00:00Z", want: `expires_at "next week" is not an RFC 3339 time`},
+		{replace: "api_version: selfhost/v1alpha1", want: `api_version "selfhost/v9"`},
+	} {
+		doc := envelope
+		if tc.drop != "" {
+			doc = strings.Replace(doc, tc.drop, "", 1)
+		}
+		if tc.replace != "" {
+			key := strings.SplitN(tc.replace, ":", 2)[0]
+			value := map[string]string{
+				"kind": "other", "serial": "-5", "expires_at": "next week", "api_version": "selfhost/v9",
+			}[key]
+			doc = strings.Replace(doc, tc.replace, key+": "+value, 1)
+		}
+		_, _, err := ops.ParseDesiredState([]byte(doc))
+		require.Error(t, err, "%q", doc)
+		assert.Contains(t, err.Error(), tc.want)
+	}
 }

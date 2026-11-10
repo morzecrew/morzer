@@ -49,6 +49,14 @@ func scopedUser(
 	policy := fmt.Sprintf(
 		`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":[%s],"Resource":[%s]}]}`,
 		strings.Join(quoted, ","), resources)
+	return userWithPolicy(t, container, root, name, policy)
+}
+
+// userWithPolicy creates a RustFS user holding exactly policy.
+func userWithPolicy(
+	t *testing.T, container *dockerlab.Container, root ports.TargetCredentials, name, policy string,
+) ports.TargetCredentials {
+	t.Helper()
 
 	// RustFS's own admin API, called with the root credentials by the curl
 	// the image ships. Its `/rustfs/admin/v3` routes take plain JSON, where

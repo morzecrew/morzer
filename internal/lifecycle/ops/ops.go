@@ -495,6 +495,12 @@ var forwardedKinds = map[events.Kind]bool{
 	// is not ok (RFC 0043 decision 6): the reason that timer exists.
 	events.KindDoctorFinished: true,
 
+	// A refused desired-state document, and one in force that expired:
+	// what an operator learns from a failed update, for a change made from
+	// elsewhere (RFC 0057 §5.9).
+	events.KindSyncRefused: true,
+	events.KindSyncExpired: true,
+
 	events.KindOperationStarted: false, // the outcome is the news, not the start
 	events.KindStepStarted:      false, // narration
 	events.KindStepProgress:     false, // narration

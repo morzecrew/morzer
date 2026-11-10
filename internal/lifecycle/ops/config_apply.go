@@ -37,7 +37,7 @@ type ConfigApplied struct {
 // `config` operation (RFC 0056): one record, one render, one converge and one
 // health check, and on a failed step every value in it is put back.
 func ConfigApply(ctx context.Context, d *Deps, opts ConfigApplyOptions) (Result, error) {
-	run, err := d.runChange(ctx, opts.Options, opts.Change)
+	run, err := d.runChange(ctx, opts.Options, opts.Change, changeExtras{})
 	if err == nil && run.noChange {
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
@@ -143,11 +143,34 @@ func (r changeRun) applied() ConfigApplied {
 	return out
 }
 
-// runChange is the operation behind `config apply` and `config set` of a
-// parameter (RFC 0056 decision 14).
-func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange) (changeRun, error) {
+// changeExtras is what a caller adds to a change's operation.
+type changeExtras struct {
+	// record writes into the installation the change leaves, in the record
+	// step's one write, so the fields commit with the change and are undone
+	// with it. A sync's serial goes here (RFC 0057 decision 25). Set, the
+	// record step runs even for a change of secrets alone, and the fields
+	// are written even when no value changes. Called under the lock, so an
+	// error here, such as a serial another sync has since applied, stops
+	// the change before anything runs.
+	record func(*domain.Installation) error
+
+	// check refuses the change against the release it would apply under,
+	// before it is planned: a sync's managed names (RFC 0057 §5.6). Run
+	// again under the lock, because a release installed while this waited
+	// is the one the change applies under.
+	check func(rel domain.Release, hasRel bool) error
+
+	// desiredState is the document a sync applied, which its statement
+	// names (RFC 0057 decision 15). Set, the statement is filed whether or
+	// not the configuration was rendered.
+	desiredState *domain.AttestedDesiredState
+}
+
+// runChange is the operation behind `config apply`, `config set` of a
+// parameter (RFC 0056 decision 14) and a sync (RFC 0057).
+func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange, extras changeExtras) (changeRun, error) {
 	var run changeRun
-	if change.IsEmpty() {
+	if change.IsEmpty() && extras.record == nil {
 		run.noChange = true
 		return run, nil
 	}
@@ -155,11 +178,18 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange)
 	if err != nil {
 		return run, err
 	}
+	if extras.check != nil {
+		if err := extras.check(rel, hasRel); err != nil {
+			return run, err
+		}
+	} else if err := refuseManagedLocally(inst, rel, hasRel, change, opts.Force); err != nil {
+		return run, err
+	}
 	planned, err := d.planChange(ctx, inst, rel, hasRel, change, opts.Force)
 	if err != nil {
 		return run, err
 	}
-	if planned.names.empty() {
+	if planned.names.empty() && extras.record == nil {
 		run.noChange = true
 		return run, nil
 	}
@@ -181,15 +211,32 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange)
 		if inst, rel, hasRel, err = d.changeTarget(ctx, change); err != nil {
 			return err
 		}
+		if extras.check != nil {
+			if err := extras.check(rel, hasRel); err != nil {
+				return err
+			}
+		} else if err := refuseManagedLocally(inst, rel, hasRel, change, opts.Force); err != nil {
+			return err
+		}
 		if planned, err = d.planChange(ctx, inst, rel, hasRel, change, opts.Force); err != nil {
 			return err
 		}
-		if planned.names.empty() {
-			run.noChange = true
-			return nil
+		if extras.record != nil {
+			if err := extras.record(&planned.after); err != nil {
+				return err
+			}
 		}
 		run.before, run.after, run.rel, run.names = inst, planned.after, rel, planned.names
-		if op.Steps, err = d.changeSteps(ctx, &run, planned, change, opts); err != nil {
+		if planned.names.empty() {
+			run.noChange = true
+			// Nothing to apply, and still a document to record: its
+			// serial, so the next tick does not fetch it again.
+			if extras.record != nil && !opts.DryRun {
+				return d.saveInstallation(ctx, planned.after)
+			}
+			return nil
+		}
+		if op.Steps, err = d.changeSteps(ctx, &run, planned, change, opts, extras.record != nil); err != nil {
 			return err
 		}
 		// "set", as `config set` has always described itself in the
@@ -214,13 +261,24 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange)
 	if run.noChange && runErr == nil {
 		return run, nil
 	}
+	// A sync stopped under the lock before its operation ran, by a serial
+	// applied meanwhile or a refusal, has no operation to report or
+	// attest: the cycle records what became of the document.
+	if extras.record != nil && result.Record.ID == "" {
+		return run, runErr
+	}
 	run.record = result.Record
 	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
 	// A statement digests the rendered configuration, so a change that
 	// rendered none files none, as a setting change that reaches no
-	// service files none.
-	if !opts.DryRun && run.rendered {
-		attestConfig(ctx, d, result.Record, run.before, run.rel, result.State)
+	// service files none. A sync files one either way, to name the
+	// document it applied, with no digest when it rendered nothing.
+	if !opts.DryRun && (run.rendered || extras.desiredState != nil) {
+		st := result.State
+		if !run.rendered {
+			st = nil
+		}
+		attestConfig(ctx, d, result.Record, run.before, run.rel, st, extras.desiredState)
 	}
 	return run, runErr
 }
@@ -300,6 +358,9 @@ func (d *Deps) planChange(
 		}
 	}
 	if err := checkSignaturePolicy(inst, next); err != nil {
+		problems = append(problems, err)
+	}
+	if err := checkSyncPolicy(next); err != nil {
 		problems = append(problems, err)
 	}
 
@@ -408,11 +469,12 @@ func refuseAll(problems []error) error {
 // steps that touch it, each left out when the change does not need it.
 func (d *Deps) changeSteps(
 	ctx context.Context, run *changeRun, planned plannedChange, change ConfigChange, opts Options,
+	recordAlways bool,
 ) ([]engine.Step, error) {
 	before, after, rel, names := run.before, run.after, run.rel, planned.names
 
 	var steps []engine.Step
-	if len(names.settingNames())+len(names.parameterNames()) > 0 {
+	if recordAlways || len(names.settingNames())+len(names.parameterNames()) > 0 {
 		steps = append(steps, stepRecordChange(d, before, after, names))
 	}
 	var stage []engine.Step
@@ -515,14 +577,18 @@ func (d *Deps) changeSteps(
 // stepRecordChange writes the settings and parameters in one write, named for
 // what it records.
 func stepRecordChange(d *Deps, before, after domain.Installation, names changeNames) engine.Step {
-	switch {
-	case len(names.parameterNames()) == 0:
+	switch params, settings := len(names.parameterNames()), len(names.settingNames()); {
+	case params == 0 && settings > 0:
 		return stepRecordSettings(d, before, after)
-	case len(names.settingNames()) == 0:
+	case settings == 0 && params > 0:
 		return stepRecordParameters(d, before, after)
 	}
 	step := stepRecordParameters(d, before, after)
 	step.ID, step.Description = "record-installation", "record settings and parameters"
+	if len(names.settingNames())+len(names.parameterNames()) == 0 {
+		// A sync's change of secrets alone, which still records its serial.
+		step.Description = "record the installation"
+	}
 	return step
 }
 

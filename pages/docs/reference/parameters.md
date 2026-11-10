@@ -337,6 +337,11 @@ morzer config unset update.channel           # back to absent, which is always t
 | `release.require_signature` | Refuse any release not signed by a key [`release trust`](release-commands.md#release-trust) lists. `true` needs a trusted key; `false` is refused while `update.auto_apply` is on, and is journalled. See [unattended updates](../operating/unattended-updates.md#turning-it-on). |
 | `installation.domains` | The public names the product is served under, comma-separated; the first is canonical. Each is a host name or an `https://` URL. A change renders the configuration and re-creates every running service. |
 | `installation.profile` | The [deployment profiles](manifest.md#runtimes) the release is rendered and started with, comma-separated; a selection the installed release can deploy. Absent, or empty, is the base files. A change on a running product applies the release under it. |
+| `sync.target` | Where this installation's desired-state documents are, as a backup target URL. Set locally; a document can never change it. |
+| `sync.credentials` | The secret holding `sync.target`'s credential document, as `backup target add --credentials` names one. Read-only access, with listing, scoped to `state/<product>/<installation-id>/`, is all it needs. |
+| `sync.authority` | The minisign public key a document must be signed with. Changing it is journalled, and clears the serials this machine applied and refused, so a new authority starts a watermark of its own. |
+| `sync.interval` | How often the sync timer fetches, a duration of at least `1m`. Absent takes `15m`. |
+| `sync.enabled` | Fetch and apply desired-state documents on a timer. Refused without `sync.authority` and `sync.target`. Absent means off. |
 
 `backup.schedule` is the same value `morzer init --backup-schedule` takes, and
 until it was a setting it could not be changed afterwards at all. Changing it
