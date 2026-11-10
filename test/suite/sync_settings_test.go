@@ -98,6 +98,12 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	} {
 		assert.Error(t, setSettings(t, h, map[string]string{name: value}), "%s=%s was accepted", name, value)
 	}
+	// Names a secret schema refuses as file names, so no declaration could
+	// ever provide them.
+	for _, name := range []string{".", ".."} {
+		assert.Error(t, setSettings(t, h, map[string]string{"sync.credentials": name}),
+			"sync.credentials=%s was accepted", name)
+	}
 
 	require.NoError(t, setSettings(t, h, map[string]string{
 		"sync.interval": "20m", "sync.credentials": "sync_s3",

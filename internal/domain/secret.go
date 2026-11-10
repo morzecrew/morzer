@@ -322,9 +322,10 @@ func (s SecretSchema) ServicesFor(names []string) []string {
 
 var secretNamePattern = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-."
 
-// ValidSecretName reports whether name is spelled as a secret schema allows.
+// ValidSecretName reports whether name is spelled as a secret schema allows:
+// its characters, and never `.` or `..`, which name no file.
 func ValidSecretName(name string) bool {
-	return name != "" && strings.TrimLeft(name, secretNamePattern) == ""
+	return name != "" && name != "." && name != ".." && strings.TrimLeft(name, secretNamePattern) == ""
 }
 
 // DeclaresOwner reports whether any secret names an owner.
