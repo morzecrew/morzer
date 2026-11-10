@@ -611,6 +611,14 @@ func TestACyclePublishesTheRowWhenItsOutcomeIsNews(t *testing.T) {
 	require.NotNil(t, row.Sync.Applied, "the row does not report the document applied")
 	assert.Equal(t, int64(140), row.Sync.Applied.Serial)
 
+	// A newer document that changes nothing still moves the applied serial,
+	// which the row reports.
+	require.NoError(t, os.Remove(rowPath))
+	r.publish(t, 141, "parameters:\n  log_level: debug\n")
+	assert.True(t, r.syncOK(t).NoChange)
+	row, _ = publishedRow(t, fleet, inst)
+	assert.Equal(t, int64(141), row.Sync.Applied.Serial)
+
 	// The first `current` changes the row's last fetch; the second is the
 	// cycle with nothing new.
 	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
