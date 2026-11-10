@@ -429,9 +429,12 @@ func TestADocumentAppliedWhileACycleWaitedIsNotAppliedTwice(t *testing.T) {
 		inst.Sync.Applied = &domain.SyncDocument{Serial: 90, AuthorityKeyID: domain.MinisignKeyID(r.key)}
 		require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
 	}
+	statements := len(statementsOnDisk(t, r.h))
 	assert.Equal(t, domain.SyncCurrent, r.syncOK(t).Result)
 	assert.Len(t, configRecords(t, r.h), before)
 	assert.NotEqual(t, "debug", installation(t, r.h).Parameters["log_level"])
+	assert.Empty(t, r.notified.kinds(), "a cycle that applied nothing reported an outcome")
+	assert.Len(t, statementsOnDisk(t, r.h), statements, "a cycle that applied nothing filed a statement")
 }
 
 // While sync is on, a local change to a name the authority manages is refused

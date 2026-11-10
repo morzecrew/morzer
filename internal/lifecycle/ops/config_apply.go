@@ -259,6 +259,12 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 	if run.noChange && runErr == nil {
 		return run, nil
 	}
+	// A sync stopped under the lock before its operation ran, by a serial
+	// applied meanwhile or a refusal, has no operation to report or
+	// attest: the cycle records what became of the document.
+	if extras.record != nil && result.Record.ID == "" {
+		return run, runErr
+	}
 	run.record = result.Record
 	d.notifyFinished(ctx, opID, domain.OpTypeConfig, result.Record, runErr)
 	// A statement digests the rendered configuration, so a change that
