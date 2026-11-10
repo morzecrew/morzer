@@ -145,6 +145,13 @@ func (t *BackupTarget) GetObject(ctx context.Context, ref ports.TargetRef, key s
 	return blob.GetObject(ctx, t.store(ref), key)
 }
 
+func (t *BackupTarget) DeleteObject(ctx context.Context, ref ports.TargetRef, key string) error {
+	if t.FailWith != nil {
+		return t.FailWith
+	}
+	return blob.DeleteObject(ctx, t.store(ref), key)
+}
+
 // Objects returns the keys currently held, sorted. For assertions about what a
 // half-finished push left behind.
 func (t *BackupTarget) Objects() []string {

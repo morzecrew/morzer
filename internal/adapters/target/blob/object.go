@@ -34,6 +34,15 @@ func PutObject(ctx context.Context, s Store, key string, data []byte) error {
 	return s.Put(ctx, key, bytes.NewReader(data), int64(len(data)))
 }
 
+// DeleteObject removes key, guarded as PutObject's is: the keys a prune
+// removes come from a listing of a bucket other writers can reach.
+func DeleteObject(ctx context.Context, s Store, key string) error {
+	if err := guardObjectKey(key); err != nil {
+		return err
+	}
+	return s.Delete(ctx, key)
+}
+
 // GetObject reads back what is at key, bounded.
 //
 // The key is guarded here for the same reason PutObject's is, and against a

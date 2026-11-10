@@ -107,6 +107,14 @@ func (d Delegate) ObjectKeys(ctx context.Context, ref ports.TargetRef, prefix st
 	return ObjectKeys(ctx, s, prefix)
 }
 
+func (d Delegate) DeleteObject(ctx context.Context, ref ports.TargetRef, key string) error {
+	s, err := d.Object(ctx, ref, false)
+	if err != nil {
+		return err
+	}
+	return DeleteObject(ctx, s, key)
+}
+
 func (d Delegate) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
 	s, err := d.Object(ctx, ref, false)
 	if err != nil {
