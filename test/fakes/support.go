@@ -453,6 +453,12 @@ type Locker struct {
 	// testing the exit-code-4 path.
 	FailAcquire bool
 
+	// RefuseNth refuses only the Nth acquisition of the named lock, counting
+	// from one: the way a test finds another operation holding the lock at
+	// one precise moment, among acquisitions of other locks.
+	RefuseNth map[string]int
+	acquired  map[string]int
+
 	// BeforeAcquire runs at the start of an acquisition, before the lock is
 	// looked at. A test uses it to land another operation in the window
 	// between what an operation read and the lock it then takes.
@@ -460,6 +466,13 @@ type Locker struct {
 }
 
 func NewLocker() *Locker { return &Locker{} }
+
+// Acquired is how many times the named lock has been asked for.
+func (l *Locker) Acquired(name string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.acquired[name]
+}
 
 var _ ports.Locker = (*Locker)(nil)
 
@@ -470,8 +483,12 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if l.acquired == nil {
+		l.acquired = map[string]int{}
+	}
+	l.acquired[name]++
 	owner, held := l.held[name]
-	if l.FailAcquire || held {
+	if l.FailAcquire || held || (l.RefuseNth[name] != 0 && l.RefuseNth[name] == l.acquired[name]) {
 		return nil, domain.Locked("the %s lock is held by %s operation %s",
 			name, owner.Type, owner.OperationID)
 	}
