@@ -288,6 +288,10 @@ func newStateFactsCommand(app *App) *cobra.Command {
 				app.jsonData = report
 				return nil
 			}
+			if report.Stale {
+				fmt.Fprintf(app.Stream.Err, "the row these facts were checked against was published %s, "+
+					"more than a day ago\n", report.RowPublishedAt.Format(time.RFC3339))
+			}
 			// The facts as the task printed them, for a program to read.
 			app.passThrough(report.Facts)
 			return nil

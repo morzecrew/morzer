@@ -494,6 +494,13 @@ type StateFactsReport struct {
 	InstallationID string `json:"installation_id"`
 	Digest         string `json:"digest"`
 	Facts          string `json:"facts"`
+
+	// RowPublishedAt is when the row the facts were checked against was
+	// published, and Stale says it is older than a day. A bucket writer can
+	// put back an older row with the facts it named, which every check
+	// passes; its age is what shows it.
+	RowPublishedAt domain.Time `json:"row_published_at"`
+	Stale          bool        `json:"stale,omitempty"`
 }
 
 // StateFacts reads an installation's facts (RFC 0057 §5.11). They are used
@@ -533,6 +540,8 @@ func StateFacts(ctx context.Context, d *Deps, opts StateFactsOptions) (StateFact
 	if err != nil {
 		return report, err
 	}
+	report.RowPublishedAt = row.PublishedAt
+	report.Stale = row.Stale(d.now(), DefaultFleetStaleAfter)
 	if row.FactsDigest == "" {
 		hint := "its machine sets no sync.recipient, or its release publishes no facts"
 		if row.FactsProblem != "" {
