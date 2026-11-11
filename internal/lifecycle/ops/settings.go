@@ -14,6 +14,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -1148,6 +1149,24 @@ func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
 // configured is missing. Worse, they disagreed in the direction that trains
 // somebody to ignore the check: doctor walked the *removal* superset and
 // reported the conditional pairs as "not installed" on every ordinary machine.
+// checkManagerBinary refuses units that would run, as root, a manager binary
+// another user could replace: whoever could would run as root at the next
+// timer tick. Only in the production layout, where the units are systemd's;
+// under --root they are files in a tree nothing runs.
+func (d *Deps) checkManagerBinary() error {
+	if d.Paths.Root() != "" || d.ManagerPath == "" {
+		return nil
+	}
+	who, err := atomicfs.ReplaceableByNonRoot(d.ManagerPath)
+	if err != nil || who == "" {
+		return err
+	}
+	return domain.Preflight(nil, "the units would run %s as root, and %s", d.ManagerPath, who).
+		WithHint("install the manager where only root can replace it, then run this again with that copy: "+
+			"curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s --dir /usr/local/bin",
+			d.ManagerVersion)
+}
+
 func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 	return ports.UnitParams{
 		Product:     inst.Product,
@@ -1264,6 +1283,9 @@ func (d *Deps) refreshUnits(ctx context.Context, inst domain.Installation) error
 		return err
 	}
 
+	if err := d.checkManagerBinary(); err != nil {
+		return err
+	}
 	units, err := d.Supervisor.Units(d.unitParams(inst))
 	if err != nil {
 		return err

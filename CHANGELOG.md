@@ -68,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installation needing manual intervention. Only the services the active
   profiles start are re-created.
 
+### Security
+
+- `init`, and every operation that rewrites the systemd units, refuse units
+  that would run as root a manager binary another user could replace, such as
+  one installed without `sudo`. `doctor` fails units that already run one, as
+  `manager.binary`.
+
 ## [0.15.1] - 2026-11-10
 
 A secret change no longer fails when a service the secret declares sits behind

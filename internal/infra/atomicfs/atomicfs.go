@@ -448,6 +448,47 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 	return true, "", nil
 }
 
+// ReplaceableByNonRoot says who other than root could replace the file at
+// path, or "" when nobody could. The file and every directory above it must be
+// owned by root and writable by no other user: a directory its owner can write
+// is one whose entries they can rename away and put back. A sticky directory
+// does not count, since there only a file's owner may rename it, and nor does
+// one writable by root's own group.
+func ReplaceableByNonRoot(path string) (string, error) {
+	p, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", domain.Internal(err, "cannot resolve %s", path)
+	}
+	return replaceableByNonRoot(p, os.Lstat)
+}
+
+// replaceableByNonRoot walks a resolved path up to the root, with lstat as
+// the filesystem, so a test can stand a root-owned file in a user's directory.
+func replaceableByNonRoot(p string, lstat func(string) (fs.FileInfo, error)) (string, error) {
+	for {
+		info, err := lstat(p)
+		if err != nil {
+			return "", domain.Internal(err, "cannot stat %s", p)
+		}
+		uid, gid := Owner(info)
+		mode := info.Mode()
+		sticky := info.IsDir() && mode&os.ModeSticky != 0
+		switch {
+		case uid != 0:
+			return fmt.Sprintf("%s is owned by uid %d, not root", p, uid), nil
+		case mode&0o002 != 0 && !sticky:
+			return fmt.Sprintf("%s is writable by every user", p), nil
+		case mode&0o020 != 0 && gid != 0 && !sticky:
+			return fmt.Sprintf("%s is writable by group %d", p, gid), nil
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return "", nil
+		}
+		p = parent
+	}
+}
+
 func ownerText(uid, gid int) string {
 	if gid == -1 {
 		return fmt.Sprintf("uid %d", uid)

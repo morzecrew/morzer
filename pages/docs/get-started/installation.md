@@ -237,6 +237,13 @@ which is worth asking on a machine somebody else set up — see
 The manager writes to `/etc`, `/var/lib`, `/run` and `/opt`, installs systemd
 units, and runs release hooks. It expects to be root.
 
+The units run the manager as root, naming the binary by its path, so that
+binary has to be one only root can replace: it and every directory above it
+owned by root and writable by no other user. `init`, and every operation that
+rewrites the units, refuse a copy another user could replace, which is where a
+copy installed without `sudo` lives. `doctor`'s `manager.binary` fails on units
+that already name one.
+
 To try it without being root, or without touching those paths at all, see
 [Your first deployment](first-deployment.md) — every managed path derives from a
 single prefix, and there is a flag that moves all of them.
