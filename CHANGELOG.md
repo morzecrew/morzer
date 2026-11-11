@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `update --set` and `--set-file` give values to the parameters of the release
+  being installed, such as one it adds with no default. They are recorded only
+  if the update succeeds, and the journal names them without quoting a value.
+
 ## [0.16.0] - 2026-11-11
 
 An installation can follow an authority's desired state: signed, encrypted

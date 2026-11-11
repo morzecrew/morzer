@@ -321,6 +321,8 @@ func newUpdateCommand(app *App) *cobra.Command {
 		profiles   []string
 		to         string
 		allowOlder bool
+		set        []string
+		setFiles   []string
 	)
 
 	cmd := &cobra.Command{
@@ -362,6 +364,26 @@ func newUpdateCommand(app *App) *cobra.Command {
 				return domain.Usage("--allow-older applies to an install").
 					WithHint("pass it with a bundle or --to; --check, --stage and " +
 						"--unattended never install an older release")
+			}
+			// Values for the release an install puts in place (#346);
+			// a check or a stage records nothing they could go with.
+			if (len(set) > 0 || len(setFiles) > 0) && (check || stage || unattended) {
+				return domain.Usage("--set and --set-file apply to an install").
+					WithHint("pass them with a bundle or --to; --check, --stage and " +
+						"--unattended install nothing to record a value with")
+			}
+			// Parsed before anything is fetched, so a typo fails with
+			// nothing on disk, as `init` parses them.
+			params, err := domain.ParseAssignments(set)
+			if err != nil {
+				return err
+			}
+			files, _, err := app.readParameterFiles(setFiles)
+			if err != nil {
+				return err
+			}
+			if params, err = mergeParameterFiles(params, files); err != nil {
+				return err
 			}
 
 			// Before everything else an update needs and a check does
@@ -457,7 +479,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 			}
 
 			var result ops.Result
-			err := app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
+			err = app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				var err error
 				result, err = ops.Update(ctx, app.Deps, ops.UpdateOptions{
 					Options:      opts,
@@ -465,6 +487,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 					To:           to,
 					ExpectDigest: digest,
 					AllowOlder:   allowOlder,
+					Parameters:   params,
 				})
 				return result, err
 			})
@@ -487,6 +510,10 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.StringVar(&to, "to", "", "install a version already in the release store, instead of a bundle path")
 	f.BoolVar(&allowOlder, "allow-older", false,
 		"install a release older than the one running, which is otherwise refused; recorded in the journal")
+	f.StringArrayVar(&set, "set", nil,
+		"set a parameter of the release being installed, as name=value; recorded only if the update succeeds; repeat for several")
+	f.StringArrayVar(&setFiles, "set-file", nil,
+		"read such a parameter's value from a file, as name=path; - is standard input; repeat for several")
 	// Flags are parsed before a completion runs, so --allow-older already
 	// read here offers the older releases it would admit.
 	_ = cmd.RegisterFlagCompletionFunc("to", app.completeValues(releasesWhere(
