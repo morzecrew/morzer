@@ -448,6 +448,113 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 	return true, "", nil
 }
 
+// ReplaceableByNonRoot says who other than root could replace the file at
+// path, or "" when nobody could. Every entry the path passes through on its way
+// to the file must be owned by root and writable by no group or other user: a
+// directory someone else can write is one whose entries they can rename away
+// and put back, and a link they own is one they can repoint. A group bit counts
+// whatever the group, root's included, since a group can have other members,
+// and a POSIX ACL granting a named user write shows as one. A sticky directory
+// does not count, since there only an entry's owner may rename it.
+func ReplaceableByNonRoot(path string) (string, error) {
+	wd := "/"
+	if !filepath.IsAbs(path) {
+		var err error
+		if wd, err = os.Getwd(); err != nil {
+			return "", domain.Internal(err, "cannot resolve %s", path)
+		}
+	}
+	return replaceableByNonRoot(absolute(path, wd), os.Lstat, os.Readlink)
+}
+
+// absolute makes path absolute against wd without cleaning it. `..` after a
+// link is the parent of what the link names, which only the walk can know, and
+// filepath.Abs would read it against the link's own directory.
+func absolute(path, wd string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return strings.TrimSuffix(wd, "/") + "/" + path
+}
+
+// maxLinks is how many links one resolution may follow, the kernel's own
+// limit.
+const maxLinks = 40
+
+// replaceableByNonRoot resolves an absolute path one entry at a time, from the
+// root down as the kernel does, and judges every entry it meets: each
+// directory, each link and each link's target, and the file. lstat and
+// readlink are the filesystem, so a test can stand one in.
+func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), readlink func(string) (string, error)) (string, error) {
+	cur := "/"
+	info, err := lstat(cur)
+	if err != nil {
+		return "", domain.Internal(err, "cannot stat %s", cur)
+	}
+	if who := replaceableEntry(cur, info); who != "" {
+		return who, nil
+	}
+	rest := strings.Split(path, "/")
+	for links := 0; len(rest) > 0; {
+		name := rest[0]
+		rest = rest[1:]
+		switch name {
+		case "", ".":
+			continue
+		case "..":
+			cur = filepath.Dir(cur)
+			continue
+		}
+		next := filepath.Join(cur, name)
+		info, err := lstat(next)
+		if err != nil {
+			return "", domain.Internal(err, "cannot stat %s", next)
+		}
+		if who := replaceableEntry(next, info); who != "" {
+			return who, nil
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			cur = next
+			continue
+		}
+		if links++; links > maxLinks {
+			return "", domain.Internal(nil, "%s passes through more than %d links", path, maxLinks)
+		}
+		target, err := readlink(next)
+		if err != nil {
+			return "", domain.Internal(err, "cannot read the link %s", next)
+		}
+		// A relative target is read from the link's directory, which is
+		// where cur still is.
+		if filepath.IsAbs(target) {
+			cur = "/"
+		}
+		rest = append(strings.Split(target, "/"), rest...)
+	}
+	return "", nil
+}
+
+// replaceableEntry says why someone other than root could replace one entry,
+// or "".
+func replaceableEntry(p string, info fs.FileInfo) string {
+	uid, gid := Owner(info)
+	mode := info.Mode()
+	sticky := info.IsDir() && mode&os.ModeSticky != 0
+	switch {
+	case uid != 0:
+		return fmt.Sprintf("%s is owned by uid %d, not root", p, uid)
+	case mode&os.ModeSymlink != 0:
+		// A link's own mode means nothing; who can repoint it is decided
+		// by its owner and its directory.
+		return ""
+	case mode&0o002 != 0 && !sticky:
+		return fmt.Sprintf("%s is writable by every user", p)
+	case mode&0o020 != 0 && !sticky:
+		return fmt.Sprintf("%s is writable by group %d", p, gid)
+	}
+	return ""
+}
+
 func ownerText(uid, gid int) string {
 	if gid == -1 {
 		return fmt.Sprintf("uid %d", uid)

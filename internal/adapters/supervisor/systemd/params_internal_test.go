@@ -200,6 +200,18 @@ func TestUnitsManagerPathsReadsEveryInstalledUnit(t *testing.T) {
 	paths, err = s.UnitsManagerPaths(ctx, "demo")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/opt/morzer/bin/morzer", "/usr/local/bin/morzer"}, paths)
+
+	// Every command a unit runs, a reload's included, and those a drop-in
+	// sets, which systemd runs in place of the unit's own.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ServiceUnitName("demo")),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\nExecReload=/srv/reload/morzer apply\n"), 0o600))
+	dropIns := filepath.Join(dir, ServiceUnitName("demo")+".d")
+	require.NoError(t, os.MkdirAll(dropIns, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dropIns, "override.conf"),
+		[]byte("[Service]\nExecStart=\nExecStart=-/srv/override/morzer apply --startup\n"), 0o600))
+	paths, err = s.UnitsManagerPaths(ctx, "demo")
+	require.NoError(t, err)
+	assert.Subset(t, paths, []string{"/srv/reload/morzer", "/srv/override/morzer"})
 }
 
 // The metrics pair exists only with a directory, and its service carries the

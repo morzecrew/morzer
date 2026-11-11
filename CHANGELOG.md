@@ -61,12 +61,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release's health checks after re-creating its services, and undo the change
   if a check fails.
 
+- `install.sh` run without root says that its copy is for that user alone, which
+  `sudo` does not find and an installation cannot run, and prints the command
+  that installs one for root.
+
 ### Fixed
 
 - `config set` no longer fails when a service the parameter declares is behind
   a profile that is not active. Its rollback failed the same way and left the
   installation needing manual intervention. Only the services the active
   profiles start are re-created.
+
+- `self-update` run by a user who cannot take the installations' locks says so
+  and prints the command to re-run with `sudo`, where it reported an
+  installation as busy.
+
+### Security
+
+- `init`, and every operation that rewrites the systemd units, refuse units
+  that would run as root a manager binary another user could replace, such as
+  one installed without `sudo`. `doctor` fails units that already run one, as
+  `manager.binary`.
 
 ## [0.15.1] - 2026-11-10
 

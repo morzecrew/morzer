@@ -11,14 +11,22 @@ libc. Getting it is a download and a checksum.
 
 ## The script
 
+On a machine that will run installations, install it for root:
+
 ```sh
-curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version 0.15.1
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version 0.15.1
 ```
 
 It resolves the archive for this machine's architecture, checks the checksum
 against the release's own `SHA256SUMS`, checks the signature when `minisign` is
 installed, installs one file, and puts the prefix on `PATH` if it is not there
 already. Then it tells you what it did.
+
+Without `sudo`, it installs into `~/.local/bin` for you alone. That copy is
+enough to write and check bundles with `release new` and `release verify`, and
+it is not one an installation can run: `sudo` keeps a `PATH` of its own and
+does not find it, and the manager [refuses](#running-as-root) units that would
+run it.
 
 !!! warning "Unpacking needs `zstd` on the machine"
 
@@ -42,11 +50,11 @@ curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --print-only
 
 # A production runbook: pin the version, and refuse to install unsigned.
 curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-  | sh -s -- --version 0.15.1 --require-signature
+  | sudo sh -s -- --version 0.15.1 --require-signature
 
 # Somewhere else, without touching a startup file.
 curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-  | sh -s -- --version 0.15.1 --dir /opt/morzer/bin --no-modify-path
+  | sudo sh -s -- --version 0.15.1 --dir /opt/morzer/bin --no-modify-path
 ```
 
 `sh -s --` is how arguments reach a script that arrived on stdin. `MORZER_VERSION`
@@ -236,6 +244,13 @@ which is worth asking on a machine somebody else set up — see
 
 The manager writes to `/etc`, `/var/lib`, `/run` and `/opt`, installs systemd
 units, and runs release hooks. It expects to be root.
+
+The units run the manager as root, naming the binary by its path, so that
+binary has to be one only root can replace: it, and every directory and link
+on the way to it, owned by root and writable by no group or other user. `init`, and every operation that
+rewrites the units, refuse a copy another user could replace, which is where a
+copy installed without `sudo` lives. `doctor`'s `manager.binary` fails on units
+that already name one.
 
 To try it without being root, or without touching those paths at all, see
 [Your first deployment](first-deployment.md) — every managed path derives from a

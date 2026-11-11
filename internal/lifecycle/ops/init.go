@@ -1202,6 +1202,9 @@ func stepInstallUnits(d *Deps, product string, scope ports.EnableScope) engine.S
 			// match what a later `config set` would install -- and
 			// how the remedy `doctor` prints came to be one that
 			// could not clear the warning it printed.
+			if err := d.checkManagerBinary(); err != nil {
+				return err
+			}
 			inst := engine.MustGet[domain.Installation](st, engine.KeyInstallation)
 			units, err := d.Supervisor.Units(d.unitParams(inst))
 			if err != nil {

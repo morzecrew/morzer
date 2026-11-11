@@ -138,6 +138,10 @@ type Deps struct {
 	// passes or fails on which machine ran it.
 	FreeSpace func(string) (int64, error)
 
+	// ReplaceableByNonRoot says who other than root could replace a file.
+	// Injectable for the same reason: a test cannot make a file root's.
+	ReplaceableByNonRoot func(string) (string, error)
+
 	// ManagerPath is the absolute path of this binary, embedded in the
 	// supervisor units so they do not depend on PATH.
 	ManagerPath string
@@ -268,6 +272,15 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 		return d.FreeSpace(path)
 	}
 	return atomicfs.FreeSpace(path)
+}
+
+// replaceableByNonRoot says who other than root could replace the file at path,
+// or "" when nobody could.
+func (d *Deps) replaceableByNonRoot(path string) (string, error) {
+	if d.ReplaceableByNonRoot != nil {
+		return d.ReplaceableByNonRoot(path)
+	}
+	return atomicfs.ReplaceableByNonRoot(path)
 }
 
 func (d *Deps) now() time.Time {

@@ -267,7 +267,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	}
 
 	if d.Supervisor != nil {
-		checks = append(checks, d.checkUnits(inst))
+		checks = append(checks, d.checkUnits(inst), d.checkUnitsManagerBinary(inst))
 	}
 	if d.Backup != nil {
 		checks = append(checks, d.checkLastBackup(inst))
