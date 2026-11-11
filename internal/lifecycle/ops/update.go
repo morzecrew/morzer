@@ -176,7 +176,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
+		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
 
@@ -488,6 +488,11 @@ func declaredValues(recorded map[string]string, declared map[string]domain.Param
 	return out
 }
 
+// journalledStep reports whether a journalled run had the step at all.
+func journalledStep(rec domain.OperationRecord, id string) bool {
+	return slices.ContainsFunc(rec.Steps, func(s domain.StepRecord) bool { return s.ID == id })
+}
+
 // stepSucceeded reports whether a journalled run finished the step.
 func stepSucceeded(rec domain.OperationRecord, id string) bool {
 	for _, step := range rec.Steps {
@@ -539,6 +544,7 @@ func updateSteps(
 	fallback *fallbackRelease,
 	source, staged domain.Release,
 	opts UpdateOptions,
+	prior *domain.OperationRecord,
 ) []engine.Step {
 	// The parameters the new release stopped declaring are dropped from the
 	// installation before anything downstream resolves them, and the step
@@ -598,7 +604,10 @@ func updateSteps(
 	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
 	convergeOpts.PreviousVersion = from.Version
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
-	if len(opts.Parameters) > 0 {
+	// Also on a resume given none, when the run it continues had the step:
+	// a resume plans the steps that run journalled, and the step finds
+	// nothing left to record.
+	if len(opts.Parameters) > 0 || (prior != nil && journalledStep(*prior, "record-parameters")) {
 		steps = append(steps, stepRecordGivenParameters(d, opts.Parameters))
 	}
 	steps = append(steps, stepRetireParameters(d, staged))
@@ -666,6 +675,8 @@ func stepRecordGivenParameters(d *Deps, values map[string]string) engine.Step {
 		Idempotent:  true,
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
+		// Nothing to record on a resume whose run recorded them already.
+		Check: func(context.Context, *engine.State) (bool, error) { return len(values) == 0, nil },
 		// The names, never a value: a plan is printed, and saved by
 		// whoever reviews it.
 		PlanDetail: func(context.Context, *engine.State) (string, string) { return names, "" },

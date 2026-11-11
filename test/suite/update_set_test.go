@@ -147,20 +147,25 @@ func TestAFailedUpdateRecordsNoValue(t *testing.T) {
 	assert.NotContains(t, installation(t, h).Parameters, "admin_email", "a rolled-back update recorded its value")
 }
 
-// recordFailing fails, once, the save that records name=value: the update's
-// last write, after everything else has converged.
-type recordFailing struct {
+// saveFailingWhen fails, once, the installation save that when picks out: one of
+// the update's last writes, after everything else has converged.
+type saveFailingWhen struct {
 	ports.StateStore
-	name, value string
-	armed       *bool
+	when  func(domain.Installation) bool
+	armed *bool
 }
 
-func (s recordFailing) SaveInstallation(ctx context.Context, inst domain.Installation) error {
-	if inst.Parameters[s.name] == s.value && *s.armed {
+func (s saveFailingWhen) SaveInstallation(ctx context.Context, inst domain.Installation) error {
+	if *s.armed && s.when(inst) {
 		*s.armed = false
 		return assert.AnError
 	}
 	return s.StateStore.SaveInstallation(ctx, inst)
+}
+
+// recording is a save of name=value.
+func recording(name, value string) func(domain.Installation) bool {
+	return func(inst domain.Installation) bool { return inst.Parameters[name] == value }
 }
 
 // Stopped before it recorded its values, an update is resumed only with them
@@ -173,7 +178,7 @@ func TestAResumedUpdateIsGivenItsValuesAgain(t *testing.T) {
 	requireAdminEmail(t, src)
 	armed := true
 	store := h.Deps.State
-	h.Deps.State = recordFailing{StateStore: store, name: "admin_email", value: adminEmail, armed: &armed}
+	h.Deps.State = saveFailingWhen{StateStore: store, when: recording("admin_email", adminEmail), armed: &armed}
 	ctx := context.Background()
 
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
@@ -201,7 +206,7 @@ func TestAResumedUpdateIsGivenAChangedValueAgain(t *testing.T) {
 	src := stageRecoverableUpgradeSource(t, h)
 	armed := true
 	store := h.Deps.State
-	h.Deps.State = recordFailing{StateStore: store, name: "log_level", value: "debug", armed: &armed}
+	h.Deps.State = saveFailingWhen{StateStore: store, when: recording("log_level", "debug"), armed: &armed}
 	ctx := context.Background()
 
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"log_level": "debug"}})
@@ -212,6 +217,36 @@ func TestAResumedUpdateIsGivenAChangedValueAgain(t *testing.T) {
 	require.Error(t, err, "a resume without the value it was given was let through")
 	assert.Contains(t, err.Error(), "log_level")
 	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
+}
+
+// Stopped after it recorded its values, an update resumes without them.
+func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
+	h := convergedHarness(t)
+	src := stageRecoverableUpgradeSource(t, h)
+	requireAdminEmail(t, src)
+	dropParameter(t, src, "log_level")
+	inst := installation(t, h)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	// The write after record-parameters: retire-parameters dropping
+	// log_level, once admin_email is recorded.
+	armed := true
+	store := h.Deps.State
+	h.Deps.State = saveFailingWhen{StateStore: store, armed: &armed, when: func(inst domain.Installation) bool {
+		_, kept := inst.Parameters["log_level"]
+		return !kept && inst.Parameters["admin_email"] == adminEmail
+	}}
+	ctx := context.Background()
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
+	require.Error(t, err)
+	h.Deps.State = store
+	require.Equal(t, adminEmail, installation(t, h).Parameters["admin_email"])
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src})
+	require.NoError(t, err, "a resume was asked for values its run had recorded")
+	assert.NotContains(t, installation(t, h).Parameters, "log_level")
 }
 
 // A plan names the parameters an update will record, never their values.
