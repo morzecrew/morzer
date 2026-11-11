@@ -15,6 +15,7 @@ type statInfo struct {
 	mode fs.FileMode
 	uid  uint32
 	gid  uint32
+	link string // where a link points
 }
 
 func (i statInfo) Name() string       { return "" }
@@ -30,6 +31,7 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 	root := statInfo{mode: fs.ModeDir | 0o755}
 	for name, tc := range map[string]struct {
 		tree map[string]statInfo
+		path string // the deepest entry when empty
 		want string
 	}{
 		"root's all the way up": {
@@ -55,8 +57,25 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 			want: "/usr/local/bin is writable by group 0",
 		},
 		"a binary every user can write": {
-			tree: map[string]statInfo{"/usr/local/bin/morzer": {mode: 0o757}},
+			tree: map[string]statInfo{"/usr/local/bin/morzer": {mode: 0o757}, "/usr/local/bin": root, "/usr/local": root, "/usr": root},
 			want: "/usr/local/bin/morzer is writable by every user",
+		},
+		"a chain of links only root can repoint": {
+			tree: map[string]statInfo{
+				"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/usr/local/bin/morzer"}, "/opt/safe": root, "/opt": root,
+				"/usr/local/bin/morzer": {mode: fs.ModeSymlink | 0o777, link: "../lib/morzer/morzer"}, "/usr/local/bin": root, "/usr/local": root, "/usr": root,
+				"/usr/local/lib/morzer/morzer": {mode: 0o755}, "/usr/local/lib/morzer": root, "/usr/local/lib": root,
+			},
+			path: "/opt/safe/morzer",
+		},
+		"a chain through a link a user can repoint": {
+			tree: map[string]statInfo{
+				"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/home/alice/link"}, "/opt/safe": root, "/opt": root,
+				"/home/alice/link": {mode: fs.ModeSymlink | 0o777, uid: 1000, link: "/usr/bin/env"}, "/home/alice": {mode: fs.ModeDir | 0o755, uid: 1000}, "/home": root,
+				"/usr/bin/env": {mode: 0o755}, "/usr/bin": root, "/usr": root,
+			},
+			path: "/opt/safe/morzer",
+			want: "/home/alice is owned by uid 1000, not root",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -72,13 +91,14 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 				}
 				return nil, os.ErrNotExist
 			}
-			var path string
+			readlink := func(p string) (string, error) { return tc.tree[p].link, nil }
+			path := tc.path
 			for p := range tc.tree {
-				if len(p) > len(path) {
+				if path == "" || (tc.path == "" && len(p) > len(path)) {
 					path = p
 				}
 			}
-			who, err := replaceableByNonRoot(path, lstat)
+			who, err := replaceableByNonRoot(path, lstat, readlink)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, who)
 		})

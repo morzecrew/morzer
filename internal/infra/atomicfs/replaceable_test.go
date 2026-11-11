@@ -3,6 +3,7 @@ package atomicfs_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +35,8 @@ func TestReplaceableByNonRoot(t *testing.T) {
 		require.NoError(t, os.Symlink(system, link))
 		who, err := atomicfs.ReplaceableByNonRoot(link)
 		require.NoError(t, err)
-		assert.Contains(t, who, dir, "a link its user can repoint was judged by what it names")
+		require.NotEmpty(t, who, "a link its user can repoint was judged by what it names")
+		assert.True(t, strings.HasPrefix(link, strings.Fields(who)[0]), "%q names no entry on the way to %s", who, link)
 	})
 
 	t.Run("a link only root can repoint", func(t *testing.T) {
@@ -55,12 +57,12 @@ func TestReplaceableByNonRoot(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755)) //nolint:gosec // a stand-in binary
 		who, err := atomicfs.ReplaceableByNonRoot(path)
 		require.NoError(t, err)
-		assert.Contains(t, who, path)
 		assert.Contains(t, who, "not root")
+		assert.True(t, strings.HasPrefix(path, strings.Fields(who)[0]), "%q names no entry on the way to %s", who, path)
 	})
 
 	t.Run("a path that does not exist", func(t *testing.T) {
-		_, err := atomicfs.ReplaceableByNonRoot(filepath.Join(t.TempDir(), "absent"))
+		_, err := atomicfs.ReplaceableByNonRoot(filepath.Join(filepath.Dir(system), "morzer-absent-"+filepath.Base(t.TempDir())))
 		assert.Error(t, err)
 	})
 }
