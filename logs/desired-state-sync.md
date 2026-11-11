@@ -688,3 +688,39 @@ evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md
 action: decided
 proposal: UNLISTED — the row's facts_problem names the exit status, an output over the bound, or a run that did not start, and never quotes output
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-11T10:13:45Z
+attempt: 1
+claim: the facts task is an operation and takes the deployment lock, and it runs after the operation that triggered it, a sync's included. Waiting for the lock would queue a timer's tick behind another operation, which an unattended tick never does. A facts run that finds the lock held records nothing and gives way, and the next operation runs the task again.
+evidence: internal/lifecycle/ops/facts.go:118
+action: decided
+proposal: UNLISTED — a facts run that finds the deployment lock held gives way without recording a problem
+```
+
+## Self-audit, PR C, 2026-11-11
+
+Scope: `published`, `sync.recipient` and `init --sync-recipient`, the facts
+record (state schema 20), the facts run after operations, the row's facts
+fields and the facts pair beside it, `state facts`, docs, changelog and tests.
+
+- Sabotage, 16 mutations of the checks: the digest, the signature, the
+  comment and the key in `state facts`; keeping the previous facts, the exit
+  status, the size bound, the notify skip, the recipient, success only, the
+  local digest, the row's digest, the manifest check, and giving way to a held
+  lock. Three survived at first. Each was a behaviour no test pinned: facts
+  the machine signed for another installation, the exit status's class, and no
+  run after a failed operation. A fourth, the lock give-way, survived because
+  the test refused every later acquisition. Each now has a test, and all 16
+  are killed.
+- The docker loop carries facts through RustFS to `state facts`.
+- `go test ./...`, lint, the docs check and the changelog validator pass.
+
+What I would still distrust: a task that needs a running service right after
+`init`, before `apply`, fails and reports `the facts task did not run` until
+the first apply, and the acceptance rig has no facts case.
+
+**Drift count: 2.**
