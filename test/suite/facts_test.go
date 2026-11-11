@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func TestAMachinesFactsReachTheAuthority(t *testing.T) {
 	assert.Empty(t, state.Facts.Problem)
 	assert.True(t, strings.HasPrefix(state.Facts.Digest, "sha256:"))
 
-	kept, err := os.ReadFile(f.h.Paths.FactsFile())
+	kept, err := os.ReadFile(f.h.Paths.FactsFile(state.Facts.Digest))
 	require.NoError(t, err)
 	assert.NotContains(t, string(kept), "RELAY-PUBLIC-HALF", "the facts were kept in the clear")
 
@@ -136,8 +137,9 @@ func TestFactsNeedARecipientAndAreNotNotified(t *testing.T) {
 	_, err := ops.Apply(context.Background(), a.h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.Nil(t, a.state(t).Facts)
-	_, err = os.Stat(a.h.Paths.FactsFile())
-	assert.True(t, os.IsNotExist(err))
+	matches, err := filepath.Glob(a.h.Paths.FactsFilePattern())
+	require.NoError(t, err)
+	assert.Empty(t, matches)
 
 	f := newFactsRig(t)
 	f.notified.events = nil
@@ -231,7 +233,7 @@ func TestNoFactsRunFollowsAFailedOperation(t *testing.T) {
 // vouched for: the row names no digest until the next run replaces them.
 func TestARowVouchesOnlyForTheFactsItsRecordNames(t *testing.T) {
 	f := newFactsRig(t)
-	require.NoError(t, os.WriteFile(f.h.Paths.FactsFile(), []byte("not these"), 0o600))
+	require.NoError(t, os.WriteFile(f.h.Paths.FactsFile(f.state(t).Facts.Digest), []byte("not these"), 0o600))
 	assert.Empty(t, f.publishRow(t).FactsDigest)
 }
 
@@ -382,4 +384,84 @@ func TestARowIsNotPublishedBesideFactsThatFailedToWrite(t *testing.T) {
 	assert.False(t, report.Targets[0].Published, "a row naming facts that did not reach the target was published")
 	assert.NotEmpty(t, report.Targets[0].FactsError)
 	assert.Contains(t, result.Summary, "facts")
+}
+
+// saveFailing is a state store whose next installation save fails, once armed.
+type saveFailing struct {
+	ports.StateStore
+	armed *bool
+}
+
+func (s saveFailing) SaveInstallation(ctx context.Context, inst domain.Installation) error {
+	if *s.armed {
+		*s.armed = false
+		return assert.AnError
+	}
+	return s.StateStore.SaveInstallation(ctx, inst)
+}
+
+// The previous facts survive a run whose record cannot be saved: the new pair
+// is kept beside the old one until the record naming it commits.
+func TestThePreviousFactsSurviveARecordThatCannotBeSaved(t *testing.T) {
+	f := newFactsRig(t)
+	before := f.state(t).Facts.Digest
+	armed := false
+	store := f.h.Deps.State
+	f.h.Deps.State = saveFailing{StateStore: store, armed: &armed}
+	base := f.h.Locker.Acquired("deployment")
+	// The change takes the lock, then the facts task, then the commit,
+	// whose save is the one that fails.
+	f.h.Locker.BeforeAcquire = func() {
+		if f.h.Locker.Acquired("deployment") == base+2 {
+			armed = true
+		}
+	}
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=NEVER-RECORDED\n"}
+	_, err := ops.ConfigSet(context.Background(), f.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"http_port": "9000"}})
+	f.h.Locker.BeforeAcquire, f.h.Deps.State = nil, store
+	require.NoError(t, err)
+
+	assert.Equal(t, before, f.state(t).Facts.Digest)
+	assert.Equal(t, before, f.publishRow(t).FactsDigest, "the previous facts were lost to a record that did not save")
+	report, err := f.facts(t)
+	require.NoError(t, err)
+	assert.Equal(t, relayFacts, report.Facts)
+}
+
+// The row's last operation is found past any number of facts runs, such as
+// those after settings that run no operation of their own.
+func TestTheLastOperationIsFoundPastManyFactsRuns(t *testing.T) {
+	f := newFactsRig(t)
+	f.h.Deps.Now = steppingClock()
+	for i := 0; i < 10; i++ {
+		require.NoError(t, setSettings(t, f.h, map[string]string{"sync.interval": fmt.Sprintf("%dm", 20+i)}))
+	}
+	row := f.publishRow(t)
+	require.NotNil(t, row.LastOperation, "ten facts runs hid the last operation")
+	assert.NotEqual(t, string(domain.OpTypeTask), row.LastOperation.Kind)
+}
+
+// A target that takes the new ciphertext and refuses its signature holds facts
+// the row does not vouch for: `state facts` refuses them rather than misread
+// them, and the next publish writes both.
+func TestHalfWrittenFactsAreRefusedUntilTheNextPublish(t *testing.T) {
+	f := newFactsRig(t)
+	f.publishRow(t)
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=NEWER\n"}
+	_, err := ops.Apply(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	objects := f.h.Deps.Objects
+	f.h.Deps.Objects = putFailing{ObjectStore: objects, suffix: "facts.age.minisig"}
+	_, err = ops.FleetPublish(context.Background(), f.h.Deps, ops.FleetPublishOptions{})
+	f.h.Deps.Objects = objects
+	require.NoError(t, err)
+	report, err := f.facts(t)
+	require.Error(t, err, "half-written facts were read")
+	assert.Empty(t, report.Facts)
+
+	f.publishRow(t)
+	report, err = f.facts(t)
+	require.NoError(t, err)
+	assert.Equal(t, "public_key=NEWER\n", report.Facts)
 }
