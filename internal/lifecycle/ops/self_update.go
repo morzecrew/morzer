@@ -142,7 +142,7 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	}
 	if err := canWriteIn(dir); err != nil {
 		return out, domain.ValidationError(err, "%s is not writable by this user", dir).
-			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, opts))
+			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts))
 	}
 
 	src := opts.From
@@ -223,7 +223,7 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 		// An installation's locks are root's, and a user who installed
 		// a copy of their own reaches them before anything says why.
 		return out, domain.ValidationError(err, "this user cannot take the locks of the installations on this machine").
-			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, opts))
+			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts))
 	}
 	if err != nil {
 		return out, err
@@ -412,9 +412,13 @@ func canWriteIn(dir string) error {
 }
 
 // sudoSelfUpdate is the command to run instead; this one never escalates
-// itself (decision 9).
-func sudoSelfUpdate(path string, opts SelfUpdateOptions) string {
+// itself (decision 9). It keeps the root this one ran under, so the run with
+// elevation locks and journals the same installations.
+func sudoSelfUpdate(path, root string, opts SelfUpdateOptions) string {
 	cmd := "sudo " + domain.ShellQuote(path) + " self-update"
+	if root != "" {
+		cmd += " --root " + domain.ShellQuote(root)
+	}
 	if opts.DryRun {
 		cmd += " --dry-run"
 	}

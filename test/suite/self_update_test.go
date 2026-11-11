@@ -259,7 +259,7 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 			require.NoError(t, os.MkdirAll(locks, 0o750))
 			require.NoError(t, os.Chmod(locks, 0o500))
 			t.Cleanup(func() { _ = os.Chmod(locks, 0o750) })
-		}, want: "re-run with elevation: sudo "},
+		}, want: "self-update --root "},
 		"a newer manager installed meanwhile": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			s.replacedWhileLocking(t, "0.13.0")
 		}, want: "another self-update installed", after: "0.13.0"},
@@ -358,14 +358,16 @@ func TestSelfUpdateNeverEscalates(t *testing.T) {
 	require.Error(t, err)
 	e := domain.AsError(err)
 	assert.Contains(t, e.Message, "is not writable by this user")
-	assert.Contains(t, e.Hint, "sudo "+s.Deps.ManagerPath+" self-update --to 0.13.0")
+	// The root this ran under, kept, so the run with elevation locks the
+	// same installations.
+	assert.Contains(t, e.Hint, "sudo "+s.Deps.ManagerPath+" self-update --root "+s.Deps.Paths.Root()+" --to 0.13.0")
 	assert.Equal(t, "0.12.0", s.reports(t))
 
 	// Following the hint for a dry run must not perform the swap, and it
 	// keeps the deadline it was given.
 	_, err = ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{DryRun: true, Timeout: 90 * time.Second})
 	require.Error(t, err)
-	assert.Contains(t, domain.AsError(err).Hint, "self-update --dry-run --timeout 1m30s")
+	assert.Contains(t, domain.AsError(err).Hint, "self-update --root "+s.Deps.Paths.Root()+" --dry-run --timeout 1m30s")
 }
 
 // Nothing newer is not a failure, and nothing is replaced.
