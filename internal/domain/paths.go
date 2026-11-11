@@ -132,11 +132,16 @@ func (p Paths) ManagerDir() string { return filepath.Join(p.VarDir, "manager") }
 // an input can be gigabytes, and /run is memory.
 func (p Paths) InputsDir() string { return filepath.Join(p.ManagerDir(), "inputs") }
 
-// FactsFile holds the facts this machine last made for the authority it
-// follows, encrypted, with their signature by the machine key, kept for the
-// next row publish (RFC 0057 §5.10). One file, so the pair is replaced whole or
-// not at all.
-func (p Paths) FactsFile() string { return filepath.Join(p.ManagerDir(), "facts.json") }
+// FactsFile holds facts this machine made for the authority it follows,
+// encrypted, with their signature by the machine key (RFC 0057 §5.10). Named
+// by the digest of their ciphertext, so new facts are written beside the ones
+// the record names and replace them only once the record does.
+func (p Paths) FactsFile(digest string) string {
+	return filepath.Join(p.ManagerDir(), "facts-"+strings.TrimPrefix(digest, "sha256:")+".json")
+}
+
+// FactsFilePattern matches every FactsFile, for removing those no record names.
+func (p Paths) FactsFilePattern() string { return filepath.Join(p.ManagerDir(), "facts-*.json") }
 
 // NotifyOutboxDir holds the notifications a target has still to accept
 // (RFC 0043 §5.2).

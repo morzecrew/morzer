@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
@@ -106,13 +107,14 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 			facts = *fresh.Sync.Facts
 		}
 		if problem == "" {
-			if err := atomicfs.WriteFile(d.Paths.FactsFile(), pair, 0o600); err != nil {
+			sum := sha256.Sum256(sealed)
+			digest := "sha256:" + hex.EncodeToString(sum[:])
+			// Beside the facts the record names, which stay until a
+			// record naming these is saved.
+			if err := atomicfs.WriteFile(d.Paths.FactsFile(digest), pair, 0o600); err != nil {
 				problem = "the facts could not be kept"
 			} else {
-				sum := sha256.Sum256(sealed)
-				facts = domain.SyncFacts{
-					Digest: "sha256:" + hex.EncodeToString(sum[:]), At: now, Recipient: recipient,
-				}
+				facts = domain.SyncFacts{Digest: digest, At: now, Recipient: recipient}
 			}
 		}
 		if problem != "" {
@@ -121,13 +123,31 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 			facts.Problem = problem
 		}
 		fresh.Sync.Facts = &facts
-		return d.saveInstallation(ctx, fresh)
+		if err := d.saveInstallation(ctx, fresh); err != nil {
+			return err
+		}
+		d.removeFactsExcept(facts.Digest)
+		return nil
 	})
 	if err != nil {
 		d.warnf("cannot record this machine's facts: %s", domain.AsError(err).Message)
 	}
 	if problem != "" && !stale {
 		d.warnf("facts: %s; the previous facts stay", problem)
+	}
+}
+
+// removeFactsExcept removes every kept facts file but the one the record now
+// names, including those a run left behind when its record did not save.
+func (d *Deps) removeFactsExcept(digest string) {
+	keep := d.Paths.FactsFile(digest)
+	matches, _ := filepath.Glob(d.Paths.FactsFilePattern())
+	for _, path := range matches {
+		if path != keep {
+			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				d.warnf("cannot remove old facts: %v", err)
+			}
+		}
 	}
 }
 
@@ -186,7 +206,7 @@ func (d *Deps) keptFacts(inst domain.Installation) (sealed, sig []byte, ok bool)
 	if f == nil || f.Digest == "" || inst.Sync.Recipient == "" || f.Recipient != inst.Sync.Recipient {
 		return nil, nil, false
 	}
-	data, err := os.ReadFile(d.Paths.FactsFile())
+	data, err := os.ReadFile(d.Paths.FactsFile(f.Digest))
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			d.warnf("cannot read this machine's facts: %v", err)
