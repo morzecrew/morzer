@@ -162,9 +162,12 @@ problem can still publish a row saying exactly that.
 | `signing_key` | the public half, for comparing a fingerprint by eye |
 | `age_recipient` | this machine's age public key, which an authority encrypts [desired-state documents](desired-state.md) to; trusted only from a row that verifies against the [roster](#the-roster) |
 | `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured |
+| `facts_digest` | the sha256 of the [facts](desired-state.md#facts) published beside this row, which an authority uses only when they are these |
+| `facts_problem` | why the latest facts run did not replace them, as a class: the task's exit status, too much output, or a run that did not start |
 | `published_at` | when this row was written |
 
-Rows are schema 2, which added `age_recipient` and `sync`. A manager that reads
+Rows are schema 2, which added `age_recipient`, `sync`, `facts_digest` and
+`facts_problem`. A manager that reads
 schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
 manager you read the fleet with first.
 
@@ -174,6 +177,11 @@ Parameter values, hostnames, container logs, configuration content, and anything
 the [support bundle](support-bundle.md) refuses. The payload is deliberately
 smaller than a support bundle and smaller than an attestation: it is a *row*,
 not a record.
+
+A machine that publishes [facts](desired-state.md#facts) writes them **beside**
+the row, never in it, as `facts.age` with its signature. They are encrypted to
+the authority's recipient, so the bucket never holds them in plaintext, and the
+row names only their digest.
 
 Drift is the clearest case. It is published as a count of targets that differ
 and never as the diff, because the number is the signal an operator acts on and

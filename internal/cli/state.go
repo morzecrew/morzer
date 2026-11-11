@@ -40,7 +40,7 @@ func newStateCommand(app *App) *cobra.Command {
 			"`state publish` runs without a prompt.",
 	}
 	key.AddCommand(newStateKeyGenerateCommand(app))
-	cmd.AddCommand(key, newStatePublishCommand(app), newStateListCommand(app))
+	cmd.AddCommand(key, newStatePublishCommand(app), newStateListCommand(app), newStateFactsCommand(app))
 	return cmd
 }
 
@@ -242,6 +242,68 @@ func newStateListCommand(app *App) *cobra.Command {
 	f.StringVar(&targetURL, "target", "", "target the installations publish their fleet rows to")
 	f.StringVar(&credentialsFile, "credentials-file", "", "YAML file holding the target's credentials")
 	f.StringVar(&rosterFile, "expect", "", "roster of the installations, and the key each signs its row with")
+	return cmd
+}
+
+func newStateFactsCommand(app *App) *cobra.Command {
+	var (
+		targetURL       string
+		credentialsFile string
+		rosterFile      string
+		product         string
+		installation    string
+		identity        string
+	)
+	cmd := &cobra.Command{
+		Use:   "facts",
+		Short: "Print the facts one installation published, once they check out",
+		Long: "Reads the facts an installation publishes beside its fleet row, and\n" +
+			"prints them only when their signature verifies against the key the\n" +
+			"roster lists for it and they are the facts its newest verified row\n" +
+			"names. An older pair put back, or facts somebody else encrypted to the\n" +
+			"authority's recipient, are refused, and nothing is printed. Then they\n" +
+			"are decrypted with the authority's age identity.",
+		Example: "  morzer state facts --target s3://acme-state/demo --expect ./roster.yaml \\\n" +
+			"      --product demo --installation inst_01... --identity ./authority.age",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			creds, err := readCredentialsFile(credentialsFile)
+			if err != nil {
+				return err
+			}
+			roster, err := readRosterFile(rosterFile)
+			if err != nil {
+				return err
+			}
+			report, err := ops.StateFacts(cmd.Context(), app.Deps, ops.StateFactsOptions{
+				TargetOptions: ops.TargetOptions{
+					Options: app.operationOptions(), URL: targetURL, Credentials: creds,
+				},
+				Roster: roster, Product: product, InstallationID: installation, Identity: identity,
+			})
+			if err != nil {
+				return err
+			}
+			if app.json != nil {
+				app.jsonData = report
+				return nil
+			}
+			if report.Stale {
+				fmt.Fprintf(app.Stream.Err, "the row these facts were checked against was published %s, "+
+					"more than a day ago\n", report.RowPublishedAt.Format(time.RFC3339))
+			}
+			// The facts as the task printed them, for a program to read.
+			app.passThrough(report.Facts)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&targetURL, "target", "", "target the installation publishes its fleet row and facts to")
+	f.StringVar(&credentialsFile, "credentials-file", "", "YAML file holding the target's credentials")
+	f.StringVar(&rosterFile, "expect", "", "roster of the installations, and the key each signs its row with")
+	f.StringVar(&product, "product", "", "the installation's product")
+	f.StringVar(&installation, "installation", "", "the installation's id")
+	f.StringVar(&identity, "identity", "", "the authority's age identity, which the facts are encrypted to")
 	return cmd
 }
 

@@ -617,3 +617,134 @@ evidence: internal/lifecycle/ops/sync.go:277
 action: decided
 proposal: OPEN, ruled 2026-11-10 — a pair over the bound is not a document: bad-signature on the machine, removed by the next publish
 ```
+
+## Plan, PR C (P5), refined before building
+
+The plan above, made concrete against the code:
+
+- `internal/domain/manifest.go`: `published: {task: <name>}`, naming a
+  declared task that takes no inputs, under the 0.16.0 floor `managed`
+  has.
+- `internal/domain/sync.go`: `sync.recipient` back, and the facts record:
+  digest, time and problem. State schema 19 to 20.
+- `internal/lifecycle/ops/facts.go`: after a successful operation, run the
+  task as a task operation, encrypt its stdout (64 KiB at most) to
+  `sync.recipient`, sign the ciphertext with the machine key, and keep both
+  under the manager's directory, recording the digest. A failed run keeps
+  the previous facts and records why.
+- `internal/lifecycle/ops/fleet_publish.go` and `fleet_row.go`: the facts
+  pair is written beside the row before it, and the row names
+  `facts_digest` and `facts_problem`.
+- `internal/lifecycle/ops/state.go`: `StateFacts`, decision 28's checks,
+  then decryption.
+- CLI: `config set sync.recipient`, `init --sync-recipient` with the
+  wizard's printed command and repair, and `state facts`.
+- Docs, changelog and tests.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: §5.10 runs the task "after every successful operation (init, update, `config apply`, a sync)". The list is examples, and a task run after a backup, a task or a stop changes nothing the facts describe, while one after a task would run itself. It runs after a successful init, apply, start, update, rollback, restore and configuration change (config apply, config set, a setting that converges, and a sync), and after nothing else.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:580
+action: decided
+proposal: UNLISTED — facts are refreshed after a successful init, apply, start, update, rollback, restore or configuration change, and never after a task, a backup or a stop
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: decision 14 publishes facts beside the row with the row's credential, and decision 28 binds them by the row's facts_digest, and neither says when the pair is uploaded. The machine keeps the signed ciphertext locally once the task has run, and every row publish, the hourly one and a sync's, writes the facts pair before the row that names its digest. One write path keeps the row and the facts it vouches for in step.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:604
+action: departed
+proposal: ASSUMED — facts are kept locally after each run and written beside the row, before it, by every row publish
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: the facts task is a release task (RFC 0041), which runs as a journalled, attested operation and is notified like any other. Notifying a facts run after every operation would double what notify targets receive. It runs as a task operation, journalled and attested, and is not notified: its outcome is in the row's facts_problem, and its output is never journalled, as no task's is.
+evidence: internal/lifecycle/ops/task.go:243
+action: decided
+proposal: UNLISTED — the facts run is a task operation, journalled and attested and not notified; a failure is the row's facts_problem
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: §5.10 says a failed run is reported in the row, which never carries a value (decision 23's rule). The row's facts_problem is a class: the task's exit status, output over 64 KiB, or a run that could not start. Never the task's output or its error's text.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:582
+action: decided
+proposal: UNLISTED — the row's facts_problem names the exit status, an output over the bound, or a run that did not start, and never quotes output
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-11T10:13:45Z
+attempt: 1
+claim: the facts task is an operation and takes the deployment lock, and it runs after the operation that triggered it, a sync's included. Waiting for the lock would queue a timer's tick behind another operation, which an unattended tick never does. A facts run that finds the lock held records nothing and gives way, and the next operation runs the task again.
+evidence: internal/lifecycle/ops/facts.go:118
+action: decided
+proposal: UNLISTED — a facts run that finds the deployment lock held gives way without recording a problem
+```
+
+## Self-audit, PR C, 2026-11-11
+
+Scope: `published`, `sync.recipient` and `init --sync-recipient`, the facts
+record (state schema 20), the facts run after operations, the row's facts
+fields and the facts pair beside it, `state facts`, docs, changelog and tests.
+
+- Sabotage, 16 mutations of the checks: the digest, the signature, the
+  comment and the key in `state facts`; keeping the previous facts, the exit
+  status, the size bound, the notify skip, the recipient, success only, the
+  local digest, the row's digest, the manifest check, and giving way to a held
+  lock. Three survived at first. Each was a behaviour no test pinned: facts
+  the machine signed for another installation, the exit status's class, and no
+  run after a failed operation. A fourth, the lock give-way, survived because
+  the test refused every later acquisition. Each now has a test, and all 16
+  are killed.
+- The docker loop carries facts through RustFS to `state facts`.
+- `go test ./...`, lint, the docs check and the changelog validator pass.
+
+What I would still distrust: a task that needs a running service right after
+`init`, before `apply`, fails and reports `the facts task did not run` until
+the first apply, and the acceptance rig has no facts case.
+
+**Drift count: 2.**
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-11T10:52:25Z
+attempt: 1
+claim: §5.10 lists init among the operations after which the facts task runs, and `init` promises that it starts nothing, while a task can start the services it needs. Found in review. The task runs after the first apply or start instead, and never after init; the earlier entry's list loses init.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:580
+action: decided
+proposal: UNLISTED — the facts task never runs after init, which starts nothing; the first apply or start makes the facts
+```
+
+```divergence
+decision: 28
+grade: ASSUMED
+class: discovery
+at: 2026-11-11T11:02:08Z
+attempt: 1
+claim: decision 28 binds facts to the row by digest and says nothing of the recipient they were made for. Found in review: clearing or changing sync.recipient left the old facts published, readable by whoever held the old recipient, and a target that refused the facts still got a row naming them. Kept facts now carry the recipient they were encrypted to and are offered only while it is sync.recipient, which a change of it clears. A target that refuses the facts gets no new row. Refreshes run one at a time, and commit only if the recipient and the release they ran with are still current.
+evidence: internal/lifecycle/ops/facts.go:184
+action: departed
+proposal: ASSUMED — facts are offered only to the recipient they were made for, and a row is written to a target only beside the facts it names
+```

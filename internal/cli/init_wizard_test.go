@@ -239,8 +239,9 @@ func TestEquivalentCommandPrintsTheFileAValueCameFrom(t *testing.T) {
 // nothing.
 func TestEquivalentCommandCarriesWhatToFollow(t *testing.T) {
 	got := EquivalentCommand(ops.InitOptions{
-		Product: "demo", SyncTarget: "s3://acme-state/demo", SyncAuthority: "RWQkey",
+		Product: "demo", SyncTarget: "s3://acme-state/demo", SyncAuthority: "RWQkey", SyncRecipient: "age1key",
 	})
 	assert.Contains(t, got, "--sync-target s3://acme-state/demo")
 	assert.Contains(t, got, "--sync-authority RWQkey")
+	assert.Contains(t, got, "--sync-recipient age1key")
 }

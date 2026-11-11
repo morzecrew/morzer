@@ -514,6 +514,15 @@
       },
       "type": "object"
     },
+    "published": {
+      "additionalProperties": false,
+      "properties": {
+        "task": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "requirements": {
       "additionalProperties": false,
       "properties": {

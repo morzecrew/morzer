@@ -442,6 +442,7 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	}
 	add("sync-target", opts.SyncTarget)
 	add("sync-authority", opts.SyncAuthority)
+	add("sync-recipient", opts.SyncRecipient)
 	if opts.RequireSignature {
 		args = append(args, "--require-signature")
 	}

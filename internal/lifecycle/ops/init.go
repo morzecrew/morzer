@@ -97,6 +97,10 @@ type InitOptions struct {
 	SyncTarget    string
 	SyncAuthority string
 
+	// SyncRecipient is `sync.recipient`, the authority's age recipient
+	// this machine's facts are encrypted to (RFC 0057 §5.10).
+	SyncRecipient string
+
 	// ParameterFiles are the paths `--set-file` read values from, by
 	// parameter name. Init reads only Parameters, which already holds the
 	// values; these are for the wizard's equivalent command, which prints the
@@ -164,6 +168,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	var follow domain.Installation
 	for _, s := range []struct{ name, value string }{
 		{"sync.target", opts.SyncTarget}, {"sync.authority", opts.SyncAuthority},
+		{"sync.recipient", opts.SyncRecipient},
 	} {
 		if s.value == "" {
 			continue
@@ -173,6 +178,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 	opts.SyncTarget, opts.SyncAuthority = follow.Sync.Target, follow.Sync.Authority
+	opts.SyncRecipient = follow.Sync.Recipient
 
 	// A parameter can only be checked against a release that declares it,
 	// and the whole value of declaring one is that setting it wrong is
@@ -639,7 +645,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		Domains:       opts.Domains,
 		Policy:        domain.DefaultPolicy(),
 		Parameters:    opts.Parameters,
-		Sync:          domain.SyncConfig{Target: opts.SyncTarget, Authority: opts.SyncAuthority},
+		Sync: domain.SyncConfig{
+			Target: opts.SyncTarget, Authority: opts.SyncAuthority, Recipient: opts.SyncRecipient,
+		},
 	}
 	runtime, err := d.runtimeForNewInstallation(st)
 	if err != nil {
@@ -775,10 +783,13 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		// flags outrank it when given, as --backup-schedule outranks the
 		// carried Policy, and a new authority clears the serials, as
 		// `config set sync.authority` does (RFC 0057 decision 27).
-		target, authority := inst.Sync.Target, inst.Sync.Authority
+		target, authority, recipient := inst.Sync.Target, inst.Sync.Authority, inst.Sync.Recipient
 		inst.Sync = existing.Sync
 		if target != "" {
 			inst.Sync.Target = target
+		}
+		if recipient != "" && recipient != existing.Sync.Recipient {
+			inst.Sync.Recipient, inst.Sync.Facts = recipient, nil
 		}
 		if authority != "" && authority != existing.Sync.Authority {
 			inst.Sync.Authority = authority

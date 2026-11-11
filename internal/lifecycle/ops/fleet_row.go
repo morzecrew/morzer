@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -53,6 +54,10 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 	in.Drift = d.fleetDrift(ctx, inst, current, currentErr)
 	in.LastOperation = d.fleetLastOperation(ctx)
 	in.AgeRecipient = d.machineRecipient(ctx)
+	// Named only when the facts it names are here to publish beside it.
+	if _, _, ok := d.keptFacts(inst); ok {
+		in.FactsDigest = inst.Sync.Facts.Digest
+	}
 
 	return domain.NewFleetRow(in)
 }
@@ -239,10 +244,19 @@ func pluralTargets(n int) string {
 // `apply` -- and a row carrying an operation with an empty id and no outcome
 // would read as a corrupt journal rather than a new machine.
 func (d *Deps) fleetLastOperation(ctx context.Context) *domain.FleetOperation {
-	rec, ok, err := d.State.LastOperation(ctx)
-	if err != nil || !ok {
+	// The newest that is not a facts run: that run follows the operation
+	// that triggered it, which is what the row reports. The whole journal,
+	// since settings that run no operation of their own still run the
+	// facts task, any number of times.
+	recs, err := d.State.Operations(ctx, ports.Filter{})
+	if err != nil {
 		return nil
 	}
+	i := slices.IndexFunc(recs, func(r domain.OperationRecord) bool { return r.Flags["facts"] != "true" })
+	if i < 0 {
+		return nil
+	}
+	rec := recs[i]
 
 	at := rec.FinishedAt
 	if at.IsZero() {

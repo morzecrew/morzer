@@ -218,6 +218,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Data:    data,
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeUpdate, result.Record, runErr)
+	d.refreshFactsAfter(ctx, opts.Options, result.Record, runErr)
 
 	// An update is the operation the chain check is really about: it is one
 	// of the two that move a version, so a machine whose updates filed no

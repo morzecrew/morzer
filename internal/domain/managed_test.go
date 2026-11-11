@@ -15,7 +15,7 @@ func managedManifest(managed domain.ManagedSpec) *domain.Manifest {
 	m := validManifestWithParameters(map[string]domain.ParameterSpec{
 		"site": {Type: domain.ParamString},
 	})
-	m.Managed = managed
+	m.Managed = &managed
 	m.Compatibility.MinManagerVersion = domain.MustParseVersion(domain.DesiredStateMinManagerVersion)
 	return m
 }
@@ -79,5 +79,52 @@ func assertNoManagedProblem(t *testing.T, m *domain.Manifest) {
 	if err := m.Validate(); err != nil {
 		assert.NotContains(t, err.Error(), "managed")
 		assert.NotContains(t, err.Error(), "min_manager_version")
+	}
+}
+
+// `published` names a task the release declares, one that runs with nothing
+// passed to it, under the floor `managed` has (RFC 0057 §5.10).
+func TestPublishedNamesARunnableTask(t *testing.T) {
+	withTasks := func(published string) *domain.Manifest {
+		m := managedManifest(domain.ManagedSpec{})
+		m.Tasks = map[string]domain.TaskSpec{
+			"entry": {Service: "app", Command: []string{"relay-entry"}},
+			"load":  {Service: "app", Command: []string{"load"}, Inputs: map[string]domain.TaskInput{"dump": {}}},
+			"dev":   {Service: "app", Command: []string{"seed"}, Modes: []string{"dev"}},
+		}
+		m.Published = &domain.PublishedSpec{Task: published}
+		return m
+	}
+	problem := func(m *domain.Manifest) string {
+		if err := m.Validate(); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+
+	assert.NotContains(t, problem(withTasks("entry")), "published")
+	assert.Contains(t, problem(withTasks("missing")), `published.task: names "missing", which the release does not declare`)
+	assert.Contains(t, problem(withTasks("load")), `published.task: names "load", which takes inputs`)
+	assert.Contains(t, problem(withTasks("dev")), `published.task: names "dev", which may not run on production machines`)
+	assert.Contains(t, problem(withTasks("")), "published.task: is required")
+
+	old := withTasks("entry")
+	old.Compatibility.MinManagerVersion = domain.MustParseVersion("0.15.0")
+	assert.Contains(t, problem(old), "because the release declares published")
+}
+
+// An empty block is still a block: an older manager refuses `managed: {}` and
+// `published: {}` as it refuses full ones, so the floor applies to both.
+func TestAnEmptyBlockStillNeedsTheFloor(t *testing.T) {
+	for name, set := range map[string]func(m *domain.Manifest){
+		"managed":   func(m *domain.Manifest) { m.Managed = &domain.ManagedSpec{} },
+		"published": func(m *domain.Manifest) { m.Published = &domain.PublishedSpec{} },
+	} {
+		m := validManifestWithParameters(map[string]domain.ParameterSpec{"site": {Type: domain.ParamString}})
+		set(m)
+		m.Compatibility.MinManagerVersion = domain.MustParseVersion("0.15.0")
+		err := m.Validate()
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), "because the release declares "+name, name)
 	}
 }

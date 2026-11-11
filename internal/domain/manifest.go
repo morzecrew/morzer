@@ -249,7 +249,16 @@ type Manifest struct {
 	// may change (RFC 0057 §5.6). Absent, nothing is: a release opts in
 	// name by name, because only the vendor knows which values are safe to
 	// take from elsewhere.
-	Managed ManagedSpec `yaml:"managed" json:"managed,omitzero"`
+	//
+	// A pointer, so a block written empty is still a block: an older
+	// manager refuses `managed: {}` as it refuses a full one, so the floor
+	// applies to it too.
+	Managed *ManagedSpec `yaml:"managed" json:"managed,omitempty"`
+
+	// Published names the task whose output is this machine's facts,
+	// published to the authority it follows (RFC 0057 §5.10). Absent,
+	// nothing is. A pointer for the reason Managed is one.
+	Published *PublishedSpec `yaml:"published" json:"published,omitempty"`
 
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
@@ -771,6 +780,16 @@ const TextParametersMinManagerVersion = "0.15.0"
 // strictly, so it is not ignored as RFC 0057 §5.6 supposed.
 const DesiredStateMinManagerVersion = "0.16.0"
 
+// PublishedSpec is what a machine tells the authority it follows.
+type PublishedSpec struct {
+	// Task is a task the release declares, run without arguments or
+	// inputs; its stdout is the facts.
+	Task string `yaml:"task" json:"task,omitempty"`
+}
+
+// IsZero reports whether the release publishes no facts.
+func (p *PublishedSpec) IsZero() bool { return p == nil || p.Task == "" }
+
 // ManagedSpec is what a desired-state document may change.
 type ManagedSpec struct {
 	Parameters []string `yaml:"parameters" json:"parameters,omitempty"`
@@ -779,13 +798,16 @@ type ManagedSpec struct {
 }
 
 // IsZero reports whether the release lets nothing be managed.
-func (s ManagedSpec) IsZero() bool {
-	return len(s.Parameters) == 0 && len(s.Secrets) == 0 && len(s.Settings) == 0
+func (s *ManagedSpec) IsZero() bool {
+	return s == nil || len(s.Parameters) == 0 && len(s.Secrets) == 0 && len(s.Settings) == 0
 }
 
 // Allows reports whether a document may change name in section, which is
 // "parameters", "secrets" or "settings".
-func (s ManagedSpec) Allows(section, name string) bool {
+func (s *ManagedSpec) Allows(section, name string) bool {
+	if s == nil {
+		return false
+	}
 	switch section {
 	case "parameters":
 		return slices.Contains(s.Parameters, name)
@@ -801,6 +823,9 @@ func (s ManagedSpec) Allows(section, name string) bool {
 // declare. Checked where the release is loaded with its schema, which the
 // manifest alone cannot see.
 func (m Manifest) ManagedSecretsUndeclared(schema SecretSchema) []string {
+	if m.Managed == nil {
+		return nil
+	}
 	var out []string
 	for _, name := range m.Managed.Secrets {
 		if _, ok := schema.Declaration(name); !ok {
@@ -811,6 +836,9 @@ func (m Manifest) ManagedSecretsUndeclared(schema SecretSchema) []string {
 }
 
 func validateManaged(m *Manifest, v *validationErrors) {
+	if m.Managed == nil {
+		return
+	}
 	for _, list := range []struct {
 		field string
 		names []string
@@ -838,10 +866,42 @@ func validateManaged(m *Manifest, v *validationErrors) {
 				name, strings.Join(ManageableSettings, " and "))
 		}
 	}
-	if minimum := MustParseVersion(DesiredStateMinManagerVersion); !m.Managed.IsZero() &&
-		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+	if minimum := MustParseVersion(DesiredStateMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
 		v.add("compatibility.min_manager_version",
 			"must be at least %s, because the release declares managed, which an older "+
+				"manager refuses as an unknown field", minimum)
+	}
+}
+
+// validatePublished checks the facts task: declared, runnable as it stands,
+// and under the floor an older manager needs to read the field at all.
+func validatePublished(m *Manifest, v *validationErrors) {
+	if m.Published == nil {
+		return
+	}
+	task, ok := m.Tasks[m.Published.Task]
+	switch {
+	case m.Published.Task == "":
+		v.add("published.task", "is required: it names the task whose output is the facts")
+	case !ok:
+		v.add("published.task", "names %q, which the release does not declare as a task", m.Published.Task)
+	case len(task.Inputs) > 0:
+		// Run after every operation with nobody to pass a file.
+		v.add("published.task", "names %q, which takes inputs; the facts task runs without any", m.Published.Task)
+	default:
+		// The facts task runs on whatever machine the release is on, so
+		// a task some modes may not run would fail on those machines
+		// after every operation.
+		for _, mode := range append([]Mode{""}, Modes...) {
+			if !task.AllowedOn(mode) {
+				v.add("published.task", "names %q, which may not run on %s machines; the facts task runs on every machine",
+					m.Published.Task, mode.Describe())
+			}
+		}
+	}
+	if minimum := MustParseVersion(DesiredStateMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares published, which an older "+
 				"manager refuses as an unknown field", minimum)
 	}
 }
@@ -1560,6 +1620,7 @@ func (m *Manifest) Validate() error {
 	}
 
 	validateManaged(m, &v)
+	validatePublished(m, &v)
 
 	if m.Bundle.UncompressedSize < 0 {
 		v.add("bundle.uncompressed_size", "must not be negative, got %s",

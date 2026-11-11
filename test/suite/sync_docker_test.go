@@ -5,11 +5,13 @@ package suite
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/adapters/target/s3"
@@ -146,6 +148,21 @@ func TestAnAuthorityReachesAMachineThroughAnObjectStore(t *testing.T) {
 		prefix + "/13.age", prefix + "/13.age.minisig",
 		prefix + "/14.age", prefix + "/14.age.minisig",
 	}, keys)
+
+	// Facts going back, through the same bucket.
+	identity := filepath.Join(t.TempDir(), "authority.age")
+	recipient, err := sopsage.GenerateIdentity(identity)
+	require.NoError(t, err)
+	r.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=RELAY\n"}
+	_, err = ops.SetSettings(ctx, r.h.Deps, ops.SetSettingsOptions{Set: map[string]string{"sync.recipient": recipient}})
+	require.NoError(t, err)
+	_, err = ops.FleetPublish(ctx, r.h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+	facts, err := ops.StateFacts(ctx, r.h.Deps, ops.StateFactsOptions{
+		TargetOptions: authority, Roster: roster, Product: inst.Product, InstallationID: inst.ID, Identity: identity,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "public_key=RELAY\n", facts.Facts)
 }
 
 func authorityRef(t *testing.T, url string, creds ports.TargetCredentials) ports.TargetRef {

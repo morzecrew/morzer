@@ -21,6 +21,7 @@ import (
 const (
 	authorityKey  = "RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3"
 	authorityKey2 = "RWT6zgAAAAAAAXRoaXMga2V5IGlzIGEgZml4dHVyZSBub3QgYSByZWFs"
+	ageRecipient  = "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p"
 )
 
 func setSettings(t *testing.T, h *harness, set map[string]string) error {
@@ -93,6 +94,7 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	h.Deps.Targets = registry
 	for name, value := range map[string]string{
 		"sync.interval":    "30s",
+		"sync.recipient":   "not-a-recipient",
 		"sync.target":      "gopher://example",
 		"sync.credentials": "bad name",
 	} {
@@ -106,21 +108,22 @@ func TestSyncSettingsRefuseWhatTheyCannotUse(t *testing.T) {
 	}
 
 	require.NoError(t, setSettings(t, h, map[string]string{
-		"sync.interval": "20m", "sync.credentials": "sync_s3",
+		"sync.interval": "20m", "sync.recipient": ageRecipient, "sync.credentials": "sync_s3",
 	}))
 	got := installation(t, h).Sync
 	assert.Equal(t, "20m0s", got.Interval)
+	assert.Equal(t, ageRecipient, got.Recipient)
+	assert.Equal(t, "sync_s3", got.Credentials)
 
 	// Whole seconds, which is what the timer ticks in.
 	require.NoError(t, setSettings(t, h, map[string]string{"sync.interval": "1m0.4s"}))
 	assert.Equal(t, "1m0s", installation(t, h).Sync.Interval)
-	assert.Equal(t, "sync_s3", got.Credentials)
 }
 
 // A document can never touch them: they are not among the settings morzer
 // lets a release make manageable.
 func TestNoSyncSettingIsManageable(t *testing.T) {
-	for _, name := range []string{"sync.target", "sync.credentials", "sync.authority",
+	for _, name := range []string{"sync.target", "sync.credentials", "sync.authority", "sync.recipient",
 		"sync.interval", "sync.enabled"} {
 		assert.False(t, domain.IsManageableSetting(name), name)
 	}
@@ -172,10 +175,12 @@ func TestInitRecordsWhatToFollow(t *testing.T) {
 
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", NoRecoveryKey: true, SyncTarget: "file:///srv/state", SyncAuthority: " " + authorityKey + "\n",
+		SyncRecipient: ageRecipient,
 	})
 	require.NoError(t, err)
 	got := installation(t, h).Sync
 	assert.Equal(t, "file:///srv/state", got.Target)
 	assert.Equal(t, authorityKey, got.Authority)
+	assert.Equal(t, ageRecipient, got.Recipient)
 	assert.False(t, got.Enabled)
 }

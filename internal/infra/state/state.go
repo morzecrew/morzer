@@ -405,6 +405,10 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// 18 -> 19 added `sync` (RFC 0057). Nothing to convert:
 			// absent follows no authority, as before.
 			i.SchemaVersion = 19
+		case 19:
+			// 19 -> 20 added `sync.recipient` and the facts record (RFC
+			// 0057 §5.10). Nothing to convert: absent publishes no facts.
+			i.SchemaVersion = 20
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

@@ -27,6 +27,11 @@ type SyncConfig struct {
 	// Authority is the minisign public key a document must be signed with.
 	Authority string `yaml:"authority,omitempty" json:"authority,omitempty"`
 
+	// Recipient is the authority's age recipient, which this machine's
+	// published facts are encrypted to (RFC 0057 §5.10). Without one,
+	// nothing is published.
+	Recipient string `yaml:"recipient,omitempty" json:"recipient,omitempty"`
+
 	// Interval is how often the timer fetches, as a Go duration. Empty is
 	// DefaultSyncInterval.
 	Interval string `yaml:"interval,omitempty" json:"interval,omitempty"`
@@ -43,6 +48,27 @@ type SyncConfig struct {
 	// target last answered, which `doctor` compares with Interval.
 	LastFetch   *SyncFetch `yaml:"last_fetch,omitempty" json:"last_fetch,omitempty"`
 	LastReached Time       `yaml:"last_reached,omitempty" json:"last_reached,omitzero"`
+
+	// Facts is the facts this machine last produced for the authority, and
+	// whether the latest run produced them.
+	Facts *SyncFacts `yaml:"facts,omitempty" json:"facts,omitempty"`
+}
+
+// SyncFacts records the facts kept for the next row publish: the digest of
+// their ciphertext, which the row names (decision 28), when they were made,
+// and why the latest run did not replace them, when it did not.
+type SyncFacts struct {
+	Digest string `yaml:"digest,omitempty" json:"digest,omitempty"`
+	At     Time   `yaml:"at,omitempty" json:"at,omitzero"`
+
+	// Recipient is the one the facts were encrypted to. They are offered
+	// only while it is still sync.recipient: cleared or changed, the
+	// facts are not published.
+	Recipient string `yaml:"recipient,omitempty" json:"recipient,omitempty"`
+
+	// Problem is a class and never the task's output: the exit status, an
+	// output over the bound, or a run that did not start.
+	Problem string `yaml:"problem,omitempty" json:"problem,omitempty"`
 }
 
 // DefaultSyncInterval is how often a machine fetches when it is not told, and
@@ -210,4 +236,25 @@ func MinisignKeyID(key string) string {
 		return ""
 	}
 	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(raw[2:10]))
+}
+
+// FactsLimit bounds a facts task's output (RFC 0057 §5.10).
+const FactsLimit = 64 << 10
+
+// FactsKeys are the facts pair beside an installation's fleet row (decision
+// 14): the ciphertext, and its signature by the machine key.
+func FactsKeys(product, installationID string) (doc, sig string, err error) {
+	row, err := FleetKey(product, installationID)
+	if err != nil {
+		return "", "", err
+	}
+	doc = strings.TrimSuffix(row, FleetFileName) + "facts.age"
+	return doc, doc + ".minisig", nil
+}
+
+// FactsComment is the facts signature's trusted comment, which names the
+// installation, so facts copied beside another installation's row are not
+// read as that one's (decision 28).
+func FactsComment(product, installationID string) string {
+	return "morzer facts product=" + product + " installation=" + installationID
 }

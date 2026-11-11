@@ -36,6 +36,11 @@ type TaskOptions struct {
 	// Inputs are the files the operator passed, by input name, as typed
 	// (RFC 0041). Every input the task declares is required.
 	Inputs map[string]string
+
+	// facts marks the run that makes this machine's facts (RFC 0057
+	// §5.10), which follows another operation and is not notified: its
+	// outcome is the fleet row's facts_problem.
+	facts bool
 }
 
 // TaskRun is what a task's container did: the `--json` payload of `task run`,
@@ -240,7 +245,9 @@ func RunTask(ctx context.Context, d *Deps, opts TaskOptions) (Result, error) {
 		}
 	}
 
-	d.notifyFinished(ctx, opID, domain.OpTypeTask, result.Record, runErr)
+	if !opts.facts {
+		d.notifyFinished(ctx, opID, domain.OpTypeTask, result.Record, runErr)
+	}
 	if !opts.DryRun {
 		// A record of a task that failed as well as one that succeeded,
 		// for the reason Apply gives.
@@ -294,6 +301,11 @@ func (d *Deps) taskRelease(ctx context.Context) (domain.Installation, domain.Rel
 // with the reason when those could not be loaded. Never the output.
 func (d *Deps) taskFlags(opts TaskOptions, task domain.TaskSpec, armed bool) map[string]string {
 	flags := map[string]string{"task": opts.Name, "service": task.Service}
+	if opts.facts {
+		// The run that makes the facts, which follows another
+		// operation; the fleet row's last operation is that one.
+		flags["facts"] = "true"
+	}
 	if len(opts.Args) == 0 {
 		return flags
 	}

@@ -232,11 +232,65 @@ refused with the step and class, and its last fetch. A row the roster does not
 list is shown as unexpected. Without `--expect`, nothing a row says is
 authenticated, and the signature column says so.
 
+### state facts
+
+```sh
+morzer state facts --target s3://acme-state/demo --expect ./roster.yaml \
+    --product demo --installation inst_01M72B61SSWFT54B6KTJC26YD0 \
+    --identity ./authority.age
+```
+
+Prints an installation's [facts](#facts), as its task printed them, once three
+checks pass, and prints nothing otherwise:
+
+1. its fleet row verifies against the key the roster lists;
+2. the facts' signature verifies against that key, and its trusted comment
+   names the installation;
+3. the facts are the ones that row names in `facts_digest`.
+
+An older pair put back by a bucket writer fails the third check. Facts somebody
+else encrypted to the authority's recipient fail the second. Then the facts are
+decrypted with `--identity`, the authority's age identity. `--json` carries
+them in `data.facts`, with the row's `row_published_at`. A row older than a day
+is said to be stale on stderr: a bucket writer who puts back an older row with
+its own facts passes every check, and its age is how that shows.
+
+## Facts
+
+A machine tells the authority what it needs to address documents to it and to
+others about it, such as a public key and the address it is reached at. The
+release names a task under [`published`](manifest.md#published), and the
+machine sets `sync.recipient`, the authority's age recipient. Without either,
+nothing is published.
+
+After every successful apply, start, update, rollback, restore and
+configuration change, the task runs with no arguments. It never runs after
+`init`, which starts nothing, and gives way when another operation holds the
+lock. Its stdout, at most 64 KiB, is encrypted to `sync.recipient` and signed
+with the machine's key, with a trusted comment naming the installation.
+
+A row publish on a machine that holds facts writes them beside the row as
+`fleet/<product>/<installation-id>/facts.age` and its `.minisig`, then the row,
+which names their digest in `facts_digest`. A target that refuses the facts
+gets no new row. A machine with no facts yet, or whose facts were made for a
+recipient no longer set, publishes its row without either. Changing or
+clearing `sync.recipient` drops the facts it had; facts already on a target
+stay there until the next ones replace them.
+
+A run that fails keeps the previous facts, and the row's `facts_problem` says
+why, as a class: the task's exit status, output over the bound, a run that did
+not start, or facts it could not encrypt, sign or keep. Never what it printed.
+The run is a task operation, journalled and attested like one, not sent to
+notify targets, and not what the row reports as the last operation.
+
+**Facts are for public halves and addresses.** morzer cannot tell a secret from
+a fact, and a task that prints a credential sends it to the authority.
+
 ## What it reports
 
 | Where | What |
 | --- | --- |
-| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
+| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, `facts_digest` and `facts_problem`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
 | [Statement](attestations.md) | a `desired_state` block naming the document's serial, ciphertext digest and the authority's key id |
 | [Notifications](../operating/notifications.md#what-is-sent) | `sync.refused` once per refused document, `sync.expired` when a cycle first finds the document in force expired |
 | `doctor` | `sync.authority` warns when the document in force expires within a day or has expired, or the target has not answered for more than three intervals |

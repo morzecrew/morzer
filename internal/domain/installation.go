@@ -118,7 +118,7 @@ import (
 // Bumped to 18 for `profiles`, which replaces `profile` (RFC 0053 decision 2).
 // An older manager would ignore the list, deploy the base files and remove the
 // overlays' services.
-const InstallationSchemaVersion = 19
+const InstallationSchemaVersion = 20
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18

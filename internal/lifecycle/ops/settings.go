@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -482,6 +483,24 @@ var settings = map[string]setting{
 			i.Sync.Authority = ""
 		},
 	},
+	"sync.recipient": {
+		Description: "the authority's age recipient, which this machine's published facts are encrypted to",
+		Read:        func(i domain.Installation) string { return i.Sync.Recipient },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			raw = strings.TrimSpace(raw)
+			if err := agecrypt.ValidateRecipient(raw); err != nil {
+				return domain.Usage("%q is not an age recipient", raw)
+			}
+			if raw != i.Sync.Recipient {
+				// Facts made for another recipient are not offered to
+				// this one; the run after this change makes new ones.
+				i.Sync.Facts = nil
+			}
+			i.Sync.Recipient = raw
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Recipient, i.Sync.Facts = "", nil },
+	},
 	"sync.interval": {
 		Description: "how often the sync timer fetches, a duration of at least 1m; 15m when unset",
 		Read:        func(i domain.Installation) string { return i.Sync.SyncInterval().String() },
@@ -930,6 +949,9 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 
 	if len(changed) == 0 {
 		return Result{Summary: "no change: every value already matches"}, nil
+	}
+	if !opts.DryRun {
+		d.refreshFacts(ctx)
 	}
 	return Result{Record: result.Record, Summary: settingsSummary(changed, plan, opts.DryRun)}, nil
 }

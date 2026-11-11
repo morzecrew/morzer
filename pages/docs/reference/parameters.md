@@ -340,6 +340,7 @@ morzer config unset update.channel           # back to absent, which is always t
 | `sync.target` | Where this installation's desired-state documents are, as a backup target URL. Set locally; a document can never change it. |
 | `sync.credentials` | The secret holding `sync.target`'s credential document, as `backup target add --credentials` names one. Read-only access, with listing, scoped to `state/<product>/<installation-id>/`, is all it needs. |
 | `sync.authority` | The minisign public key a document must be signed with. Changing it is journalled, and clears the serials this machine applied and refused, so a new authority starts a watermark of its own. |
+| `sync.recipient` | The authority's age recipient, which this machine's published facts are encrypted to. |
 | `sync.interval` | How often the sync timer fetches, a duration of at least `1m`. Absent takes `15m`. |
 | `sync.enabled` | Fetch and apply desired-state documents on a timer. Refused without `sync.authority` and `sync.target`. Absent means off. |
 

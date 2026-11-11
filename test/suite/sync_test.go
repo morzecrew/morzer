@@ -59,7 +59,9 @@ func newSyncRig(t *testing.T) *syncRig {
 	floor := `min_manager_version: "0.0.0"`
 	require.Contains(t, string(raw), floor)
 	patched := strings.Replace(string(raw), floor, `min_manager_version: "0.16.0"`, 1) +
-		"\nmanaged:\n  parameters: [log_level]\n  secrets: [db_password]\n  settings: [installation.domains]\n"
+		"\nmanaged:\n  parameters: [log_level]\n  secrets: [db_password]\n  settings: [installation.domains]\n" +
+		"\ntasks:\n  entry:\n    service: app\n    command: [relay-entry]\n" +
+		"\npublished:\n  task: entry\n"
 	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
 	h.Release, err = release.Load(h.Release.Root)
 	require.NoError(t, err)

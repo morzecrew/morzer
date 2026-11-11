@@ -3,6 +3,8 @@ package ops
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -468,5 +470,119 @@ func StateList(ctx context.Context, d *Deps, opts StateListOptions) (StateReport
 		}
 		report.Rows = append(report.Rows, row)
 	}
+	return report, nil
+}
+
+// StateFactsOptions are `state facts`'s.
+type StateFactsOptions struct {
+	TargetOptions
+
+	Roster         domain.FleetRoster
+	Product        string
+	InstallationID string
+
+	// Identity is the authority's age identity, which the facts are
+	// encrypted to.
+	Identity string
+}
+
+// StateFactsReport is an installation's facts, after every check decision 28
+// asks, and the `--json` shape.
+type StateFactsReport struct {
+	Target         string `json:"target"`
+	Product        string `json:"product"`
+	InstallationID string `json:"installation_id"`
+	Digest         string `json:"digest"`
+	Facts          string `json:"facts"`
+
+	// RowPublishedAt is when the row the facts were checked against was
+	// published, and Stale says it is older than a day. A bucket writer can
+	// put back an older row with the facts it named, which every check
+	// passes; its age is what shows it.
+	RowPublishedAt domain.Time `json:"row_published_at"`
+	Stale          bool        `json:"stale,omitempty"`
+}
+
+// StateFacts reads an installation's facts (RFC 0057 §5.11). They are used
+// only when their signature verifies against the key the roster lists, their
+// trusted comment names the installation, and their digest is the one the
+// newest verified row names (decision 28): an older pair a bucket writer put
+// back, and facts somebody encrypted to the authority's recipient, are both
+// refused before anything is decrypted, and nothing is printed.
+func StateFacts(ctx context.Context, d *Deps, opts StateFactsOptions) (StateFactsReport, error) {
+	report := StateFactsReport{Product: opts.Product, InstallationID: opts.InstallationID}
+	checker, ok := d.Checker.(ports.CommentChecker)
+	if d.Objects == nil || !ok {
+		return report, domain.Internal(nil, "state facts needs a target registry and a signature checker")
+	}
+	entry, listed := opts.Roster.Entry(opts.Product, opts.InstallationID)
+	switch {
+	case opts.URL == "":
+		return report, domain.Usage("state facts needs --target")
+	case !opts.Roster.Given():
+		return report, domain.Usage("state facts needs --expect, the roster").
+			WithHint("facts are read only from a machine whose row verifies against the key the roster lists")
+	case !listed:
+		return report, domain.Usage("the roster does not list %s %s", opts.Product, opts.InstallationID)
+	case entry.PublicKey == "":
+		return report, domain.Usage("the roster lists %s %s without a key", opts.Product, opts.InstallationID)
+	case opts.Identity == "":
+		return report, domain.Usage("state facts needs --identity, the authority's age identity")
+	}
+	targets, err := d.targetsFor(ctx, opts.TargetOptions)
+	if err != nil {
+		return report, err
+	}
+	target := targets[0]
+	report.Target = target.String()
+
+	row, err := d.verifiedRow(ctx, target, opts.Roster, opts.Product, opts.InstallationID)
+	if err != nil {
+		return report, err
+	}
+	report.RowPublishedAt = row.PublishedAt
+	report.Stale = row.Stale(d.now(), DefaultFleetStaleAfter)
+	if row.FactsDigest == "" {
+		hint := "its machine sets no sync.recipient, or its release publishes no facts"
+		if row.FactsProblem != "" {
+			hint = "its latest facts run: " + row.FactsProblem
+		}
+		return report, domain.Usage("the row of %s %s names no facts", opts.Product, opts.InstallationID).WithHint("%s", hint)
+	}
+
+	docKey, sigKey, err := domain.FactsKeys(opts.Product, opts.InstallationID)
+	if err != nil {
+		return report, err
+	}
+	sig, err := d.Objects.GetObject(ctx, target, sigKey)
+	var sealed []byte
+	if err == nil {
+		sealed, err = d.Objects.GetObject(ctx, target, docKey)
+	}
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return report, domain.Usage("no facts are published beside the row of %s %s", opts.Product, opts.InstallationID)
+	case err != nil:
+		return report, err
+	}
+	comment, verified := checker.CheckComment(sealed, sig, entry.PublicKey)
+	if !verified || comment != domain.FactsComment(opts.Product, opts.InstallationID) {
+		return report, domain.Usage("the facts beside the row of %s %s are not signed by the key the roster lists for it",
+			opts.Product, opts.InstallationID).
+			WithHint("anyone who knows the authority's recipient can encrypt to it; only the machine's key vouches for facts")
+	}
+	sum := sha256.Sum256(sealed)
+	report.Digest = "sha256:" + hex.EncodeToString(sum[:])
+	if report.Digest != row.FactsDigest {
+		return report, domain.Usage("the facts beside the row of %s %s are not the ones its row names",
+			opts.Product, opts.InstallationID).
+			WithHint("an older pair was put back, or the row is newer than its facts; the next publish writes both")
+	}
+
+	var plain bytes.Buffer
+	if err := agecrypt.Decrypt(&plain, bytes.NewReader(sealed), opts.Identity); err != nil {
+		return report, err
+	}
+	report.Facts = plain.String()
 	return report, nil
 }
