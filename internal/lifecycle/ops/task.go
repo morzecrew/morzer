@@ -301,6 +301,11 @@ func (d *Deps) taskRelease(ctx context.Context) (domain.Installation, domain.Rel
 // with the reason when those could not be loaded. Never the output.
 func (d *Deps) taskFlags(opts TaskOptions, task domain.TaskSpec, armed bool) map[string]string {
 	flags := map[string]string{"task": opts.Name, "service": task.Service}
+	if opts.facts {
+		// The run that makes the facts, which follows another
+		// operation; the fleet row's last operation is that one.
+		flags["facts"] = "true"
+	}
 	if len(opts.Args) == 0 {
 		return flags
 	}

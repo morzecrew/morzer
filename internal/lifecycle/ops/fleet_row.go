@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -243,10 +244,17 @@ func pluralTargets(n int) string {
 // `apply` -- and a row carrying an operation with an empty id and no outcome
 // would read as a corrupt journal rather than a new machine.
 func (d *Deps) fleetLastOperation(ctx context.Context) *domain.FleetOperation {
-	rec, ok, err := d.State.LastOperation(ctx)
-	if err != nil || !ok {
+	// The newest that is not a facts run: that run follows the operation
+	// that triggered it, which is what the row reports.
+	recs, err := d.State.Operations(ctx, ports.Filter{Limit: 8})
+	if err != nil {
 		return nil
 	}
+	i := slices.IndexFunc(recs, func(r domain.OperationRecord) bool { return r.Flags["facts"] != "true" })
+	if i < 0 {
+		return nil
+	}
+	rec := recs[i]
 
 	at := rec.FinishedAt
 	if at.IsZero() {
