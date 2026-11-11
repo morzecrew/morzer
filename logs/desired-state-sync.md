@@ -736,3 +736,15 @@ evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md
 action: decided
 proposal: UNLISTED — the facts task never runs after init, which starts nothing; the first apply or start makes the facts
 ```
+
+```divergence
+decision: 28
+grade: ASSUMED
+class: discovery
+at: 2026-11-11T11:02:08Z
+attempt: 1
+claim: decision 28 binds facts to the row by digest and says nothing of the recipient they were made for. Found in review: clearing or changing sync.recipient left the old facts published, readable by whoever held the old recipient, and a target that refused the facts still got a row naming them. Kept facts now carry the recipient they were encrypted to and are offered only while it is sync.recipient, which a change of it clears. A target that refuses the facts gets no new row. Refreshes run one at a time, and commit only if the recipient and the release they ran with are still current.
+evidence: internal/lifecycle/ops/facts.go:184
+action: departed
+proposal: ASSUMED — facts are offered only to the recipient they were made for, and a row is written to a target only beside the facts it names
+```
