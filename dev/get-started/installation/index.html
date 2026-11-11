@@ -2349,12 +2349,18 @@
 <p>morzer is a single static binary with no runtime dependency on the machine's
 libc. Getting it is a download and a checksum.</p>
 <h2 id="the-script">The script<a class="headerlink" href="#the-script" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1
+<p>On a machine that will run installations, install it for root:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1
 </code></pre></div>
 <p>It resolves the archive for this machine's architecture, checks the checksum
 against the release's own <code>SHA256SUMS</code>, checks the signature when <code>minisign</code> is
 installed, installs one file, and puts the prefix on <code>PATH</code> if it is not there
 already. Then it tells you what it did.</p>
+<p>Without <code>sudo</code>, it installs into <code>~/.local/bin</code> for you alone. That copy is
+enough to write and check bundles with <code>release new</code> and <code>release verify</code>, and
+it is not one an installation can run: <code>sudo</code> keeps a <code>PATH</code> of its own and
+does not find it, and the manager <a href="#running-as-root">refuses</a> units that would
+run it.</p>
 <div class="admonition warning">
 <p class="admonition-title">Unpacking needs <code>zstd</code> on the machine</p>
 <p>Releases are <code>tar.zst</code>, and GNU tar's <code>--zstd</code> runs the <code>zstd</code> binary as a
@@ -2374,11 +2380,11 @@ curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.githu
 
 <span class="c1"># A production runbook: pin the version, and refuse to install unsigned.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1<span class="w"> </span>--require-signature
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1<span class="w"> </span>--require-signature
 
 <span class="c1"># Somewhere else, without touching a startup file.</span>
 curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="p">|</span><span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span><span class="m">0</span>.15.1<span class="w"> </span>--dir<span class="w"> </span>/opt/morzer/bin<span class="w"> </span>--no-modify-path
 </code></pre></div>
 <p><code>sh -s --</code> is how arguments reach a script that arrived on stdin. <code>MORZER_VERSION</code>
 and <code>MORZER_INSTALL_DIR</code> do the same job for a runbook that would rather set
@@ -2599,6 +2605,12 @@ which is worth asking on a machine somebody else set up — see
 <h2 id="running-as-root">Running as root<a class="headerlink" href="#running-as-root" title="Permanent link">&para;</a></h2>
 <p>The manager writes to <code>/etc</code>, <code>/var/lib</code>, <code>/run</code> and <code>/opt</code>, installs systemd
 units, and runs release hooks. It expects to be root.</p>
+<p>The units run the manager as root, naming the binary by its path, so that
+binary has to be one only root can replace: it, and every directory and link
+on the way to it, owned by root and writable by no group or other user. <code>init</code>, and every operation that
+rewrites the units, refuse a copy another user could replace, which is where a
+copy installed without <code>sudo</code> lives. <code>doctor</code>'s <code>manager.binary</code> fails on units
+that already name one.</p>
 <p>To try it without being root, or without touching those paths at all, see
 <a href="../first-deployment/">Your first deployment</a> — every managed path derives from a
 single prefix, and there is a flag that moves all of them.</p>

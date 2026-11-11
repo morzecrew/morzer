@@ -3813,6 +3813,10 @@ does not — pointing at <code>rotate</code> there would point at a command that
 <td><code>runtime.health</code></td>
 <td>Fails when a health check the release declares does not pass while its services run, an unhealthy one included. With nothing running, or a runtime it cannot ask, it does not probe and only warns, as the service check above already says why.</td>
 </tr>
+<tr>
+<td><code>manager.binary</code></td>
+<td>Fails when the installed units run a manager binary another user could replace: the units run it as root, so whoever can swap it gets root at the next timer tick. The binary, and every directory and link on the way to it, must be owned by root and writable by no group or other user. Every command a unit runs counts: those in its file and its drop-ins, and those systemd reports for it. Units it cannot read fail it too. The remedy installs the manager into <code>/usr/local/bin</code> for root and runs <code>init --repair</code> with it.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="history">history<a class="headerlink" href="#history" title="Permanent link">&para;</a></h2>
@@ -4413,8 +4417,11 @@ changes and it exits 0.</p>
 <ul>
 <li>a dev build, which has no version to compare, unless <code>--to</code> or <code>--from</code> names
   the release;</li>
-<li>a directory this user cannot write to. It prints the command to re-run with
-  <code>sudo</code> and never escalates itself;</li>
+<li>a directory this user cannot write to, or an installation whose locks this
+  user cannot take. It prints the command to re-run with <code>sudo</code>, and never
+  escalates itself. When another user could replace this copy, <code>sudo</code> on it
+  would run as root whatever they put there, so it prints how to install one
+  for root instead;</li>
 <li>a platform no release is published for: only <code>linux/amd64</code> and
   <code>linux/arm64</code> are.</li>
 </ul>
