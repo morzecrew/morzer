@@ -1941,6 +1941,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-authoritys-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The authority's commands
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The authority&#x27;s commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#state-key-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state key generate
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state publish
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-ls" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state ls
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-it-reports" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2286,6 +2336,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-authoritys-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        The authority's commands
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The authority&#x27;s commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#state-key-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state key generate
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state publish
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#state-ls" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        state ls
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-it-reports" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2523,12 +2623,12 @@ one is.</p>
 </tr>
 <tr>
 <td><code>unreachable</code></td>
-<td>the target did not answer, or an object could not be read, as one over 1 MiB</td>
+<td>the target did not answer, or an object could not be read</td>
 <td>no</td>
 </tr>
 <tr>
 <td><code>bad-signature</code></td>
-<td>the newest pair is not a document the authority signed for this installation and serial</td>
+<td>the newest pair is not a document the authority signed for this installation and serial, or is over the 1 MiB a document can be</td>
 <td>no</td>
 </tr>
 <tr>
@@ -2605,6 +2705,103 @@ morzer<span class="w"> </span>sync<span class="w"> </span>status<span class="w">
 <p>Prints the target, the authority's key id, the interval, the last document
 applied and when it expires, the last refused with its step, class, names and
 full text, and what the last cycle found.</p>
+<h2 id="the-authoritys-commands">The authority's commands<a class="headerlink" href="#the-authoritys-commands" title="Permanent link">&para;</a></h2>
+<p><code>state</code> needs no installation of its own, as <code>fleet ls</code> needs none. It runs
+where the authority's key is.</p>
+<h3 id="state-key-generate">state key generate<a class="headerlink" href="#state-key-generate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>key<span class="w"> </span>generate<span class="w"> </span>./authority.key
+</code></pre></div>
+<p>Writes a new minisign secret key, unencrypted and <code>0400</code>, and prints the public
+key the machines pin as <code>sync.authority</code>. It refuses a path that exists. A key
+from <code>minisign -G -W</code> serves too; one with a password does not, since <code>state
+publish</code> runs without a prompt.</p>
+<h3 id="state-publish">state publish<a class="headerlink" href="#state-publish" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>publish<span class="w"> </span>--target<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--product<span class="w"> </span>demo<span class="w"> </span>--installation<span class="w"> </span>inst_01M72B61SSWFT54B6KTJC26YD0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--file<span class="w"> </span>./demo.yaml<span class="w"> </span>--key<span class="w"> </span>./authority.key
+</code></pre></div>
+<p>In order:</p>
+<ol>
+<li>Refuses an installation the roster does not list, and a roster entry with
+   no key.</li>
+<li>Reads the document, a change document without the envelope, and checks it.</li>
+<li>Refuses a serial not newer than the newest document the authority's key
+   signed on the target, since a pair is written once. A pair it did not sign
+   does not count, so one planted at a high serial cannot stop it.</li>
+<li>Reads the installation's fleet row, and refuses one that does not verify
+   against the roster's key.</li>
+<li>Stamps the envelope: the serial, the issue time, and the expiry, at least a
+   minute later.</li>
+<li>Encrypts the whole document to the row's <code>age_recipient</code>, and to any
+   <code>--recipient</code>. It refuses a ciphertext over 1 MiB, the most a machine
+   reads.</li>
+<li>Signs the ciphertext with the trusted comment that names it.</li>
+<li>Writes the ciphertext, then the signature, then prunes.</li>
+</ol>
+<p>The prune keeps the newest three pairs the authority's key signed and removes
+every other complete pair, whether an older one of its own, one an earlier key
+signed, or one planted there. It removes a lone object only below the serial
+just published, since one above it may be another publish in flight. Each pair
+loses its signature first. A failed prune fails nothing: the next publish
+prunes again.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--target</code></td>
+<td>The target the installation publishes its row to and pulls from. Required.</td>
+</tr>
+<tr>
+<td><code>--expect</code></td>
+<td>The <a href="../fleet/#the-roster">roster</a>. Required.</td>
+</tr>
+<tr>
+<td><code>--product</code>, <code>--installation</code></td>
+<td>Which installation the document is for. Required.</td>
+</tr>
+<tr>
+<td><code>--file</code></td>
+<td>The document, or <code>-</code> for stdin. Required.</td>
+</tr>
+<tr>
+<td><code>--key</code></td>
+<td>The authority's minisign secret key. Required.</td>
+</tr>
+<tr>
+<td><code>--serial</code></td>
+<td>The serial. Default: the time in milliseconds.</td>
+</tr>
+<tr>
+<td><code>--valid-for</code></td>
+<td>How long the document stays valid, at least <code>1m</code>. Default <code>168h</code>.</td>
+</tr>
+<tr>
+<td><code>--recipient</code></td>
+<td>An age recipient to encrypt to as well, such as the authority's own. Repeat for several.</td>
+</tr>
+<tr>
+<td><code>--credentials-file</code></td>
+<td>The target's credentials, as <code>fleet ls</code> takes them.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Everything but the writes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="state-ls">state ls<a class="headerlink" href="#state-ls" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>ls<span class="w"> </span>--target<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml
+</code></pre></div>
+<p>Every fleet row on the target, as <code>fleet ls</code> reads them, with the newest
+document published for each installation, the serial it applied, the one it
+refused with the step and class, and its last fetch. A row the roster does not
+list is shown as unexpected. Without <code>--expect</code>, nothing a row says is
+authenticated, and the signature column says so.</p>
 <h2 id="what-it-reports">What it reports<a class="headerlink" href="#what-it-reports" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

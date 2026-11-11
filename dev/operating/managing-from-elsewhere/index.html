@@ -1081,10 +1081,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-find-the-machines-recipient" class="md-nav__link">
+  <a href="#3-publish-a-document" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        3. Find the machine's recipient
+        3. Publish a document
       </span>
     </span>
   </a>
@@ -1092,21 +1092,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-publish-a-document" class="md-nav__link">
+  <a href="#4-watch-it-apply" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Publish a document
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-watch-it-apply" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        5. Watch it apply
+        4. Watch it apply
       </span>
     </span>
   </a>
@@ -2219,10 +2208,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-find-the-machines-recipient" class="md-nav__link">
+  <a href="#3-publish-a-document" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        3. Find the machine's recipient
+        3. Publish a document
       </span>
     </span>
   </a>
@@ -2230,21 +2219,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-publish-a-document" class="md-nav__link">
+  <a href="#4-watch-it-apply" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        4. Publish a document
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-watch-it-apply" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        5. Watch it apply
+        4. Watch it apply
       </span>
     </span>
   </a>
@@ -2371,71 +2349,68 @@ managed. Nothing listens on the machine, and nothing outside it acts on it.</p>
 <li><strong>The release must opt in.</strong> Only names listed in its
   <a href="../../reference/manifest/#managed"><code>managed</code></a> section can change, and a release
   without one lets nothing be managed.</li>
-<li><strong>The machine needs a target it can read</strong>: a bucket or directory, with a
-  credential that can list and read <code>state/&lt;product&gt;/&lt;installation-id&gt;</code> and
-  nothing else.</li>
-<li><strong>You need <a href="https://jedisct1.github.io/minisign/">minisign</a> and
-  <a href="https://age-encryption.org">age</a></strong> where you publish from.</li>
+<li><strong>One target holds both directions</strong>: the machine publishes its
+  <a href="../../reference/fleet/">fleet row</a> there, and reads its documents from
+  <code>state/&lt;product&gt;/&lt;installation-id&gt;</code> on it. The machine's sync credential needs
+  only to list and read that prefix.</li>
+<li><strong>A <a href="../../reference/fleet/#the-roster">roster</a></strong> names each installation and
+  the key its row is signed with. A document is encrypted only to a machine
+  whose row verifies against it.</li>
 </ul>
 <h2 id="1-make-an-authority-key">1. Make an authority key<a class="headerlink" href="#1-make-an-authority-key" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>minisign<span class="w"> </span>-G<span class="w"> </span>-p<span class="w"> </span>authority.pub<span class="w"> </span>-s<span class="w"> </span>authority.key
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>key<span class="w"> </span>generate<span class="w"> </span>./authority.key
 </code></pre></div>
-<p>Keep <code>authority.key</code> off the machines. The public key is the second line of
-<code>authority.pub</code>.</p>
+<p>It prints the public key the machines pin. Keep <code>authority.key</code> off the
+machines: a key a managed machine holds lets that machine manage the rest. A key
+from <code>minisign -G -W</code> works too; one with a password does not.</p>
 <h2 id="2-point-the-machine-at-it">2. Point the machine at it<a class="headerlink" href="#2-point-the-machine-at-it" title="Permanent link">&para;</a></h2>
 <p>On the machine, store the target's <a href="../../reference/backup-targets/#the-credential-document">credential document</a>
 as a secret, then name the target, the credential and the key:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync_s3<span class="w"> </span>&lt;<span class="w"> </span>sync-credential.yaml
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.target<span class="o">=</span>s3://acme-state/demo
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.credentials<span class="o">=</span>sync_s3
-morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.authority<span class="o">=</span><span class="s2">"</span><span class="k">$(</span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span>authority.pub<span class="k">)</span><span class="s2">"</span>
+morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.authority<span class="o">=</span>RWQ...
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.enabled<span class="o">=</span><span class="nb">true</span>
 </code></pre></div>
 <p><code>sync.enabled=true</code> installs a timer that runs a cycle every 15 minutes;
 <code>sync.interval</code> changes that. <code>morzer init --sync-target --sync-authority</code>
 records the first and third at install time, and sync stays off until you turn
 it on.</p>
-<h2 id="3-find-the-machines-recipient">3. Find the machine's recipient<a class="headerlink" href="#3-find-the-machines-recipient" title="Permanent link">&para;</a></h2>
-<p>Documents are encrypted to the machine's own age key. Its row in the
-<a href="../../reference/fleet/">fleet view</a> carries it as <code>age_recipient</code>, and on the
-machine <code>morzer secret recipients list</code> shows it as the <code>machine</code> recipient.</p>
-<p>Use the recipient only from a row that verifies against your
-<a href="../../reference/fleet/#the-roster">roster</a>. Another machine that can write to
-the bucket can post a row for any installation id, and a document encrypted to
-its recipient is a document it can read.</p>
-<h2 id="4-publish-a-document">4. Publish a document<a class="headerlink" href="#4-publish-a-document" title="Permanent link">&para;</a></h2>
+<p>The machine must also publish its row to the same target, which it does on an
+hourly timer once the target is one of its backup targets, or with
+<code>morzer fleet publish</code>. The row carries the age recipient documents are
+encrypted to.</p>
+<h2 id="3-publish-a-document">3. Publish a document<a class="headerlink" href="#3-publish-a-document" title="Permanent link">&para;</a></h2>
 <p>Write the whole state you manage for this installation, not only what changed:</p>
-<div class="highlight"><span class="filename">doc.yaml</span><pre><span></span><code><span class="nt">api_version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">selfhost/v1alpha1</span>
-<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">desired-state</span>
-<span class="nt">product</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demo</span>
-<span class="nt">installation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">inst_01M72B61SSWFT54B6KTJC26YD0</span>
-<span class="nt">serial</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1794310000123</span>
-<span class="nt">issued_at</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2026-11-10T12:00:00Z</span>
-<span class="nt">expires_at</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2026-11-17T12:00:00Z</span>
-<span class="nt">parameters</span><span class="p">:</span>
+<div class="highlight"><span class="filename">demo.yaml</span><pre><span></span><code><span class="nt">parameters</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">log_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">debug</span>
+<span class="nt">secrets</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">db_password</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">a-value-from-elsewhere</span>
 </code></pre></div>
-<p>Encrypt it to the machine, sign the ciphertext with a trusted comment naming it,
-and upload the ciphertext first and the signature last:</p>
-<div class="highlight"><pre><span></span><code><span class="nv">serial</span><span class="o">=</span><span class="m">1794310000123</span>
-age<span class="w"> </span>-r<span class="w"> </span>age1...<span class="w"> </span>-o<span class="w"> </span><span class="s2">"</span><span class="nv">$serial</span><span class="s2">.age"</span><span class="w"> </span>doc.yaml
-minisign<span class="w"> </span>-S<span class="w"> </span>-s<span class="w"> </span>authority.key<span class="w"> </span>-m<span class="w"> </span><span class="s2">"</span><span class="nv">$serial</span><span class="s2">.age"</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>-t<span class="w"> </span><span class="s2">"morzer desired-state product=demo installation=inst_01M72B61SSWFT54B6KTJC26YD0 serial=</span><span class="nv">$serial</span><span class="s2">"</span>
-aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span><span class="s2">"</span><span class="nv">$serial</span><span class="s2">.age"</span><span class="w"> </span><span class="s2">"s3://acme-state/demo/state/demo/inst_01M72B61SSWFT54B6KTJC26YD0/"</span>
-aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span><span class="s2">"</span><span class="nv">$serial</span><span class="s2">.age.minisig"</span><span class="w"> </span><span class="s2">"s3://acme-state/demo/state/demo/inst_01M72B61SSWFT54B6KTJC26YD0/"</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>publish<span class="w"> </span>--target<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--product<span class="w"> </span>demo<span class="w"> </span>--installation<span class="w"> </span>inst_01M72B61SSWFT54B6KTJC26YD0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--file<span class="w"> </span>./demo.yaml<span class="w"> </span>--key<span class="w"> </span>./authority.key
 </code></pre></div>
-<p>Use a new, higher serial for every document; the time in milliseconds works.
-Never replace a pair that is already published.</p>
-<h2 id="5-watch-it-apply">5. Watch it apply<a class="headerlink" href="#5-watch-it-apply" title="Permanent link">&para;</a></h2>
-<p>The next tick applies it, or run one now:</p>
+<p>It refuses an installation the roster does not list, and a row that does not
+verify against the roster's key. It stamps the serial, the time in milliseconds,
+and an expiry seven days out (<code>--valid-for</code> changes it), encrypts the document
+to the recipient the row carries, and signs it. It writes the ciphertext first
+and the signature last, and removes all but the newest three documents.
+<code>--dry-run</code> does everything except the writes.</p>
+<h2 id="4-watch-it-apply">4. Watch it apply<a class="headerlink" href="#4-watch-it-apply" title="Permanent link">&para;</a></h2>
+<p>The next tick applies it, or run one on the machine now:</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>sync<span class="w"> </span>now
 morzer<span class="w"> </span>sync<span class="w"> </span>status
 </code></pre></div>
-<p><code>sync status</code> shows the document applied and when it expires. A document is
-refused whole when it is not yours, is older than the one applied, has expired,
-or names what the release does not manage, and <code>sync status</code> says at which step
-and why. A refused serial is not tried again: publish a corrected document with
-a higher serial.</p>
+<p>From where you publish, <code>state ls</code> shows every installation's newest document
+beside what its row says it applied and refused:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>ls<span class="w"> </span>--target<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml
+</code></pre></div>
+<p>A document is refused whole when it is not yours, is older than the one applied,
+has expired, or names what the release does not manage. <code>sync status</code> on the
+machine says at which step and why. A refused serial is not tried again:
+publish a corrected document, which takes a newer serial.</p>
 <h2 id="keep-the-authority-heard-from">Keep the authority heard from<a class="headerlink" href="#keep-the-authority-heard-from" title="Permanent link">&para;</a></h2>
 <p><code>doctor</code> warns when the document in force expires within a day, and when the
 target has not answered for three intervals. A target that withholds your
@@ -2446,7 +2421,7 @@ before <code>expires_at</code>.</p>
 authority manages, and name the authority. <code>--force</code> changes it here, and the
 authority's next document sets it back.</p>
 <h2 id="changing-the-authority">Changing the authority<a class="headerlink" href="#changing-the-authority" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.authority<span class="o">=</span><span class="s2">"</span><span class="k">$(</span>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">1</span><span class="w"> </span>new-authority.pub<span class="k">)</span><span class="s2">"</span>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.authority<span class="o">=</span>RWQ...
 </code></pre></div>
 <p>The change is journalled and clears the serials the machine applied and
 refused, so the new key's documents are not held back by the old key's. A
