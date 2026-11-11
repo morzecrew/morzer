@@ -882,3 +882,68 @@ func TestAnExpiryRecordedMeanwhileIsNotNotifiedAgain(t *testing.T) {
 	assert.Equal(t, domain.SyncExpired, r.syncOK(t).Result)
 	assert.Empty(t, r.notified.kinds(), "an expiry another cycle recorded was notified again")
 }
+
+// No secret value leaves the machine in a sync's notifications or statements
+// (RFC 0057 §6), nor reaches its journal or state: not from a document
+// applied, one refused before its operation by an error quoting a value beside
+// the secret, or one its operation undid. The quoted value stays in state.
+func TestASyncLeaksNoSecretIntoANotificationOrAStatement(t *testing.T) {
+	r := newSyncRig(t)
+	secrets := []string{"APPLIED-SECRET-VALUE", "REFUSED-SECRET-VALUE", "UNDONE-SECRET-VALUE"}
+
+	r.publish(t, 10, "secrets:\n  db_password: "+secrets[0]+"\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+	set, err := r.h.Secrets.Load(context.Background())
+	require.NoError(t, err)
+	stored, _ := set.Get("db_password")
+	require.Equal(t, secrets[0], stored.Reveal(), "the document did not set the secret, so the scan proves nothing")
+
+	r.publish(t, 20, "parameters:\n  log_level: PARAM-VALUE-MUST-NOT-TRAVEL\nsecrets:\n  db_password: "+secrets[1]+"\n")
+	require.Equal(t, domain.SyncInvalid, r.syncOK(t).Result)
+	require.Contains(t, r.state(t).Refused.Message, "PARAM-VALUE-MUST-NOT-TRAVEL",
+		"the refusal does not quote the value beside the secret, so this test proves less")
+
+	r.publish(t, 30, "parameters:\n  log_level: warn\nsecrets:\n  db_password: "+secrets[2]+"\n")
+	r.h.Health.FailingWaits = 1
+	report, err := r.sync(t)
+	require.Error(t, err)
+	require.Equal(t, domain.SyncFailed, report.Result)
+
+	surfaces := map[string]string{}
+	r.notified.mu.Lock()
+	for i, ev := range r.notified.events {
+		body, err := json.Marshal(ev)
+		require.NoError(t, err)
+		surfaces[fmt.Sprintf("notification %d (%s)", i, ev.Kind)] = string(body)
+	}
+	r.notified.mu.Unlock()
+	require.Contains(t, r.notified.kinds(), events.KindSyncRefused, "no refusal was notified, so the scan proves less")
+	ran := 0
+	for _, file := range statementsOnDisk(t, r.h) {
+		body, err := os.ReadFile(file)
+		require.NoError(t, err)
+		if strings.Contains(string(body), `"desired_state"`) {
+			ran++
+		}
+		surfaces["statement "+filepath.Base(file)] = withoutDigests(string(body))
+	}
+	assert.Equal(t, 2, ran, "the applied and the undone document should each have a statement")
+	for name, path := range map[string]string{
+		"journal": r.h.Paths.JournalFile(), "state": r.h.Paths.InstallationState(),
+	} {
+		body, err := os.ReadFile(path)
+		require.NoError(t, err)
+		surfaces[name] = string(body)
+	}
+
+	for name, body := range surfaces {
+		for _, secret := range secrets {
+			assert.NotContains(t, body, secret, "a secret value reached the %s", name)
+		}
+		// The refusal's text quotes the parameter value, and stays in this
+		// machine's state (decision 23): nothing that leaves carries it.
+		if name != "state" {
+			assert.NotContains(t, body, "PARAM-VALUE-MUST-NOT-TRAVEL", "a refused value reached the %s", name)
+		}
+	}
+}
