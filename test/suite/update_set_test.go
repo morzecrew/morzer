@@ -85,6 +85,8 @@ func TestUpdateSetGivesTheReleaseItsValue(t *testing.T) {
 	assert.Equal(t, "1.3.0", currentVersion(t, h))
 	assert.Equal(t, adminEmail, installation(t, h).Parameters["admin_email"])
 	assert.Equal(t, "admin_email", result.Record.Flags["set"])
+	cfg, _ := lastUp(t, h)
+	assert.Equal(t, adminEmail, cfg.Env["DEMO_PARAM_ADMIN_EMAIL"], "the converge did not deliver the value")
 
 	journal, err := os.ReadFile(h.Paths.JournalFile())
 	require.NoError(t, err)
@@ -117,6 +119,8 @@ func TestUpdateSetRefusesAValueOfTheWrongType(t *testing.T) {
 	h := convergedHarness(t)
 	src := upgradeRequiringAdminEmail(t, h)
 
+	backups, calls := countBackups(t, h), len(h.Runtime.Calls)
+
 	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
 		Ref: src, Parameters: map[string]string{"admin_email": adminEmail, "http_port": "not-a-port"},
 	})
@@ -124,6 +128,8 @@ func TestUpdateSetRefusesAValueOfTheWrongType(t *testing.T) {
 	assert.Contains(t, err.Error(), "http_port")
 	assert.NotContains(t, domain.AsError(err).Message, "not-a-port", "a refused value reached the message")
 	assert.Equal(t, "1.2.0", currentVersion(t, h))
+	assert.Equal(t, backups, countBackups(t, h), "a value refused only once the update was under way")
+	assert.Len(t, h.Runtime.Calls, calls, "a value refused only once the update was under way")
 }
 
 // An update that fails is undone, and the value it was given goes with it.
@@ -141,15 +147,16 @@ func TestAFailedUpdateRecordsNoValue(t *testing.T) {
 	assert.NotContains(t, installation(t, h).Parameters, "admin_email", "a rolled-back update recorded its value")
 }
 
-// adminEmailSaveFailing fails, once, the save that records admin_email: the
-// update's last write, after everything else has converged.
-type adminEmailSaveFailing struct {
+// recordFailing fails, once, the save that records name=value: the update's
+// last write, after everything else has converged.
+type recordFailing struct {
 	ports.StateStore
-	armed *bool
+	name, value string
+	armed       *bool
 }
 
-func (s adminEmailSaveFailing) SaveInstallation(ctx context.Context, inst domain.Installation) error {
-	if _, ok := inst.Parameters["admin_email"]; ok && *s.armed {
+func (s recordFailing) SaveInstallation(ctx context.Context, inst domain.Installation) error {
+	if inst.Parameters[s.name] == s.value && *s.armed {
 		*s.armed = false
 		return assert.AnError
 	}
@@ -166,7 +173,7 @@ func TestAResumedUpdateIsGivenItsValuesAgain(t *testing.T) {
 	requireAdminEmail(t, src)
 	armed := true
 	store := h.Deps.State
-	h.Deps.State = adminEmailSaveFailing{StateStore: store, armed: &armed}
+	h.Deps.State = recordFailing{StateStore: store, name: "admin_email", value: adminEmail, armed: &armed}
 	ctx := context.Background()
 
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
@@ -184,6 +191,27 @@ func TestAResumedUpdateIsGivenItsValuesAgain(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, adminEmail, installation(t, h).Parameters["admin_email"])
 	assert.Equal(t, "1.3.0", currentVersion(t, h))
+}
+
+// The same for a value that changes a parameter the release has already: a
+// resume without it would converge on the recorded value and drop the one the
+// operator gave.
+func TestAResumedUpdateIsGivenAChangedValueAgain(t *testing.T) {
+	h := convergedHarness(t)
+	src := stageRecoverableUpgradeSource(t, h)
+	armed := true
+	store := h.Deps.State
+	h.Deps.State = recordFailing{StateStore: store, name: "log_level", value: "debug", armed: &armed}
+	ctx := context.Background()
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"log_level": "debug"}})
+	require.Error(t, err)
+	h.Deps.State = store
+
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src})
+	require.Error(t, err, "a resume without the value it was given was let through")
+	assert.Contains(t, err.Error(), "log_level")
+	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
 }
 
 // A plan names the parameters an update will record, never their values.
