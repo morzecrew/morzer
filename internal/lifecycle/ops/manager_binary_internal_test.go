@@ -78,6 +78,10 @@ func TestDoctorFailsUnitsThatRunABinaryAnotherUserCanReplace(t *testing.T) {
 		assert.Equal(t, events.CheckOK, run().Status)
 	}
 
+	supervisor.Fail = map[string]error{"UnitsManagerPaths": errors.New("unreadable")}
+	assert.Equal(t, events.CheckFail, run().Status, "units nobody could read were passed")
+	supervisor.Fail = nil
+
 	d.Paths = domain.PathsUnder(t.TempDir(), "demo")
 	supervisor.ManagerPaths = map[string][]string{"demo": {own}}
 	assert.Equal(t, events.CheckOK, run().Status, "units under --root were checked")

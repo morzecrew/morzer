@@ -143,7 +143,9 @@ func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check
 			}
 			paths, err := d.Supervisor.UnitsManagerPaths(ctx, inst.Product)
 			if err != nil {
-				return preflight.Warn("run `systemctl cat` on the product's units",
+				// Unknown is not safe: an unattended doctor would
+				// pass a check it never made.
+				return preflight.Fail("run `systemctl cat` on the product's units",
 					"cannot read the binary the units run: %s", domain.AsError(err).Message)
 			}
 			for _, path := range paths {
