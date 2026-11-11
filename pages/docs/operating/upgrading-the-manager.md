@@ -92,12 +92,14 @@ The install script is the other way, and the only one for going back.
     systemctl cat <product>.service | grep ExecStart
     ```
 
-2. Install the release into that binary's directory:
+2. Install the release into that binary's directory, here `/usr/local/bin`:
 
     ```sh
     curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-      | sudo sh -s -- --version 0.15.1 --require-signature --dir /usr/local/bin
+      | sudo sh -s -- --version 0.16.0 --require-signature --dir /usr/local/bin
     ```
+
+    Name the directory step 1 printed, whatever it is.
 
 `--dir` matters. Left to itself, the script picks `/usr/local/bin` or
 `~/.local/bin`. A manager installed anywhere else would get a second copy, and

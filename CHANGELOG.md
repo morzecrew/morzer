@@ -7,43 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-11
+
+An installation can follow an authority's desired state: signed, encrypted
+documents it pulls from a target it already uses and applies to itself, with
+nothing listening on the machine. `morzer state` publishes them and reads back
+what each machine applied, refused and reported as its facts. `config apply`
+changes settings, parameters and secrets together as one operation.
+
+Upgrading moves installation state from schema 18 to 20, so a 0.15 manager
+refuses a machine 0.16.0 has run on. Operators, scripts and authors may notice:
+
+- Fleet rows are schema 2, which a 0.15 manager refuses. Upgrade the machine
+  that reads the fleet before the machines that publish to it.
+
+- `config set`, `config unset` and `config edit` of a parameter now wait for
+  the release's health checks after re-creating its services, and a failing
+  check undoes the change and fails the command.
+
+- A bundle declaring `managed` or `published` needs
+  `compatibility.min_manager_version: "0.16.0"`, which `release verify`
+  checks.
+
+- `installation import --mode dev` drops `sync.*` along with the backup and
+  notify targets.
+
+- `init`, and every operation that rewrites the units, refuse a manager binary
+  another user could replace, and `doctor` fails units that run one. A machine
+  whose units run a copy installed without `sudo` needs the manager installed
+  for root, then `init --repair` with that copy.
+
+Under `--json`, fleet rows gain `age_recipient`, `sync`, `facts_digest` and
+`facts_problem`, and no existing field changed meaning.
+
 ### Added
 
 - `config apply` changes settings, parameters and secrets together as one
   operation, from a document on stdin. It records, renders, re-creates and
   health-checks once, and puts every value back if a step fails, a secret with
   the change time it had.
+
 - A machine can follow an authority's desired state: documents published for
   one installation, signed with the authority's minisign key and encrypted to
   the machine. A timer fetches the newest, verifies its signature before
   reading it, and applies it as one `config apply`; nothing listens.
+
 - The `sync.*` settings configure it, locally only. `morzer sync now` runs a
   cycle, and `morzer sync status` shows what was applied and refused, and why.
   `init --sync-target` and `--sync-authority` record what to follow.
+
 - A release lists what a desired-state document may change in a `managed`
   section, of parameters, secrets and `installation.domains` or
   `installation.profile`. A release without one lets nothing be managed, and a
   document naming anything else is refused whole. `managed` needs
   `min_manager_version` 0.16.0.
+
 - While sync is on, `config set` and `config apply` refuse to change a managed
   name unless given `--force`, since the authority's next document would set it
   back.
+
 - A refused document reaches notify targets as `sync.refused`, and one in force
   that expired as `sync.expired`. `doctor` warns when the document in force
   expires within a day, or when the target has not answered for three
   intervals.
+
 - A sync's attestation names the document it applied, in a `desired_state`
   block of the new v4 predicate. `attest verify` still reads v3, v2 and v1
   statements.
+
 - `morzer state publish` encrypts and signs a desired-state document for one
   installation. It addresses only a machine whose fleet row verifies against
   the key the roster lists, and keeps the newest three documents.
+
 - `morzer state ls` shows what each installation applied and refused, and
   `morzer state key generate` makes the authority's key.
+
 - A release can name a task under `published` whose output is a machine's
   facts, such as a public key and an address. With `sync.recipient` set, the
   machine publishes them after each successful operation, encrypted to the
   authority and signed, beside its fleet row.
+
 - `morzer state facts` prints an installation's facts only when the machine's
   key signed them and they are the ones its newest row names.
   `init --sync-recipient` records the recipient.
@@ -51,10 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Fleet rows are schema 2 and carry `age_recipient`, the machine's age public
-  key, and a `sync` block. A manager that reads schema 1 refuses a schema 2
-  row, so upgrade the manager that reads the fleet first.
+  key, a `sync` block and the digest of its facts. A manager that reads schema
+  1 refuses a schema 2 row, so upgrade the manager that reads the fleet first.
+
 - Installation state moves from schema 18 to 20, so a 0.15 manager refuses a
   machine this version has run on.
+
 - `installation import --mode dev` also drops `sync.*`.
 
 - `config set`, `config unset` and `config edit` of a parameter wait for the
@@ -72,9 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installation needing manual intervention. Only the services the active
   profiles start are re-created.
 
-- `self-update` run by a user who cannot take the installations' locks says so
-  and prints the command to re-run with `sudo`, where it reported an
-  installation as busy.
+- `self-update` run by a user who cannot take the installations' locks says so,
+  where it reported an installation as busy. It prints the command to re-run
+  with `sudo`, or, for a copy another user could replace, how to install one
+  for root.
 
 ### Security
 
@@ -1477,7 +1523,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.15.1...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/morzecrew/morzer/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/morzecrew/morzer/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/morzecrew/morzer/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/morzecrew/morzer/compare/v0.13.0...v0.14.0
