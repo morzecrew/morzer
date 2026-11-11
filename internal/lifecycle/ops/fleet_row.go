@@ -245,8 +245,10 @@ func pluralTargets(n int) string {
 // would read as a corrupt journal rather than a new machine.
 func (d *Deps) fleetLastOperation(ctx context.Context) *domain.FleetOperation {
 	// The newest that is not a facts run: that run follows the operation
-	// that triggered it, which is what the row reports.
-	recs, err := d.State.Operations(ctx, ports.Filter{Limit: 8})
+	// that triggered it, which is what the row reports. The whole journal,
+	// since settings that run no operation of their own still run the
+	// facts task, any number of times.
+	recs, err := d.State.Operations(ctx, ports.Filter{})
 	if err != nil {
 		return nil
 	}
