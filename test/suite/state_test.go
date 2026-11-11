@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -283,4 +284,32 @@ func TestStatePublishRefusesAValidityUnderAMinute(t *testing.T) {
 	_, err := a.statePublish(t, opts)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--valid-for must be at least 1m")
+}
+
+// getMissing is a target whose reads of one key find nothing, as a store whose
+// reads lag its writes does.
+type getMissing struct {
+	ports.ObjectStore
+	suffix string
+}
+
+func (g getMissing) GetObject(ctx context.Context, ref ports.TargetRef, key string) ([]byte, error) {
+	if strings.HasSuffix(key, g.suffix) {
+		return nil, fs.ErrNotExist
+	}
+	return g.ObjectStore.GetObject(ctx, ref, key)
+}
+
+// The pair just written is never pruned, even when the prune cannot read it
+// back to see the authority signed it.
+func TestAPruneKeepsThePairJustWrittenWhenItCannotReadItBack(t *testing.T) {
+	a := newAuthorityRig(t)
+	a.h.Deps.Objects = getMissing{ObjectStore: a.h.Deps.Objects, suffix: "/100.age.minisig"}
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.Serial = 100
+	report, err := a.statePublish(t, opts)
+	require.NoError(t, err)
+	assert.NotContains(t, report.Pruned, int64(100))
+	_, err = os.Stat(filepath.Join(a.offsite, filepath.FromSlash(report.Signature)))
+	assert.NoError(t, err, "the prune removed the pair it had just written")
 }
