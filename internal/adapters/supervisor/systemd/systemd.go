@@ -253,24 +253,42 @@ func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]stri
 	return out, nil
 }
 
+// execKeys are the directives whose value is a command a unit runs.
+var execKeys = []string{"ExecCondition", "ExecStartPre", "ExecStart", "ExecStartPost", "ExecReload", "ExecStop", "ExecStopPost"}
+
 // UnitsManagerPaths reads the binary from every one of the product's units
 // that is installed. One manager writes them all with the same path, but a
 // unit another copy left behind runs that copy.
+//
+// Every command a unit runs counts, a reload's included, and so do the drop-ins
+// beside it, whose commands systemd runs in place of the unit's own.
 func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]string, error) {
 	var out []string
 	for _, name := range UnitNames(product) {
-		path := filepath.Join(s.unitDir, name)
-		data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, in its own directory
-		switch {
-		case os.IsNotExist(err):
-			continue
-		case err != nil:
-			return nil, domain.Internal(err, "cannot read unit %s", path)
+		files := []string{filepath.Join(s.unitDir, name)}
+		dropIns, err := filepath.Glob(filepath.Join(s.unitDir, name+".d", "*.conf"))
+		if err != nil {
+			return nil, domain.Internal(err, "cannot list the drop-ins of %s", name)
 		}
-		for line := range strings.Lines(string(data)) {
-			exec, ok := strings.CutPrefix(line, "ExecStart=")
-			if fields := strings.Fields(exec); ok && len(fields) > 0 && !slices.Contains(out, fields[0]) {
-				out = append(out, fields[0])
+		for _, path := range append(files, dropIns...) {
+			data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, or its drop-in, in its own directory
+			switch {
+			case os.IsNotExist(err):
+				continue
+			case err != nil:
+				return nil, domain.Internal(err, "cannot read unit %s", path)
+			}
+			for line := range strings.Lines(string(data)) {
+				key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+				fields := strings.Fields(value)
+				if !ok || !slices.Contains(execKeys, strings.TrimSpace(key)) || len(fields) == 0 {
+					continue
+				}
+				// systemd's prefixes before the path: ignore failure,
+				// argv[0], full privileges and the rest.
+				if bin := strings.TrimLeft(fields[0], "-@:+!"); bin != "" && !slices.Contains(out, bin) {
+					out = append(out, bin)
+				}
 			}
 		}
 	}
