@@ -1103,6 +1103,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#learn-what-a-new-machine-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Learn what a new machine needs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-authority-heard-from" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2230,6 +2241,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#learn-what-a-new-machine-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Learn what a new machine needs
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-authority-heard-from" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2411,6 +2433,24 @@ beside what its row says it applied and refused:</p>
 has expired, or names what the release does not manage. <code>sync status</code> on the
 machine says at which step and why. A refused serial is not tried again:
 publish a corrected document, which takes a newer serial.</p>
+<h2 id="learn-what-a-new-machine-needs">Learn what a new machine needs<a class="headerlink" href="#learn-what-a-new-machine-needs" title="Permanent link">&para;</a></h2>
+<p>A machine can tell you what documents for it, and documents for other machines
+about it, need to carry, such as its public key and the address it is reached
+at. Its release names a task that prints those under
+<a href="../../reference/manifest/#published"><code>published</code></a>. Give the machine your age
+recipient:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>sync.recipient<span class="o">=</span>age1...
+</code></pre></div>
+<p>It then runs the task after every successful apply, start, update, rollback,
+restore and configuration change, and publishes the output, encrypted to you
+and signed with its key, beside its row. Read it with
+your age identity:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>state<span class="w"> </span>facts<span class="w"> </span>--target<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--product<span class="w"> </span>demo<span class="w"> </span>--installation<span class="w"> </span>inst_01M72B61SSWFT54B6KTJC26YD0<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--identity<span class="w"> </span>./authority.age
+</code></pre></div>
+<p>It prints the facts only when the machine's key signed them and they are the
+ones its newest row names.</p>
 <h2 id="keep-the-authority-heard-from">Keep the authority heard from<a class="headerlink" href="#keep-the-authority-heard-from" title="Permanent link">&para;</a></h2>
 <p><code>doctor</code> warns when the document in force expires within a day, and when the
 target has not answered for three intervals. A target that withholds your

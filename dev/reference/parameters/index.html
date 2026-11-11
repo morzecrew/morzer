@@ -2958,6 +2958,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>The minisign public key a document must be signed with. Changing it is journalled, and clears the serials this machine applied and refused, so a new authority starts a watermark of its own.</td>
 </tr>
 <tr>
+<td><code>sync.recipient</code></td>
+<td>The authority's age recipient, which this machine's published facts are encrypted to.</td>
+</tr>
+<tr>
 <td><code>sync.interval</code></td>
 <td>How often the sync timer fetches, a duration of at least <code>1m</code>. Absent takes <code>15m</code>.</td>
 </tr>

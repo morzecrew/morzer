@@ -1967,6 +1967,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#published" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        published
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2779,6 +2790,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         managed
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#published" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        published
       </span>
     </span>
   </a>
@@ -4219,6 +4241,43 @@ on the machine.</p>
 <p>A release declaring <code>managed</code> needs <code>compatibility.min_manager_version</code> of at
 least <code>0.16.0</code>. The manifest is decoded strictly, so an older manager refuses
 the field rather than ignoring it.</p>
+<h2 id="published">published<a class="headerlink" href="#published" title="Permanent link">&para;</a></h2>
+<p>The task whose output is this machine's facts, which it publishes to the
+authority it follows: what the authority needs to address documents to this
+machine and to others about it, such as a public key and the address it is
+reached at.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">published</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">task</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">relay-entry</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.16.0"</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task</code></td>
+<td>string</td>
+<td>Required. A task the release declares under <code>tasks</code>. It runs with no arguments and no inputs, so it must take none, and on every machine, so its <code>modes</code> must not leave one out. Its stdout is the facts, at most 64 KiB.</td>
+</tr>
+</tbody>
+</table>
+<p>The task runs after every successful apply, start, update, rollback, restore
+and configuration change, on a machine that sets <code>sync.recipient</code>. Never after
+<code>init</code>, which starts nothing, while a task may start the services it needs. Its
+output is encrypted to that recipient and signed with the machine's key, and
+published beside the machine's <a href="../fleet/">fleet row</a>. A failed run keeps the
+previous facts, and the row says it failed.</p>
+<p><strong>Facts are for public halves and addresses.</strong> morzer cannot tell a secret from
+a fact, and a task that prints a credential sends it to the authority.</p>
+<p>A release declaring <code>published</code> needs <code>compatibility.min_manager_version</code> of at
+least <code>0.16.0</code>, for the reason <code>managed</code> does. Either block written empty needs
+it too: an older manager refuses the field, not its contents.</p>
 <h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
 <p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, a <code>timeout</code>
 (default <code>120s</code>) and an optional <code>start_period</code>.</p>

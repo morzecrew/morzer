@@ -2744,12 +2744,21 @@ problem can still publish a row saying exactly that.</p>
 <td>whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured</td>
 </tr>
 <tr>
+<td><code>facts_digest</code></td>
+<td>the sha256 of the <a href="../desired-state/#facts">facts</a> published beside this row, which an authority uses only when they are these</td>
+</tr>
+<tr>
+<td><code>facts_problem</code></td>
+<td>why the latest facts run did not replace them, as a class: the task's exit status, too much output, or a run that did not start</td>
+</tr>
+<tr>
 <td><code>published_at</code></td>
 <td>when this row was written</td>
 </tr>
 </tbody>
 </table>
-<p>Rows are schema 2, which added <code>age_recipient</code> and <code>sync</code>. A manager that reads
+<p>Rows are schema 2, which added <code>age_recipient</code>, <code>sync</code>, <code>facts_digest</code> and
+<code>facts_problem</code>. A manager that reads
 schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
 manager you read the fleet with first.</p>
 <h2 id="what-the-row-never-carries">What the row never carries<a class="headerlink" href="#what-the-row-never-carries" title="Permanent link">&para;</a></h2>
@@ -2757,6 +2766,10 @@ manager you read the fleet with first.</p>
 the <a href="../support-bundle/">support bundle</a> refuses. The payload is deliberately
 smaller than a support bundle and smaller than an attestation: it is a <em>row</em>,
 not a record.</p>
+<p>A machine that publishes <a href="../desired-state/#facts">facts</a> writes them <strong>beside</strong>
+the row, never in it, as <code>facts.age</code> with its signature. They are encrypted to
+the authority's recipient, so the bucket never holds them in plaintext, and the
+row names only their digest.</p>
 <p>Drift is the clearest case. It is published as a count of targets that differ
 and never as the diff, because the number is the signal an operator acts on and
 the files are on the machine for whoever is allowed to look at them. A shared
