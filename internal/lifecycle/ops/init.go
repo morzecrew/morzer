@@ -788,8 +788,8 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		if target != "" {
 			inst.Sync.Target = target
 		}
-		if recipient != "" {
-			inst.Sync.Recipient = recipient
+		if recipient != "" && recipient != existing.Sync.Recipient {
+			inst.Sync.Recipient, inst.Sync.Facts = recipient, nil
 		}
 		if authority != "" && authority != existing.Sync.Authority {
 			inst.Sync.Authority = authority

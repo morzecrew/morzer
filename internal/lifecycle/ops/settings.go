@@ -491,10 +491,15 @@ var settings = map[string]setting{
 			if err := agecrypt.ValidateRecipient(raw); err != nil {
 				return domain.Usage("%q is not an age recipient", raw)
 			}
+			if raw != i.Sync.Recipient {
+				// Facts made for another recipient are not offered to
+				// this one; the run after this change makes new ones.
+				i.Sync.Facts = nil
+			}
 			i.Sync.Recipient = raw
 			return nil
 		},
-		Clear: func(i *domain.Installation) { i.Sync.Recipient = "" },
+		Clear: func(i *domain.Installation) { i.Sync.Recipient, i.Sync.Facts = "", nil },
 	},
 	"sync.interval": {
 		Description: "how often the sync timer fetches, a duration of at least 1m; 15m when unset",

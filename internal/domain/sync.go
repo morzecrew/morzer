@@ -61,6 +61,11 @@ type SyncFacts struct {
 	Digest string `yaml:"digest,omitempty" json:"digest,omitempty"`
 	At     Time   `yaml:"at,omitempty" json:"at,omitzero"`
 
+	// Recipient is the one the facts were encrypted to. They are offered
+	// only while it is still sync.recipient: cleared or changed, the
+	// facts are not published.
+	Recipient string `yaml:"recipient,omitempty" json:"recipient,omitempty"`
+
 	// Problem is a class and never the task's output: the exit status, an
 	// output over the bound, or a run that did not start.
 	Problem string `yaml:"problem,omitempty" json:"problem,omitempty"`
