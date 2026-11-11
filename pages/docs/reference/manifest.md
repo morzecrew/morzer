@@ -788,7 +788,7 @@ compatibility:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `task` | string | A task the release declares under `tasks`. It runs with no arguments and no inputs, so it must take none, and its stdout is the facts, at most 64 KiB. |
+| `task` | string | Required. A task the release declares under `tasks`. It runs with no arguments and no inputs, so it must take none, and on every machine, so its `modes` must not leave one out. Its stdout is the facts, at most 64 KiB. |
 
 The task runs after every successful init, apply, start, update, rollback,
 restore and configuration change, on a machine that sets `sync.recipient`. Its
@@ -800,7 +800,8 @@ previous facts, and the row says it failed.
 a fact, and a task that prints a credential sends it to the authority.
 
 A release declaring `published` needs `compatibility.min_manager_version` of at
-least `0.16.0`, for the reason `managed` does.
+least `0.16.0`, for the reason `managed` does. Either block written empty needs
+it too: an older manager refuses the field, not its contents.
 
 ## health
 
