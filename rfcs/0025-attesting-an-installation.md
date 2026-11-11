@@ -255,6 +255,7 @@ honestly a new signer and the predecessor's public key is recorded.
 | 8 | `attest verify --against-live` must have a fault-injection case that makes it fail before P3 is called complete | LOCKED | §2. If none can be constructed, the RFC closes as rejected. |
 | 9 | `steps[]` carries the journal's durations rather than new timestamps | ASSUMED | §4.1 and §11.1. Reversed only if P1 finds a duration insufficient to place a step for an auditor. |
 | 10 | The per-installation salt is minted at `init` and carried by `installation import` | LOCKED | §4.4, §11.3. A re-minted salt breaks chain continuity on exactly the machine that most needs it. |
+| 11 | Statements are v4, whose predicate adds a `desired_state` block on a sync's statement only | ASSUMED | [0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md) decision 15 has this RFC define v4, since v3 refuses a field it does not name. The block carries the applied document's serial, digest and `authority_key_id`, and `schemas/morzer-attestation-v4.json` sits beside v3's. Added by RFC 0057's execution 2026-11-10 — see logs/desired-state-sync.md (decision 15, 2026-11-10T17:57:07Z). |
 
 ## 6. Non-goals, and what reopens each
 
