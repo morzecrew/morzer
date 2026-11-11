@@ -100,3 +100,15 @@ evidence: .github/scripts/acceptance.sh:22-45
 action: departed
 proposal: ASSUMED — §6's remaining rig cases run as suite tests, the two-product case against a real object store; the acceptance rig keeps the one-installation scenario it has
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T13:27:12Z
+attempt: 1
+claim: §6's rebuild case has the old document refused as undecryptable and applied once re-encrypted to the new recipient, and says nothing of the roster. A rebuilt machine also mints a new signing key (RFC 0028 §5.3), so its next row does not verify against the key the roster names, and `state publish` refuses it until the roster names the new key, which has to arrive out of band (decision 13). Built as that: the test updates the roster from the rebuilt row's signing key, as an operator would from `fleet publish --dry-run`, and the how-to gains the step.
+evidence: rfcs/0028-the-machines-signing-identity.md:174
+action: decided
+proposal: UNLISTED — a rebuilt machine is followed again once the roster names its new signing key; the next publish then encrypts to the recipient its new row names
+```
