@@ -450,16 +450,29 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 
 // ReplaceableByNonRoot says who other than root could replace the file at
 // path, or "" when nobody could. The file and every directory above it must be
-// owned by root and writable by no other user: a directory its owner can write
-// is one whose entries they can rename away and put back. A sticky directory
-// does not count, since there only a file's owner may rename it, and nor does
-// one writable by root's own group.
+// owned by root and writable by no group or other user: a directory someone
+// else can write is one whose entries they can rename away and put back. A
+// group bit counts whatever the group, root's included, since a group can have
+// other members, and a POSIX ACL granting a named user write shows as one. A
+// sticky directory does not count, since there only a file's owner may rename
+// it.
+//
+// The path is judged as named and as resolved: a link in a directory its user
+// can write is one they can repoint, whatever it names now.
 func ReplaceableByNonRoot(path string) (string, error) {
-	p, err := filepath.EvalSymlinks(path)
+	named := filepath.Clean(path)
+	who, err := replaceableByNonRoot(named, os.Lstat)
+	if err != nil || who != "" {
+		return who, err
+	}
+	resolved, err := filepath.EvalSymlinks(named)
 	if err != nil {
 		return "", domain.Internal(err, "cannot resolve %s", path)
 	}
-	return replaceableByNonRoot(p, os.Lstat)
+	if resolved == named {
+		return "", nil
+	}
+	return replaceableByNonRoot(resolved, os.Lstat)
 }
 
 // replaceableByNonRoot walks a resolved path up to the root, with lstat as
@@ -473,12 +486,16 @@ func replaceableByNonRoot(p string, lstat func(string) (fs.FileInfo, error)) (st
 		uid, gid := Owner(info)
 		mode := info.Mode()
 		sticky := info.IsDir() && mode&os.ModeSticky != 0
+		// A link's own mode means nothing; who can repoint it is decided
+		// by its directory, the next step up.
+		link := mode&os.ModeSymlink != 0
 		switch {
 		case uid != 0:
 			return fmt.Sprintf("%s is owned by uid %d, not root", p, uid), nil
+		case link:
 		case mode&0o002 != 0 && !sticky:
 			return fmt.Sprintf("%s is writable by every user", p), nil
-		case mode&0o020 != 0 && gid != 0 && !sticky:
+		case mode&0o020 != 0 && !sticky:
 			return fmt.Sprintf("%s is writable by group %d", p, gid), nil
 		}
 		parent := filepath.Dir(p)

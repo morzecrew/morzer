@@ -52,6 +52,7 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 		},
 		"root's own group": {
 			tree: map[string]statInfo{"/usr/local/bin/morzer": {mode: 0o755}, "/usr/local/bin": {mode: fs.ModeDir | 0o775}, "/usr/local": root, "/usr": root},
+			want: "/usr/local/bin is writable by group 0",
 		},
 		"a binary every user can write": {
 			tree: map[string]statInfo{"/usr/local/bin/morzer": {mode: 0o757}},
