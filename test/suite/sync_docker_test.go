@@ -171,3 +171,82 @@ func authorityRef(t *testing.T, url string, creds ports.TargetCredentials) ports
 	require.NoError(t, err)
 	return ref.WithCredentials(creds)
 }
+
+// Two products follow one authority through one bucket (RFC 0057 §6). Each
+// machine reads its documents with a credential scoped to its own prefix, the
+// authority addresses both through one roster, and `state ls` reports each
+// one's applied serial.
+func TestTwoProductsFollowOneAuthorityThroughOneBucket(t *testing.T) {
+	root, container := startS3Container(t)
+	const bucket = "state-fleet"
+	createBucket(t, root, bucket)
+	ctx := context.Background()
+	url := "s3://" + bucket + "/"
+
+	demo, relay := newSyncRigFor(t, "demo"), newSyncRigFor(t, "relay")
+	relay.inst = installation(t, relay.h)
+	relay.inst.ID = "inst_01RELAYINSTALLATION"
+	roster := domain.FleetRoster{Schema: 1}
+	scoped := map[string]ports.TargetCredentials{}
+	for _, r := range []*syncRig{demo, relay} {
+		r.h.Secrets.SetMachineRecipient(r.recipient)
+		registry, err := target.NewRegistry(localdir.New(), s3.New())
+		require.NoError(t, err)
+		r.h.Deps.Targets, r.h.Deps.Objects = registry, registry
+
+		prefix := "state/" + r.inst.Product + "/" + r.inst.ID
+		scoped[r.inst.Product] = userWithPolicy(t, container, root, "follower-"+r.inst.Product, fmt.Sprintf(
+			`{"Version":"2012-10-17","Statement":[`+
+				`{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::%[1]s"],`+
+				`"Condition":{"StringLike":{"s3:prefix":["%[2]s","%[2]s/*"]}}},`+
+				`{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%[1]s/%[2]s/*"]}]}`,
+			bucket, prefix))
+		r.h.Secrets.Seed(map[string]string{
+			"fleet_s3": credentialDocument(root), "sync_s3": credentialDocument(scoped[r.inst.Product]),
+		})
+		inst := r.inst
+		inst.Backup.Targets = []domain.BackupTargetConfig{{URL: url, Credentials: "fleet_s3"}}
+		inst.Sync.Target, inst.Sync.Credentials, inst.Sync.Authority = url, "sync_s3", demo.key
+		require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+		_, err = ops.FleetPublish(ctx, r.h.Deps, ops.FleetPublishOptions{})
+		require.NoError(t, err)
+		roster.Installations = append(roster.Installations, domain.FleetRosterEntry{
+			Product: inst.Product, ID: inst.ID, PublicKey: inst.Signing.PublicKey,
+		})
+	}
+
+	authority := ops.TargetOptions{URL: url, Credentials: root}
+	published := map[string]int64{}
+	for i, r := range []*syncRig{demo, relay} {
+		report, err := ops.StatePublish(ctx, demo.h.Deps, ops.StatePublishOptions{
+			TargetOptions: authority, Roster: roster, Product: r.inst.Product, InstallationID: r.inst.ID,
+			Document: []byte("parameters:\n  log_level: debug\n"), Signer: demo.authority, Serial: int64(10 + i),
+		})
+		require.NoError(t, err)
+		published[r.inst.Product] = report.Serial
+	}
+	for _, r := range []*syncRig{demo, relay} {
+		report := r.syncOK(t)
+		require.Equal(t, domain.SyncOK, report.Result, "%s: %s", r.inst.Product, report.Summary())
+		assert.Equal(t, published[r.inst.Product], report.Serial)
+		assert.Equal(t, "debug", installation(t, r.h).Parameters["log_level"], r.inst.Product)
+	}
+
+	list, err := ops.StateList(ctx, demo.h.Deps, ops.StateListOptions{TargetOptions: authority, Roster: roster})
+	require.NoError(t, err)
+	require.Len(t, list.Rows, 2)
+	for _, row := range list.Rows {
+		assert.True(t, row.Expected, row.Product)
+		require.NotNil(t, row.Sync, row.Product)
+		require.NotNil(t, row.Sync.Applied, "%s: the row does not report the document applied", row.Product)
+		assert.Equal(t, published[row.Product], row.Sync.Applied.Serial, row.Product)
+	}
+
+	// Neither machine's credential reads the other's documents.
+	demoDoc, _ := domain.DesiredStateKeys("demo", demo.inst.ID, published["demo"])
+	relayDoc, _ := domain.DesiredStateKeys("relay", relay.inst.ID, published["relay"])
+	_, err = s3.New().GetObject(ctx, authorityRef(t, url, scoped["relay"]), demoDoc)
+	assert.Error(t, err, "relay's credential read demo's document")
+	_, err = s3.New().GetObject(ctx, authorityRef(t, url, scoped["demo"]), relayDoc)
+	assert.Error(t, err, "demo's credential read relay's document")
+}
