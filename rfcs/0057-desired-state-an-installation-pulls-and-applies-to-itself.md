@@ -2,10 +2,10 @@
 
 - **Status:** ✅ Complete — shipped by 2026-11-11: P1 in #333 (RFC 0056,
   2026-11-10), P2 and P3 in #335, P4 in #336, and P5 in #339 with `state
-  facts`. Ruled by the author 2026-11-10, as recommended: decisions 11–15,
+  facts`; §6's remaining tests in #341. Ruled by the author 2026-11-10, as recommended: decisions 11–15,
   where the draft meets ruled decisions of RFC 0025, RFC 0026 and RFC 0027,
   and, once execution began, decisions 18–22, the draft's own questions, which
-  rows 33–37 answer. Rows 29–56 were added by execution.
+  rows 33–37 answer. Rows 29–58 were added by execution.
 - **Scope:** How one party (an *authority*) can change the parameters, secrets
   and selected settings of many installations without any of them accepting
   an inbound connection, running an agent, or trusting anything but a key
@@ -865,6 +865,8 @@ exact refusal wording and the jitter's distribution.
 | 54 | `ASSUMED` | The facts task runs after a successful apply, start, update, rollback, restore or configuration change (`config apply`, `config set`, a setting that converges, and a sync) that changed something, and after nothing else. A backup, a task, a stop or a change that finds nothing to change leaves the facts as they were. `init` promises to start nothing and a task may start the services it needs, so the first apply or start makes the facts. Added by execution 2026-11-11 — see logs/desired-state-sync.md (unlisted, 2026-11-11T09:49:44Z and 2026-11-11T10:52:25Z). |
 | 55 | `ASSUMED` | The facts run is a task operation, journalled and attested and not notified, which would double what notify targets receive. A failed run's `facts_problem` is a class: the exit status, output over 64 KiB, or a run that could not start, never the output or an error's text. Added by execution 2026-11-11 — see logs/desired-state-sync.md (unlisted, 2026-11-11T09:49:44Z). |
 | 56 | `ASSUMED` | A facts run that finds the deployment lock held gives way and records nothing, and the next operation runs the task again. Waiting would queue a timer's tick behind another operation, which an unattended tick never does. Added by execution 2026-11-11 — see logs/desired-state-sync.md (unlisted, 2026-11-11T10:13:45Z). |
+| 57 | `ASSUMED` | Row 53, departed: the cases §6 left for the acceptance rig, which need two products, a rebuilt machine or facts, run as suite tests, the two-product case against a real object store. None depends on what the runtime does, and the suite can land one tick inside another operation. The acceptance rig keeps its one-installation scenario. Added by execution 2026-11-11 — see logs/desired-state-rig.md (decision 53, 2026-11-11T13:16:45Z). |
+| 58 | `ASSUMED` | A rebuilt machine signs with a new key (RFC 0028 §5.3), so `state publish` refuses its row until the roster names that key, which arrives out of band (decision 13). The next publish then encrypts to the recipient the new row names. Added by execution 2026-11-11 — see logs/desired-state-rig.md (unlisted, 2026-11-11T13:27:12Z). |
 
 ## 12. Phasing
 
