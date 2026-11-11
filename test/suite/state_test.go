@@ -249,3 +249,38 @@ func TestAPublishCutOffBeforeItsSignatureLeavesThePreviousDocument(t *testing.T)
 	assert.Equal(t, "debug", installation(t, a.h).Parameters["log_level"],
 		"a document whose signature was never written was applied")
 }
+
+// A pair the authority's key did not sign is not the authority's: a bucket
+// writer planting one at a high serial neither blocks the next publish nor
+// counts toward the three kept, and the publish removes it.
+func TestAPlantedPairNeitherBlocksNorSurvivesAPublish(t *testing.T) {
+	a := newAuthorityRig(t)
+	other := signer.New(filepath.Join(t.TempDir(), "other.key"), "other")
+	_, err := other.EnsureKey(context.Background())
+	require.NoError(t, err)
+	for _, serial := range []int64{9_000, 9_001, 9_002} {
+		a.put(t, serial, []byte("planted"), other, domain.DesiredStateComment(a.inst.Product, a.inst.ID, serial))
+	}
+
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.Serial = 100
+	report, err := a.statePublish(t, opts)
+	require.NoError(t, err, "planted pairs blocked a publish")
+	assert.ElementsMatch(t, []int64{9_000, 9_001, 9_002}, report.Pruned)
+
+	_, err = os.Stat(filepath.Join(a.offsite, filepath.FromSlash(report.Document)))
+	require.NoError(t, err, "the publish removed the document it had just written")
+	assert.Equal(t, domain.SyncOK, a.syncOK(t).Result)
+	assert.Equal(t, "debug", installation(t, a.h).Parameters["log_level"])
+}
+
+// A validity under a minute is refused: the envelope's times are whole
+// seconds, and a document that expires as it is issued is no document.
+func TestStatePublishRefusesAValidityUnderAMinute(t *testing.T) {
+	a := newAuthorityRig(t)
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.ValidFor = 500 * time.Millisecond
+	_, err := a.statePublish(t, opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--valid-for must be at least 1m")
+}

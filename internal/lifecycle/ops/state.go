@@ -3,7 +3,9 @@ package ops
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"strings"
@@ -140,8 +142,10 @@ func StatePublish(ctx context.Context, d *Deps, opts StatePublishOptions) (State
 	if validFor == 0 {
 		validFor = DefaultDesiredStateValidity
 	}
-	if validFor < 0 {
-		return report, domain.Usage("--valid-for must be positive")
+	if validFor < time.Minute {
+		// The envelope's times are whole seconds, and a document that
+		// expires as it is issued is refused by every machine.
+		return report, domain.Usage("--valid-for must be at least 1m")
 	}
 	report.Serial = serial
 	report.IssuedAt = domain.NewTime(now)
@@ -154,22 +158,25 @@ func StatePublish(ctx context.Context, d *Deps, opts StatePublishOptions) (State
 	target := targets[0]
 	report.Target = target.String()
 
-	// The serial against what is published: a pair is written once, and
-	// one not newer than the newest the machine already has would be
-	// refused there as a replay.
-	prefix := domain.DesiredStatePrefix(opts.Product, opts.InstallationID)
-	listed, err := d.Objects.ObjectKeys(ctx, target, strings.TrimSuffix(prefix, "/"))
+	// The serial against what the authority has published: a pair is
+	// written once, and one not newer than the newest the machine already
+	// has would be refused there as a replay. Only pairs this key signed
+	// count. A name is anybody's who can write to the bucket, and a
+	// planted pair at a high serial must not stop the authority
+	// publishing.
+	pub, err := opts.Signer.PublicKey(ctx)
 	if err != nil {
 		return report, err
 	}
-	if newest, found := newestCompletePair(prefix, listed); found && serial <= newest {
-		return report, domain.Usage("serial %d is not newer than document %d already published", serial, newest).
+	signed, _, err := d.authorityPairs(ctx, target, opts.Product, opts.InstallationID, pub.Line)
+	if err != nil {
+		return report, err
+	}
+	if len(signed) > 0 && serial <= signed[0] {
+		return report, domain.Usage("serial %d is not newer than document %d already published", serial, signed[0]).
 			WithHint("leave --serial out to take the time in milliseconds")
 	}
 	report.Document, report.Signature = domain.DesiredStateKeys(opts.Product, opts.InstallationID, serial)
-	if slices.Contains(listed, report.Document) || slices.Contains(listed, report.Signature) {
-		return report, domain.Usage("serial %d is already published, and a pair is never replaced", serial)
-	}
 
 	row, err := d.verifiedRow(ctx, target, opts.Roster, opts.Product, opts.InstallationID)
 	if err != nil {
@@ -214,7 +221,7 @@ func StatePublish(ctx context.Context, d *Deps, opts StatePublishOptions) (State
 	if err := d.Objects.PutObject(ctx, target, report.Signature, sig.Encoded); err != nil {
 		return report, err
 	}
-	report.Pruned, report.PruneProblem = d.pruneDesiredState(ctx, target, opts.Product, opts.InstallationID)
+	report.Pruned, report.PruneProblem = d.pruneDesiredState(ctx, target, opts.Product, opts.InstallationID, pub.Line, serial)
 	return report, nil
 }
 
@@ -263,18 +270,24 @@ func desiredStateDocument(product, id string, serial int64, issued, expires time
 	return b.Bytes()
 }
 
-// pruneDesiredState removes every object below the newest desiredStateKept
-// complete pairs: each pair's signature first, so a pair half removed is not
-// a document, and lone objects below them too.
-func (d *Deps) pruneDesiredState(ctx context.Context, target ports.TargetRef, product, id string) ([]int64, string) {
+// authorityPairs sorts what is under an installation's documents prefix into
+// the complete pairs the authority's key signed, whose trusted comment names
+// them, newest first, and every other serial there.
+func (d *Deps) authorityPairs(
+	ctx context.Context, target ports.TargetRef, product, id, key string,
+) (signed, others []int64, err error) {
+	checker, ok := d.Checker.(ports.CommentChecker)
+	if !ok {
+		return nil, nil, domain.Internal(nil, "state publish needs a signature checker")
+	}
 	prefix := domain.DesiredStatePrefix(product, id)
 	listed, err := d.Objects.ObjectKeys(ctx, target, strings.TrimSuffix(prefix, "/"))
 	if err != nil {
-		return nil, domain.AsError(err).Message
+		return nil, nil, err
 	}
 	seen, docs, sigs := map[int64]bool{}, map[int64]bool{}, map[int64]bool{}
-	for _, key := range listed {
-		if serial, sig, ok := domain.ParseDesiredStateKey(prefix, key); ok {
+	for _, k := range listed {
+		if serial, sig, ok := domain.ParseDesiredStateKey(prefix, k); ok {
 			seen[serial] = true
 			if sig {
 				sigs[serial] = true
@@ -283,26 +296,87 @@ func (d *Deps) pruneDesiredState(ctx context.Context, target ports.TargetRef, pr
 			}
 		}
 	}
-	var complete []int64
-	for serial := range docs {
-		if sigs[serial] {
-			complete = append(complete, serial)
-		}
-	}
-	if len(complete) <= desiredStateKept {
-		return nil, ""
-	}
-	slices.Sort(complete)
-	cutoff := complete[len(complete)-desiredStateKept]
-
-	var pruned []int64
-	for _, serial := range slices.Sorted(maps.Keys(seen)) {
-		if serial >= cutoff {
+	serials := slices.Sorted(maps.Keys(seen))
+	slices.Reverse(serials)
+	for _, serial := range serials {
+		if !docs[serial] || !sigs[serial] {
+			others = append(others, serial)
 			continue
 		}
+		docKey, sigKey := domain.DesiredStateKeys(product, id, serial)
+		sig, err := d.Objects.GetObject(ctx, target, sigKey)
+		var body []byte
+		if err == nil {
+			body, err = d.Objects.GetObject(ctx, target, docKey)
+		}
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			others = append(others, serial)
+			continue
+		case err != nil:
+			return nil, nil, err
+		}
+		comment, verified := checker.CheckComment(body, sig, key)
+		p, i, s, named := domain.ParseDesiredStateComment(comment)
+		if verified && named && p == product && i == id && s == serial {
+			signed = append(signed, serial)
+		} else {
+			others = append(others, serial)
+		}
+	}
+	return signed, others, nil
+}
+
+// pruneDesiredState keeps the newest desiredStateKept pairs the authority
+// signed and removes the rest: older pairs of its own, and every complete
+// pair it did not sign, whatever its serial, such as one planted to block a
+// publish or one an earlier key signed. A lone object is removed only below
+// the serial just published, since one above it may be another publish in
+// flight. Each pair loses its signature first, so a pair half removed is not
+// a document.
+func (d *Deps) pruneDesiredState(
+	ctx context.Context, target ports.TargetRef, product, id, key string, published int64,
+) ([]int64, string) {
+	signed, others, err := d.authorityPairs(ctx, target, product, id, key)
+	if err != nil {
+		return nil, domain.AsError(err).Message
+	}
+	prefix := domain.DesiredStatePrefix(product, id)
+	listed, err := d.Objects.ObjectKeys(ctx, target, strings.TrimSuffix(prefix, "/"))
+	if err != nil {
+		return nil, domain.AsError(err).Message
+	}
+	complete := map[int64]bool{}
+	docs, sigs := map[int64]bool{}, map[int64]bool{}
+	for _, k := range listed {
+		if serial, sig, ok := domain.ParseDesiredStateKey(prefix, k); ok {
+			if sig {
+				sigs[serial] = true
+			} else {
+				docs[serial] = true
+			}
+		}
+	}
+	for serial := range docs {
+		complete[serial] = sigs[serial]
+	}
+
+	var remove []int64
+	if len(signed) > desiredStateKept {
+		remove = append(remove, signed[desiredStateKept:]...)
+	}
+	for _, serial := range others {
+		if serial != published && (complete[serial] || serial < published) {
+			remove = append(remove, serial)
+		}
+	}
+	slices.Sort(remove)
+
+	var pruned []int64
+	for _, serial := range remove {
 		doc, sig := domain.DesiredStateKeys(product, id, serial)
-		for _, key := range []string{sig, doc} {
-			if err := d.Objects.DeleteObject(ctx, target, key); err != nil {
+		for _, k := range []string{sig, doc} {
+			if err := d.Objects.DeleteObject(ctx, target, k); err != nil {
 				return pruned, domain.AsError(err).Message
 			}
 		}
