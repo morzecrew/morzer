@@ -480,6 +480,13 @@ func TestAUserInstallSaysItIsNotTheOneThatRunsInstallations(t *testing.T) {
 		"--version", fixtureVersion, "--dir", filepath.Join(t.TempDir(), "bin"), "--no-verify-signature",
 	).requireOK(t).requireSays(t, "for alice only", "| sudo sh -s -- --version "+fixtureVersion)
 
+	// The command it prints verifies as much as this run was asked to.
+	run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: asUser},
+		"--version", fixtureVersion, "--dir", filepath.Join(t.TempDir(), "bin"), "--no-verify-signature",
+		"--digest", "sha256:"+rel.digest,
+	).requireOK(t).requireSays(t, "| sudo sh -s -- --version "+fixtureVersion+" --digest sha256:"+rel.digest)
+
 	out := run(t, script(t, rel),
 		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: asRoot},
 		"--version", fixtureVersion, "--dir", filepath.Join(t.TempDir(), "bin"), "--no-verify-signature",
