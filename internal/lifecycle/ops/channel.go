@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -683,6 +684,15 @@ func (d *Deps) assessUnattended(
 		current.SchemaAtInstall); !report.OK {
 		assessment.OK = false
 		assessment.Reasons = append(assessment.Reasons, report.Problems...)
+	}
+	// A tick cannot give a value, so a release that needs one waits for an
+	// operator's `update --set` (#346), as `update` would refuse it.
+	declared := target.Manifest.Parameters
+	if missing := domain.MissingValues(declared, declaredValues(inst.Parameters, declared)); len(missing) > 0 {
+		assessment.OK = false
+		assessment.Reasons = append(assessment.Reasons, fmt.Sprintf(
+			"%s declares no default for %s, so it waits for `morzer update --set %s=<value>`",
+			target.Version(), strings.Join(missing, ", "), missing[0]))
 	}
 	return assessment, nil
 }

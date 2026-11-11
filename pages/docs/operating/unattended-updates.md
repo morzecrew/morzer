@@ -87,6 +87,15 @@ Moving the file away lets the next tick install. An attended
 [update](updating.md#a-file-where-the-new-release-puts-a-new-one) keeps a copy
 and installs.
 
+A release that adds a parameter with no default is held too, since a tick
+cannot give it a value. The tick names it, and installing it is an attended
+update with the value:
+
+```text
+1.4.0 declares no default for admin_email, so it waits for `morzer update --set
+admin_email=<value>`
+```
+
 ## Turning it on
 
 ```sh

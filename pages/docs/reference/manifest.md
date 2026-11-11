@@ -379,12 +379,16 @@ An unset required parameter fails preflight, so it is refused by `init`, by
 `config unset`, and by `apply`. That last one is deliberate: a release that
 introduces a required parameter fails to deploy rather than deploying with an
 empty value the product then misreads, and the currently running release keeps
-serving. Set the value first:
+serving. A release that adds one is installed with its value, which `update`
+records once it succeeds, and an update without it is refused before anything
+stops:
 
 ```sh
-morzer config set admin_email=ops@example
-morzer update ./demo-1.4.0.tar.zst
+morzer update ./demo-1.4.0.tar.zst --set admin_email=ops@example
 ```
+
+An unattended update cannot give a value, so it leaves such a release staged and
+names the parameter.
 
 See [Parameters](parameters.md) for the operator's side.
 

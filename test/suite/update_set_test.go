@@ -51,6 +51,25 @@ func convergedHarness(t *testing.T) *harness {
 	return h
 }
 
+// Without the value the update is refused before anything it would undo: no
+// backup, no stop, no record, and the running release goes on serving.
+func TestAnUpdateWithoutAValueTheReleaseNeedsIsRefusedBeforeAnythingStops(t *testing.T) {
+	h := convergedHarness(t)
+	src := upgradeRequiringAdminEmail(t, h)
+	backups, updates, calls := countBackups(t, h), countUpdates(t, h), len(h.Runtime.Calls)
+
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	e := domain.AsError(err)
+	assert.Contains(t, e.Message, "declares no default for admin_email")
+	assert.Contains(t, e.Hint, "--set admin_email=")
+
+	assert.Equal(t, "1.2.0", currentVersion(t, h))
+	assert.Equal(t, backups, countBackups(t, h), "a backup was taken for an update that was refused")
+	assert.Equal(t, updates, countUpdates(t, h), "a refused update was journalled")
+	assert.Len(t, h.Runtime.Calls, calls, "the runtime was touched by an update that was refused")
+}
+
 // With it the release is installed, and the value is recorded by name in the
 // journal, never quoted.
 func TestUpdateSetGivesTheReleaseItsValue(t *testing.T) {
@@ -189,4 +208,32 @@ func TestAnUpdatePlanNamesTheValuesItWillRecord(t *testing.T) {
 	}
 	assert.True(t, found, "the plan has no record-parameters step")
 	assert.NotContains(t, installation(t, h).Parameters, "admin_email", "a dry run recorded a value")
+}
+
+// An unattended tick cannot give a value, so it leaves the release staged and
+// says which one it waits for.
+func TestAnUnattendedTickLeavesAReleaseThatNeedsAValueStaged(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		for file, edit := range map[string][2]string{
+			"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
+			"hooks/migrate": {"target=14", "target=12"},
+		} {
+			path := filepath.Join(dir, file)
+			raw, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw), edit[0], edit[1], 1)), 0o755))
+		}
+		requireAdminEmail(t, dir)
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+
+	res, err := ops.RunUnattended(context.Background(), h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	assert.False(t, res.Applied, "a release that needs a value was installed unattended")
+	assert.Contains(t, res.Assessment.Why(), "admin_email")
+	assert.Contains(t, res.Assessment.Why(), "--set admin_email=")
+	assert.Equal(t, "1.2.0", currentVersion(t, h))
 }

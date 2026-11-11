@@ -283,6 +283,14 @@ is printed or journaled. A secret both releases declare and nobody set is left
 unset, and `apply` and `rollback` generate nothing. See
 [updating](../operating/updating.md#what-happens-in-order).
 
+A release that adds a parameter with no default needs a value for it: an
+update without one is refused before the backup, so the running release keeps
+serving and nothing is undone, and the hint names `--set`. A name the release
+does not declare is refused as a typo, and a value of the wrong type is refused
+by name. The values are recorded by the update's last step, so a failed update
+records none, and a `--resume` whose run stopped before recording them needs
+the same `--set` again, since the journal never had them.
+
 A release older than the one running is refused at [exit 9](exit-codes.md),
 whatever it came from, a local path included. `rollback` is how a machine goes
 back, and `--allow-older` installs an older release on purpose. See [never

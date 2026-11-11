@@ -110,3 +110,17 @@ evidence: internal/lifecycle/ops/config.go:294
 action: decided
 proposal: UNLISTED — an update whose release declares no default for a parameter with no value is refused before anything stops, and an unattended tick leaves it staged, naming the parameter
 ```
+
+## Build
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-11T20:02:59Z
+attempt: 1
+claim: #194 left a test asserting "a parameter with no default is the operator's to set after the update" (TestAnUpdateThatSwapsAParameterLeavesConfigUsable), the stance the early refusal reverses: the value is now given with the update. Five more tests reached a state with a declared parameter that has no value by updating to a release that adds one, which the refusal now stops. The swap test now gives the value with the update and changes it with `config set` after. The others give a value to the update; the two text tests expect the change from one line and the value kept, and the stale-value test still writes the state #190 describes directly, since only a failure reaches it now.
+evidence: test/suite/update_test.go:385
+action: decided
+proposal: UNLISTED — a parameter a new release adds with no default is given its value with the update, not after it; the state with no value is reached only by a failure, as #190 describes
+```

@@ -464,6 +464,11 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 	if _, err := domain.ResolveParameters(declared, next); err != nil {
 		return inst, err
 	}
+	if missing := domain.MissingValues(declared, next); len(missing) > 0 {
+		return inst, domain.Usage("release %s declares no default for %s",
+			staged.Version(), strings.Join(missing, ", ")).
+			WithHint("give it with the update: --set %s=<value> (repeat --set for several)", missing[0])
+	}
 
 	if len(opts.Parameters) > 0 {
 		merged := maps.Clone(inst.Parameters)
