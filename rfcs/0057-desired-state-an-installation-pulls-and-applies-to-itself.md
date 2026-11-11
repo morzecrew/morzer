@@ -4,8 +4,8 @@
   2026-11-10), P2 and P3 in #335, P4 in #336, and P5 in #339 with `state
   facts`. Ruled by the author 2026-11-10, as recommended: decisions 11–15,
   where the draft meets ruled decisions of RFC 0025, RFC 0026 and RFC 0027,
-  and, once execution began, decisions 18–22, the draft's own questions. Rows
-  29–56 were added by execution.
+  and, once execution began, decisions 18–22, the draft's own questions, which
+  rows 33–37 answer. Rows 29–56 were added by execution.
 - **Scope:** How one party (an *authority*) can change the parameters, secrets
   and selected settings of many installations without any of them accepting
   an inbound connection, running an agent, or trusting anything but a key
