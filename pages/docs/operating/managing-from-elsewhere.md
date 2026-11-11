@@ -111,6 +111,31 @@ has expired, or names what the release does not manage. `sync status` on the
 machine says at which step and why. A refused serial is not tried again:
 publish a corrected document, which takes a newer serial.
 
+## Learn what a new machine needs
+
+A machine can tell you what documents for it, and documents for other machines
+about it, need to carry, such as its public key and the address it is reached
+at. Its release names a task that prints those under
+[`published`](../reference/manifest.md#published). Give the machine your age
+recipient:
+
+```sh
+morzer config set sync.recipient=age1...
+```
+
+It then runs the task after every successful operation, and publishes the
+output, encrypted to you and signed with its key, beside its row. Read it with
+your age identity:
+
+```sh
+morzer state facts --target s3://acme-state/demo --expect ./roster.yaml \
+    --product demo --installation inst_01M72B61SSWFT54B6KTJC26YD0 \
+    --identity ./authority.age
+```
+
+It prints the facts only when the machine's key signed them and they are the
+ones its newest row names.
+
 ## Keep the authority heard from
 
 `doctor` warns when the document in force expires within a day, and when the

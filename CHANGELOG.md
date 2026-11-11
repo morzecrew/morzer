@@ -40,13 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the key the roster lists, and keeps the newest three documents.
 - `morzer state ls` shows what each installation applied and refused, and
   `morzer state key generate` makes the authority's key.
+- A release can name a task under `published` whose output is a machine's
+  facts, such as a public key and an address. With `sync.recipient` set, the
+  machine publishes them after each successful operation, encrypted to the
+  authority and signed, beside its fleet row.
+- `morzer state facts` prints an installation's facts only when the machine's
+  key signed them and they are the ones its newest row names.
+  `init --sync-recipient` records the recipient.
 
 ### Changed
 
 - Fleet rows are schema 2 and carry `age_recipient`, the machine's age public
   key, and a `sync` block. A manager that reads schema 1 refuses a schema 2
   row, so upgrade the manager that reads the fleet first.
-- Installation state moves from schema 18 to 19, so a 0.15 manager refuses a
+- Installation state moves from schema 18 to 20, so a 0.15 manager refuses a
   machine this version has run on.
 - `installation import --mode dev` also drops `sync.*`.
 

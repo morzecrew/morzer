@@ -232,11 +232,55 @@ refused with the step and class, and its last fetch. A row the roster does not
 list is shown as unexpected. Without `--expect`, nothing a row says is
 authenticated, and the signature column says so.
 
+### state facts
+
+```sh
+morzer state facts --target s3://acme-state/demo --expect ./roster.yaml \
+    --product demo --installation inst_01M72B61SSWFT54B6KTJC26YD0 \
+    --identity ./authority.age
+```
+
+Prints an installation's [facts](#facts), as its task printed them, once three
+checks pass, and prints nothing otherwise:
+
+1. its fleet row verifies against the key the roster lists;
+2. the facts' signature verifies against that key, and its trusted comment
+   names the installation;
+3. the facts are the ones that row names in `facts_digest`.
+
+An older pair put back by a bucket writer fails the third check. Facts somebody
+else encrypted to the authority's recipient fail the second. Then the facts are
+decrypted with `--identity`, the authority's age identity. `--json` carries
+them in `data.facts`.
+
+## Facts
+
+A machine tells the authority what it needs to address documents to it and to
+others about it, such as a public key and the address it is reached at. The
+release names a task under [`published`](manifest.md#published), and the
+machine sets `sync.recipient`, the authority's age recipient. Without either,
+nothing is published.
+
+After every successful init, apply, start, update, rollback, restore and
+configuration change, the task runs with no arguments. Its stdout, at most
+64 KiB, is encrypted to `sync.recipient` and signed with the machine's key,
+with a trusted comment naming the installation. Every row publish writes the
+pair beside the row as `fleet/<product>/<installation-id>/facts.age` and its
+`.minisig`, before the row, which names their digest in `facts_digest`.
+
+A run that fails keeps the previous facts, and the row's `facts_problem` says
+why: the task's exit status, output over the bound, or a run that did not
+start, never what it printed. The run is a task operation, journalled and
+attested like one, and not sent to notify targets.
+
+**Facts are for public halves and addresses.** morzer cannot tell a secret from
+a fact, and a task that prints a credential sends it to the authority.
+
 ## What it reports
 
 | Where | What |
 | --- | --- |
-| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
+| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, `facts_digest` and `facts_problem`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
 | [Statement](attestations.md) | a `desired_state` block naming the document's serial, ciphertext digest and the authority's key id |
 | [Notifications](../operating/notifications.md#what-is-sent) | `sync.refused` once per refused document, `sync.expired` when a cycle first finds the document in force expired |
 | `doctor` | `sync.authority` warns when the document in force expires within a day or has expired, or the target has not answered for more than three intervals |

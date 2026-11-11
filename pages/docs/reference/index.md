@@ -115,6 +115,7 @@ here. The reference column points at the section that documents it; the
 | `morzer state key generate` | Write a new authority signing key; show its public key | [desired-state](desired-state.md#state-key-generate) |
 | `morzer state publish` | Encrypt and sign a document for one installation, where it pulls it | [desired-state](desired-state.md#state-publish) |
 | `morzer state ls` (also `list`) | Show what each installation applied and refused | [desired-state](desired-state.md#state-ls) |
+| `morzer state facts` | Print the facts one installation published, once they check out | [desired-state](desired-state.md#state-facts) |
 | `morzer version` | Print version, commit, and supported manifest API versions | [commands](commands.md#version) |
 | `morzer self-update` | Replace this manager with a newer published release | [commands](commands.md#self-update) |
 | `morzer completion install` | Write the completion script where this shell will read it | [commands](commands.md#completion-install) |
