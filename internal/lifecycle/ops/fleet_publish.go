@@ -76,11 +76,17 @@ type FleetPublishTarget struct {
 
 	// Error is why the row did not reach this target.
 	Error string `json:"error,omitempty"`
+
+	// FactsError is why the facts did not, in which case the row was not
+	// written either: a row must never name facts its target does not
+	// hold, and the row already there stays consistent with the facts
+	// beside it.
+	FactsError string `json:"facts_error,omitempty"`
 }
 
 // Unreachable reports whether any target refused the row.
 func (r FleetPublishReport) Unreachable() bool {
-	return slices.ContainsFunc(r.Targets, func(t FleetPublishTarget) bool { return t.Error != "" })
+	return slices.ContainsFunc(r.Targets, func(t FleetPublishTarget) bool { return t.Error != "" || t.FactsError != "" })
 }
 
 // FleetPublish writes this installation's row to every configured target.
@@ -163,23 +169,18 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 		status.Unchecked = verdict.unchecked
 
 		// The facts before the row that names their digest, so a row
-		// never vouches for facts not yet beside it (RFC 0057 decision
-		// 28). A write that fails is the target's error, and the row is
-		// published all the same: an authority then refuses the facts,
-		// and still reads the row.
-		var factsErr error
+		// never vouches for facts not beside it (RFC 0057 decision 28).
+		// A target that refuses the facts gets no new row either.
 		if haveFacts {
-			factsErr = d.putFacts(ctx, target, inst, facts, factsSig)
+			if err := d.putFacts(ctx, target, inst, facts, factsSig); err != nil {
+				status.FactsError = domain.AsError(err).Message
+				report.Targets = append(report.Targets, status)
+				continue
+			}
 		}
 		published, err := d.putFleetRow(ctx, target, key, body, sig)
 		status.Published = published
-		switch {
-		case factsErr != nil && err != nil:
-			status.Error = "the facts were not written: " + domain.AsError(factsErr).Message +
-				"; " + domain.AsError(err).Message
-		case factsErr != nil:
-			status.Error = "the facts were not written: " + domain.AsError(factsErr).Message
-		case err != nil:
+		if err != nil {
 			status.Error = domain.AsError(err).Message
 		}
 		report.Targets = append(report.Targets, status)
@@ -341,7 +342,7 @@ func fleetPublishSummary(r FleetPublishReport, dry bool) string {
 	// putFleetRow -- and a switch that treated any error as "not published"
 	// would put the summary back at odds with the field it is summarising.
 	var published, declined int
-	var silent, unsigned []string
+	var silent, unsigned, noFacts []string
 
 	for _, t := range r.Targets {
 		switch {
@@ -352,6 +353,8 @@ func fleetPublishSummary(r FleetPublishReport, dry bool) string {
 		}
 
 		switch {
+		case t.FactsError != "":
+			noFacts = append(noFacts, t.URL)
 		case t.Error != "" && t.Published:
 			unsigned = append(unsigned, t.URL)
 		case t.Error != "":
@@ -374,6 +377,9 @@ func fleetPublishSummary(r FleetPublishReport, dry bool) string {
 	}
 	if len(silent) > 0 {
 		summary += "; " + strings.Join(silent, ", ") + " did not answer"
+	}
+	if len(noFacts) > 0 {
+		summary += "; " + strings.Join(noFacts, ", ") + " refused the facts, so the row was not written there"
 	}
 	return summary
 }
