@@ -790,8 +790,9 @@ compatibility:
 | --- | --- | --- |
 | `task` | string | Required. A task the release declares under `tasks`. It runs with no arguments and no inputs, so it must take none, and on every machine, so its `modes` must not leave one out. Its stdout is the facts, at most 64 KiB. |
 
-The task runs after every successful init, apply, start, update, rollback,
-restore and configuration change, on a machine that sets `sync.recipient`. Its
+The task runs after every successful apply, start, update, rollback, restore
+and configuration change, on a machine that sets `sync.recipient`. Never after
+`init`, which starts nothing, while a task may start the services it needs. Its
 output is encrypted to that recipient and signed with the machine's key, and
 published beside the machine's [fleet row](fleet.md). A failed run keeps the
 previous facts, and the row says it failed.

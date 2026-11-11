@@ -341,7 +341,6 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	}
 	addTrustedKey(data, engine.MustGet[ports.ShippedKey](result.State, keyTrustedKey))
 	out.Data = data
-	d.refreshFacts(ctx)
 	return out, nil
 }
 

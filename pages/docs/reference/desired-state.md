@@ -261,8 +261,9 @@ release names a task under [`published`](manifest.md#published), and the
 machine sets `sync.recipient`, the authority's age recipient. Without either,
 nothing is published.
 
-After every successful init, apply, start, update, rollback, restore and
-configuration change, the task runs with no arguments. Its stdout, at most
+After every successful apply, start, update, rollback, restore and
+configuration change, the task runs with no arguments. It never runs after
+`init`, which starts nothing. Its stdout, at most
 64 KiB, is encrypted to `sync.recipient` and signed with the machine's key,
 with a trusted comment naming the installation. Every row publish writes the
 pair beside the row as `fleet/<product>/<installation-id>/facts.age` and its

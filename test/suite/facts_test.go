@@ -242,3 +242,31 @@ func TestAFactsRunGivesWayToAHeldLock(t *testing.T) {
 	assert.Len(t, f.h.Runtime.OneShots, runs, "the facts task ran without the lock")
 	assert.Equal(t, before, *f.state(t).Facts, "a facts run that could not take the lock recorded a problem")
 }
+
+// `init` starts nothing, so it runs no facts task, which could start the
+// services the task needs: the first apply or start makes the facts.
+func TestInitRunsNoFactsTask(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	path := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), `min_manager_version: "0.0.0"`, `min_manager_version: "0.16.0"`, 1) +
+		"\ntasks:\n  entry:\n    service: app\n    command: [relay-entry]\n\npublished:\n  task: entry\n"
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), "demo")
+
+	recipient, err := sopsage.GenerateIdentity(filepath.Join(t.TempDir(), "authority.age"))
+	require.NoError(t, err)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src, SyncRecipient: recipient,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, h.Runtime.OneShots, "init ran the facts task")
+	assert.Nil(t, installation(t, h).Sync.Facts)
+}

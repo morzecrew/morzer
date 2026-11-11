@@ -724,3 +724,15 @@ What I would still distrust: a task that needs a running service right after
 the first apply, and the acceptance rig has no facts case.
 
 **Drift count: 2.**
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-11T10:52:25Z
+attempt: 1
+claim: §5.10 lists init among the operations after which the facts task runs, and `init` promises that it starts nothing, while a task can start the services it needs. Found in review. The task runs after the first apply or start instead, and never after init; the earlier entry's list loses init.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:580
+action: decided
+proposal: UNLISTED — the facts task never runs after init, which starts nothing; the first apply or start makes the facts
+```
