@@ -605,3 +605,15 @@ evidence: internal/lifecycle/ops/state.go:276
 action: departed
 proposal: ASSUMED — the pairs a publish keeps, and compares its serial with, are those the authority's key signed; every other complete pair under the prefix is removed
 ```
+
+```divergence
+decision: 20
+grade: OPEN
+class: discovery
+at: 2026-11-11T04:09:02Z
+attempt: 1
+claim: decision 20 bounds a document at 1 MiB and the RFC does not say what a machine or a publish makes of a larger object under the prefix. A machine reported it as an unreachable target, and a publish stopped on it for good. Found in review. An object over the bound is now told apart from a failed read: a machine reports the pair as bad-signature, which it is not the authority's, and a publish counts it among the pairs it did not sign and prunes it.
+evidence: internal/lifecycle/ops/sync.go:277
+action: decided
+proposal: OPEN, ruled 2026-11-10 — a pair over the bound is not a document: bad-signature on the machine, removed by the next publish
+```
