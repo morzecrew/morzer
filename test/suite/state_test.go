@@ -329,3 +329,41 @@ func TestAnOversizedPlantedPairNeitherBlocksNorSurvives(t *testing.T) {
 	assert.Equal(t, []int64{9_000}, report.Pruned)
 	assert.Equal(t, domain.SyncOK, a.syncOK(t).Result)
 }
+
+// A second machine that can write to the target posts a signed row for an
+// installation the roster does not list (RFC 0057 §6). `state publish` refuses
+// to address it until the roster names that id with that key, and then the
+// machine applies what it is sent.
+func TestARowTheRosterDoesNotListIsRefusedUntilItDoes(t *testing.T) {
+	ctx := context.Background()
+	a := newAuthorityRig(t)
+
+	other := newSyncRig(t)
+	other.h.Secrets.SetMachineRecipient(other.recipient)
+	inst := installation(t, other.h)
+	inst.ID = "inst_01NOTINTHEROSTER0000000000"
+	inst.Backup.Targets = []domain.BackupTargetConfig{{URL: a.target}}
+	inst.Sync = domain.SyncConfig{Target: a.target, Authority: a.key, Enabled: true}
+	require.NoError(t, other.h.Deps.State.SaveInstallation(ctx, inst))
+	_, err := ops.FleetPublish(ctx, other.h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+	inst = installation(t, other.h)
+
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.InstallationID = inst.ID
+	_, err = a.statePublish(t, opts)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not list")
+	_, statErr := os.Stat(filepath.Join(a.offsite, "state", inst.Product, inst.ID))
+	assert.True(t, os.IsNotExist(statErr), "a refused publish wrote a document for the unlisted installation")
+
+	opts.Roster.Installations = append(opts.Roster.Installations, domain.FleetRosterEntry{
+		Product: inst.Product, ID: inst.ID, PublicKey: inst.Signing.PublicKey,
+	})
+	_, err = a.statePublish(t, opts)
+	require.NoError(t, err)
+	report, err := ops.SyncNow(ctx, other.h.Deps, ops.SyncOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, domain.SyncOK, report.Result, report.Summary())
+	assert.Equal(t, "debug", installation(t, other.h).Parameters["log_level"])
+}
