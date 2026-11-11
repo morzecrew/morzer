@@ -86,17 +86,20 @@ func TestAFailedFactsRunKeepsThePreviousFacts(t *testing.T) {
 	f := newFactsRig(t)
 	before := f.state(t).Facts.Digest
 
-	for name, result := range map[string]ports.ExitResult{
-		"exits non-zero":  {ExitCode: 3, Stdout: "LEAKED-OUTPUT"},
-		"prints too much": {Stdout: strings.Repeat("x", domain.FactsLimit+1)},
+	for name, tc := range map[string]struct {
+		result  ports.ExitResult
+		problem string
+	}{
+		"exits non-zero":  {ports.ExitResult{ExitCode: 3, Stdout: "LEAKED-OUTPUT"}, "the facts task exited 3"},
+		"prints too much": {ports.ExitResult{Stdout: strings.Repeat("x", domain.FactsLimit+1)}, "the facts task printed more than 64 KiB"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f.h.Runtime.OneShotResults["app"] = result
+			f.h.Runtime.OneShotResults["app"] = tc.result
 			_, err := ops.Apply(context.Background(), f.h.Deps, ops.Options{})
 			require.NoError(t, err, "a failed facts run failed the operation before it")
 			facts := f.state(t).Facts
 			assert.Equal(t, before, facts.Digest, "the previous facts were replaced")
-			assert.NotEmpty(t, facts.Problem)
+			assert.Equal(t, tc.problem, facts.Problem)
 
 			row := f.publishRow(t)
 			assert.Equal(t, before, row.FactsDigest)
@@ -185,4 +188,34 @@ func TestStateFactsRefusesFactsTheRowDoesNotVouchFor(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not signed by the key the roster lists")
 	assert.Empty(t, report.Facts)
+
+	// Facts the machine's own key signed for another installation, copied
+	// beside this one's row.
+	elsewhere, err := f.h.Deps.Signer.Sign(context.Background(), []byte(forged.String()),
+		domain.FactsComment(f.inst.Product, "inst_01OTHERINSTALLATION"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(sigPath, elsewhere.Encoded, 0o644))
+	_, err = f.facts(t)
+	require.Error(t, err, "facts signed for another installation were read as this one's")
+}
+
+// No facts run follows an operation that failed: it changed nothing the facts
+// describe.
+func TestNoFactsRunFollowsAFailedOperation(t *testing.T) {
+	f := newFactsRig(t)
+	runs := len(f.h.Runtime.OneShots)
+	f.h.Health.FailingWaits = 1
+	_, err := ops.ConfigSet(context.Background(), f.h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"http_port": "9000"},
+	})
+	require.Error(t, err)
+	assert.Len(t, f.h.Runtime.OneShots, runs, "the facts task ran after a failed operation")
+}
+
+// Facts kept on the machine that are not the ones its record names are not
+// vouched for: the row names no digest until the next run replaces them.
+func TestARowVouchesOnlyForTheFactsItsRecordNames(t *testing.T) {
+	f := newFactsRig(t)
+	require.NoError(t, os.WriteFile(f.h.Paths.FactsFile(), []byte("not these"), 0o600))
+	assert.Empty(t, f.publishRow(t).FactsDigest)
 }
