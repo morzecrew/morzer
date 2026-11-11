@@ -274,6 +274,10 @@ func (d *Deps) fetchDesiredState(
 		// Removed between the listing and the fetch, which a publish
 		// pruning old pairs does.
 		return doc, domain.SyncAbsent, nil
+	case errors.Is(err, ports.ErrObjectTooLarge):
+		// Too large to be a document the authority published, which
+		// refuses one a machine cannot read (decision 20).
+		return doc, domain.SyncBadSignature, nil
 	case err != nil:
 		d.warnf("cannot fetch desired-state document %d: %s", serial, domain.AsError(err).Message)
 		return doc, domain.SyncUnreachable, nil

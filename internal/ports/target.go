@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strings"
 
@@ -91,11 +92,14 @@ type BackupTarget interface {
 // that writes arbitrary bytes would have left all of that true by accident and
 // wrong the first time somebody's retention ran.
 //
-// Three methods and not four. There is still no DeleteObject, because nothing
-// needs one: an audit record is not something this manager deletes remotely,
-// and a fleet row is replaced in place rather than removed. This project has
-// twice found a port fully specified and never exercised (RFC 0015's Notifier,
-// 0021's Logs); an unused method is a claim nothing tests.
+// Four methods, and the fourth arrived the way GetObject did, below: when
+// something needed it. An audit record is not something this manager deletes
+// remotely, and a fleet row is replaced in place rather than removed, so for a
+// long time nothing did. `state publish` does: a desired-state document is a
+// pair written once and never replaced, and the authority keeps only the
+// newest few (RFC 0057 decision 26). This project has twice found a port fully
+// specified and never exercised (RFC 0015's Notifier, 0021's Logs); an unused
+// method is a claim nothing tests.
 //
 // GetObject was the third, and it was added when something needed it rather
 // than in anticipation -- which is the rule this comment used to state in the
@@ -141,6 +145,11 @@ type ObjectStore interface {
 	// places -- and because the publisher's read-before-write needs to tell
 	// a first publish from a target it cannot read.
 	GetObject(ctx context.Context, target TargetRef, key string) ([]byte, error)
+
+	// DeleteObject removes what is at key. One already absent is not an
+	// error: a prune that stopped part way is run again, and meets the
+	// objects it removed the first time.
+	DeleteObject(ctx context.Context, target TargetRef, key string) error
 }
 
 // MaxObjectBytes bounds a single object read back off a target.
@@ -150,6 +159,11 @@ type ObjectStore interface {
 // medium is one somebody else may be able to write to, and the reader is often
 // a machine in the middle of an incident.
 const MaxObjectBytes = 1 << 20
+
+// ErrObjectTooLarge is GetObject refusing an object over MaxObjectBytes. A
+// reader walking a prefix other writers reach tells it apart from a read that
+// failed: the object is there, and it is not one this manager wrote.
+var ErrObjectTooLarge = errors.New("the object is larger than this manager reads")
 
 // TargetRef is a normalized backup target reference: where, plus what it takes
 // to get in.

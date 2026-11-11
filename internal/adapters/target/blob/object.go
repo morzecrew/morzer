@@ -34,6 +34,15 @@ func PutObject(ctx context.Context, s Store, key string, data []byte) error {
 	return s.Put(ctx, key, bytes.NewReader(data), int64(len(data)))
 }
 
+// DeleteObject removes key, guarded as PutObject's is: the keys a prune
+// removes come from a listing of a bucket other writers can reach.
+func DeleteObject(ctx context.Context, s Store, key string) error {
+	if err := guardObjectKey(key); err != nil {
+		return err
+	}
+	return s.Delete(ctx, key)
+}
+
 // GetObject reads back what is at key, bounded.
 //
 // The key is guarded here for the same reason PutObject's is, and against a
@@ -67,7 +76,7 @@ func GetObject(ctx context.Context, s Store, key string) ([]byte, error) {
 		return nil, domain.BackupError(err, "cannot read the object at %s", key)
 	}
 	if len(data) > ports.MaxObjectBytes {
-		return nil, domain.BackupError(nil,
+		return nil, domain.BackupError(ports.ErrObjectTooLarge,
 			"the object at %s is larger than %d bytes", key, ports.MaxObjectBytes).
 			WithHint("this manager writes small documents there; something else " +
 				"is writing to that target")

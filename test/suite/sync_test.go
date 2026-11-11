@@ -234,6 +234,10 @@ func TestAPairThatIsNotTheAuthoritysLeavesTheWatermarkAlone(t *testing.T) {
 			r.put(t, 50, r.seal(t, r.envelope(50)+"parameters:\n  log_level: debug\n", r.recipient), r.authority,
 				domain.DesiredStateComment(r.inst.Product, "inst_01OTHERINSTALLATION", 50))
 		},
+		"too large to be a document": func(t *testing.T, r *syncRig) {
+			r.put(t, 50, bytes.Repeat([]byte("x"), ports.MaxObjectBytes+1), r.authority,
+				domain.DesiredStateComment(r.inst.Product, r.inst.ID, 50))
+		},
 		"not signed over these bytes": func(t *testing.T, r *syncRig) {
 			r.publish(t, 50, "parameters:\n  log_level: debug\n")
 			docKey, _ := domain.DesiredStateKeys(r.inst.Product, r.inst.ID, 50)

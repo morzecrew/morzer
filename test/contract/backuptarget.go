@@ -431,6 +431,34 @@ func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
 		}
 	})
 
+	t.Run("a deleted object is absent, and deleting it again is not an error", func(t *testing.T) {
+		store, h := objects(t)
+		ctx := context.Background()
+
+		// A prune keeps the newest few desired-state pairs and removes
+		// the rest (RFC 0057 decision 26), and one that stopped part way
+		// is run again over objects it already removed.
+		key, kept := "state/demo/inst/1.age", "state/demo/inst/2.age"
+		require.NoError(t, store.PutObject(ctx, h.Ref, key, []byte("one")))
+		require.NoError(t, store.PutObject(ctx, h.Ref, kept, []byte("two")))
+		require.NoError(t, store.DeleteObject(ctx, h.Ref, key))
+
+		_, err := store.GetObject(ctx, h.Ref, key)
+		assert.ErrorIs(t, err, fs.ErrNotExist)
+		keys, err := store.ObjectKeys(ctx, h.Ref, "state")
+		require.NoError(t, err)
+		assert.Equal(t, []string{kept}, keys, "a delete removed more, or less, than its key")
+		assert.NoError(t, store.DeleteObject(ctx, h.Ref, key), "deleting an absent object was an error")
+	})
+
+	t.Run("an object cannot be deleted from outside the target", func(t *testing.T) {
+		store, h := objects(t)
+		for _, key := range []string{"../escaped.json", "state/../../escaped.json", "/etc/escaped.json", ""} {
+			assert.Error(t, store.DeleteObject(context.Background(), h.Ref, key),
+				"%q was accepted as an object key", key)
+		}
+	})
+
 	t.Run("an object reads back byte for byte", func(t *testing.T) {
 		store, h := objects(t)
 		ctx := context.Background()
@@ -512,6 +540,9 @@ func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, fs.ErrNotExist,
 			"an oversized object was reported as an absent one")
+		// Told apart from a failed read: a publisher pruning a prefix
+		// others write to removes such an object rather than stopping.
+		assert.ErrorIs(t, err, ports.ErrObjectTooLarge)
 	})
 
 	t.Run("objects are invisible to the backup listing", func(t *testing.T) {

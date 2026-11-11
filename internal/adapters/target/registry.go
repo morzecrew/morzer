@@ -137,6 +137,14 @@ func (r *Registry) GetObject(ctx context.Context, ref ports.TargetRef, key strin
 	return store.GetObject(ctx, ref, key)
 }
 
+func (r *Registry) DeleteObject(ctx context.Context, ref ports.TargetRef, key string) error {
+	store, err := r.objectStore(ref)
+	if err != nil {
+		return err
+	}
+	return store.DeleteObject(ctx, ref, key)
+}
+
 func (r *Registry) objectStore(ref ports.TargetRef) (ports.ObjectStore, error) {
 	t, err := r.For(ref)
 	if err != nil {

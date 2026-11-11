@@ -24,20 +24,23 @@ The document format and every outcome are in the
 - **The release must opt in.** Only names listed in its
   [`managed`](../reference/manifest.md#managed) section can change, and a release
   without one lets nothing be managed.
-- **The machine needs a target it can read**: a bucket or directory, with a
-  credential that can list and read `state/<product>/<installation-id>` and
-  nothing else.
-- **You need [minisign](https://jedisct1.github.io/minisign/) and
-  [age](https://age-encryption.org)** where you publish from.
+- **One target holds both directions**: the machine publishes its
+  [fleet row](../reference/fleet.md) there, and reads its documents from
+  `state/<product>/<installation-id>` on it. The machine's sync credential needs
+  only to list and read that prefix.
+- **A [roster](../reference/fleet.md#the-roster)** names each installation and
+  the key its row is signed with. A document is encrypted only to a machine
+  whose row verifies against it.
 
 ## 1. Make an authority key
 
 ```sh
-minisign -G -p authority.pub -s authority.key
+morzer state key generate ./authority.key
 ```
 
-Keep `authority.key` off the machines. The public key is the second line of
-`authority.pub`.
+It prints the public key the machines pin. Keep `authority.key` off the
+machines: a key a managed machine holds lets that machine manage the rest. A key
+from `minisign -G -W` works too; one with a password does not.
 
 ## 2. Point the machine at it
 
@@ -48,7 +51,7 @@ as a secret, then name the target, the credential and the key:
 morzer secret set sync_s3 < sync-credential.yaml
 morzer config set sync.target=s3://acme-state/demo
 morzer config set sync.credentials=sync_s3
-morzer config set sync.authority="$(tail -n 1 authority.pub)"
+morzer config set sync.authority=RWQ...
 morzer config set sync.enabled=true
 ```
 
@@ -57,62 +60,56 @@ morzer config set sync.enabled=true
 records the first and third at install time, and sync stays off until you turn
 it on.
 
-## 3. Find the machine's recipient
+The machine must also publish its row to the same target, which it does on an
+hourly timer once the target is one of its backup targets, or with
+`morzer fleet publish`. The row carries the age recipient documents are
+encrypted to.
 
-Documents are encrypted to the machine's own age key. Its row in the
-[fleet view](../reference/fleet.md) carries it as `age_recipient`, and on the
-machine `morzer secret recipients list` shows it as the `machine` recipient.
-
-Use the recipient only from a row that verifies against your
-[roster](../reference/fleet.md#the-roster). Another machine that can write to
-the bucket can post a row for any installation id, and a document encrypted to
-its recipient is a document it can read.
-
-## 4. Publish a document
+## 3. Publish a document
 
 Write the whole state you manage for this installation, not only what changed:
 
-```yaml title="doc.yaml"
-api_version: selfhost/v1alpha1
-kind: desired-state
-product: demo
-installation: inst_01M72B61SSWFT54B6KTJC26YD0
-serial: 1794310000123
-issued_at: 2026-11-10T12:00:00Z
-expires_at: 2026-11-17T12:00:00Z
+```yaml title="demo.yaml"
 parameters:
   log_level: debug
+secrets:
+  db_password: |
+    a-value-from-elsewhere
 ```
-
-Encrypt it to the machine, sign the ciphertext with a trusted comment naming it,
-and upload the ciphertext first and the signature last:
 
 ```sh
-serial=1794310000123
-age -r age1... -o "$serial.age" doc.yaml
-minisign -S -s authority.key -m "$serial.age" \
-    -t "morzer desired-state product=demo installation=inst_01M72B61SSWFT54B6KTJC26YD0 serial=$serial"
-aws s3 cp "$serial.age" "s3://acme-state/demo/state/demo/inst_01M72B61SSWFT54B6KTJC26YD0/"
-aws s3 cp "$serial.age.minisig" "s3://acme-state/demo/state/demo/inst_01M72B61SSWFT54B6KTJC26YD0/"
+morzer state publish --target s3://acme-state/demo --expect ./roster.yaml \
+    --product demo --installation inst_01M72B61SSWFT54B6KTJC26YD0 \
+    --file ./demo.yaml --key ./authority.key
 ```
 
-Use a new, higher serial for every document; the time in milliseconds works.
-Never replace a pair that is already published.
+It refuses an installation the roster does not list, and a row that does not
+verify against the roster's key. It stamps the serial, the time in milliseconds,
+and an expiry seven days out (`--valid-for` changes it), encrypts the document
+to the recipient the row carries, and signs it. It writes the ciphertext first
+and the signature last, and removes all but the newest three documents.
+`--dry-run` does everything except the writes.
 
-## 5. Watch it apply
+## 4. Watch it apply
 
-The next tick applies it, or run one now:
+The next tick applies it, or run one on the machine now:
 
 ```sh
 morzer sync now
 morzer sync status
 ```
 
-`sync status` shows the document applied and when it expires. A document is
-refused whole when it is not yours, is older than the one applied, has expired,
-or names what the release does not manage, and `sync status` says at which step
-and why. A refused serial is not tried again: publish a corrected document with
-a higher serial.
+From where you publish, `state ls` shows every installation's newest document
+beside what its row says it applied and refused:
+
+```sh
+morzer state ls --target s3://acme-state/demo --expect ./roster.yaml
+```
+
+A document is refused whole when it is not yours, is older than the one applied,
+has expired, or names what the release does not manage. `sync status` on the
+machine says at which step and why. A refused serial is not tried again:
+publish a corrected document, which takes a newer serial.
 
 ## Keep the authority heard from
 
@@ -130,7 +127,7 @@ authority's next document sets it back.
 ## Changing the authority
 
 ```sh
-morzer config set sync.authority="$(tail -n 1 new-authority.pub)"
+morzer config set sync.authority=RWQ...
 ```
 
 The change is journalled and clears the serials the machine applied and
