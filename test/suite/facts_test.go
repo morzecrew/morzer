@@ -235,7 +235,7 @@ func TestAFactsRunGivesWayToAHeldLock(t *testing.T) {
 	acquired := 0
 	f.h.Locker.BeforeAcquire = func() {
 		acquired++
-		f.h.Locker.FailAcquire = acquired >= 2
+		f.h.Locker.FailAcquire = acquired == 2
 	}
 	_, err := ops.ConfigSet(context.Background(), f.h.Deps, ops.ConfigSetOptions{
 		Set: map[string]string{"http_port": "9000"},
