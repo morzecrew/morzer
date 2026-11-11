@@ -9,7 +9,6 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
-	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 )
 
@@ -149,7 +148,7 @@ func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check
 					"cannot read the binary the units run: %s", domain.AsError(err).Message)
 			}
 			for _, path := range paths {
-				who, err := atomicfs.ReplaceableByNonRoot(path)
+				who, err := d.replaceableByNonRoot(path)
 				if err != nil {
 					return preflight.Fail("reinstall the manager, then run `init --repair` with it",
 						"the units run %s, which cannot be checked: %s", path, domain.AsError(err).Message)

@@ -965,8 +965,10 @@ It refuses:
 - a dev build, which has no version to compare, unless `--to` or `--from` names
   the release;
 - a directory this user cannot write to, or an installation whose locks this
-  user cannot take. It prints the command to re-run with `sudo` and never
-  escalates itself;
+  user cannot take. It prints the command to re-run with `sudo`, and never
+  escalates itself. When another user could replace this copy, `sudo` on it
+  would run as root whatever they put there, so it prints how to install one
+  for root instead;
 - a platform no release is published for: only `linux/amd64` and
   `linux/arm64` are.
 

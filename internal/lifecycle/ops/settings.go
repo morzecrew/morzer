@@ -14,7 +14,6 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
-	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -1157,7 +1156,7 @@ func (d *Deps) checkManagerBinary() error {
 	if d.Paths.Root() != "" || d.ManagerPath == "" {
 		return nil
 	}
-	who, err := atomicfs.ReplaceableByNonRoot(d.ManagerPath)
+	who, err := d.replaceableByNonRoot(d.ManagerPath)
 	if err != nil || who == "" {
 		return err
 	}

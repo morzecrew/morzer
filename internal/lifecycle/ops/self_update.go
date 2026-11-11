@@ -142,7 +142,7 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	}
 	if err := canWriteIn(dir); err != nil {
 		return out, domain.ValidationError(err, "%s is not writable by this user", dir).
-			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts))
+			WithHint("%s", d.elevationHint(opts, target))
 	}
 
 	src := opts.From
@@ -223,7 +223,7 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 		// An installation's locks are root's, and a user who installed
 		// a copy of their own reaches them before anything says why.
 		return out, domain.ValidationError(err, "this user cannot take the locks of the installations on this machine").
-			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts))
+			WithHint("%s", d.elevationHint(opts, target))
 	}
 	if err != nil {
 		return out, err
@@ -409,6 +409,22 @@ func canWriteIn(dir string) error {
 	}
 	_ = f.Close()
 	return os.Remove(f.Name())
+}
+
+// elevationHint is how to run this again as root. Only with this copy when
+// only root can replace it: `sudo` on a copy another user can replace runs as
+// root whatever that user puts there, so then it is how to install one for
+// root instead.
+func (d *Deps) elevationHint(opts SelfUpdateOptions, target domain.Version) string {
+	who, err := d.replaceableByNonRoot(d.ManagerPath)
+	if err == nil && who == "" {
+		return "re-run with elevation: " + sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts)
+	}
+	if err != nil {
+		who = fmt.Sprintf("%s cannot be checked: %s", d.ManagerPath, domain.AsError(err).Message)
+	}
+	return fmt.Sprintf("do not run this copy with sudo, since %s. Install the manager for root instead: "+
+		"curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s", who, target)
 }
 
 // sudoSelfUpdate is the command to run instead; this one never escalates
