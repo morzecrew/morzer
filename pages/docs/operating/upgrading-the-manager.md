@@ -96,7 +96,7 @@ The install script is the other way, and the only one for going back.
 
     ```sh
     curl -fsSL https://morzecrew.github.io/morzer/install.sh \
-      | sh -s -- --version 0.16.0 --require-signature --dir /usr/local/bin
+      | sudo sh -s -- --version 0.16.0 --require-signature --dir /usr/local/bin
     ```
 
     Name the directory step 1 printed, whatever it is.

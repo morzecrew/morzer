@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -121,6 +122,48 @@ func (d *Deps) checkManagerVersion(inst domain.Installation) preflight.Check {
 				return preflight.Warn("upgrade with "+res.Upgrade, "%s", res.Summary())
 			}
 			return preflight.OK("%s", res.Summary())
+		},
+	}
+}
+
+// checkManagerBinary is `manager.binary`: whether the binary the installed
+// units run is one only root can replace. They run it as root, so a copy another
+// user could swap is a way to root at the next timer tick. Fatal, and only in
+// the production layout, as the refusal to write such a unit is.
+func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "manager.binary",
+		Category:    preflight.CategoryManager,
+		Description: "only root can replace the manager the units run",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			if d.Paths.Root() != "" || d.Supervisor == nil || !d.Supervisor.Available(ctx) {
+				return preflight.OK("no systemd units to check")
+			}
+			paths, err := d.Supervisor.UnitsManagerPaths(ctx, inst.Product)
+			if err != nil {
+				// Unknown is not safe: an unattended doctor would
+				// pass a check it never made.
+				return preflight.Fail("run `systemctl cat` on the product's units",
+					"cannot read the binary the units run: %s", domain.AsError(err).Message)
+			}
+			for _, path := range paths {
+				who, err := d.replaceableByNonRoot(path)
+				if err != nil {
+					return preflight.Fail("reinstall the manager, then run `init --repair` with it",
+						"the units run %s, which cannot be checked: %s", path, domain.AsError(err).Message)
+				}
+				if who != "" {
+					return preflight.Fail(fmt.Sprintf("install the manager where only root can replace it with "+
+						"`curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s "+
+						"--dir /usr/local/bin`, then run `sudo /usr/local/bin/morzer init --repair`", d.ManagerVersion),
+						"the units run %s as root, and %s", path, who)
+				}
+			}
+			if len(paths) == 0 {
+				return preflight.OK("no units installed")
+			}
+			return preflight.OK("only root can replace %s", strings.Join(paths, ", "))
 		},
 	}
 }

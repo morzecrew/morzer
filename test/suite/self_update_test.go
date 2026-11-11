@@ -249,6 +249,17 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 		"a held outbox lock": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			holdLock(t, s, "notify-outbox")
 		}, want: "while other is busy"},
+		"locks this user cannot take": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
+			if os.Geteuid() == 0 {
+				t.Skip("root takes any lock")
+			}
+			// An installation's locks are root's, and this is a user
+			// running a copy of their own.
+			locks := domain.PathsUnder(s.Deps.Paths.Root(), "other").LockDir()
+			require.NoError(t, os.MkdirAll(locks, 0o750))
+			require.NoError(t, os.Chmod(locks, 0o500))
+			t.Cleanup(func() { _ = os.Chmod(locks, 0o750) })
+		}, want: "do not run this copy with sudo"},
 		"a newer manager installed meanwhile": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			s.replacedWhileLocking(t, "0.13.0")
 		}, want: "another self-update installed", after: "0.13.0"},
@@ -347,14 +358,24 @@ func TestSelfUpdateNeverEscalates(t *testing.T) {
 	require.Error(t, err)
 	e := domain.AsError(err)
 	assert.Contains(t, e.Message, "is not writable by this user")
-	assert.Contains(t, e.Hint, "sudo "+s.Deps.ManagerPath+" self-update --to 0.13.0")
+	// This copy is one its user can replace, so sudo on it would run as
+	// root whatever they put there: the hint installs one for root instead.
+	assert.NotContains(t, e.Hint, "sudo "+s.Deps.ManagerPath)
+	assert.Contains(t, e.Hint, "| sudo sh -s -- --version 0.13.0")
 	assert.Equal(t, "0.12.0", s.reports(t))
+
+	// A copy only root can replace is the one to re-run with sudo, keeping
+	// the root this ran under, so it locks the same installations.
+	s.Deps.ReplaceableByNonRoot = func(string) (string, error) { return "", nil }
+	_, err = ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{To: "0.13.0"})
+	require.Error(t, err)
+	assert.Contains(t, domain.AsError(err).Hint, "sudo "+s.Deps.ManagerPath+" self-update --root "+s.Deps.Paths.Root()+" --to 0.13.0")
 
 	// Following the hint for a dry run must not perform the swap, and it
 	// keeps the deadline it was given.
 	_, err = ops.SelfUpdate(context.Background(), s.Deps, ops.SelfUpdateOptions{DryRun: true, Timeout: 90 * time.Second})
 	require.Error(t, err)
-	assert.Contains(t, domain.AsError(err).Hint, "self-update --dry-run --timeout 1m30s")
+	assert.Contains(t, domain.AsError(err).Hint, "self-update --root "+s.Deps.Paths.Root()+" --dry-run --timeout 1m30s")
 }
 
 // Nothing newer is not a failure, and nothing is replaced.

@@ -463,6 +463,7 @@ These checks **fail** rather than warn:
 | `runtime.declared` | The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh `init` and a `restore`. On a machine with no installation yet, `doctor` instead checks the tools that runtime needs, which is what `init` will want next. |
 | `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. Fails too when a service is running and its Docker healthcheck says unhealthy: the product is up and broken, which nobody chooses. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is [stopped](#stop) with `morzer stop`, it reports the stop as information, however old, and `runtime.health` does not probe. |
 | `runtime.health` | Fails when a health check the release declares does not pass while its services run, an unhealthy one included. With nothing running, or a runtime it cannot ask, it does not probe and only warns, as the service check above already says why. |
+| `manager.binary` | Fails when the installed units run a manager binary another user could replace: the units run it as root, so whoever can swap it gets root at the next timer tick. The binary, and every directory and link on the way to it, must be owned by root and writable by no group or other user. Every command a unit runs counts: those in its file and its drop-ins, and those systemd reports for it. Units it cannot read fail it too. The remedy installs the manager into `/usr/local/bin` for root and runs `init --repair` with it. |
 
 ## history
 
@@ -963,8 +964,11 @@ It refuses:
 
 - a dev build, which has no version to compare, unless `--to` or `--from` names
   the release;
-- a directory this user cannot write to. It prints the command to re-run with
-  `sudo` and never escalates itself;
+- a directory this user cannot write to, or an installation whose locks this
+  user cannot take. It prints the command to re-run with `sudo`, and never
+  escalates itself. When another user could replace this copy, `sudo` on it
+  would run as root whatever they put there, so it prints how to install one
+  for root instead;
 - a platform no release is published for: only `linux/amd64` and
   `linux/arm64` are.
 

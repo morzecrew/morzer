@@ -1153,3 +1153,78 @@ func TestTheSyncTimerTicksEveryInterval(t *testing.T) {
 		}
 	}
 }
+
+// The commands systemd itself reports for a unit count too: every drop-in it
+// loaded has had its say there, a runtime one under /run, a vendor one or a
+// type-level one included, none of which sits beside the unit.
+func TestUnitsManagerPathsAsksSystemdWhatItRuns(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnOutput("show demo.service", strings.Join([]string{
+		"ExecStart={ path=/srv/runtime/morzer ; argv[]=/srv/runtime/morzer apply --startup ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
+		"ExecReload=",
+	}, "\n"))
+
+	paths, err := s.UnitsManagerPaths(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("UnitsManagerPaths: %v", err)
+	}
+	for _, want := range []string{"/usr/local/bin/morzer", "/srv/runtime/morzer"} {
+		if !slices.Contains(paths, want) {
+			t.Errorf("paths = %v; want %s among them", paths, want)
+		}
+	}
+	if runner.Ran("show demo-backup.service") {
+		t.Error("asked systemd about a unit that is not installed")
+	}
+}
+
+// A unit systemd will not say anything about is not one it can be shown to run
+// safely: the failure is the answer, so manager.binary cannot pass on the files
+// alone.
+func TestUnitsManagerPathsFailsWhenSystemdWillNotSay(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnExit("show demo.service", 1, "Failed to connect to bus")
+	if paths, err := s.UnitsManagerPaths(context.Background(), "demo"); err == nil {
+		t.Errorf("paths = %v; a query systemd failed was taken as nothing to add", paths)
+	}
+}
+
+// Only a command's own binary counts: an argument that happens to carry
+// `path=` is an argument.
+func TestUnitsManagerPathsReadsOnlyTheBinary(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnOutput("show demo.service",
+		"ExecStart={ path=/usr/local/bin/morzer ; argv[]=/usr/local/bin/morzer apply --output-path=/tmp/result ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n")
+	paths, err := s.UnitsManagerPaths(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("UnitsManagerPaths: %v", err)
+	}
+	if slices.Contains(paths, "/tmp/result") {
+		t.Errorf("paths = %v; an argument was read as a binary", paths)
+	}
+}
+
+// An answer cut short cannot show that every command was looked at.
+func TestUnitsManagerPathsRefusesAnAnswerCutShort(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.On("show demo.service", exec.Result{Stdout: "ExecStart={ path=/usr/local/bin/morzer ; argv[]=/usr/local/bin/morzer", Truncated: true})
+	if paths, err := s.UnitsManagerPaths(context.Background(), "demo"); err == nil {
+		t.Errorf("paths = %v; a truncated answer was taken as the whole", paths)
+	}
+}

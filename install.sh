@@ -142,6 +142,16 @@ sha256:*)
 *) die "--digest must look like sha256:<hex>" ;;
 esac
 
+# The verification this run was asked for, carried into every command it
+# prints for running again, so following one never verifies less.
+rerun_flags=""
+if [ "$opt_require_signature" = yes ]; then
+	rerun_flags="${rerun_flags} --require-signature"
+fi
+if [ -n "$opt_digest" ]; then
+	rerun_flags="${rerun_flags} --digest sha256:${opt_digest}"
+fi
+
 # ---------------------------------------------------------------------------
 # Detection (RFC 0022 §5.2)
 #
@@ -567,7 +577,7 @@ fi
 if [ ! -w "$dir" ]; then
 	die "${dir} is not writable by this user.
        Re-run with elevation:
-         curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version ${version} --dir ${dir}
+         curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version ${version}${rerun_flags} --dir ${dir}
        or install into your own prefix:
          --dir \$HOME/.local/bin"
 fi
@@ -784,6 +794,15 @@ fi
 if [ -n "$shadowed_by" ]; then
 	warn "${shadowed_by} comes first on your PATH, so \`morzer\` still runs that one.
          Installed: ${target}"
+fi
+# A copy a non-root user installed is right for writing bundles and wrong for
+# running them. The manager runs installations as root, `sudo` keeps a PATH of
+# its own, and the manager refuses units that would run, as root, a file
+# another user can replace.
+if [ "$(id -u)" != 0 ]; then
+	warn "this copy is for $(id -un) only: \`sudo\` keeps its own PATH and may not find it, and the manager refuses to install units that would run it as root.
+         To run installations on this machine, install it for root instead:
+           curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version ${version}${rerun_flags}"
 fi
 if [ -n "$path_files_written" ]; then
 	# A PATH edit that does not affect the shell you are standing in is the

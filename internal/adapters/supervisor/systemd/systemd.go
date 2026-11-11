@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -253,25 +254,92 @@ func (s *Supervisor) InstalledUnits(ctx context.Context, product string) ([]stri
 	return out, nil
 }
 
+// execKeys are the directives whose value is a command a unit runs.
+var execKeys = []string{"ExecCondition", "ExecStartPre", "ExecStart", "ExecStartPost", "ExecReload", "ExecStop", "ExecStopPost"}
+
 // UnitsManagerPaths reads the binary from every one of the product's units
 // that is installed. One manager writes them all with the same path, but a
 // unit another copy left behind runs that copy.
+//
+// Every command a unit runs counts, a reload's included, and so do the drop-ins
+// beside it, whose commands systemd runs in place of the unit's own. So do the
+// commands systemd itself reports, which every drop-in it loaded has had its
+// say in, from /run, a vendor directory or a type-level one.
 func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]string, error) {
 	var out []string
-	for _, name := range UnitNames(product) {
-		path := filepath.Join(s.unitDir, name)
-		data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, in its own directory
-		switch {
-		case os.IsNotExist(err):
-			continue
-		case err != nil:
-			return nil, domain.Internal(err, "cannot read unit %s", path)
+	add := func(bin string) {
+		if bin != "" && !slices.Contains(out, bin) {
+			out = append(out, bin)
 		}
-		for line := range strings.Lines(string(data)) {
-			exec, ok := strings.CutPrefix(line, "ExecStart=")
-			if fields := strings.Fields(exec); ok && len(fields) > 0 && !slices.Contains(out, fields[0]) {
-				out = append(out, fields[0])
+	}
+	for _, name := range UnitNames(product) {
+		if _, err := os.Stat(filepath.Join(s.unitDir, name)); err == nil && s.runner != nil {
+			paths, err := s.effectiveExecPaths(ctx, name)
+			if err != nil {
+				return nil, err
 			}
+			for _, bin := range paths {
+				add(bin)
+			}
+		}
+		files := []string{filepath.Join(s.unitDir, name)}
+		dropIns, err := filepath.Glob(filepath.Join(s.unitDir, name+".d", "*.conf"))
+		if err != nil {
+			return nil, domain.Internal(err, "cannot list the drop-ins of %s", name)
+		}
+		for _, path := range append(files, dropIns...) {
+			data, err := os.ReadFile(path) //nolint:gosec // a unit this adapter names, or its drop-in, in its own directory
+			switch {
+			case os.IsNotExist(err):
+				continue
+			case err != nil:
+				return nil, domain.Internal(err, "cannot read unit %s", path)
+			}
+			for line := range strings.Lines(string(data)) {
+				key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+				fields := strings.Fields(value)
+				if !ok || !slices.Contains(execKeys, strings.TrimSpace(key)) || len(fields) == 0 {
+					continue
+				}
+				// systemd's prefixes before the path: ignore failure,
+				// argv[0], full privileges and the rest.
+				add(strings.TrimLeft(fields[0], "-@:+!"))
+			}
+		}
+	}
+	return out, nil
+}
+
+// execPathPattern is a command's binary in `systemctl show`'s rendering of an
+// Exec property: `{ path=/usr/local/bin/morzer ; argv[]=… ; … }`, once per
+// command. Anchored to the brace, since an argument may carry `path=` too.
+var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
+
+// effectiveExecPaths is every binary systemd would run for a unit, as it
+// loaded it. Asked only about a unit whose file is installed, so a query that
+// fails is an answer nobody has, not a unit with nothing to run: it fails, and
+// the caller says it could not check.
+func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]string, error) {
+	res, err := s.runner.Run(ctx, exec.Command{
+		Argv:          []string{s.systemctl, "show", unit, "--property=" + strings.Join(execKeys, ",")},
+		Timeout:       30 * time.Second,
+		CaptureOutput: true,
+	})
+	if err != nil {
+		return nil, domain.Internal(err, "cannot ask systemd what %s runs", unit)
+	}
+	if res.Truncated {
+		// A prefix cannot show that every command was looked at.
+		return nil, domain.Internal(nil, "systemd's answer about what %s runs was cut short", unit)
+	}
+	var out []string
+	for line := range strings.Lines(res.Stdout) {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || !slices.Contains(execKeys, key) {
+			continue
+		}
+		for _, m := range execPathPattern.FindAllStringSubmatch(value, -1) {
+			out = append(out, m[1])
 		}
 	}
 	return out, nil
