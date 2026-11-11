@@ -68,6 +68,16 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 			path: "/srv/drop/morzer",
 			want: "/srv/drop/morzer is owned by uid 1000, not root",
 		},
+		"a dot-dot after a link, which the kernel reads from the link's target": {
+			tree: map[string]statInfo{
+				"/opt/safe/link": {mode: fs.ModeSymlink | 0o777, link: "/home/alice/subdir"}, "/opt/safe": root, "/opt": root,
+				"/opt/safe/morzer":   {mode: 0o755},
+				"/home/alice/subdir": {mode: fs.ModeDir | 0o755, uid: 1000}, "/home/alice": {mode: fs.ModeDir | 0o755, uid: 1000}, "/home": root,
+				"/home/alice/morzer": {mode: 0o755, uid: 1000},
+			},
+			path: "/opt/safe/link/../morzer",
+			want: "/home/alice is owned by uid 1000, not root",
+		},
 		"a chain of links only root can repoint": {
 			tree: map[string]statInfo{
 				"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/usr/local/bin/morzer"}, "/opt/safe": root, "/opt": root,
@@ -111,4 +121,11 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 			assert.Equal(t, tc.want, who)
 		})
 	}
+}
+
+// A relative path is made absolute without being cleaned: `..` after a link is
+// the link's target's parent, which only the walk can know.
+func TestAPathKeepsItsDotDotsForTheWalk(t *testing.T) {
+	assert.Equal(t, "/opt/safe/link/../morzer", absolute("/opt/safe/link/../morzer", "/ignored"))
+	assert.Equal(t, "/work/bin/../morzer", absolute("bin/../morzer", "/work"))
 }

@@ -457,11 +457,24 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 // and a POSIX ACL granting a named user write shows as one. A sticky directory
 // does not count, since there only an entry's owner may rename it.
 func ReplaceableByNonRoot(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", domain.Internal(err, "cannot resolve %s", path)
+	wd := "/"
+	if !filepath.IsAbs(path) {
+		var err error
+		if wd, err = os.Getwd(); err != nil {
+			return "", domain.Internal(err, "cannot resolve %s", path)
+		}
 	}
-	return replaceableByNonRoot(abs, os.Lstat, os.Readlink)
+	return replaceableByNonRoot(absolute(path, wd), os.Lstat, os.Readlink)
+}
+
+// absolute makes path absolute against wd without cleaning it. `..` after a
+// link is the parent of what the link names, which only the walk can know, and
+// filepath.Abs would read it against the link's own directory.
+func absolute(path, wd string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return strings.TrimSuffix(wd, "/") + "/" + path
 }
 
 // maxLinks is how many links one resolution may follow, the kernel's own
