@@ -356,7 +356,8 @@ func TestARowIsNotPublishedBesideFactsThatFailedToWrite(t *testing.T) {
 	result, err := ops.FleetPublish(context.Background(), f.h.Deps, ops.FleetPublishOptions{})
 	f.h.Deps.Objects = objects
 	require.NoError(t, err)
-	report := result.Data.(ops.FleetPublishReport)
+	report, ok := result.Data.(ops.FleetPublishReport)
+	require.True(t, ok)
 	require.Len(t, report.Targets, 1)
 	assert.False(t, report.Targets[0].Published, "a row naming facts that did not reach the target was published")
 	assert.NotEmpty(t, report.Targets[0].FactsError)
