@@ -58,16 +58,26 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessFor(t, "demo")
+}
+
+// newHarnessFor is newHarness for a product of another name: the example
+// bundle with the name changed throughout, for a test that needs two products.
+func newHarnessFor(t *testing.T, product string) *harness {
+	t.Helper()
 
 	root := t.TempDir()
-	paths := domain.PathsUnder(root, "demo")
+	paths := domain.PathsUnder(root, product)
 
 	// The release is a real copy of the example bundle, so the manifest
 	// loader, the hook ABI and the template renderer are all genuinely
 	// exercised.
 	releaseRoot := filepath.Join(paths.ReleasesDir(), "1.2.0")
 	copyBundle(t, testBundlePath(t), releaseRoot)
-	retargetManifest(t, releaseRoot, root)
+	if product != "demo" {
+		renameProduct(t, releaseRoot, product)
+	}
+	retargetManifestFor(t, releaseRoot, root, product)
 
 	rel, err := release.Load(releaseRoot)
 	require.NoError(t, err)
@@ -179,15 +189,39 @@ func copyBundle(t *testing.T, src, dst string) {
 // would be silently discarded and the test would write to the real /etc.
 func retargetManifest(t *testing.T, releaseRoot, testRoot string) {
 	t.Helper()
+	retargetManifestFor(t, releaseRoot, testRoot, "demo")
+}
+
+func retargetManifestFor(t *testing.T, releaseRoot, testRoot, product string) {
+	t.Helper()
 
 	path := filepath.Join(releaseRoot, "manifest.yaml")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 
-	rewritten := strings.ReplaceAll(string(data), " /etc/demo/", " "+testRoot+"/etc/demo/")
-	rewritten = strings.ReplaceAll(rewritten, " /run/demo/", " "+testRoot+"/run/demo/")
+	rewritten := strings.ReplaceAll(string(data), " /etc/"+product+"/", " "+testRoot+"/etc/"+product+"/")
+	rewritten = strings.ReplaceAll(rewritten, " /run/"+product+"/", " "+testRoot+"/run/"+product+"/")
 
 	require.NoError(t, os.WriteFile(path, []byte(rewritten), 0o644))
+}
+
+// renameProduct renames the copied bundle's product everywhere it appears:
+// the manifest, its paths, the compose project, and the hook ABI's prefix the
+// hooks and compose files read.
+func renameProduct(t *testing.T, releaseRoot, product string) {
+	t.Helper()
+	upper := strings.ToUpper(product)
+	require.NoError(t, filepath.Walk(releaseRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		renamed := strings.NewReplacer("DEMO", upper, "Demo", upper[:1]+product[1:], "demo", product).Replace(string(data))
+		return os.WriteFile(path, []byte(renamed), info.Mode().Perm())
+	}))
 }
 
 // install writes the installation and the release pointer, leaving the system
@@ -199,7 +233,7 @@ func (h *harness) install() domain.Installation {
 	inst := domain.Installation{
 		SchemaVersion: domain.InstallationSchemaVersion,
 		ID:            "inst_01TESTINSTALLATION",
-		Product:       "demo",
+		Product:       h.Paths.Product,
 		CreatedAt:     domain.NewTime(h.Deps.Now()),
 		Profiles:      []string{"embedded"},
 		Domains:       []string{"demo.example"},
@@ -228,10 +262,11 @@ func (h *harness) install() domain.Installation {
 
 // setHookEnv points the bundle's hooks at the test's own directories.
 func (h *harness) setHookEnv() {
-	h.t.Setenv("DEMO_DATA_DIR", h.Paths.DataDir())
-	h.t.Setenv("DEMO_SECRETS_DIR", h.Paths.SecretsRenderDir())
-	h.t.Setenv("DEMO_CONFIG_FILE", filepath.Join(h.Root, "/etc/demo/application.yaml"))
-	h.t.Setenv("DEMO_BACKUP_DIR", h.Paths.BackupsDir())
+	prefix := strings.ToUpper(h.Paths.Product)
+	h.t.Setenv(prefix+"_DATA_DIR", h.Paths.DataDir())
+	h.t.Setenv(prefix+"_SECRETS_DIR", h.Paths.SecretsRenderDir())
+	h.t.Setenv(prefix+"_CONFIG_FILE", filepath.Join(h.Root, "/etc", h.Paths.Product, "application.yaml"))
+	h.t.Setenv(prefix+"_BACKUP_DIR", h.Paths.BackupsDir())
 }
 
 func TestApplyRunsEveryStepAndConverges(t *testing.T) {

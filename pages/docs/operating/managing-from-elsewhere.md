@@ -144,6 +144,27 @@ target has not answered for three intervals. A target that withholds your
 documents can do nothing else, and that warning is how you see it. Publish
 before `expires_at`.
 
+## After rebuilding a machine
+
+A machine rebuilt with `installation import` keeps its id and the serial it
+applied, but it has a new age identity and a new signing key. Until the
+authority hears of both, the machine refuses each new document as
+`undecryptable`, and `state publish` refuses its new row as signed by a key the
+roster does not name.
+
+1. Bring the release back with `morzer update <bundle>`, as after any
+   [recovery](recovering-a-lost-machine.md).
+2. Take the new key off the machine, as for a
+   [new one](../reference/fleet.md#getting-the-three-fields-off-a-machine), and
+   replace the old key in the roster:
+
+   ```sh
+   ssh box 'morzer fleet publish --dry-run --json' | jq -r .data.row.signing_key
+   ```
+
+3. Publish again. The row the rebuilt machine publishes names its new
+   recipient, and the document is encrypted to it.
+
 ## Changing a managed value on the machine
 
 While sync is on, `config set` and `config apply` refuse to change a name the

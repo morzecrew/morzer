@@ -465,3 +465,74 @@ func TestHalfWrittenFactsAreRefusedUntilTheNextPublish(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "public_key=NEWER\n", report.Facts)
 }
+
+// A machine joins at `init` with the sync settings (RFC 0057 §6, `init
+// --sync-*`): its row reaches the authority, `state ls` lists it as not yet in
+// the roster, and once the roster names it its facts are read, and a document
+// built from them reaches another installation and applies there.
+func TestAMachineJoinedAtInitIsReadAndItsFactsReachAnother(t *testing.T) {
+	ctx := context.Background()
+	f := newFactsRig(t)
+	recipient := installation(t, f.h).Sync.Recipient
+
+	h := newHarnessFor(t, "relay")
+	h.setHookEnv()
+	machine, err := sopsage.GenerateIdentity(h.Paths.AgeIdentityFile())
+	require.NoError(t, err)
+	h.Secrets.SetMachineRecipient(machine)
+	h.Secrets.Seed(map[string]string{"db_password": "a-relay-password", "session_key": "a-relay-session-key"})
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), "relay")
+	h.Deps.Targets, h.Deps.Objects = f.h.Deps.Targets, f.h.Deps.Objects
+	path := filepath.Join(h.Release.Root, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), `min_manager_version: "0.0.0"`, `min_manager_version: "0.16.0"`, 1) +
+		"\ntasks:\n  entry:\n    service: app\n    command: [relay-entry]\n\npublished:\n  task: entry\n"
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "relay", NoRecoveryKey: true, ReleasePath: h.Release.Root,
+		SyncTarget: f.target, SyncAuthority: f.key, SyncRecipient: recipient,
+	})
+	require.NoError(t, err)
+	joined := installation(t, h)
+	joined.Backup.Targets = []domain.BackupTargetConfig{{URL: f.target}}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, joined))
+	require.NoError(t, setSettings(t, h, map[string]string{"sync.enabled": "true"}))
+	h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "address=joined.example\n"}
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	_, err = ops.FleetPublish(ctx, h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+	joined = installation(t, h)
+
+	list, err := ops.StateList(ctx, f.h.Deps, ops.StateListOptions{
+		TargetOptions: ops.TargetOptions{URL: f.target}, Roster: f.roster,
+	})
+	require.NoError(t, err)
+	var listed *ops.StateRow
+	for i := range list.Rows {
+		if list.Rows[i].Product == "relay" {
+			listed = &list.Rows[i]
+		}
+	}
+	require.NotNil(t, listed, "state ls does not list the machine that joined")
+	assert.Equal(t, joined.ID, listed.InstallationID)
+	assert.False(t, listed.Expected, "a machine the roster does not name was listed as expected")
+
+	f.roster.Installations = append(f.roster.Installations, domain.FleetRosterEntry{
+		Product: joined.Product, ID: joined.ID, PublicKey: joined.Signing.PublicKey,
+	})
+	report, err := ops.StateFacts(ctx, f.h.Deps, ops.StateFactsOptions{
+		TargetOptions: ops.TargetOptions{URL: f.target}, Roster: f.roster,
+		Product: joined.Product, InstallationID: joined.ID, Identity: f.identity,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "address=joined.example\n", report.Facts)
+
+	address := strings.TrimSpace(strings.TrimPrefix(report.Facts, "address="))
+	_, err = f.statePublish(t, f.publishOpts("settings:\n  installation.domains: "+address+"\n"))
+	require.NoError(t, err)
+	assert.Equal(t, domain.SyncOK, f.syncOK(t).Result)
+	assert.Equal(t, []string{"joined.example"}, installation(t, f.h).Domains)
+}
