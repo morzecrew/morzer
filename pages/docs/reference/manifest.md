@@ -772,6 +772,36 @@ A release declaring `managed` needs `compatibility.min_manager_version` of at
 least `0.16.0`. The manifest is decoded strictly, so an older manager refuses
 the field rather than ignoring it.
 
+## published
+
+The task whose output is this machine's facts, which it publishes to the
+authority it follows: what the authority needs to address documents to this
+machine and to others about it, such as a public key and the address it is
+reached at.
+
+```yaml
+published:
+  task: relay-entry
+compatibility:
+  min_manager_version: "0.16.0"
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `task` | string | A task the release declares under `tasks`. It runs with no arguments and no inputs, so it must take none, and its stdout is the facts, at most 64 KiB. |
+
+The task runs after every successful init, apply, start, update, rollback,
+restore and configuration change, on a machine that sets `sync.recipient`. Its
+output is encrypted to that recipient and signed with the machine's key, and
+published beside the machine's [fleet row](fleet.md). A failed run keeps the
+previous facts, and the row says it failed.
+
+**Facts are for public halves and addresses.** morzer cannot tell a secret from
+a fact, and a task that prints a credential sends it to the authority.
+
+A release declaring `published` needs `compatibility.min_manager_version` of at
+least `0.16.0`, for the reason `managed` does.
+
 ## health
 
 `checks` is a list; each entry has a unique `name`, a `type`, a `timeout`

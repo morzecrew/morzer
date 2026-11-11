@@ -81,3 +81,31 @@ func assertNoManagedProblem(t *testing.T, m *domain.Manifest) {
 		assert.NotContains(t, err.Error(), "min_manager_version")
 	}
 }
+
+// `published` names a task the release declares, one that runs with nothing
+// passed to it, under the floor `managed` has (RFC 0057 §5.10).
+func TestPublishedNamesARunnableTask(t *testing.T) {
+	withTasks := func(published string) *domain.Manifest {
+		m := managedManifest(domain.ManagedSpec{})
+		m.Tasks = map[string]domain.TaskSpec{
+			"entry": {Service: "app", Command: []string{"relay-entry"}},
+			"load":  {Service: "app", Command: []string{"load"}, Inputs: map[string]domain.TaskInput{"dump": {}}},
+		}
+		m.Published = domain.PublishedSpec{Task: published}
+		return m
+	}
+	problem := func(m *domain.Manifest) string {
+		if err := m.Validate(); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+
+	assert.NotContains(t, problem(withTasks("entry")), "published")
+	assert.Contains(t, problem(withTasks("missing")), `published.task: names "missing", which the release does not declare`)
+	assert.Contains(t, problem(withTasks("load")), `published.task: names "load", which takes inputs`)
+
+	old := withTasks("entry")
+	old.Compatibility.MinManagerVersion = domain.MustParseVersion("0.15.0")
+	assert.Contains(t, problem(old), "because the release declares published")
+}

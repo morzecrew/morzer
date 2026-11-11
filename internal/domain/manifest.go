@@ -251,6 +251,11 @@ type Manifest struct {
 	// take from elsewhere.
 	Managed ManagedSpec `yaml:"managed" json:"managed,omitzero"`
 
+	// Published names the task whose output is this machine's facts,
+	// published to the authority it follows (RFC 0057 §5.10). Absent,
+	// nothing is.
+	Published PublishedSpec `yaml:"published" json:"published,omitzero"`
+
 	Health        HealthSpec                `yaml:"health" json:"health"`
 	Compatibility Compatibility             `yaml:"compatibility" json:"compatibility"`
 	Retention     Retention                 `yaml:"retention" json:"retention"`
@@ -771,6 +776,15 @@ const TextParametersMinManagerVersion = "0.15.0"
 // strictly, so it is not ignored as RFC 0057 §5.6 supposed.
 const DesiredStateMinManagerVersion = "0.16.0"
 
+// PublishedSpec is what a machine tells the authority it follows.
+type PublishedSpec struct {
+	// Task is a task the release declares, run without arguments or
+	// inputs; its stdout is the facts.
+	Task string `yaml:"task" json:"task,omitempty"`
+}
+
+func (p PublishedSpec) IsZero() bool { return p.Task == "" }
+
 // ManagedSpec is what a desired-state document may change.
 type ManagedSpec struct {
 	Parameters []string `yaml:"parameters" json:"parameters,omitempty"`
@@ -842,6 +856,27 @@ func validateManaged(m *Manifest, v *validationErrors) {
 		m.Compatibility.MinManagerVersion.LessThan(minimum) {
 		v.add("compatibility.min_manager_version",
 			"must be at least %s, because the release declares managed, which an older "+
+				"manager refuses as an unknown field", minimum)
+	}
+}
+
+// validatePublished checks the facts task: declared, runnable as it stands,
+// and under the floor an older manager needs to read the field at all.
+func validatePublished(m *Manifest, v *validationErrors) {
+	if m.Published.IsZero() {
+		return
+	}
+	task, ok := m.Tasks[m.Published.Task]
+	switch {
+	case !ok:
+		v.add("published.task", "names %q, which the release does not declare as a task", m.Published.Task)
+	case len(task.Inputs) > 0:
+		// Run after every operation with nobody to pass a file.
+		v.add("published.task", "names %q, which takes inputs; the facts task runs without any", m.Published.Task)
+	}
+	if minimum := MustParseVersion(DesiredStateMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares published, which an older "+
 				"manager refuses as an unknown field", minimum)
 	}
 }
@@ -1560,6 +1595,7 @@ func (m *Manifest) Validate() error {
 	}
 
 	validateManaged(m, &v)
+	validatePublished(m, &v)
 
 	if m.Bundle.UncompressedSize < 0 {
 		v.add("bundle.uncompressed_size", "must not be negative, got %s",
