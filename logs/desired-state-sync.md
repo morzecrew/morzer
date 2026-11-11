@@ -593,3 +593,15 @@ writes, and an authority publishing from two machines at once, which the
 serial check reads before it writes.
 
 **Drift count: 2.**
+
+```divergence
+decision: 26
+grade: ASSUMED
+class: discovery
+at: 2026-11-11T03:45:01Z
+attempt: 1
+claim: decision 26 keeps the newest three pairs, and the first build counted pairs by their object names. A name is anybody's who can write to the bucket: a pair planted at a high serial refused every later publish as not newer, and three planted pairs made the prune remove the document just written. Found in review. Publish now counts only complete pairs the authority's key signed, whose comment names them. The prune keeps the newest three of those and removes every other complete pair, planted or signed by an earlier key, at any serial. A lone object goes only below the serial just published.
+evidence: internal/lifecycle/ops/state.go:276
+action: departed
+proposal: ASSUMED — the pairs a publish keeps, and compares its serial with, are those the authority's key signed; every other complete pair under the prefix is removed
+```
