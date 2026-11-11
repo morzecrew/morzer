@@ -31,8 +31,13 @@ import (
 
 func verifyHarness(t *testing.T) *harness {
 	t.Helper()
-	h := newHarness(t)
-	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), "demo")
+	return verifyHarnessFor(t, "demo")
+}
+
+func verifyHarnessFor(t *testing.T, product string) *harness {
+	t.Helper()
+	h := newHarnessFor(t, product)
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), product)
 	h.Deps.Checker = signer.NewChecker()
 
 	// What the services run, as the real adapter would report after an

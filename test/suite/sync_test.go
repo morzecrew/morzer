@@ -50,8 +50,13 @@ type syncRig struct {
 
 func newSyncRig(t *testing.T) *syncRig {
 	t.Helper()
+	return newSyncRigFor(t, "demo")
+}
+
+func newSyncRigFor(t *testing.T, product string) *syncRig {
+	t.Helper()
 	ctx := context.Background()
-	h := verifyHarness(t)
+	h := verifyHarnessFor(t, product)
 
 	path := filepath.Join(h.Release.Root, "manifest.yaml")
 	raw, err := os.ReadFile(path)
