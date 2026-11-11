@@ -189,14 +189,19 @@ func TestStateFactsRefusesFactsTheRowDoesNotVouchFor(t *testing.T) {
 	assert.Contains(t, err.Error(), "not signed by the key the roster lists")
 	assert.Empty(t, report.Facts)
 
-	// Facts the machine's own key signed for another installation, copied
-	// beside this one's row.
-	elsewhere, err := f.h.Deps.Signer.Sign(context.Background(), []byte(forged.String()),
+	// The row's own facts, signed by the machine's key with a comment
+	// naming another installation: the digest and the key both check out,
+	// and only the comment says these are not this installation's.
+	f.publishRow(t)
+	genuine, err := os.ReadFile(docPath)
+	require.NoError(t, err)
+	elsewhere, err := f.h.Deps.Signer.Sign(context.Background(), genuine,
 		domain.FactsComment(f.inst.Product, "inst_01OTHERINSTALLATION"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(sigPath, elsewhere.Encoded, 0o644))
 	_, err = f.facts(t)
 	require.Error(t, err, "facts signed for another installation were read as this one's")
+	assert.Contains(t, err.Error(), "not signed by the key the roster lists")
 }
 
 // No facts run follows an operation that failed: it changed nothing the facts
