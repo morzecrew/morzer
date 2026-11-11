@@ -1,7 +1,8 @@
 # RFC 0054 — Multi-line text parameters
 
-- **Status:** 📝 Draft — proposed 2026-11-09, and ruled by the author
-  2026-11-09: decisions 4, 5 and 11 as recommended.
+- **Status:** ✅ Complete — shipped 2026-11-09 in #319: P1. P2 is dotdash's
+  work, not this repository's. Ruled by the author 2026-11-09: decisions 4, 5
+  and 11 as recommended. Rows 16 and 17 were added by execution.
 - **Scope:** Adds a `text` parameter type for multi-line values that are not
   secret, such as routing rules, allow and deny lists, or a fragment of a
   product's own configuration. It covers:
@@ -511,6 +512,8 @@ whichever manager release ships this.
 | 13 | `ASSUMED` | The render check gives a text parameter without a default a two-line synthetic value. |
 | 14 | `ASSUMED` | `release diff` describes a text default by its line count and the first 12 hex digits of its SHA-256. `changes` compares descriptions, so a change on any line is still listed, and the row stays one line. |
 | 15 | `ASSUMED` | `string` is not narrowed. It accepts embedded newlines today (`parameter.go:128`, `:157`), and narrowing it would fail every recorded value that has one at the next `apply`. The docs steer multi-line values to `text`. |
+| 16 | `ASSUMED` | Only a refused `text` value names its reason in the message, `parameter "<name>": <reason>`, with the refusal's own hint, as §5.1 writes it. The other types keep `parameter "<name>"` with the type's description as the hint: their refusals quote the value, and an error's message reaches fleet rows. Added by execution 2026-11-09 — see logs/text-parameters.md (unlisted, 2026-11-09T14:48:51Z, and its correction, 2026-11-09T15:12:41Z). |
+| 17 | `ASSUMED` | Decision 2, refined: `Parse` for `text` turns CRLF into LF, then any remaining CR into LF, before removing trailing newlines, so a lone CR is a line ending too. Added by execution 2026-11-09 — see logs/text-parameters.md (decision 2, 2026-11-09T15:34:33Z). |
 
 ## 12. Phasing
 
