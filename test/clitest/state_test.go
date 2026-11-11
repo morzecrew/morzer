@@ -22,6 +22,14 @@ func TestTheAuthorityKeyIsGeneratedWithoutAnInstallation(t *testing.T) {
 	}
 
 	r.Run("state", "key", "generate", key).ExitCode(2).SaysAll("already exists")
+
+	// --dry-run makes no changes, and a key cannot be shown without being
+	// made, so the run is refused rather than writing one.
+	planned := r.Path("planned.key")
+	r.Run("--dry-run", "state", "key", "generate", planned).ExitCode(2).SaysAll("--dry-run")
+	if _, err := os.Stat(planned); err == nil {
+		t.Error("--dry-run wrote a key")
+	}
 	r.Run("state", "publish", "--target", "file://"+r.Path("state"), "--expect", r.Path("missing.yaml"),
 		"--product", "demo", "--installation", "inst_01", "--file", "-", "--key", key).Failed()
 }

@@ -56,6 +56,12 @@ func newStateKeyGenerateCommand(app *App) *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
+			if app.Flags.dryRun {
+				// A key cannot be shown without being made, and --dry-run
+				// makes nothing.
+				return domain.Usage("state key generate has nothing to plan, and --dry-run writes no key").
+					WithHint("run it without --dry-run")
+			}
 			if _, err := os.Stat(path); err == nil {
 				return domain.Usage("%s already exists", path).
 					WithHint("refusing to overwrite an existing key")
