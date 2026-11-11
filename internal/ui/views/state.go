@@ -102,6 +102,9 @@ func stateApplied(r StateRow) string {
 	switch {
 	case r.Absent:
 		return "no row"
+	case r.Sync == nil && r.Problem != "":
+		// Not read, or not trusted: nothing is known about its sync.
+		return "unknown"
 	case r.Sync == nil:
 		return "not following"
 	case r.Sync.Applied == nil:
