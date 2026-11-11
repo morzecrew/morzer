@@ -112,3 +112,42 @@ evidence: rfcs/0028-the-machines-signing-identity.md:174
 action: decided
 proposal: UNLISTED — a rebuilt machine is followed again once the roster names its new signing key; the next publish then encrypts to the recipient its new row names
 ```
+
+## Build
+
+Built as planned, in `test/suite`. Case 3's open question has the plain answer:
+an unattended tick that finds the lock held fails at its poll with
+`ErrLocked`, which the timer's command exits 0 on, and its next tick installs
+(`TestATickThatCannotTakeTheLockDoesNotFailTheUnit`); a sync tick does the same
+(`internal/cli/sync.go:56`). No entry.
+
+`state publish` resolves its target through the local installation when there
+is one, and goes on without one (`internal/lifecycle/ops/targets.go:518-521`),
+so an authority's host needs no installation. The rebuild test's authority is
+built that way.
+
+## Self-audit, 2026-11-11T13:45:05Z
+
+Scope: the whole branch, 11 commits, 10 files, about 740 lines added, all of
+them tests, the how-to and this log.
+
+- **Sabotage.** One break in product code per new test, each run against the
+  test it targets. Five killed: the documents prefix without the product, an
+  undecryptable document classed as invalid, a roster read only to its first
+  entry, `init` dropping `--sync-recipient`, a refusal notification carrying
+  the refusal's text. Two survived, both against case 3: deleting the sync's
+  `ErrLocked` branch, and recording a held lock as a refusal. Both are
+  equivalent here. Without its branch, a held lock falls into "this machine's
+  own failure before anything ran", which refuses nothing. And a refusal is
+  written under the same deployment lock, so a tick that cannot take it cannot
+  record one. What case 3 pins is the two ticks completing in turn with the
+  final state right, which no single break above reaches.
+- **Not exercised.** Real Docker for any sync case; the acceptance rig keeps
+  its one-installation scenario. The fake locker never waits, so a tick that
+  waited for the lock, and would hang inside the other operation, is not
+  something these tests can show.
+- **Verification.** `go test ./...` and `go test -tags docker ./test/suite/`
+  pass; `golangci-lint run ./...` reports 0 issues; `just docs-check` reports
+  no drift; the log check passes.
+
+**Drift count: 0.**
