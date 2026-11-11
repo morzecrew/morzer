@@ -124,3 +124,30 @@ evidence: test/suite/update_test.go:385
 action: decided
 proposal: UNLISTED — a parameter a new release adds with no default is given its value with the update, not after it; the state with no value is reached only by a failure, as #190 describes
 ```
+
+## Self-audit, 2026-11-11T20:11:28Z
+
+Scope: the whole branch, 6 commits counting this one: the plan, the feature,
+the fix, a refactor, two test commits and a resume fix.
+
+- **Sabotage.** Sixteen breaks, each run against the test it targets. Fifteen
+  were caught. Four survived the first sweep:
+  - the type check, the converge delivering the value, and the resume check
+    each needed a sharper test, and got one;
+  - the explicit undeclared-name check was redundant, since
+    ResolveParameters refuses the same name with the same message, so it was
+    removed.
+
+  A resume of a run that recorded its values and stopped later was found
+  refused: it planned one step fewer than the run journalled. Fixed, and two
+  more breaks now catch it.
+- **Behaviour a test had pinned.** One test asserted the stance the early
+  refusal reverses (entry above). Five others reached their starting state
+  through an update that is now refused, and were moved, each keeping what it
+  tests.
+- **Not exercised.** The acceptance rig and the docker suites update to no
+  release with a parameter that lacks a default, so the change does not reach
+  them. A resume given `--set` for a run that had none is refused as planning
+  a different operation, which this branch does not change.
+
+**Drift count: 0.**
