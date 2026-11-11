@@ -60,6 +60,14 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 			tree: map[string]statInfo{"/usr/local/bin/morzer": {mode: 0o757}, "/usr/local/bin": root, "/usr/local": root, "/usr": root},
 			want: "/usr/local/bin/morzer is writable by every user",
 		},
+		"a user's link in a sticky directory, which its owner may replace": {
+			tree: map[string]statInfo{
+				"/srv/drop/morzer": {mode: fs.ModeSymlink | 0o777, uid: 1000, link: "/usr/bin/env"}, "/srv/drop": {mode: fs.ModeDir | fs.ModeSticky | 0o777}, "/srv": root,
+				"/usr/bin/env": {mode: 0o755}, "/usr/bin": root, "/usr": root,
+			},
+			path: "/srv/drop/morzer",
+			want: "/srv/drop/morzer is owned by uid 1000, not root",
+		},
 		"a chain of links only root can repoint": {
 			tree: map[string]statInfo{
 				"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/usr/local/bin/morzer"}, "/opt/safe": root, "/opt": root,
