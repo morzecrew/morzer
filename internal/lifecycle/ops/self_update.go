@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -218,6 +219,12 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	}
 	started := d.now()
 	release, err := d.lockEveryInstallation(ctx, inv.Products, opIDs, started)
+	if errors.Is(err, fs.ErrPermission) {
+		// An installation's locks are root's, and a user who installed
+		// a copy of their own reaches them before anything says why.
+		return out, domain.ValidationError(err, "this user cannot take the locks of the installations on this machine").
+			WithHint("re-run with elevation: %s", sudoSelfUpdate(d.ManagerPath, opts))
+	}
 	if err != nil {
 		return out, err
 	}

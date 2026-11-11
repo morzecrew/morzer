@@ -68,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installation needing manual intervention. Only the services the active
   profiles start are re-created.
 
+- `self-update` run by a user who cannot take the installations' locks says so
+  and prints the command to re-run with `sudo`, where it reported an
+  installation as busy.
+
 ### Security
 
 - `init`, and every operation that rewrites the systemd units, refuse units

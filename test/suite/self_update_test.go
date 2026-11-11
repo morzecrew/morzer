@@ -249,6 +249,17 @@ func TestSelfUpdateRefusesWhatItCannotTrust(t *testing.T) {
 		"a held outbox lock": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			holdLock(t, s, "notify-outbox")
 		}, want: "while other is busy"},
+		"locks this user cannot take": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
+			if os.Geteuid() == 0 {
+				t.Skip("root takes any lock")
+			}
+			// An installation's locks are root's, and this is a user
+			// running a copy of their own.
+			locks := domain.PathsUnder(s.Deps.Paths.Root(), "other").LockDir()
+			require.NoError(t, os.MkdirAll(locks, 0o750))
+			require.NoError(t, os.Chmod(locks, 0o500))
+			t.Cleanup(func() { _ = os.Chmod(locks, 0o750) })
+		}, want: "re-run with elevation: sudo "},
 		"a newer manager installed meanwhile": {setup: func(t *testing.T, s *selfUpdateHost, _ *ops.SelfUpdateOptions) {
 			s.replacedWhileLocking(t, "0.13.0")
 		}, want: "another self-update installed", after: "0.13.0"},

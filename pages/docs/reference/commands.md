@@ -964,8 +964,9 @@ It refuses:
 
 - a dev build, which has no version to compare, unless `--to` or `--from` names
   the release;
-- a directory this user cannot write to. It prints the command to re-run with
-  `sudo` and never escalates itself;
+- a directory this user cannot write to, or an installation whose locks this
+  user cannot take. It prints the command to re-run with `sudo` and never
+  escalates itself;
 - a platform no release is published for: only `linux/amd64` and
   `linux/arm64` are.
 
