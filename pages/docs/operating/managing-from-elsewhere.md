@@ -123,8 +123,9 @@ recipient:
 morzer config set sync.recipient=age1...
 ```
 
-It then runs the task after every successful operation, and publishes the
-output, encrypted to you and signed with its key, beside its row. Read it with
+It then runs the task after every successful apply, start, update, rollback,
+restore and configuration change, and publishes the output, encrypted to you
+and signed with its key, beside its row. Read it with
 your age identity:
 
 ```sh
