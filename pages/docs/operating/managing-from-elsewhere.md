@@ -154,8 +154,9 @@ roster does not name.
 
 1. Bring the release back with `morzer update <bundle>`, as after any
    [recovery](recovering-a-lost-machine.md).
-2. Take the new key off the machine, as for a new one, and replace the old key
-   in the roster:
+2. Take the new key off the machine, as for a
+   [new one](../reference/fleet.md#getting-the-three-fields-off-a-machine), and
+   replace the old key in the roster:
 
    ```sh
    ssh box 'morzer fleet publish --dry-run --json' | jq -r .data.row.signing_key
