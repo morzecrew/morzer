@@ -429,20 +429,15 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 
 // withUpdateParameters merges the values given for the release being installed
 // over the recorded ones, in memory, for the converge to render with. Refused
-// before anything runs: a name that release does not declare, a value it would
-// not accept, and a parameter it gives no default that has no value.
+// before anything runs: a name that release does not declare and a value it
+// would not accept (ResolveParameters), and a parameter it gives no default
+// that has no value.
 //
 // A resumed run whose values were not recorded before it stopped is given them
 // again, since the journal never had them.
 func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
 	prior *domain.OperationRecord) (domain.Installation, error) {
 	declared := staged.Manifest.Parameters
-	for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
-		if _, ok := declared[name]; !ok {
-			return inst, domain.Usage("release %s declares no parameter %q", staged.Version(), name).
-				WithHint("`morzer release show <bundle>` lists the parameters it declares")
-		}
-	}
 	if prior != nil && !stepSucceeded(*prior, "record-parameters") {
 		var again []string
 		for _, name := range strings.Split(prior.Flags["set"], ",") {

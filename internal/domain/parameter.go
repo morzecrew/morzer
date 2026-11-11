@@ -294,11 +294,10 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 	// declares no parameter %q" about a parameter the release declares.
 	//
 	// Present-empty rather than refused, because this function runs on
-	// every operation and only one of them can do anything about a missing
-	// value: `init` takes --set, and refuses there (see MissingValues). An
-	// update that meets a parameter the *new* release added would otherwise
-	// have no way forward at all -- the value cannot be set before the
-	// release that declares it is installed.
+	// every operation and only those that take --set can do anything about
+	// a missing value: `init` and `update` refuse there (see MissingValues),
+	// the update before anything stops, since the value cannot be set
+	// before the release that declares it is installed (#346).
 	for name, spec := range declared {
 		if spec.Default == "" {
 			out[name] = ""
