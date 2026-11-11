@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -261,10 +262,26 @@ var execKeys = []string{"ExecCondition", "ExecStartPre", "ExecStart", "ExecStart
 // unit another copy left behind runs that copy.
 //
 // Every command a unit runs counts, a reload's included, and so do the drop-ins
-// beside it, whose commands systemd runs in place of the unit's own.
+// beside it, whose commands systemd runs in place of the unit's own. So do the
+// commands systemd itself reports, which every drop-in it loaded has had its
+// say in, from /run, a vendor directory or a type-level one.
 func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]string, error) {
 	var out []string
+	add := func(bin string) {
+		if bin != "" && !slices.Contains(out, bin) {
+			out = append(out, bin)
+		}
+	}
 	for _, name := range UnitNames(product) {
+		if _, err := os.Stat(filepath.Join(s.unitDir, name)); err == nil && s.runner != nil {
+			paths, err := s.effectiveExecPaths(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			for _, bin := range paths {
+				add(bin)
+			}
+		}
 		files := []string{filepath.Join(s.unitDir, name)}
 		dropIns, err := filepath.Glob(filepath.Join(s.unitDir, name+".d", "*.conf"))
 		if err != nil {
@@ -286,10 +303,42 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 				}
 				// systemd's prefixes before the path: ignore failure,
 				// argv[0], full privileges and the rest.
-				if bin := strings.TrimLeft(fields[0], "-@:+!"); bin != "" && !slices.Contains(out, bin) {
-					out = append(out, bin)
-				}
+				add(strings.TrimLeft(fields[0], "-@:+!"))
 			}
+		}
+	}
+	return out, nil
+}
+
+// execPathPattern is a command's binary in `systemctl show`'s rendering of an
+// Exec property: `{ path=/usr/local/bin/morzer ; argv[]=… ; … }`, once per
+// command.
+var execPathPattern = regexp.MustCompile(`path=([^ ;]+)`)
+
+// effectiveExecPaths is every binary systemd would run for a unit, as it
+// loaded it. A unit it does not know, or a systemd that does not answer, has
+// nothing to add to what the unit's files say.
+func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]string, error) {
+	res, err := s.runner.Run(ctx, exec.Command{
+		Argv:          []string{s.systemctl, "show", unit, "--property=" + strings.Join(execKeys, ",")},
+		Timeout:       30 * time.Second,
+		CaptureOutput: true,
+	})
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, nil
+		}
+		return nil, domain.Internal(err, "cannot ask systemd what %s runs", unit)
+	}
+	var out []string
+	for line := range strings.Lines(res.Stdout) {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || !slices.Contains(execKeys, key) {
+			continue
+		}
+		for _, m := range execPathPattern.FindAllStringSubmatch(value, -1) {
+			out = append(out, m[1])
 		}
 	}
 	return out, nil

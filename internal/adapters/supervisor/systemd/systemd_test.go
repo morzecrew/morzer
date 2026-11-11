@@ -1153,3 +1153,31 @@ func TestTheSyncTimerTicksEveryInterval(t *testing.T) {
 		}
 	}
 }
+
+// The commands systemd itself reports for a unit count too: every drop-in it
+// loaded has had its say there, a runtime one under /run, a vendor one or a
+// type-level one included, none of which sits beside the unit.
+func TestUnitsManagerPathsAsksSystemdWhatItRuns(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnOutput("show demo.service", strings.Join([]string{
+		"ExecStart={ path=/srv/runtime/morzer ; argv[]=/srv/runtime/morzer apply --startup ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
+		"ExecReload=",
+	}, "\n"))
+
+	paths, err := s.UnitsManagerPaths(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("UnitsManagerPaths: %v", err)
+	}
+	for _, want := range []string{"/usr/local/bin/morzer", "/srv/runtime/morzer"} {
+		if !slices.Contains(paths, want) {
+			t.Errorf("paths = %v; want %s among them", paths, want)
+		}
+	}
+	if runner.Ran("show demo-backup.service") {
+		t.Error("asked systemd about a unit that is not installed")
+	}
+}
