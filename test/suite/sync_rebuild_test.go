@@ -14,6 +14,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/target"
 	"github.com/morzecrew/morzer/internal/adapters/target/localdir"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -67,9 +68,17 @@ func TestARebuiltMachineFollowsOnceTheAuthorityEncryptsToItsNewRecipient(t *test
 	roster := domain.FleetRoster{Schema: 1, Installations: []domain.FleetRosterEntry{{
 		Product: inst.Product, ID: inst.ID, PublicKey: inst.Signing.PublicKey,
 	}}}
-	publish := func(d *ops.Deps, serial int64, doc string) ops.StatePublishReport {
+	// The authority is neither machine: a host with no installation, a
+	// target, its key and a checker.
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	authorityDeps := &ops.Deps{
+		State:   state.New(domain.PathsUnder(t.TempDir(), "demo")),
+		Targets: registry, Objects: registry, Checker: signer.NewChecker(), Now: origin.Deps.Now,
+	}
+	publish := func(serial int64, doc string) ops.StatePublishReport {
 		t.Helper()
-		report, err := ops.StatePublish(ctx, d, ops.StatePublishOptions{
+		report, err := ops.StatePublish(ctx, authorityDeps, ops.StatePublishOptions{
 			TargetOptions: ops.TargetOptions{URL: url}, Roster: roster, Product: inst.Product,
 			InstallationID: inst.ID, Document: []byte(doc), Signer: authority, Serial: serial,
 		})
@@ -83,7 +92,7 @@ func TestARebuiltMachineFollowsOnceTheAuthorityEncryptsToItsNewRecipient(t *test
 		return report
 	}
 
-	before := publish(origin.Deps, 10, "parameters:\n  log_level: debug\n")
+	before := publish(10, "parameters:\n  log_level: debug\n")
 	require.Equal(t, domain.SyncOK, sync(origin).Result)
 
 	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
@@ -93,7 +102,7 @@ func TestARebuiltMachineFollowsOnceTheAuthorityEncryptsToItsNewRecipient(t *test
 
 	// The authority has not heard, and encrypts to the recipient the last
 	// row named.
-	stale := publish(origin.Deps, 20, "parameters:\n  log_level: warn\n")
+	stale := publish(20, "parameters:\n  log_level: warn\n")
 	assert.Equal(t, before.Recipient, stale.Recipient)
 
 	rebuilt := newMachine(t, t.TempDir())
@@ -127,7 +136,7 @@ func TestARebuiltMachineFollowsOnceTheAuthorityEncryptsToItsNewRecipient(t *test
 	// A rebuilt machine signs with a key of its own (RFC 0028 §5.3), which the
 	// roster has to learn out of band before it vouches for the row again.
 	assert.NotEqual(t, inst.Signing.PublicKey, row.SigningKey)
-	_, err = ops.StatePublish(ctx, rebuilt.Deps, ops.StatePublishOptions{
+	_, err = ops.StatePublish(ctx, authorityDeps, ops.StatePublishOptions{
 		TargetOptions: ops.TargetOptions{URL: url}, Roster: roster, Product: inst.Product,
 		InstallationID: inst.ID, Document: []byte("parameters:\n  log_level: warn\n"), Signer: authority, Serial: 30,
 	})
@@ -135,7 +144,7 @@ func TestARebuiltMachineFollowsOnceTheAuthorityEncryptsToItsNewRecipient(t *test
 	assert.Contains(t, err.Error(), "does not verify against the roster's key")
 	roster.Installations[0].PublicKey = row.SigningKey
 
-	after := publish(rebuilt.Deps, 30, "parameters:\n  log_level: warn\n")
+	after := publish(30, "parameters:\n  log_level: warn\n")
 	assert.Equal(t, row.AgeRecipient, after.Recipient)
 	require.Equal(t, domain.SyncOK, sync(rebuilt).Result)
 	assert.Equal(t, "warn", parameter(t, rebuilt, "log_level"))
