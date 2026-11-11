@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,6 +79,15 @@ func TestAMachinesFactsReachTheAuthority(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, relayFacts, report.Facts)
 	assert.Equal(t, state.Facts.Digest, report.Digest)
+	assert.Equal(t, row.PublishedAt, report.RowPublishedAt)
+	assert.False(t, report.Stale)
+
+	// A row put back from two days ago passes every check, and its age is
+	// how it shows.
+	f.h.Deps.Now = func() time.Time { return row.PublishedAt.Add(48 * time.Hour) }
+	report, err = f.facts(t)
+	require.NoError(t, err)
+	assert.True(t, report.Stale, "a two-day-old row was not called stale")
 }
 
 // A run that fails keeps the previous facts, and the row says why with a
@@ -269,4 +279,86 @@ func TestInitRunsNoFactsTask(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, h.Runtime.OneShots, "init ran the facts task")
 	assert.Nil(t, installation(t, h).Sync.Facts)
+}
+
+// Facts are published only to the recipient they were encrypted to: cleared,
+// nothing is published; changed, the old facts are not offered to the new
+// recipient, even when the next run fails.
+func TestFactsGoOnlyToTheRecipientTheyWereMadeFor(t *testing.T) {
+	f := newFactsRig(t)
+	_, err := ops.SetSettings(context.Background(), f.h.Deps, ops.SetSettingsOptions{Unset: []string{"sync.recipient"}})
+	require.NoError(t, err)
+	assert.Empty(t, f.publishRow(t).FactsDigest, "facts were published after sync.recipient was cleared")
+
+	f = newFactsRig(t)
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{ExitCode: 1}
+	other, err := sopsage.GenerateIdentity(filepath.Join(t.TempDir(), "other.age"))
+	require.NoError(t, err)
+	require.NoError(t, setSettings(t, f.h, map[string]string{"sync.recipient": other}))
+	assert.Empty(t, f.publishRow(t).FactsDigest, "facts made for the old recipient were offered to the new one")
+}
+
+// What a facts run made is recorded only if the recipient it encrypted to is
+// still the one configured when it commits, and only one run commits at a
+// time.
+func TestAFactsRunCommitsOnlyWhatIsStillCurrent(t *testing.T) {
+	f := newFactsRig(t)
+	before := f.state(t).Facts.Digest
+	base := f.h.Locker.Acquired("deployment")
+	other, err := sopsage.GenerateIdentity(filepath.Join(t.TempDir(), "other.age"))
+	require.NoError(t, err)
+	// The change takes the lock, then the facts task, then the commit:
+	// the recipient changes just before the commit.
+	f.h.Locker.BeforeAcquire = func() {
+		if f.h.Locker.Acquired("deployment") == base+2 {
+			inst := installation(t, f.h)
+			inst.Sync.Recipient = other
+			require.NoError(t, f.h.Deps.State.SaveInstallation(context.Background(), inst))
+		}
+	}
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=FOR-THE-OLD-RECIPIENT\n"}
+	_, err = ops.ConfigSet(context.Background(), f.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"http_port": "9000"}})
+	f.h.Locker.BeforeAcquire = nil
+	require.NoError(t, err)
+	if facts := f.state(t).Facts; facts != nil {
+		assert.Equal(t, before, facts.Digest, "facts made for a recipient no longer configured were recorded")
+	}
+
+	// A refresh already under way holds the facts lock, and a second one
+	// gives way to it.
+	g := newFactsRig(t)
+	beforeG := g.state(t).Facts.Digest
+	g.h.Locker.RefuseNth = map[string]int{"facts": g.h.Locker.Acquired("facts") + 1}
+	g.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=SECOND\n"}
+	_, err = ops.Apply(context.Background(), g.h.Deps, ops.Options{})
+	g.h.Locker.RefuseNth = nil
+	require.NoError(t, err)
+	assert.Equal(t, beforeG, g.state(t).Facts.Digest, "a facts run did not give way to one under way")
+}
+
+// The facts run is not what the row reports as the machine's last operation.
+func TestTheFactsRunIsNotTheRowsLastOperation(t *testing.T) {
+	f := newFactsRig(t)
+	_, err := ops.Apply(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+	row := f.publishRow(t)
+	require.NotNil(t, row.LastOperation)
+	assert.Equal(t, string(domain.OpTypeApply), row.LastOperation.Kind)
+}
+
+// A target that refuses the facts gets no row naming them: the row it already
+// has stays, consistent with the facts beside it, and the failure is named as
+// the facts'.
+func TestARowIsNotPublishedBesideFactsThatFailedToWrite(t *testing.T) {
+	f := newFactsRig(t)
+	objects := f.h.Deps.Objects
+	f.h.Deps.Objects = putFailing{ObjectStore: objects, suffix: "facts.age"}
+	result, err := ops.FleetPublish(context.Background(), f.h.Deps, ops.FleetPublishOptions{})
+	f.h.Deps.Objects = objects
+	require.NoError(t, err)
+	report := result.Data.(ops.FleetPublishReport)
+	require.Len(t, report.Targets, 1)
+	assert.False(t, report.Targets[0].Published, "a row naming facts that did not reach the target was published")
+	assert.NotEmpty(t, report.Targets[0].FactsError)
+	assert.Contains(t, result.Summary, "facts")
 }
