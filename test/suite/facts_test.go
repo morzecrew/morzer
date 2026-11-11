@@ -324,6 +324,24 @@ func TestAFactsRunCommitsOnlyWhatIsStillCurrent(t *testing.T) {
 		assert.Equal(t, before, facts.Digest, "facts made for a recipient no longer configured were recorded")
 	}
 
+	// The same for a release replaced while the task ran.
+	r := newFactsRig(t)
+	beforeR := r.state(t).Facts.Digest
+	baseR := r.h.Locker.Acquired("deployment")
+	r.h.Locker.BeforeAcquire = func() {
+		if r.h.Locker.Acquired("deployment") == baseR+2 {
+			current, err := r.h.Deps.State.CurrentRelease(context.Background())
+			require.NoError(t, err)
+			current.Digest = "sha256:another-release"
+			require.NoError(t, r.h.Deps.State.SetCurrentRelease(context.Background(), current))
+		}
+	}
+	r.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "public_key=FOR-THE-OLD-RELEASE\n"}
+	_, err = ops.ConfigSet(context.Background(), r.h.Deps, ops.ConfigSetOptions{Set: map[string]string{"http_port": "9000"}})
+	r.h.Locker.BeforeAcquire = nil
+	require.NoError(t, err)
+	assert.Equal(t, beforeR, r.state(t).Facts.Digest, "facts made under a release no longer installed were recorded")
+
 	// A refresh already under way holds the facts lock, and a second one
 	// gives way to it.
 	g := newFactsRig(t)
@@ -339,6 +357,8 @@ func TestAFactsRunCommitsOnlyWhatIsStillCurrent(t *testing.T) {
 // The facts run is not what the row reports as the machine's last operation.
 func TestTheFactsRunIsNotTheRowsLastOperation(t *testing.T) {
 	f := newFactsRig(t)
+	// Distinct times, so the journal's order is the order things ran.
+	f.h.Deps.Now = steppingClock()
 	_, err := ops.Apply(context.Background(), f.h.Deps, ops.Options{})
 	require.NoError(t, err)
 	row := f.publishRow(t)
