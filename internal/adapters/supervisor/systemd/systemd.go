@@ -316,8 +316,9 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 var execPathPattern = regexp.MustCompile(`path=([^ ;]+)`)
 
 // effectiveExecPaths is every binary systemd would run for a unit, as it
-// loaded it. A unit it does not know, or a systemd that does not answer, has
-// nothing to add to what the unit's files say.
+// loaded it. Asked only about a unit whose file is installed, so a query that
+// fails is an answer nobody has, not a unit with nothing to run: it fails, and
+// the caller says it could not check.
 func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]string, error) {
 	res, err := s.runner.Run(ctx, exec.Command{
 		Argv:          []string{s.systemctl, "show", unit, "--property=" + strings.Join(execKeys, ",")},
@@ -325,10 +326,6 @@ func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]str
 		CaptureOutput: true,
 	})
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, nil
-		}
 		return nil, domain.Internal(err, "cannot ask systemd what %s runs", unit)
 	}
 	var out []string

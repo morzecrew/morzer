@@ -1181,3 +1181,18 @@ func TestUnitsManagerPathsAsksSystemdWhatItRuns(t *testing.T) {
 		t.Error("asked systemd about a unit that is not installed")
 	}
 }
+
+// A unit systemd will not say anything about is not one it can be shown to run
+// safely: the failure is the answer, so manager.binary cannot pass on the files
+// alone.
+func TestUnitsManagerPathsFailsWhenSystemdWillNotSay(t *testing.T) {
+	s, runner, dir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(dir, "demo.service"),
+		[]byte("[Service]\nExecStart=/usr/local/bin/morzer apply --startup\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnExit("show demo.service", 1, "Failed to connect to bus")
+	if paths, err := s.UnitsManagerPaths(context.Background(), "demo"); err == nil {
+		t.Errorf("paths = %v; a query systemd failed was taken as nothing to add", paths)
+	}
+}
