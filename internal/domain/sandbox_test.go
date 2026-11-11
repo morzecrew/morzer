@@ -119,6 +119,8 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Sync.Target":      drop("production's documents prefix, which a sandbox keeps the id to read"),
 		"Sync.Credentials": keep("cleared with sync.target by the same drop: nothing to follow"),
 		"Sync.Authority":   keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Recipient":   keep("cleared with sync.target by the same drop: nothing to follow"),
+		"Sync.Facts":       keep("cleared with sync.target by the same drop: production's record"),
 		"Sync.Interval":    keep("cleared with sync.target by the same drop: nothing to follow"),
 		"Sync.Enabled":     keep("cleared with sync.target by the same drop: nothing to follow"),
 		"Sync.Applied":     keep("cleared with sync.target by the same drop: production's record"),

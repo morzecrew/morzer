@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
@@ -481,6 +482,19 @@ var settings = map[string]setting{
 			}
 			i.Sync.Authority = ""
 		},
+	},
+	"sync.recipient": {
+		Description: "the authority's age recipient, which this machine's published facts are encrypted to",
+		Read:        func(i domain.Installation) string { return i.Sync.Recipient },
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			raw = strings.TrimSpace(raw)
+			if err := agecrypt.ValidateRecipient(raw); err != nil {
+				return domain.Usage("%q is not an age recipient", raw)
+			}
+			i.Sync.Recipient = raw
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Sync.Recipient = "" },
 	},
 	"sync.interval": {
 		Description: "how often the sync timer fetches, a duration of at least 1m; 15m when unset",

@@ -37,6 +37,7 @@ func newInitCommand(app *App) *cobra.Command {
 		signingKeys    []string
 		syncTarget     string
 		syncAuthority  string
+		syncRecipient  string
 		set            []string
 		setFiles       []string
 		mode           string
@@ -142,6 +143,7 @@ func newInitCommand(app *App) *cobra.Command {
 				SigningKeys:       signingKeys,
 				SyncTarget:        syncTarget,
 				SyncAuthority:     syncAuthority,
+				SyncRecipient:     syncRecipient,
 				Repair:            repair,
 				// Unset and false differ: unset requires a signature
 				// whenever a key is trusted, false says not to.
@@ -262,6 +264,8 @@ func newInitCommand(app *App) *cobra.Command {
 			"sync stays off until sync.enabled is set")
 	f.StringVar(&syncAuthority, "sync-authority", "",
 		"minisign public key a desired-state document must be signed with")
+	f.StringVar(&syncRecipient, "sync-recipient", "",
+		"the authority's age recipient, which this machine's facts are encrypted to")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
 		"what this machine is for: dev for a sandbox, or production (the default). "+

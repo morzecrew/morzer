@@ -27,6 +27,11 @@ type SyncConfig struct {
 	// Authority is the minisign public key a document must be signed with.
 	Authority string `yaml:"authority,omitempty" json:"authority,omitempty"`
 
+	// Recipient is the authority's age recipient, which this machine's
+	// published facts are encrypted to (RFC 0057 §5.10). Without one,
+	// nothing is published.
+	Recipient string `yaml:"recipient,omitempty" json:"recipient,omitempty"`
+
 	// Interval is how often the timer fetches, as a Go duration. Empty is
 	// DefaultSyncInterval.
 	Interval string `yaml:"interval,omitempty" json:"interval,omitempty"`
@@ -43,6 +48,22 @@ type SyncConfig struct {
 	// target last answered, which `doctor` compares with Interval.
 	LastFetch   *SyncFetch `yaml:"last_fetch,omitempty" json:"last_fetch,omitempty"`
 	LastReached Time       `yaml:"last_reached,omitempty" json:"last_reached,omitzero"`
+
+	// Facts is the facts this machine last produced for the authority, and
+	// whether the latest run produced them.
+	Facts *SyncFacts `yaml:"facts,omitempty" json:"facts,omitempty"`
+}
+
+// SyncFacts records the facts kept for the next row publish: the digest of
+// their ciphertext, which the row names (decision 28), when they were made,
+// and why the latest run did not replace them, when it did not.
+type SyncFacts struct {
+	Digest string `yaml:"digest,omitempty" json:"digest,omitempty"`
+	At     Time   `yaml:"at,omitempty" json:"at,omitzero"`
+
+	// Problem is a class and never the task's output: the exit status, an
+	// output over the bound, or a run that did not start.
+	Problem string `yaml:"problem,omitempty" json:"problem,omitempty"`
 }
 
 // DefaultSyncInterval is how often a machine fetches when it is not told, and

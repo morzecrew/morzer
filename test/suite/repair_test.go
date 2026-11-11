@@ -94,11 +94,13 @@ func TestARepairKeepsWhatTheOperatorConfigured(t *testing.T) {
 	// its own watermark; the rest of the block stays.
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", Repair: true, RecoveryRecipient: recoveryPub, SyncAuthority: authorityKey2,
+		SyncRecipient: ageRecipient,
 	})
 	require.NoError(t, err)
 	after, err = h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, authorityKey2, after.Sync.Authority)
+	assert.Equal(t, ageRecipient, after.Sync.Recipient)
 	assert.Nil(t, after.Sync.Applied, "a new authority inherited the old one's serials")
 	assert.Equal(t, inst.Sync.Target, after.Sync.Target)
 	assert.True(t, after.Sync.Enabled)
