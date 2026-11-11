@@ -50,7 +50,14 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 		return
 	}
 
-	problem, sealed := d.runFactsTask(ctx, rel.Manifest.Published.Task, inst.Sync.Recipient)
+	problem, sealed, locked := d.runFactsTask(ctx, rel.Manifest.Published.Task, inst.Sync.Recipient)
+	if locked {
+		// Another operation took the lock first. It is not a failure
+		// of the facts, and the next operation runs the task again;
+		// waiting would queue a timer's tick behind it, which no tick
+		// does.
+		return
+	}
 	var sig []byte
 	if problem == "" {
 		if _, err := d.Signer.EnsureKey(ctx); err != nil {
@@ -102,26 +109,29 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 
 // runFactsTask runs the task and encrypts what it printed, or says why there
 // is nothing to encrypt. The reason is a class, never the output: it reaches
-// the fleet row (decision 23's rule).
-func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (string, []byte) {
-	result, err := RunTask(ctx, d, TaskOptions{Options: Options{Wait: true}, Name: task, facts: true})
+// the fleet row (decision 23's rule). locked says another operation held the
+// lock, and the task did not run.
+func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (problem string, sealed []byte, locked bool) {
+	result, err := RunTask(ctx, d, TaskOptions{Name: task, facts: true})
 	run, ran := result.Data.(TaskRun)
 	switch {
+	case errors.Is(err, domain.ErrLocked):
+		return "", nil, true
 	case ran && run.ExitCode != 0:
-		return fmt.Sprintf("the facts task exited %d", run.ExitCode), nil
+		return fmt.Sprintf("the facts task exited %d", run.ExitCode), nil, false
 	case err != nil || !ran:
 		if err != nil {
 			d.warnf("facts task %s: %s", task, domain.AsError(err).Message)
 		}
-		return "the facts task did not run", nil
+		return "the facts task did not run", nil, false
 	case run.Truncated || len(run.Stdout) > domain.FactsLimit:
-		return fmt.Sprintf("the facts task printed more than %d KiB", domain.FactsLimit>>10), nil
+		return fmt.Sprintf("the facts task printed more than %d KiB", domain.FactsLimit>>10), nil, false
 	}
-	var sealed bytes.Buffer
-	if err := agecrypt.Encrypt(&sealed, bytes.NewReader([]byte(run.Stdout)), []string{recipient}); err != nil {
-		return "the facts could not be encrypted", nil
+	var out bytes.Buffer
+	if err := agecrypt.Encrypt(&out, bytes.NewReader([]byte(run.Stdout)), []string{recipient}); err != nil {
+		return "the facts could not be encrypted", nil, false
 	}
-	return "", sealed.Bytes()
+	return "", out.Bytes(), false
 }
 
 // keptFacts is the facts pair kept for the next row publish, when there is

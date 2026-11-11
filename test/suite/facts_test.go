@@ -224,3 +224,24 @@ func TestARowVouchesOnlyForTheFactsItsRecordNames(t *testing.T) {
 	require.NoError(t, os.WriteFile(f.h.Paths.FactsFile(), []byte("not these"), 0o600))
 	assert.Empty(t, f.publishRow(t).FactsDigest)
 }
+
+// A facts run that finds another operation holding the lock does not wait for
+// it, and records no problem: the next operation runs the task again.
+func TestAFactsRunGivesWayToAHeldLock(t *testing.T) {
+	f := newFactsRig(t)
+	before := *f.state(t).Facts
+	runs := len(f.h.Runtime.OneShots)
+	// The operation takes the lock first; the facts task's is the second.
+	acquired := 0
+	f.h.Locker.BeforeAcquire = func() {
+		acquired++
+		f.h.Locker.FailAcquire = acquired >= 2
+	}
+	_, err := ops.ConfigSet(context.Background(), f.h.Deps, ops.ConfigSetOptions{
+		Set: map[string]string{"http_port": "9000"},
+	})
+	f.h.Locker.BeforeAcquire, f.h.Locker.FailAcquire = nil, false
+	require.NoError(t, err)
+	assert.Len(t, f.h.Runtime.OneShots, runs, "the facts task ran without the lock")
+	assert.Equal(t, before, *f.state(t).Facts, "a facts run that could not take the lock recorded a problem")
+}
