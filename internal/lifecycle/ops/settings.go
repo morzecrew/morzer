@@ -945,6 +945,9 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 	if len(changed) == 0 {
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
+	if !opts.DryRun {
+		d.refreshFacts(ctx)
+	}
 	return Result{Record: result.Record, Summary: settingsSummary(changed, plan, opts.DryRun)}, nil
 }
 

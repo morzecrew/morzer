@@ -158,6 +158,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		out.Summary = startSummary(result.Record, inst, rel, opts.DryRun)
 	}
 	d.notifyFinished(ctx, opID, opType, result.Record, runErr)
+	d.refreshFactsAfter(ctx, opts, result.Record, runErr)
 
 	// After the operation, never inside it. A statement is a record *of*
 	// what happened, so it cannot be a step whose own failure changes what

@@ -132,6 +132,12 @@ func (p Paths) ManagerDir() string { return filepath.Join(p.VarDir, "manager") }
 // an input can be gigabytes, and /run is memory.
 func (p Paths) InputsDir() string { return filepath.Join(p.ManagerDir(), "inputs") }
 
+// FactsFile is the facts this machine last made for the authority it follows,
+// encrypted, kept for the next row publish; FactsSignatureFile is their
+// signature by the machine key (RFC 0057 §5.10).
+func (p Paths) FactsFile() string          { return filepath.Join(p.ManagerDir(), "facts.age") }
+func (p Paths) FactsSignatureFile() string { return p.FactsFile() + ".minisig" }
+
 // NotifyOutboxDir holds the notifications a target has still to accept
 // (RFC 0043 §5.2).
 func (p Paths) NotifyOutboxDir() string { return filepath.Join(p.ManagerDir(), "notify", "outbox") }

@@ -737,6 +737,7 @@ func Restore(ctx context.Context, d *Deps, opts RestoreOptions) (Result, error) 
 
 	out := Result{Record: result.Record}
 	d.notifyFinished(ctx, opID, domain.OpTypeRestore, result.Record, runErr)
+	d.refreshFactsAfter(ctx, opts.Options, result.Record, runErr)
 
 	// A restore moves data rather than versions, so it carries no
 	// from_version and does not join the chain -- but it is the operation

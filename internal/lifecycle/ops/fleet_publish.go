@@ -146,6 +146,10 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 	// parses.
 	sig := d.signFleetRow(ctx, inst, body)
 	report.Signed = len(sig) > 0
+	facts, factsSig, haveFacts := d.keptFacts(inst)
+	if haveFacts && row.FactsDigest == "" {
+		haveFacts = false
+	}
 
 	for _, target := range targets {
 		status := FleetPublishTarget{URL: target.String()}
@@ -158,15 +162,43 @@ func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Resul
 		}
 		status.Unchecked = verdict.unchecked
 
+		// The facts before the row that names their digest, so a row
+		// never vouches for facts not yet beside it (RFC 0057 decision
+		// 28). A write that fails is the target's error, and the row is
+		// published all the same: an authority then refuses the facts,
+		// and still reads the row.
+		var factsErr error
+		if haveFacts {
+			factsErr = d.putFacts(ctx, target, inst, facts, factsSig)
+		}
 		published, err := d.putFleetRow(ctx, target, key, body, sig)
 		status.Published = published
-		if err != nil {
+		switch {
+		case factsErr != nil && err != nil:
+			status.Error = "the facts were not written: " + domain.AsError(factsErr).Message +
+				"; " + domain.AsError(err).Message
+		case factsErr != nil:
+			status.Error = "the facts were not written: " + domain.AsError(factsErr).Message
+		case err != nil:
 			status.Error = domain.AsError(err).Message
 		}
 		report.Targets = append(report.Targets, status)
 	}
 
 	return Result{Summary: fleetPublishSummary(report, false), Data: report}, nil
+}
+
+// putFacts writes the facts pair beside the row: the ciphertext, then its
+// signature.
+func (d *Deps) putFacts(ctx context.Context, target ports.TargetRef, inst domain.Installation, sealed, sig []byte) error {
+	doc, sigKey, err := domain.FactsKeys(inst.Product, inst.ID)
+	if err != nil {
+		return err
+	}
+	if err := d.Objects.PutObject(ctx, target, doc, sealed); err != nil {
+		return err
+	}
+	return d.Objects.PutObject(ctx, target, sigKey, sig)
 }
 
 // putFleetRow writes the row and then its signature, and reports the two

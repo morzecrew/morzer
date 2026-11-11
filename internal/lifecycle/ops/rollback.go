@@ -197,6 +197,7 @@ func Rollback(ctx context.Context, d *Deps, opts RollbackOptions) (Result, error
 			replacedNote(result.Record.Flags) + d.keptCopiesNote(previousRel)
 	}
 	d.notifyFinished(ctx, opID, domain.OpTypeRollback, result.Record, runErr)
+	d.refreshFactsAfter(ctx, opts.Options, result.Record, runErr)
 
 	// The other version-moving operation, and the one an auditor asks about
 	// most: a rollback is what happened when something went wrong.

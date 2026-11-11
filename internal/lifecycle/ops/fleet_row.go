@@ -53,6 +53,10 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 	in.Drift = d.fleetDrift(ctx, inst, current, currentErr)
 	in.LastOperation = d.fleetLastOperation(ctx)
 	in.AgeRecipient = d.machineRecipient(ctx)
+	// Named only when the facts it names are here to publish beside it.
+	if _, _, ok := d.keptFacts(inst); ok {
+		in.FactsDigest = inst.Sync.Facts.Digest
+	}
 
 	return domain.NewFleetRow(in)
 }

@@ -280,6 +280,7 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		}
 		attestConfig(ctx, d, result.Record, run.before, run.rel, st, extras.desiredState)
 	}
+	d.refreshFactsAfter(ctx, opts, result.Record, runErr)
 	return run, runErr
 }
 

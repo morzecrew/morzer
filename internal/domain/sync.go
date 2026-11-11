@@ -232,3 +232,24 @@ func MinisignKeyID(key string) string {
 	}
 	return fmt.Sprintf("%016X", binary.LittleEndian.Uint64(raw[2:10]))
 }
+
+// FactsLimit bounds a facts task's output (RFC 0057 §5.10).
+const FactsLimit = 64 << 10
+
+// FactsKeys are the facts pair beside an installation's fleet row (decision
+// 14): the ciphertext, and its signature by the machine key.
+func FactsKeys(product, installationID string) (doc, sig string, err error) {
+	row, err := FleetKey(product, installationID)
+	if err != nil {
+		return "", "", err
+	}
+	doc = strings.TrimSuffix(row, FleetFileName) + "facts.age"
+	return doc, doc + ".minisig", nil
+}
+
+// FactsComment is the facts signature's trusted comment, which names the
+// installation, so facts copied beside another installation's row are not
+// read as that one's (decision 28).
+func FactsComment(product, installationID string) string {
+	return "morzer facts product=" + product + " installation=" + installationID
+}

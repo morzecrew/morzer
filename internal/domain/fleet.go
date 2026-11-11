@@ -105,6 +105,13 @@ type FleetRow struct {
 	// (RFC 0057 §5.9), absent when it follows none. Schema 2.
 	Sync *FleetSync `json:"sync,omitempty"`
 
+	// FactsDigest is the sha256 of the facts ciphertext published beside
+	// this row, which an authority uses only when it is this digest
+	// (decision 28), and FactsProblem why the latest facts run did not
+	// replace them, as a class. Schema 2.
+	FactsDigest  string `json:"facts_digest,omitempty"`
+	FactsProblem string `json:"facts_problem,omitempty"`
+
 	// PublishedAt is when this row was written, and it is what stops an
 	// older row from silently becoming current.
 	//
@@ -255,6 +262,7 @@ type FleetRowInputs struct {
 	Drift          FleetDrift
 	LastOperation  *FleetOperation
 	AgeRecipient   string
+	FactsDigest    string
 	PublishedAt    Time
 }
 
@@ -285,7 +293,11 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		SigningKey:   boundedText(in.Installation.Signing.PublicKey),
 		AgeRecipient: boundedText(in.AgeRecipient),
 		Sync:         fleetSync(in.Installation.Sync),
+		FactsDigest:  boundedText(in.FactsDigest),
 		PublishedAt:  in.PublishedAt,
+	}
+	if f := in.Installation.Sync.Facts; f != nil {
+		row.FactsProblem = boundedText(f.Problem)
 	}
 
 	row.Health = FleetHealth{
@@ -488,6 +500,8 @@ func (r FleetRow) Bounded() FleetRow {
 	r.ManagerVersion = boundedText(r.ManagerVersion)
 	r.SigningKey = boundedText(r.SigningKey)
 	r.AgeRecipient = boundedText(r.AgeRecipient)
+	r.FactsDigest = boundedText(r.FactsDigest)
+	r.FactsProblem = boundedText(r.FactsProblem)
 	r.Sync = r.Sync.bounded()
 	r.Health.Problem = boundedText(r.Health.Problem)
 	r.Drift.Problem = boundedText(r.Drift.Problem)
