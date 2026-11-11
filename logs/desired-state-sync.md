@@ -617,3 +617,74 @@ evidence: internal/lifecycle/ops/sync.go:277
 action: decided
 proposal: OPEN, ruled 2026-11-10 — a pair over the bound is not a document: bad-signature on the machine, removed by the next publish
 ```
+
+## Plan, PR C (P5), refined before building
+
+The plan above, made concrete against the code:
+
+- `internal/domain/manifest.go`: `published: {task: <name>}`, naming a
+  declared task that takes no inputs, under the 0.16.0 floor `managed`
+  has.
+- `internal/domain/sync.go`: `sync.recipient` back, and the facts record:
+  digest, time and problem. State schema 19 to 20.
+- `internal/lifecycle/ops/facts.go`: after a successful operation, run the
+  task as a task operation, encrypt its stdout (64 KiB at most) to
+  `sync.recipient`, sign the ciphertext with the machine key, and keep both
+  under the manager's directory, recording the digest. A failed run keeps
+  the previous facts and records why.
+- `internal/lifecycle/ops/fleet_publish.go` and `fleet_row.go`: the facts
+  pair is written beside the row before it, and the row names
+  `facts_digest` and `facts_problem`.
+- `internal/lifecycle/ops/state.go`: `StateFacts`, decision 28's checks,
+  then decryption.
+- CLI: `config set sync.recipient`, `init --sync-recipient` with the
+  wizard's printed command and repair, and `state facts`.
+- Docs, changelog and tests.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: §5.10 runs the task "after every successful operation (init, update, `config apply`, a sync)". The list is examples, and a task run after a backup, a task or a stop changes nothing the facts describe, while one after a task would run itself. It runs after a successful init, apply, start, update, rollback, restore and configuration change (config apply, config set, a setting that converges, and a sync), and after nothing else.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:580
+action: decided
+proposal: UNLISTED — facts are refreshed after a successful init, apply, start, update, rollback, restore or configuration change, and never after a task, a backup or a stop
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: decision 14 publishes facts beside the row with the row's credential, and decision 28 binds them by the row's facts_digest, and neither says when the pair is uploaded. The machine keeps the signed ciphertext locally once the task has run, and every row publish, the hourly one and a sync's, writes the facts pair before the row that names its digest. One write path keeps the row and the facts it vouches for in step.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:604
+action: departed
+proposal: ASSUMED — facts are kept locally after each run and written beside the row, before it, by every row publish
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: the facts task is a release task (RFC 0041), which runs as a journalled, attested operation and is notified like any other. Notifying a facts run after every operation would double what notify targets receive. It runs as a task operation, journalled and attested, and is not notified: its outcome is in the row's facts_problem, and its output is never journalled, as no task's is.
+evidence: internal/lifecycle/ops/task.go:243
+action: decided
+proposal: UNLISTED — the facts run is a task operation, journalled and attested and not notified; a failure is the row's facts_problem
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-11T09:49:44Z
+attempt: 1
+claim: §5.10 says a failed run is reported in the row, which never carries a value (decision 23's rule). The row's facts_problem is a class: the task's exit status, output over 64 KiB, or a run that could not start. Never the task's output or its error's text.
+evidence: rfcs/0057-desired-state-an-installation-pulls-and-applies-to-itself.md:582
+action: decided
+proposal: UNLISTED — the row's facts_problem names the exit status, an output over the bound, or a run that did not start, and never quotes output
+```
