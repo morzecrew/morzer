@@ -312,8 +312,8 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 
 // execPathPattern is a command's binary in `systemctl show`'s rendering of an
 // Exec property: `{ path=/usr/local/bin/morzer ; argv[]=… ; … }`, once per
-// command.
-var execPathPattern = regexp.MustCompile(`path=([^ ;]+)`)
+// command. Anchored to the brace, since an argument may carry `path=` too.
+var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
 
 // effectiveExecPaths is every binary systemd would run for a unit, as it
 // loaded it. Asked only about a unit whose file is installed, so a query that
@@ -327,6 +327,10 @@ func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]str
 	})
 	if err != nil {
 		return nil, domain.Internal(err, "cannot ask systemd what %s runs", unit)
+	}
+	if res.Truncated {
+		// A prefix cannot show that every command was looked at.
+		return nil, domain.Internal(nil, "systemd's answer about what %s runs was cut short", unit)
 	}
 	var out []string
 	for line := range strings.Lines(res.Stdout) {
