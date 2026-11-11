@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strings"
 
@@ -158,6 +159,11 @@ type ObjectStore interface {
 // medium is one somebody else may be able to write to, and the reader is often
 // a machine in the middle of an incident.
 const MaxObjectBytes = 1 << 20
+
+// ErrObjectTooLarge is GetObject refusing an object over MaxObjectBytes. A
+// reader walking a prefix other writers reach tells it apart from a read that
+// failed: the object is there, and it is not one this manager wrote.
+var ErrObjectTooLarge = errors.New("the object is larger than this manager reads")
 
 // TargetRef is a normalized backup target reference: where, plus what it takes
 // to get in.

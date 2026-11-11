@@ -540,6 +540,9 @@ func runObjectStoreCases(t *testing.T, newTarget BackupTargetFactory) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, fs.ErrNotExist,
 			"an oversized object was reported as an absent one")
+		// Told apart from a failed read: a publisher pruning a prefix
+		// others write to removes such an object rather than stopping.
+		assert.ErrorIs(t, err, ports.ErrObjectTooLarge)
 	})
 
 	t.Run("objects are invisible to the backup listing", func(t *testing.T) {

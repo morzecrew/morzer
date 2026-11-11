@@ -1,6 +1,7 @@
 package suite
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"os"
@@ -312,4 +313,19 @@ func TestAPruneKeepsThePairJustWrittenWhenItCannotReadItBack(t *testing.T) {
 	assert.NotContains(t, report.Pruned, int64(100))
 	_, err = os.Stat(filepath.Join(a.offsite, filepath.FromSlash(report.Signature)))
 	assert.NoError(t, err, "the prune removed the pair it had just written")
+}
+
+// A planted pair too large to read is not the authority's either: it neither
+// stops a publish nor survives the prune.
+func TestAnOversizedPlantedPairNeitherBlocksNorSurvives(t *testing.T) {
+	a := newAuthorityRig(t)
+	a.put(t, 9_000, bytes.Repeat([]byte("x"), ports.MaxObjectBytes+1), a.authority,
+		domain.DesiredStateComment(a.inst.Product, a.inst.ID, 9_000))
+
+	opts := a.publishOpts("parameters:\n  log_level: debug\n")
+	opts.Serial = 100
+	report, err := a.statePublish(t, opts)
+	require.NoError(t, err, "an oversized pair stopped a publish")
+	assert.Equal(t, []int64{9_000}, report.Pruned)
+	assert.Equal(t, domain.SyncOK, a.syncOK(t).Result)
 }

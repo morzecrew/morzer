@@ -110,8 +110,8 @@ one is.
 | `ok` | the document was applied, or its values were already in force | no; recorded as applied |
 | `current` | nothing newer than the last applied or refused document | no |
 | `absent` | no complete pair is published | no |
-| `unreachable` | the target did not answer, or an object could not be read, as one over 1 MiB | no |
-| `bad-signature` | the newest pair is not a document the authority signed for this installation and serial | no |
+| `unreachable` | the target did not answer, or an object could not be read | no |
+| `bad-signature` | the newest pair is not a document the authority signed for this installation and serial, or is over the 1 MiB a document can be | no |
 | `replay` | the newest document is older than the one applied or the one refused | no |
 | `expired` | the newest document has expired, or the one in force has and nothing newer is published | the newest, when it is the one expired |
 | `undecryptable` | the document is not encrypted to this machine, as after a rebuild | yes |

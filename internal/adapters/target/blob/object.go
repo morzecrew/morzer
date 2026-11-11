@@ -76,7 +76,7 @@ func GetObject(ctx context.Context, s Store, key string) ([]byte, error) {
 		return nil, domain.BackupError(err, "cannot read the object at %s", key)
 	}
 	if len(data) > ports.MaxObjectBytes {
-		return nil, domain.BackupError(nil,
+		return nil, domain.BackupError(ports.ErrObjectTooLarge,
 			"the object at %s is larger than %d bytes", key, ports.MaxObjectBytes).
 			WithHint("this manager writes small documents there; something else " +
 				"is writing to that target")

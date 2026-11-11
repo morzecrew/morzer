@@ -310,7 +310,12 @@ func (d *Deps) authorityPairs(
 			body, err = d.Objects.GetObject(ctx, target, docKey)
 		}
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, fs.ErrNotExist), errors.Is(err, ports.ErrObjectTooLarge):
+			// Gone since the listing, or too large to be a document:
+			// not the authority's, and removed by the prune. Any other
+			// read failure stops the publish, so a target that answers
+			// badly never makes the prune remove a pair it could not
+			// check.
 			others = append(others, serial)
 			continue
 		case err != nil:
