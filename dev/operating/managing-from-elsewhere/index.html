@@ -1125,6 +1125,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#after-rebuilding-a-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        After rebuilding a machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#changing-a-managed-value-on-the-machine" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2263,6 +2274,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#after-rebuilding-a-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        After rebuilding a machine
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#changing-a-managed-value-on-the-machine" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2456,6 +2478,25 @@ ones its newest row names.</p>
 target has not answered for three intervals. A target that withholds your
 documents can do nothing else, and that warning is how you see it. Publish
 before <code>expires_at</code>.</p>
+<h2 id="after-rebuilding-a-machine">After rebuilding a machine<a class="headerlink" href="#after-rebuilding-a-machine" title="Permanent link">&para;</a></h2>
+<p>A machine rebuilt with <code>installation import</code> keeps its id and the serial it
+applied, but it has a new age identity and a new signing key. Until the
+authority hears of both, the machine refuses each new document as
+<code>undecryptable</code>, and <code>state publish</code> refuses its new row as signed by a key the
+roster does not name.</p>
+<ol>
+<li>Bring the release back with <code>morzer update &lt;bundle&gt;</code>, as after any
+   <a href="../recovering-a-lost-machine/">recovery</a>.</li>
+<li>Take the new key off the machine, as for a
+   <a href="../../reference/fleet/#getting-the-three-fields-off-a-machine">new one</a>, and
+   replace the old key in the roster:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>box<span class="w"> </span><span class="s1">'morzer fleet publish --dry-run --json'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span>.data.row.signing_key
+</code></pre></div>
+<ol>
+<li>Publish again. The row the rebuilt machine publishes names its new
+   recipient, and the document is encrypted to it.</li>
+</ol>
 <h2 id="changing-a-managed-value-on-the-machine">Changing a managed value on the machine<a class="headerlink" href="#changing-a-managed-value-on-the-machine" title="Permanent link">&para;</a></h2>
 <p>While sync is on, <code>config set</code> and <code>config apply</code> refuse to change a name the
 authority manages, and name the authority. <code>--force</code> changes it here, and the
