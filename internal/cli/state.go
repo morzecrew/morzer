@@ -146,7 +146,7 @@ func newStatePublishCommand(app *App) *cobra.Command {
 	f.StringVar(&file, "file", "", "the document to publish, or - for stdin")
 	f.StringVar(&keyPath, "key", "", "the authority's minisign secret key, unencrypted")
 	f.Int64Var(&serial, "serial", 0, "the document's serial (default: the time in milliseconds)")
-	f.DurationVar(&validFor, "valid-for", 0, "how long the document stays valid (default 168h)")
+	f.DurationVar(&validFor, "valid-for", 0, "how long the document stays valid, at least 1m (default 168h)")
 	f.StringArrayVar(&recipients, "recipient", nil,
 		"age recipient to encrypt to as well as the machine, such as the authority's own; repeat for several")
 	return cmd

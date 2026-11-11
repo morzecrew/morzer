@@ -184,20 +184,28 @@ morzer state publish --target s3://acme-state/demo --expect ./roster.yaml \
 
 In order:
 
-1. Reads the installation's fleet row from the target, and refuses an
-   installation the roster does not list, a roster entry with no key, and a
-   row that does not verify against the roster's key.
+1. Refuses an installation the roster does not list, and a roster entry with
+   no key.
 2. Reads the document, a change document without the envelope, and checks it.
-3. Stamps the envelope: the serial, the issue time, and the expiry.
-4. Encrypts the whole document to the row's `age_recipient`, and to any
+3. Refuses a serial not newer than the newest document the authority's key
+   signed on the target, since a pair is written once. A pair it did not sign
+   does not count, so one planted at a high serial cannot stop it.
+4. Reads the installation's fleet row, and refuses one that does not verify
+   against the roster's key.
+5. Stamps the envelope: the serial, the issue time, and the expiry, at least a
+   minute later.
+6. Encrypts the whole document to the row's `age_recipient`, and to any
    `--recipient`. It refuses a ciphertext over 1 MiB, the most a machine
    reads.
-5. Signs the ciphertext with the trusted comment that names it.
-6. Writes the ciphertext, then the signature, and removes everything below
-   the newest three complete pairs, each signature before its ciphertext.
+7. Signs the ciphertext with the trusted comment that names it.
+8. Writes the ciphertext, then the signature, then prunes.
 
-A serial not newer than the newest published is refused, since a pair is
-written once. A failed prune fails nothing: the next publish prunes again.
+The prune keeps the newest three pairs the authority's key signed and removes
+every other complete pair, whether an older one of its own, one an earlier key
+signed, or one planted there. It removes a lone object only below the serial
+just published, since one above it may be another publish in flight. Each pair
+loses its signature first. A failed prune fails nothing: the next publish
+prunes again.
 
 | Flag | Meaning |
 | --- | --- |
@@ -207,7 +215,7 @@ written once. A failed prune fails nothing: the next publish prunes again.
 | `--file` | The document, or `-` for stdin. Required. |
 | `--key` | The authority's minisign secret key. Required. |
 | `--serial` | The serial. Default: the time in milliseconds. |
-| `--valid-for` | How long the document stays valid. Default `168h`. |
+| `--valid-for` | How long the document stays valid, at least `1m`. Default `168h`. |
 | `--recipient` | An age recipient to encrypt to as well, such as the authority's own. Repeat for several. |
 | `--credentials-file` | The target's credentials, as `fleet ls` takes them. |
 | `--dry-run` | Everything but the writes. |
