@@ -785,6 +785,15 @@ if [ -n "$shadowed_by" ]; then
 	warn "${shadowed_by} comes first on your PATH, so \`morzer\` still runs that one.
          Installed: ${target}"
 fi
+# A copy a non-root user installed is right for writing bundles and wrong for
+# running them. The manager runs installations as root, `sudo` keeps a PATH of
+# its own, and the manager refuses units that would run, as root, a file
+# another user can replace.
+if [ "$(id -u)" != 0 ]; then
+	warn "this copy is for $(id -un) only: \`sudo\` keeps its own PATH and may not find it, and the manager refuses to install units that would run it as root.
+         To run installations on this machine, install it for root instead:
+           curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version ${version}"
+fi
 if [ -n "$path_files_written" ]; then
 	# A PATH edit that does not affect the shell you are standing in is the
 	# other thing everyone has seen.

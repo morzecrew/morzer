@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release's health checks after re-creating its services, and undo the change
   if a check fails.
 
+- `install.sh` run without root says that its copy is for that user alone, which
+  `sudo` does not find and an installation cannot run, and prints the command
+  that installs one for root.
+
 ### Fixed
 
 - `config set` no longer fails when a service the parameter declares is behind

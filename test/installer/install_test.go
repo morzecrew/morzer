@@ -465,3 +465,26 @@ func entries(t *testing.T, dir string) []string {
 	}
 	return names
 }
+
+// A copy a user installed for themselves is for writing bundles. The manager
+// runs installations as root, `sudo` does not search the user's own prefix, and
+// units are refused that would run a file the user can replace, so the script
+// says so, and names the install that would run them.
+func TestAUserInstallSaysItIsNotTheOneThatRunsInstallations(t *testing.T) {
+	rel := newRelease(t, fixtureOptions{})
+	asRoot := stubDir(t, map[string]string{"id": "#!/bin/sh\nprintf '0\\n'\n"})
+	asUser := stubDir(t, map[string]string{"id": "#!/bin/sh\ncase \"$*\" in -un) printf 'alice\\n' ;; *) printf '1000\\n' ;; esac\n"})
+
+	run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: asUser},
+		"--version", fixtureVersion, "--dir", filepath.Join(t.TempDir(), "bin"), "--no-verify-signature",
+	).requireOK(t).requireSays(t, "for alice only", "| sudo sh -s -- --version "+fixtureVersion)
+
+	out := run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: asRoot},
+		"--version", fixtureVersion, "--dir", filepath.Join(t.TempDir(), "bin"), "--no-verify-signature",
+	).requireOK(t)
+	if strings.Contains(out.stderr, "only:") {
+		t.Errorf("an install by root was told it is for one user:\n%s", out.stderr)
+	}
+}
