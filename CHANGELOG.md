@@ -19,8 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for it, is refused before the backup and the stop, naming `--set`. It used to
   fail its render or health check after the downtime and roll back.
 
-- An unattended update leaves a release that adds a parameter with no default
-  staged, and names the parameter, rather than trying to install it.
+- An unattended update leaves a release that adds a parameter with no default,
+  or no longer accepts a value recorded for one, staged, and names the
+  parameter and the `morzer update --to <version> --set` that installs it,
+  rather than trying to install it.
 
 ## [0.16.0] - 2026-11-11
 

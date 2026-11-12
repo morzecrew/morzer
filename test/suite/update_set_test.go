@@ -297,15 +297,7 @@ func TestAnUpdatePlanNamesTheValuesItWillRecord(t *testing.T) {
 func TestAnUnattendedTickLeavesAReleaseThatNeedsAValueStaged(t *testing.T) {
 	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
 		t.Helper()
-		for file, edit := range map[string][2]string{
-			"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
-			"hooks/migrate": {"target=14", "target=12"},
-		} {
-			path := filepath.Join(dir, file)
-			raw, err := os.ReadFile(path)
-			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw), edit[0], edit[1], 1)), 0o755))
-		}
+		migrateNoFurther(t, dir)
 		requireAdminEmail(t, dir)
 	})
 	h.setHookEnv()
@@ -316,6 +308,43 @@ func TestAnUnattendedTickLeavesAReleaseThatNeedsAValueStaged(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, res.Applied, "a release that needs a value was installed unattended")
 	assert.Contains(t, res.Assessment.Why(), "admin_email")
-	assert.Contains(t, res.Assessment.Why(), "--set admin_email=")
+	assert.Contains(t, res.Assessment.Why(), "`morzer update --to 1.3.0 --set admin_email=<value>`")
 	assert.Equal(t, "1.2.0", currentVersion(t, h))
+}
+
+// The same for a recorded value the release no longer accepts, which `update`
+// refuses before anything runs as it refuses a missing one.
+func TestAnUnattendedTickLeavesAReleaseThatRefusesARecordedValueStaged(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		migrateNoFurther(t, dir)
+		patchManifest(t, dir, "values: [debug, info, warn, error]", "values: [info, warn, error]")
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	armAutoApply(t, h)
+	inst := installation(t, h)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	res, err := ops.RunUnattended(context.Background(), h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	assert.False(t, res.Applied)
+	assert.Contains(t, res.Assessment.Why(), "`morzer update --to 1.3.0 --set log_level=<value>`")
+	assert.Equal(t, "1.2.0", currentVersion(t, h))
+}
+
+// migrateNoFurther has the followed release migrate to no schema 1.2.0 cannot
+// read, so the tick's own gate passes it.
+func migrateNoFurther(t *testing.T, dir string) {
+	t.Helper()
+	for file, edit := range map[string][2]string{
+		"manifest.yaml": {"database_schema_produces: 14", "database_schema_produces: 12"},
+		"hooks/migrate": {"target=14", "target=12"},
+	} {
+		path := filepath.Join(dir, file)
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw), edit[0], edit[1], 1)), 0o755))
+	}
 }

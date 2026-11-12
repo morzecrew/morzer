@@ -88,12 +88,13 @@ Moving the file away lets the next tick install. An attended
 and installs.
 
 A release that adds a parameter with no default is held too, since a tick
-cannot give it a value. The tick names it, and installing it is an attended
-update with the value:
+cannot give it a value, and so is one that no longer accepts a value recorded
+for one it has. The tick names the parameter, and installing the release is an
+attended update with the value:
 
 ```text
-1.4.0 declares no default for admin_email, so it waits for `morzer update --set
-admin_email=<value>`
+1.4.0 declares no default for admin_email, so it waits for `morzer update --to
+1.4.0 --set admin_email=<value>`
 ```
 
 ## Turning it on
