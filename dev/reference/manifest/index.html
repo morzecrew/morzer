@@ -3658,10 +3658,13 @@ they had made the choice mandatory.</p>
 <code>config unset</code>, and by <code>apply</code>. That last one is deliberate: a release that
 introduces a required parameter fails to deploy rather than deploying with an
 empty value the product then misreads, and the currently running release keeps
-serving. Set the value first:</p>
-<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">admin_email</span><span class="o">=</span>ops@example
-morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.4.0.tar.zst
+serving. A release that adds one is installed with its value, which <code>update</code>
+records once it succeeds, and an update without it is refused before anything
+stops:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>update<span class="w"> </span>./demo-1.4.0.tar.zst<span class="w"> </span>--set<span class="w"> </span><span class="nv">admin_email</span><span class="o">=</span>ops@example
 </code></pre></div>
+<p>An unattended update cannot give a value, so it leaves such a release staged and
+names the parameter.</p>
 <p>See <a href="../parameters/">Parameters</a> for the operator's side.</p>
 <h2 id="images">images<a class="headerlink" href="#images" title="Permanent link">&para;</a></h2>
 <p>A map of logical name to image reference. <strong>Every reference must be pinned by

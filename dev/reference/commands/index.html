@@ -3557,6 +3557,14 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <td>Install a release older than the one running, which is otherwise refused. Recorded in the journal, and <code>--resume</code> keeps it for the same release. Refused beside <code>--check</code>, <code>--stage</code> and <code>--unattended</code>.</td>
 </tr>
 <tr>
+<td><code>--set</code></td>
+<td>Set a parameter of the release being installed, as <code>name=value</code>. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside <code>--check</code>, <code>--stage</code> and <code>--unattended</code>.</td>
+</tr>
+<tr>
+<td><code>--set-file</code></td>
+<td>Read such a parameter's value from a file, as <code>name=path</code>; <code>-</code> is standard input. Repeat for several.</td>
+</tr>
+<tr>
 <td><code>--digest</code></td>
 <td>Expected bundle content digest. A mismatch refuses the update.</td>
 </tr>
@@ -3592,6 +3600,13 @@ declare. The step names them, and a plan names what it would generate; no value
 is printed or journaled. A secret both releases declare and nobody set is left
 unset, and <code>apply</code> and <code>rollback</code> generate nothing. See
 <a href="../../operating/updating/#what-happens-in-order">updating</a>.</p>
+<p>A release that adds a parameter with no default needs a value for it: an
+update without one is refused before the backup, so the running release keeps
+serving and nothing is undone, and the hint names <code>--set</code>. A name the release
+does not declare is refused as a typo, and a value of the wrong type is refused
+by name. The values are recorded by the update's last step, so a failed update
+records none, and a <code>--resume</code> whose run stopped before recording them needs
+the same <code>--set</code> again, since the journal never had them.</p>
 <p>A release older than the one running is refused at <a href="../exit-codes/">exit 9</a>,
 whatever it came from, a local path included. <code>rollback</code> is how a machine goes
 back, and <code>--allow-older</code> installs an older release on purpose. See <a href="../../operating/updating/#never-older">never
