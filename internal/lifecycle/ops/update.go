@@ -165,7 +165,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// downtime (#346). The merged values are the new release's: a failure
 	// brings the running one back with the values recorded for it.
 	recorded := inst
-	if inst, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
+	if inst, opts.Parameters, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
 	}
 	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
@@ -430,7 +430,9 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 }
 
 // withUpdateParameters merges the values given for the release being installed
-// over the recorded ones, in memory, for the converge to render with. Refused
+// over the recorded ones, in memory, for the converge to render with, and
+// returns them as their types normalise them, which is how they are recorded.
+// Refused
 // before anything runs: a name that release does not declare and a value it
 // would not accept (ResolveParameters), and a parameter it gives no default
 // that has no value.
@@ -438,7 +440,7 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 // A resumed run whose values were not recorded before it stopped is given them
 // again, since the journal never had them.
 func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
-	prior *domain.OperationRecord) (domain.Installation, error) {
+	prior *domain.OperationRecord) (domain.Installation, map[string]string, error) {
 	declared := staged.Manifest.Parameters
 	if prior != nil && !stepSucceeded(*prior, "record-parameters") {
 		var again []string
@@ -448,7 +450,7 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 			}
 		}
 		if len(again) > 0 {
-			return inst, domain.Usage("the interrupted update was given %s, and stopped before recording it",
+			return inst, nil, domain.Usage("the interrupted update was given %s, and stopped before recording it",
 				strings.Join(again, ", ")).
 				WithHint("resume with the same values: --set %s=<value>", again[0])
 		}
@@ -458,24 +460,30 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 	// values, then what this update gives.
 	next := declaredValues(inst.Parameters, declared)
 	maps.Copy(next, opts.Parameters)
-	if _, err := domain.ResolveParameters(declared, next); err != nil {
-		return inst, err
+	resolved, err := domain.ResolveParameters(declared, next)
+	if err != nil {
+		return inst, nil, err
 	}
 	if missing := domain.MissingValues(declared, next); len(missing) > 0 {
-		return inst, domain.Usage("release %s declares no default for %s",
+		return inst, nil, domain.Usage("release %s declares no default for %s",
 			staged.Version(), strings.Join(missing, ", ")).
 			WithHint("give it with the update: --set %s=<value> (repeat --set for several)", missing[0])
 	}
 
-	if len(opts.Parameters) > 0 {
-		merged := maps.Clone(inst.Parameters)
-		if merged == nil {
-			merged = map[string]string{}
-		}
-		maps.Copy(merged, opts.Parameters)
-		inst.Parameters = merged
+	if len(opts.Parameters) == 0 {
+		return inst, nil, nil
 	}
-	return inst, nil
+	given := make(map[string]string, len(opts.Parameters))
+	for name := range opts.Parameters {
+		given[name] = resolved[name]
+	}
+	merged := maps.Clone(inst.Parameters)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+	maps.Copy(merged, given)
+	inst.Parameters = merged
+	return inst, given, nil
 }
 
 // declaredValues is the recorded values a release declares. A value it stopped

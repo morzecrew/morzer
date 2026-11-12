@@ -99,6 +99,18 @@ func TestUpdateSetGivesTheReleaseItsValue(t *testing.T) {
 		"a rollback kept a value only the release it left declared")
 }
 
+// A value is recorded as its type normalises it, the form the converge
+// rendered, as `config set` records one.
+func TestUpdateSetRecordsAValueAsItsTypeNormalisesIt(t *testing.T) {
+	h := convergedHarness(t)
+	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref:        withTextParameters(t, stageUpgradeSource(t, h)),
+		Parameters: map[string]string{"rules": firstRules + "\r\n  indented\n"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, firstRules+"\n  indented", installation(t, h).Parameters["rules"])
+}
+
 // A name the release being installed does not declare is a typo, as it is for
 // `config set`.
 func TestUpdateSetRefusesANameTheReleaseDoesNotDeclare(t *testing.T) {
