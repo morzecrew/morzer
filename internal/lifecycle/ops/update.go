@@ -215,7 +215,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.refuseMovedRelease(ctx, from); err != nil {
 			return err
 		}
-		if err := d.refuseChangedProfile(ctx, inst); err != nil {
+		if err := d.refuseChangedInstallation(ctx, recorded, staged.Manifest.Parameters); err != nil {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))

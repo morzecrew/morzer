@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `--set-file name=-` before reading standard input. They used to wait for
   input they then refused.
 
+- `apply`, `update` and `rollback` refuse when a `config set` of a parameter
+  their release declares, or of the domains, landed while they waited for the
+  deployment lock, as they already did for the profile. They used to deploy the
+  values read before it, so the deployment and the recorded state disagreed
+  until the next converge.
+
 ## [0.16.0] - 2026-11-11
 
 An installation can follow an authority's desired state: signed, encrypted

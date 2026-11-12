@@ -35,7 +35,7 @@ These are accepted by every command.
 | `--no-color` | Disable colour. Equivalent to `NO_COLOR` or `CLICOLOR=0` in the environment; the live renderer still draws, since every state carries a symbol too. |
 | `--plain` | Line-oriented output; no interactive rendering. Already automatic under CI, systemd, `TERM=dumb` and without a terminal — see [Output modes](output-modes.md). |
 | `--resume` | Continue an interrupted operation from where its journal left off. |
-| `--wait` | Wait for the deployment lock instead of failing with exit 4. |
+| `--wait` | Wait for the deployment lock instead of failing with exit 4. An `apply`, `update` or `rollback` that waited is refused if a `config set` changed the profile, a parameter its release declares, or the domains meanwhile, since it planned against what it read before; run it again. |
 | `--config` | Path to an installation's `installation.yaml`, which selects that installation: `/etc/demo/installation.yaml` means the `demo` layout, and a path with a prefix means that prefix. Equivalent to `--product` (and `--root`); naming both is refused when they disagree. |
 | `--product` | Product name. Inferred from the installation when omitted, and required on a host with more than one. |
 
