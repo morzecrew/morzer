@@ -223,3 +223,23 @@ parameters and domains, and a test commit.
   unreleased.
 
 **Drift count: 0.**
+
+## Follow-up review findings, 2026-11-12T04:40:00Z
+
+Reproduced red before each fix:
+
+- **`config set` read standard input before refusing a setting beside
+  `--set-file`** (b8e82f17).
+- **A failed update restored the running release from the snapshot read
+  before its lock** (7f9aee00), so a `config set` of a value only that release
+  declares, which the lock re-check lets through by design, was undone by the
+  restore while the state kept it. The restore point now reads the
+  installation when it runs. The rule: a compensator that brings something
+  back reads what is recorded then, not what the operation read before its
+  lock.
+- **A partial resume dropped the digests of the values it was not given**
+  (81a66188), so a later resume given one was refused.
+
+Refuted: a resume converging on a value a `config set` changed after
+record-parameters (by design, the route the hint names), and a compatibility
+path for journals with `set` and no `set_digest` (no release writes one).
