@@ -139,12 +139,19 @@ func TestAFailedUpdateRecordsNoValue(t *testing.T) {
 	requireAdminEmail(t, src)
 	h.Health.FailingWaits = 1
 
-	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
-		Ref: src, Parameters: map[string]string{"admin_email": adminEmail},
+	result, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
+		Ref: src, Parameters: map[string]string{"admin_email": adminEmail, "log_level": "debug"},
 	})
 	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
 	assert.Equal(t, "1.2.0", currentVersion(t, h))
 	assert.NotContains(t, installation(t, h).Parameters, "admin_email", "a rolled-back update recorded its value")
+	// Brought back up as it ran: without a value only the new release
+	// reads, and with its own for one the update changed.
+	cfg, _ := lastUp(t, h)
+	assert.Equal(t, "1.2.0", cfg.Env["DEMO_VERSION"])
+	assert.NotContains(t, cfg.Env, "DEMO_PARAM_ADMIN_EMAIL")
+	assert.NotEqual(t, "debug", cfg.Env["DEMO_PARAM_LOG_LEVEL"])
 }
 
 // saveFailingWhen fails, once, the installation save that when picks out: one of

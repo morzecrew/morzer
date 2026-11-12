@@ -162,7 +162,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// Before the operation, as the checks above are: a value the release
 	// needs and nobody gave is refused with nothing stopped and nothing to
 	// undo, where it used to fail the render or the health check after the
-	// downtime (#346).
+	// downtime (#346). The merged values are the new release's: a failure
+	// brings the running one back with the values recorded for it.
+	recorded := inst
 	if inst, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
 	}
@@ -176,7 +178,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
+		Steps:       updateSteps(d, recorded, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
 
@@ -536,10 +538,12 @@ func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
 	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version()) + replacedNote(rec.Flags)
 }
 
-// updateSteps is the update pipeline: four steps of its own, then apply's.
+// updateSteps is the update pipeline: four steps of its own, then apply's. inst
+// is what the new release converges with, recorded what the restore point
+// brings the running release back with.
 func updateSteps(
 	d *Deps,
-	inst domain.Installation,
+	recorded, inst domain.Installation,
 	from domain.ReleaseRecord,
 	fallback *fallbackRelease,
 	source, staged domain.Release,
@@ -572,7 +576,7 @@ func updateSteps(
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, inst, from, false))
+		steps = append(steps, stepRestorePoint(d, recorded, from, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
