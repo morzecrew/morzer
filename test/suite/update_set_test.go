@@ -295,9 +295,10 @@ func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
 	h.Deps.State = failing
 	ctx := context.Background()
 
-	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
+	first, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
 	require.Error(t, err)
 	require.Equal(t, adminEmail, installation(t, h).Parameters["admin_email"])
+	require.NotEmpty(t, first.Record.Flags["set_digest"])
 
 	// Stopped at the same write again, and resumed again.
 	resume := ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src}
@@ -310,6 +311,8 @@ func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
 	require.NoError(t, err, "a resume was asked for values its run had recorded")
 	assert.NotContains(t, installation(t, h).Parameters, "log_level")
 	assert.Equal(t, "admin_email", result.Record.Flags["set"], "the resumed record lost what the update was given")
+	assert.Equal(t, first.Record.Flags["set_digest"], result.Record.Flags["set_digest"],
+		"the resumed record lost the digests a later resume is held to")
 }
 
 // A plan names the parameters an update will record, never their values.
