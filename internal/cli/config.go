@@ -172,20 +172,23 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if set, _, err = app.readParameterFiles(set, setFiles); err != nil {
-				return err
-			}
 			settings, parameters := splitSettings(set)
 			// Refused rather than run as two operations. They have
 			// different machinery -- one converges a deployment, one
 			// writes a flag -- so a mixed command would half-apply on
 			// a failure with no single thing to report.
-			if len(settings) > 0 && len(parameters) > 0 {
+			//
+			// Before any file is read, so the refusal waits for no
+			// input: a file only ever carries a parameter.
+			if len(settings) > 0 && (len(parameters) > 0 || len(setFiles) > 0) {
 				return domain.Usage(
 					"parameters and installation settings are set separately").
 					WithHint("a setting changes what the manager does; a parameter " +
 						"changes what the deployment runs, and re-creates services " +
 						"to do it. `morzer config apply` changes both in one operation")
+			}
+			if parameters, _, err = app.readParameterFiles(parameters, setFiles); err != nil {
+				return err
 			}
 			if len(settings) > 0 {
 				return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
