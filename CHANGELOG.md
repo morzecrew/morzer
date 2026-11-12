@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter and the `morzer update --to <version> --set` that installs it,
   rather than trying to install it.
 
+- `init` and `config set` refuse a parameter given both as `name=value` and
+  with `--set-file name=-` before reading standard input. They used to wait for
+  input they then refused.
+
 ## [0.16.0] - 2026-11-11
 
 An installation can follow an authority's desired state: signed, encrypted

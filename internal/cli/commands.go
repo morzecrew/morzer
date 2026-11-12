@@ -157,11 +157,8 @@ func newInitCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			files, paths, err := app.readParameterFiles(setFiles)
+			params, paths, err := app.readParameterFiles(params, setFiles)
 			if err != nil {
-				return err
-			}
-			if params, err = mergeParameterFiles(params, files); err != nil {
 				return err
 			}
 			opts.Parameters = params
@@ -378,11 +375,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			files, _, err := app.readParameterFiles(setFiles)
-			if err != nil {
-				return err
-			}
-			if params, err = mergeParameterFiles(params, files); err != nil {
+			if params, _, err = app.readParameterFiles(params, setFiles); err != nil {
 				return err
 			}
 

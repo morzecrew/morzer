@@ -172,11 +172,7 @@ func newConfigSetCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			files, _, err := app.readParameterFiles(setFiles)
-			if err != nil {
-				return err
-			}
-			if set, err = mergeParameterFiles(set, files); err != nil {
+			if set, _, err = app.readParameterFiles(set, setFiles); err != nil {
 				return err
 			}
 			settings, parameters := splitSettings(set)

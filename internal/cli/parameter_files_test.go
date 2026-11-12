@@ -22,7 +22,14 @@ func (r refusedReader) Read([]byte) (int, error) {
 
 func TestStandardInputNamedTwiceIsRefusedBeforeItIsRead(t *testing.T) {
 	app := &App{Stream: ui.Streams{In: refusedReader{t}}}
-	_, _, err := app.readParameterFiles([]string{"a_value=-", "b_value=-"})
+	_, _, err := app.readParameterFiles(nil, []string{"a_value=-", "b_value=-"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "it can be read once")
+}
+
+func TestANameGivenBothWaysIsRefusedBeforeStandardInputIsRead(t *testing.T) {
+	app := &App{Stream: ui.Streams{In: refusedReader{t}}}
+	_, _, err := app.readParameterFiles(map[string]string{"a_value": "x"}, []string{"a_value=-"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `parameter "a_value" is set twice`)
 }
