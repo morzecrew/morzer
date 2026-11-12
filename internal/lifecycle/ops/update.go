@@ -164,8 +164,8 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// Before the operation, as the checks above are: a value the release
 	// needs and nobody gave is refused with nothing stopped and nothing to
 	// undo, where it used to fail the render or the health check after the
-	// downtime (#346). The merged values are the new release's: a failure
-	// brings the running one back with the values recorded for it.
+	// downtime (#346). The merged values are the new release's; the ones
+	// read here are what the lock re-check compares.
 	recorded := inst
 	if inst, opts.Parameters, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
@@ -180,7 +180,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, recorded, inst, from, fallback, source, staged, opts, prior),
+		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
 	// A resume given no values, because its run recorded them, still
@@ -587,12 +587,10 @@ func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
 	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version()) + replacedNote(rec.Flags)
 }
 
-// updateSteps is the update pipeline: four steps of its own, then apply's. inst
-// is what the new release converges with, recorded what the restore point
-// brings the running release back with.
+// updateSteps is the update pipeline: four steps of its own, then apply's.
 func updateSteps(
 	d *Deps,
-	recorded, inst domain.Installation,
+	inst domain.Installation,
 	from domain.ReleaseRecord,
 	fallback *fallbackRelease,
 	source, staged domain.Release,
@@ -624,8 +622,14 @@ func updateSteps(
 	}
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
+	//
+	// With the installation as recorded when the restore runs: never the
+	// update's own values, which nothing saves before the converge has
+	// passed, and not what the update read before its lock, which a
+	// `config set` of a value only the running release declares may have
+	// changed meanwhile.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, recorded, from, false))
+		steps = append(steps, stepRestorePoint(d, d.State.LoadInstallation, from, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
@@ -1243,7 +1247,11 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 //
 // force re-creates every container as they come back, which a profile change
 // needs: the containers it started read the new profile's rendered files.
-func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseRecord, force bool) engine.Step {
+//
+// installation is what the release comes back with, asked for when the
+// restore runs.
+func stepRestorePoint(d *Deps, installation func(context.Context) (domain.Installation, error),
+	from domain.ReleaseRecord, force bool) engine.Step {
 	return engine.Step{
 		ID:          "restore-point",
 		Description: "keep " + from.Version.String() + " to bring back on failure",
@@ -1251,6 +1259,10 @@ func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseReco
 		OnFailure:   engine.Abort,
 		Execute:     func(context.Context, *engine.State) error { return nil },
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			inst, err := installation(ctx)
+			if err != nil {
+				return err
+			}
 			return d.restorePreviousRuntime(ctx, st, inst, from, force)
 		},
 	}

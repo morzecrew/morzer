@@ -1066,7 +1066,7 @@ func convergeUnderProfiles(
 	d *Deps, before, after domain.Installation, current domain.ReleaseRecord, rel domain.Release,
 	staged ...engine.Step,
 ) []engine.Step {
-	keep := stepRestorePoint(d, before, current, true)
+	keep := stepRestorePoint(d, func(context.Context) (domain.Installation, error) { return before, nil }, current, true)
 	keep.Description = "keep " + profileName(before.Profiles) + " to bring back on failure"
 	steps := append([]engine.Step{keep}, staged...)
 	// Apply's checks abort, since in `apply` nothing before them needs
