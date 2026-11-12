@@ -183,11 +183,19 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
-	// A resume given no values, because its run recorded them, still
-	// names what the update was given.
-	if prior != nil && len(opts.Parameters) == 0 && prior.Flags["set"] != "" {
-		op.Flags["set"] = prior.Flags["set"]
-		op.Flags["set_digest"] = prior.Flags["set_digest"]
+	// A resume continues its run, so its record keeps every name and digest
+	// that run was given, beside those given again: a resume given some, or
+	// none because its run recorded them, still names the rest, and a
+	// later resume is held to them. A value given again matched its digest.
+	if prior != nil {
+		for _, key := range []string{"set", "set_digest"} {
+			entries := slices.Concat(strings.Split(prior.Flags[key], ","), strings.Split(op.Flags[key], ","))
+			entries = slices.DeleteFunc(entries, func(e string) bool { return e == "" })
+			slices.Sort(entries)
+			if entries = slices.Compact(entries); len(entries) > 0 {
+				op.Flags[key] = strings.Join(entries, ",")
+			}
+		}
 	}
 
 	var result engine.Result

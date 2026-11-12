@@ -315,6 +315,41 @@ func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
 		"the resumed record lost the digests a later resume is held to")
 }
 
+// A resume given some of the values keeps the digests of the rest, so a later
+// resume given one of those is still held to it rather than refused.
+func TestAPartialResumeKeepsTheDigestsItWasNotGiven(t *testing.T) {
+	h := convergedHarness(t)
+	src := stageRecoverableUpgradeSource(t, h)
+	requireAdminEmail(t, src)
+	dropParameter(t, src, "log_level")
+	inst := installation(t, h)
+	inst.Parameters = map[string]string{"log_level": "debug"}
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	// retire-parameters' write, after record-parameters, every run.
+	armed := true
+	store := h.Deps.State
+	h.Deps.State = saveFailingWhen{StateStore: store, armed: &armed, when: func(inst domain.Installation) bool {
+		_, kept := inst.Parameters["log_level"]
+		return !kept && inst.Parameters["admin_email"] == adminEmail
+	}}
+	ctx := context.Background()
+	given := map[string]string{"admin_email": adminEmail, "http_port": "18181"}
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: given})
+	require.Error(t, err)
+	armed = true
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src,
+		Parameters: map[string]string{"admin_email": adminEmail}})
+	require.Error(t, err)
+	h.Deps.State = store
+
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src,
+		Parameters: map[string]string{"http_port": "18181"}})
+	require.NoError(t, err, "a value the first run was given was refused")
+	assert.Equal(t, "admin_email,http_port", result.Record.Flags["set"])
+}
+
 // A plan names the parameters an update will record, never their values.
 func TestAnUpdatePlanNamesTheValuesItWillRecord(t *testing.T) {
 	h := convergedHarness(t)
