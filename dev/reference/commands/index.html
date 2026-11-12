@@ -3121,7 +3121,7 @@ maps its failure onto a stable <a href="../exit-codes/">exit code</a>.</p>
 </tr>
 <tr>
 <td><code>--wait</code></td>
-<td>Wait for the deployment lock instead of failing with exit 4.</td>
+<td>Wait for the deployment lock instead of failing with exit 4. An <code>apply</code>, <code>update</code> or <code>rollback</code> that waited is refused if a <code>config set</code> changed the profile, a parameter its release declares, or the domains meanwhile, since it planned against what it read before; run it again.</td>
 </tr>
 <tr>
 <td><code>--config</code></td>
@@ -3604,9 +3604,13 @@ unset, and <code>apply</code> and <code>rollback</code> generate nothing. See
 update without one is refused before the backup, so the running release keeps
 serving and nothing is undone, and the hint names <code>--set</code>. A name the release
 does not declare is refused as a typo, and a value of the wrong type is refused
-by name. The values are recorded by the update's last step, so a failed update
-records none, and a <code>--resume</code> whose run stopped before recording them needs
-the same <code>--set</code> again, since the journal never had them.</p>
+by name. The values are recorded once the update has converged on them, so one
+that rolls back records none.</p>
+<p>A <code>--resume</code> is held to the values its run was given. The journal keeps a
+digest of each, never the value, so a run that stopped before recording them
+needs the same <code>--set</code> again. A value that differs, or one the run was not
+given, is refused by name; change it after the update with
+<a href="../parameters/#changing-one-after-install"><code>config set</code></a>.</p>
 <p>A release older than the one running is refused at <a href="../exit-codes/">exit 9</a>,
 whatever it came from, a local path included. <code>rollback</code> is how a machine goes
 back, and <code>--allow-older</code> installs an older release on purpose. See <a href="../../operating/updating/#never-older">never
