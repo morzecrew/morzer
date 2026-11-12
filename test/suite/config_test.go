@@ -67,9 +67,11 @@ func TestConfigClearsAStaleValueWhileAnotherIsMissing(t *testing.T) {
 
 	src := stageUpgradeSource(t, h)
 	declareParameter(t, src, "api_key")
-	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"api_key": "k0"}})
 	require.NoError(t, err)
 
+	// The state those failures leave, written directly: api_key has lost
+	// its value, and a value nothing declares is still recorded.
 	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	inst.Parameters = map[string]string{"gone": "1"}

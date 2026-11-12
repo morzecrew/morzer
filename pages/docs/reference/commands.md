@@ -266,6 +266,8 @@ morzer update --to 1.3.0
 | --- | --- |
 | `--to` | Install a version already in the release store, instead of a bundle path. |
 | `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
+| `--set` | Set a parameter of the release being installed, as `name=value`. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside `--check`, `--stage` and `--unattended`. |
+| `--set-file` | Read such a parameter's value from a file, as `name=path`; `-` is standard input. Repeat for several. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. [`config set installation.profile`](parameters.md#changing-the-profile) keeps a selection. |
 | `--skip-backup` | Skip the pre-update backup. Requires `--force` and is recorded in the journal. |
@@ -280,6 +282,14 @@ declare. The step names them, and a plan names what it would generate; no value
 is printed or journaled. A secret both releases declare and nobody set is left
 unset, and `apply` and `rollback` generate nothing. See
 [updating](../operating/updating.md#what-happens-in-order).
+
+A release that adds a parameter with no default needs a value for it: an
+update without one is refused before the backup, so the running release keeps
+serving and nothing is undone, and the hint names `--set`. A name the release
+does not declare is refused as a typo, and a value of the wrong type is refused
+by name. The values are recorded by the update's last step, so a failed update
+records none, and a `--resume` whose run stopped before recording them needs
+the same `--set` again, since the journal never had them.
 
 A release older than the one running is refused at [exit 9](exit-codes.md),
 whatever it came from, a local path included. `rollback` is how a machine goes

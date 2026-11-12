@@ -380,7 +380,8 @@ func TestAFailedUpdateKeepsTheParametersItWouldHaveRetired(t *testing.T) {
 // TestAnUpdateThatSwapsAParameterLeavesConfigUsable is the update half of #190:
 // a release that drops one parameter and adds another with no default. The
 // update retires the dropped value, so nothing stale is left for `config` to
-// refuse over, and the new parameter can be given its value.
+// refuse over. The new parameter is given its value with the update (#346),
+// and `config` can change it afterwards.
 func TestAnUpdateThatSwapsAParameterLeavesConfigUsable(t *testing.T) {
 	h := newHarness(t)
 	h.install()
@@ -397,11 +398,12 @@ func TestAnUpdateThatSwapsAParameterLeavesConfigUsable(t *testing.T) {
 	dropParameter(t, src, "log_level")
 	declareParameter(t, src, "api_key")
 
-	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
-	require.NoError(t, err, "a parameter with no default is the operator's to set after the update")
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"api_key": "k"}})
+	require.NoError(t, err)
+	assert.NotContains(t, installation(t, h).Parameters, "log_level", "the dropped value was not retired")
 
 	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{
-		Set: map[string]string{"api_key": "k"},
+		Set: map[string]string{"api_key": "k2"},
 	})
 	require.NoError(t, err, "the update left a recorded set `config` cannot change")
 }

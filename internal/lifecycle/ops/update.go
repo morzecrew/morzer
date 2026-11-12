@@ -3,8 +3,10 @@ package ops
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +41,12 @@ type UpdateOptions struct {
 	// otherwise refused (RFC 0037 decision 4). Per run and journalled: going
 	// back past what a machine has seen is a decision made each time.
 	AllowOlder bool
+
+	// Parameters are values for the release being installed, `--set` and
+	// `--set-file` (#346): checked against what it declares, and recorded
+	// once the update has converged on them, so one that rolls back
+	// records none. The journal names them and never quotes one.
+	Parameters map[string]string
 }
 
 // Update installs a new release over the current one.
@@ -151,6 +159,15 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err := refuseOlderThanInstalled(from, staged, opts.AllowOlder); err != nil {
 		return Result{}, err
 	}
+	// Before the operation, as the checks above are: a value the release
+	// needs and nobody gave is refused with nothing stopped and nothing to
+	// undo, where it used to fail the render or the health check after the
+	// downtime (#346). The merged values are the new release's: a failure
+	// brings the running one back with the values recorded for it.
+	recorded := inst
+	if inst, opts.Parameters, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
+		return Result{}, err
+	}
 	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
 		return Result{}, err
 	}
@@ -161,8 +178,13 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts),
+		Steps:       updateSteps(d, recorded, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
+	}
+	// A resume given no values, because its run recorded them, still
+	// names what the update was given.
+	if prior != nil && len(opts.Parameters) == 0 && prior.Flags["set"] != "" {
+		op.Flags["set"] = prior.Flags["set"]
 	}
 
 	var result engine.Result
@@ -404,7 +426,98 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 	if opts.AllowOlder {
 		flags["allow_older"] = "true"
 	}
+	if len(opts.Parameters) > 0 {
+		// The names, never a value: the flags reach every notification,
+		// and a resumed run is asked for the values again.
+		flags["set"] = strings.Join(slices.Sorted(maps.Keys(opts.Parameters)), ",")
+	}
 	return flags
+}
+
+// withUpdateParameters merges the values given for the release being installed
+// over the recorded ones, in memory, for the converge to render with, and
+// returns them as their types normalise them, which is how they are recorded.
+// Refused
+// before anything runs: a name that release does not declare and a value it
+// would not accept (ResolveParameters), and a parameter it gives no default
+// that has no value.
+//
+// A resumed run whose values were not recorded before it stopped is given them
+// again, since the journal never had them.
+func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
+	prior *domain.OperationRecord) (domain.Installation, map[string]string, error) {
+	declared := staged.Manifest.Parameters
+	if prior != nil && !stepSucceeded(*prior, "record-parameters") {
+		var again []string
+		for _, name := range strings.Split(prior.Flags["set"], ",") {
+			if _, given := opts.Parameters[name]; name != "" && !given {
+				again = append(again, name)
+			}
+		}
+		if len(again) > 0 {
+			return inst, nil, domain.Usage("the interrupted update was given %s, and stopped before recording it",
+				strings.Join(again, ", ")).
+				WithHint("resume with the same values: --set %s=<value>", again[0])
+		}
+	}
+
+	// Checked as the release will see them: what it declares of the recorded
+	// values, then what this update gives.
+	next := declaredValues(inst.Parameters, declared)
+	maps.Copy(next, opts.Parameters)
+	resolved, err := domain.ResolveParameters(declared, next)
+	if err != nil {
+		return inst, nil, err
+	}
+	if missing := domain.MissingValues(declared, next); len(missing) > 0 {
+		return inst, nil, domain.Usage("release %s declares no default for %s",
+			staged.Version(), strings.Join(missing, ", ")).
+			WithHint("give it with the update: --set %s=<value> (repeat --set for several)", missing[0])
+	}
+
+	if len(opts.Parameters) == 0 {
+		return inst, nil, nil
+	}
+	given := make(map[string]string, len(opts.Parameters))
+	for name := range opts.Parameters {
+		given[name] = resolved[name]
+	}
+	merged := maps.Clone(inst.Parameters)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+	maps.Copy(merged, given)
+	inst.Parameters = merged
+	return inst, given, nil
+}
+
+// declaredValues is the recorded values a release declares. A value it stopped
+// declaring is retire-parameters' to drop, not a check's to refuse.
+func declaredValues(recorded map[string]string, declared map[string]domain.ParameterSpec) map[string]string {
+	out := make(map[string]string, len(recorded))
+	for name, value := range recorded {
+		if _, ok := declared[name]; ok {
+			out[name] = value
+		}
+	}
+	return out
+}
+
+// journalledStep reports whether a journalled run had the step at all.
+func journalledStep(rec domain.OperationRecord, id string) bool {
+	return slices.ContainsFunc(rec.Steps, func(s domain.StepRecord) bool { return s.ID == id })
+}
+
+// stepSucceeded reports whether a journalled run finished the step, or found
+// it done: a resume given no values skips record-parameters, its run's
+// having recorded them.
+func stepSucceeded(rec domain.OperationRecord, id string) bool {
+	for _, step := range rec.Steps {
+		if step.ID == id {
+			return step.Status == domain.StepSucceeded || step.Status == domain.StepSkipped
+		}
+	}
+	return false
 }
 
 // refuseOlderThanInstalled is the installed floor (RFC 0037 §5.1): a release
@@ -440,14 +553,17 @@ func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
 	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version()) + replacedNote(rec.Flags)
 }
 
-// updateSteps is the update pipeline: four steps of its own, then apply's.
+// updateSteps is the update pipeline: four steps of its own, then apply's. inst
+// is what the new release converges with, recorded what the restore point
+// brings the running release back with.
 func updateSteps(
 	d *Deps,
-	inst domain.Installation,
+	recorded, inst domain.Installation,
 	from domain.ReleaseRecord,
 	fallback *fallbackRelease,
 	source, staged domain.Release,
 	opts UpdateOptions,
+	prior *domain.OperationRecord,
 ) []engine.Step {
 	// The parameters the new release stopped declaring are dropped from the
 	// installation before anything downstream resolves them, and the step
@@ -475,7 +591,7 @@ func updateSteps(
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, inst, from, false))
+		steps = append(steps, stepRestorePoint(d, recorded, from, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
@@ -507,6 +623,12 @@ func updateSteps(
 	convergeOpts.SourceRef = ports.RedactRefCredentials(opts.Ref)
 	convergeOpts.PreviousVersion = from.Version
 	steps = append(steps, applySteps(d, inst, converge, convergeOpts)...)
+	// Also on a resume given none, when the run it continues had the step:
+	// a resume plans the steps that run journalled, and the step finds
+	// nothing left to record.
+	if len(opts.Parameters) > 0 || (prior != nil && journalledStep(*prior, "record-parameters")) {
+		steps = append(steps, stepRecordGivenParameters(d, opts.Parameters))
+	}
 	steps = append(steps, stepRetireParameters(d, staged))
 
 	// Retention runs once a newer backup exists, and the pre-update backup
@@ -554,6 +676,47 @@ func attestedInstallation(inst domain.Installation, rel domain.Release, rec doma
 		return inst
 	}
 	return withoutParameters(inst, domain.Parameters(inst.Parameters).ValidateAgainst(rel.Manifest.Parameters))
+}
+
+// stepRecordGivenParameters records the values the update was given for the release
+// it installs (#346). Last, with retire-parameters and for its reasons: the
+// deployment has converged on them by now, so a stop before it leaves nothing
+// to undo, and an abort leaves a working deployment whose state lacks the
+// values, which a resume given them again records.
+//
+// Into the installation as recorded when it runs, as retire-parameters reads
+// it, so a `config set` that landed meanwhile on another name stays.
+func stepRecordGivenParameters(d *Deps, values map[string]string) engine.Step {
+	names := strings.Join(slices.Sorted(maps.Keys(values)), ", ")
+	return engine.Step{
+		ID:          "record-parameters",
+		Description: "record the parameters given for the release",
+		Idempotent:  true,
+		OnFailure:   engine.Abort,
+		Timeout:     time.Minute,
+		// Nothing to record on a resume whose run recorded them already.
+		Check: func(context.Context, *engine.State) (bool, error) { return len(values) == 0, nil },
+		// The names, never a value: a plan is printed, and saved by
+		// whoever reviews it.
+		PlanDetail: func(context.Context, *engine.State) (string, string) { return names, "" },
+		Execute: func(ctx context.Context, st *engine.State) error {
+			current, err := d.State.LoadInstallation(ctx)
+			if err != nil {
+				return err
+			}
+			params := maps.Clone(current.Parameters)
+			if params == nil {
+				params = map[string]string{}
+			}
+			maps.Copy(params, values)
+			current.Parameters = params
+			if err := d.saveInstallation(ctx, current); err != nil {
+				return err
+			}
+			st.Detail("recorded %s", names)
+			return nil
+		},
+	}
 }
 
 // stepRetireParameters drops recorded values the new release no longer

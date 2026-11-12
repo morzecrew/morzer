@@ -3,6 +3,9 @@ package ops
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
@@ -683,6 +686,29 @@ func (d *Deps) assessUnattended(
 		current.SchemaAtInstall); !report.OK {
 		assessment.OK = false
 		assessment.Reasons = append(assessment.Reasons, report.Problems...)
+	}
+	// A tick cannot give a value, so a release that needs one, or refuses
+	// one recorded, waits for an operator's `update --set` (#346), as
+	// `update` would refuse it before anything runs.
+	declared := target.Manifest.Parameters
+	recorded := declaredValues(inst.Parameters, declared)
+	waits := func(why string, names []string) {
+		assessment.OK = false
+		assessment.Reasons = append(assessment.Reasons, fmt.Sprintf(
+			"%s %s %s, so it waits for `morzer update --to %s --set %s=<value>`",
+			target.Version(), why, strings.Join(names, ", "), target.Version(), names[0]))
+	}
+	var refused []string
+	for _, name := range slices.Sorted(maps.Keys(recorded)) {
+		if _, err := declared[name].Parse(recorded[name]); err != nil {
+			refused = append(refused, name)
+		}
+	}
+	if len(refused) > 0 {
+		waits("does not accept the recorded value of", refused)
+	}
+	if missing := domain.MissingValues(declared, recorded); len(missing) > 0 {
+		waits("declares no default for", missing)
 	}
 	return assessment, nil
 }

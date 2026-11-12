@@ -36,6 +36,10 @@ images:
 		`min_manager_version: "`+domain.TextParametersMinManagerVersion+`"`)
 }
 
+// firstRules is the value `rules` is installed with: it has no default, so the
+// update that brings it in gives it one (#346).
+const firstRules = "DOMAIN-SUFFIX,example.org"
+
 // onTextRelease is a converged installation on 1.3.0 with the text parameters.
 func onTextRelease(t *testing.T) *harness {
 	t.Helper()
@@ -44,7 +48,8 @@ func onTextRelease(t *testing.T) *harness {
 	h.setHookEnv()
 	applyBaseline(t, h)
 	_, err := ops.Update(context.Background(), h.Deps, ops.UpdateOptions{
-		Ref: withTextParameters(t, stageUpgradeSource(t, h)),
+		Ref:        withTextParameters(t, stageUpgradeSource(t, h)),
+		Parameters: map[string]string{"rules": firstRules},
 	})
 	require.NoError(t, err)
 	return h
@@ -69,7 +74,7 @@ func TestATextParameterIsRecordedAndDelivered(t *testing.T) {
 		Set: map[string]string{"rules": "DOMAIN-SUFFIX,example.ru\r\n  indented\n"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "set rules (0 → 2 lines); re-created app", result.Summary)
+	assert.Equal(t, "set rules (1 → 2 lines); re-created app", result.Summary)
 
 	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
@@ -116,7 +121,7 @@ func TestATextValueOverTheLimitChangesNothing(t *testing.T) {
 
 	inst, err := h.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
-	assert.NotContains(t, inst.Parameters, "rules")
+	assert.Equal(t, firstRules, inst.Parameters["rules"], "a refused value replaced the one recorded")
 }
 
 // `config list` and `config get` show a default as the deployment receives it:

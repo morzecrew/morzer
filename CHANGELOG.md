@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `update --set` and `--set-file` give values to the parameters of the release
+  being installed, such as one it adds with no default. They are recorded
+  once the update has converged on them, so one that rolls back records none,
+  and the journal names them without quoting a value.
+
+### Fixed
+
+- An update to a release that adds a parameter with no default, given no value
+  for it, is refused before the backup and the stop, naming `--set`. It used to
+  fail its render or health check after the downtime and roll back.
+
+- An unattended update leaves a release that adds a parameter with no default,
+  or no longer accepts a value recorded for one, staged, and names the
+  parameter and the `morzer update --to <version> --set` that installs it,
+  rather than trying to install it.
+
 ## [0.16.0] - 2026-11-11
 
 An installation can follow an authority's desired state: signed, encrypted
