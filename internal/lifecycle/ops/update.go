@@ -181,6 +181,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Steps:       updateSteps(d, recorded, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
+	// A resume given no values, because its run recorded them, still
+	// names what the update was given.
+	if prior != nil && len(opts.Parameters) == 0 && prior.Flags["set"] != "" {
+		op.Flags["set"] = prior.Flags["set"]
+	}
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeUpdate, opts.Options, func(ctx context.Context) error {
@@ -503,11 +508,13 @@ func journalledStep(rec domain.OperationRecord, id string) bool {
 	return slices.ContainsFunc(rec.Steps, func(s domain.StepRecord) bool { return s.ID == id })
 }
 
-// stepSucceeded reports whether a journalled run finished the step.
+// stepSucceeded reports whether a journalled run finished the step, or found
+// it done: a resume given no values skips record-parameters, its run's
+// having recorded them.
 func stepSucceeded(rec domain.OperationRecord, id string) bool {
 	for _, step := range rec.Steps {
 		if step.ID == id {
-			return step.Status == domain.StepSucceeded
+			return step.Status == domain.StepSucceeded || step.Status == domain.StepSkipped
 		}
 	}
 	return false

@@ -252,20 +252,28 @@ func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
 	// log_level, once admin_email is recorded.
 	armed := true
 	store := h.Deps.State
-	h.Deps.State = saveFailingWhen{StateStore: store, armed: &armed, when: func(inst domain.Installation) bool {
+	failing := saveFailingWhen{StateStore: store, armed: &armed, when: func(inst domain.Installation) bool {
 		_, kept := inst.Parameters["log_level"]
 		return !kept && inst.Parameters["admin_email"] == adminEmail
 	}}
+	h.Deps.State = failing
 	ctx := context.Background()
 
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"admin_email": adminEmail}})
 	require.Error(t, err)
-	h.Deps.State = store
 	require.Equal(t, adminEmail, installation(t, h).Parameters["admin_email"])
 
-	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src})
+	// Stopped at the same write again, and resumed again.
+	resume := ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src}
+	armed = true
+	_, err = ops.Update(ctx, h.Deps, resume)
+	require.Error(t, err)
+	h.Deps.State = store
+
+	result, err := ops.Update(ctx, h.Deps, resume)
 	require.NoError(t, err, "a resume was asked for values its run had recorded")
 	assert.NotContains(t, installation(t, h).Parameters, "log_level")
+	assert.Equal(t, "admin_email", result.Record.Flags["set"], "the resumed record lost what the update was given")
 }
 
 // A plan names the parameters an update will record, never their values.
