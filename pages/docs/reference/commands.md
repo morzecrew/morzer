@@ -266,7 +266,7 @@ morzer update --to 1.3.0
 | --- | --- |
 | `--to` | Install a version already in the release store, instead of a bundle path. |
 | `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
-| `--set` | Set a parameter of the release being installed, as `name=value`. Repeat for several. Recorded only if the update succeeds; the journal names it and never quotes the value. Refused beside `--check`, `--stage` and `--unattended`. |
+| `--set` | Set a parameter of the release being installed, as `name=value`. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside `--check`, `--stage` and `--unattended`. |
 | `--set-file` | Read such a parameter's value from a file, as `name=path`; `-` is standard input. Repeat for several. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. [`config set installation.profile`](parameters.md#changing-the-profile) keeps a selection. |

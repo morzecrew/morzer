@@ -44,8 +44,8 @@ type UpdateOptions struct {
 
 	// Parameters are values for the release being installed, `--set` and
 	// `--set-file` (#346): checked against what it declares, and recorded
-	// only by an update that succeeds. The journal names them and never
-	// quotes one.
+	// once the update has converged on them, so one that rolls back
+	// records none. The journal names them and never quotes one.
 	Parameters map[string]string
 }
 
