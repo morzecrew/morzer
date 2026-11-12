@@ -175,3 +175,29 @@ Defects the self-audit missed, each reproduced red before its fix:
 Sabotage of these fixes: 8 breaks, 7 caught. The survivor drops the
 "given no values" condition on carrying the names, which differs only for a
 resume that gives different names after its run recorded its own.
+
+## Follow-up, 2026-11-12
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-12T03:19:30Z
+attempt: 2
+claim: The first ruling had a resume whose run had not recorded its values ask for `--set` again, and #347 checked only that the same names came back. Review asked whether a different value should pass; the author ruled 2026-11-12 that it should not: a resume continues one operation, as `--allow-older` and `--generate-secrets=false` carry into it, and a changed value is a `config set` after it. The journal keeps one SHA-256 over the given values as parsed, `set_digest`, beside their names, and a resume with other names or values is refused naming the parameters. It fingerprints rather than quotes: support bundles already carry the values, and the digest is there to compare, not to hide.
+evidence: internal/lifecycle/ops/update.go:441
+action: decided
+proposal: UNLISTED — a resumed update whose run had not recorded its values is given the same values again, checked against a digest the journal keeps; a different value is refused, and changed with `config set` after the update
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-12T03:22:10Z
+attempt: 3
+claim: Refines the entry above, on the author's word the same morning: one digest per parameter rather than one over the set, so a refused resume names the values that differ and the ones the interrupted run was not given. `set_digest` holds `name=<16 hex digits>` per parameter, a SHA-256 over the name and the parsed value, so one value given to two parameters does not read as the same. A low-entropy value can be guessed from its digest; support bundles already carry every value in parameters.json, and notifications carry no flags.
+evidence: internal/lifecycle/ops/update.go:447
+action: decided
+proposal: UNLISTED — a resumed update is given the values its interrupted run was, each checked against a digest the journal keeps per parameter; a resume naming a value that differs, or one the run was not given, is refused naming them
+```

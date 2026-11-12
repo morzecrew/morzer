@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"os"
@@ -185,6 +187,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// names what the update was given.
 	if prior != nil && len(opts.Parameters) == 0 && prior.Flags["set"] != "" {
 		op.Flags["set"] = prior.Flags["set"]
+		op.Flags["set_digest"] = prior.Flags["set_digest"]
 	}
 
 	var result engine.Result
@@ -427,11 +430,26 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 		flags["allow_older"] = "true"
 	}
 	if len(opts.Parameters) > 0 {
-		// The names, never a value: the flags reach every notification,
-		// and a resumed run is asked for the values again.
+		// The names and a digest of each value, never a value: `history`
+		// prints the flags, and a resumed run is given the values again
+		// and held to these.
 		flags["set"] = strings.Join(slices.Sorted(maps.Keys(opts.Parameters)), ",")
+		digests := make([]string, 0, len(opts.Parameters))
+		for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
+			digests = append(digests, parameterDigest(name, opts.Parameters[name]))
+		}
+		flags["set_digest"] = strings.Join(digests, ",")
 	}
 	return flags
+}
+
+// parameterDigest fingerprints a value given to an update as `name=<digest>`:
+// SHA-256 over the name and the parsed value, cut to 16 hex digits, enough to
+// tell a changed value from the same one. The name is in it so that one value
+// given to two parameters does not read as the same.
+func parameterDigest(name, value string) string {
+	sum := sha256.Sum256([]byte(name + "\x00" + value))
+	return name + "=" + hex.EncodeToString(sum[:8])
 }
 
 // withUpdateParameters merges the values given for the release being installed
@@ -442,8 +460,10 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 // would not accept (ResolveParameters), and a parameter it gives no default
 // that has no value.
 //
-// A resumed run whose values were not recorded before it stopped is given them
-// again, since the journal never had them.
+// A resumed run is given the values its interrupted run was, checked against
+// the digests that run journalled: again, when they were not recorded before it
+// stopped, since the journal never had them, and the same ones whenever it is
+// given any. A different value is a `config set` after the update.
 func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
 	prior *domain.OperationRecord) (domain.Installation, map[string]string, error) {
 	declared := staged.Manifest.Parameters
@@ -481,6 +501,20 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 	given := make(map[string]string, len(opts.Parameters))
 	for name := range opts.Parameters {
 		given[name] = resolved[name]
+	}
+	if prior != nil {
+		journalled := strings.Split(prior.Flags["set_digest"], ",")
+		var differ []string
+		for _, name := range slices.Sorted(maps.Keys(given)) {
+			if !slices.Contains(journalled, parameterDigest(name, given[name])) {
+				differ = append(differ, name)
+			}
+		}
+		if len(differ) > 0 {
+			return inst, nil, domain.Usage("the values of %s differ from what the interrupted update was given",
+				strings.Join(differ, ", ")).
+				WithHint("resume with the values it was given, and change them after it with `morzer config set`")
+		}
 	}
 	merged := maps.Clone(inst.Parameters)
 	if merged == nil {

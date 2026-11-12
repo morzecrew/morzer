@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `update --set` and `--set-file` give values to the parameters of the release
   being installed, such as one it adds with no default. They are recorded
   once the update has converged on them, so one that rolls back records none,
-  and the journal names them without quoting a value.
+  and the journal names them without quoting a value. A `--resume` is held to
+  the values its run was given, and refuses one that differs by name.
 
 ### Fixed
 

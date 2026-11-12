@@ -238,6 +238,42 @@ func TestAResumedUpdateIsGivenAChangedValueAgain(t *testing.T) {
 	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
 }
 
+// And given them, a resume is held to the values its run was given, as its
+// types read them: a changed one, or one the run was not given, is refused by
+// name, and is a `config set` after the update.
+func TestAResumedUpdateIsHeldToTheValuesItsRunWasGiven(t *testing.T) {
+	h := convergedHarness(t)
+	src := withTextParameters(t, stageRecoverableUpgradeSource(t, h))
+	armed := true
+	store := h.Deps.State
+	h.Deps.State = saveFailingWhen{StateStore: store, when: recording("rules", firstRules), armed: &armed}
+	ctx := context.Background()
+
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src, Parameters: map[string]string{"rules": firstRules + "\n"}})
+	require.Error(t, err)
+	h.Deps.State = store
+	journal, err := os.ReadFile(h.Paths.JournalFile())
+	require.NoError(t, err)
+	assert.NotContains(t, string(journal), firstRules, "a value reached the journal")
+
+	resume := func(values map[string]string) error {
+		_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, Ref: src, Parameters: values})
+		return err
+	}
+	err = resume(map[string]string{"rules": "DOMAIN-SUFFIX,example.ru"})
+	require.Error(t, err, "a resume with a changed value was let through")
+	assert.Contains(t, domain.AsError(err).Message, "the values of rules differ")
+	assert.Contains(t, domain.AsError(err).Hint, "morzer config set")
+
+	err = resume(map[string]string{"rules": firstRules, "log_level": "debug"})
+	require.Error(t, err, "a resume with a value its run was not given was let through")
+	assert.Contains(t, domain.AsError(err).Message, "the values of log_level differ")
+	assert.NotContains(t, installation(t, h).Parameters, "rules")
+
+	require.NoError(t, resume(map[string]string{"rules": firstRules + "\r\n"}), "the same value, as its type reads it, was refused")
+	assert.Equal(t, firstRules, installation(t, h).Parameters["rules"])
+}
+
 // Stopped after it recorded its values, an update resumes without them.
 func TestAResumedUpdateThatRecordedItsValuesNeedsThemNoMore(t *testing.T) {
 	h := convergedHarness(t)

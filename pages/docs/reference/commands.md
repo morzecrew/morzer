@@ -287,9 +287,14 @@ A release that adds a parameter with no default needs a value for it: an
 update without one is refused before the backup, so the running release keeps
 serving and nothing is undone, and the hint names `--set`. A name the release
 does not declare is refused as a typo, and a value of the wrong type is refused
-by name. The values are recorded by the update's last step, so a failed update
-records none, and a `--resume` whose run stopped before recording them needs
-the same `--set` again, since the journal never had them.
+by name. The values are recorded once the update has converged on them, so one
+that rolls back records none.
+
+A `--resume` is held to the values its run was given. The journal keeps a
+digest of each, never the value, so a run that stopped before recording them
+needs the same `--set` again. A value that differs, or one the run was not
+given, is refused by name; change it after the update with
+[`config set`](parameters.md#changing-one-after-install).
 
 A release older than the one running is refused at [exit 9](exit-codes.md),
 whatever it came from, a local path included. `rollback` is how a machine goes
