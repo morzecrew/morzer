@@ -563,6 +563,35 @@ func TestAnUpdateRetiresAValueSetBeforeItsLock(t *testing.T) {
 	assert.NotContains(t, inst.Parameters, "log_level", "the update left a value 1.3.0 does not declare")
 }
 
+// And an update that fails after such a value landed brings the running
+// release back with it: what is recorded, not what the update read before its
+// lock.
+func TestAFailedUpdateRestoresAValueSetBeforeItsLock(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	src := stageRecoverableUpgradeSource(t, h)
+	dropParameter(t, src, "log_level")
+
+	h.Locker.BeforeAcquire = func() {
+		h.Locker.BeforeAcquire = nil
+		_, err := ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+		require.NoError(t, err)
+		h.Health.FailingWaits = 1
+	}
+	result, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.Error(t, err)
+	require.Equal(t, domain.StatusCompensated, result.Record.Status, "%v", err)
+	require.Nil(t, h.Locker.BeforeAcquire, "the config set never ran")
+
+	cfg, _ := lastUp(t, h)
+	assert.Equal(t, "1.2.0", cfg.Env["DEMO_VERSION"])
+	assert.Equal(t, "debug", cfg.Env["DEMO_PARAM_LOG_LEVEL"], "the restore undid a value recorded while the update waited")
+	assert.Equal(t, "debug", installation(t, h).Parameters["log_level"])
+}
+
 // The same for a rollback, and a value only the release it leaves declares.
 func TestARollbackRetiresAValueSetBeforeItsLock(t *testing.T) {
 	h := newHarness(t)

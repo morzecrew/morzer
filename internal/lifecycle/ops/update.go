@@ -2,6 +2,8 @@ package ops
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"os"
@@ -162,8 +164,8 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// Before the operation, as the checks above are: a value the release
 	// needs and nobody gave is refused with nothing stopped and nothing to
 	// undo, where it used to fail the render or the health check after the
-	// downtime (#346). The merged values are the new release's: a failure
-	// brings the running one back with the values recorded for it.
+	// downtime (#346). The merged values are the new release's; the ones
+	// read here are what the lock re-check compares.
 	recorded := inst
 	if inst, opts.Parameters, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
@@ -178,13 +180,22 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Description: describe(domain.OpTypeUpdate, from.Version, staged.Version()),
 		From:        from.Version,
 		To:          staged.Version(),
-		Steps:       updateSteps(d, recorded, inst, from, fallback, source, staged, opts, prior),
+		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
-	// A resume given no values, because its run recorded them, still
-	// names what the update was given.
-	if prior != nil && len(opts.Parameters) == 0 && prior.Flags["set"] != "" {
-		op.Flags["set"] = prior.Flags["set"]
+	// A resume continues its run, so its record keeps every name and digest
+	// that run was given, beside those given again: a resume given some, or
+	// none because its run recorded them, still names the rest, and a
+	// later resume is held to them. A value given again matched its digest.
+	if prior != nil {
+		for _, key := range []string{"set", "set_digest"} {
+			entries := slices.Concat(strings.Split(prior.Flags[key], ","), strings.Split(op.Flags[key], ","))
+			entries = slices.DeleteFunc(entries, func(e string) bool { return e == "" })
+			slices.Sort(entries)
+			if entries = slices.Compact(entries); len(entries) > 0 {
+				op.Flags[key] = strings.Join(entries, ",")
+			}
+		}
 	}
 
 	var result engine.Result
@@ -212,7 +223,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.refuseMovedRelease(ctx, from); err != nil {
 			return err
 		}
-		if err := d.refuseChangedProfile(ctx, inst); err != nil {
+		if err := d.refuseChangedInstallation(ctx, recorded, staged.Manifest.Parameters); err != nil {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
@@ -427,11 +438,26 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 		flags["allow_older"] = "true"
 	}
 	if len(opts.Parameters) > 0 {
-		// The names, never a value: the flags reach every notification,
-		// and a resumed run is asked for the values again.
+		// The names and a digest of each value, never a value: `history`
+		// prints the flags, and a resumed run is given the values again
+		// and held to these.
 		flags["set"] = strings.Join(slices.Sorted(maps.Keys(opts.Parameters)), ",")
+		digests := make([]string, 0, len(opts.Parameters))
+		for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
+			digests = append(digests, parameterDigest(name, opts.Parameters[name]))
+		}
+		flags["set_digest"] = strings.Join(digests, ",")
 	}
 	return flags
+}
+
+// parameterDigest fingerprints a value given to an update as `name=<digest>`:
+// SHA-256 over the name and the parsed value, cut to 16 hex digits, enough to
+// tell a changed value from the same one. The name is in it so that one value
+// given to two parameters does not read as the same.
+func parameterDigest(name, value string) string {
+	sum := sha256.Sum256([]byte(name + "\x00" + value))
+	return name + "=" + hex.EncodeToString(sum[:8])
 }
 
 // withUpdateParameters merges the values given for the release being installed
@@ -442,8 +468,10 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 // would not accept (ResolveParameters), and a parameter it gives no default
 // that has no value.
 //
-// A resumed run whose values were not recorded before it stopped is given them
-// again, since the journal never had them.
+// A resumed run is given the values its interrupted run was, checked against
+// the digests that run journalled: again, when they were not recorded before it
+// stopped, since the journal never had them, and the same ones whenever it is
+// given any. A different value is a `config set` after the update.
 func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
 	prior *domain.OperationRecord) (domain.Installation, map[string]string, error) {
 	declared := staged.Manifest.Parameters
@@ -481,6 +509,20 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 	given := make(map[string]string, len(opts.Parameters))
 	for name := range opts.Parameters {
 		given[name] = resolved[name]
+	}
+	if prior != nil {
+		journalled := strings.Split(prior.Flags["set_digest"], ",")
+		var differ []string
+		for _, name := range slices.Sorted(maps.Keys(given)) {
+			if !slices.Contains(journalled, parameterDigest(name, given[name])) {
+				differ = append(differ, name)
+			}
+		}
+		if len(differ) > 0 {
+			return inst, nil, domain.Usage("the values of %s differ from what the interrupted update was given",
+				strings.Join(differ, ", ")).
+				WithHint("resume with the values it was given, and change them after it with `morzer config set`")
+		}
 	}
 	merged := maps.Clone(inst.Parameters)
 	if merged == nil {
@@ -553,12 +595,10 @@ func updateSummary(rec domain.OperationRecord, from domain.ReleaseRecord,
 	return fmt.Sprintf("updated %s from %s to %s", to.Name(), from.Version, to.Version()) + replacedNote(rec.Flags)
 }
 
-// updateSteps is the update pipeline: four steps of its own, then apply's. inst
-// is what the new release converges with, recorded what the restore point
-// brings the running release back with.
+// updateSteps is the update pipeline: four steps of its own, then apply's.
 func updateSteps(
 	d *Deps,
-	recorded, inst domain.Installation,
+	inst domain.Installation,
 	from domain.ReleaseRecord,
 	fallback *fallbackRelease,
 	source, staged domain.Release,
@@ -590,8 +630,14 @@ func updateSteps(
 	}
 	// Nothing was running before a first install, so there is nothing to
 	// bring back.
+	//
+	// With the installation as recorded when the restore runs: never the
+	// update's own values, which nothing saves before the converge has
+	// passed, and not what the update read before its lock, which a
+	// `config set` of a value only the running release declares may have
+	// changed meanwhile.
 	if !from.IsZero() {
-		steps = append(steps, stepRestorePoint(d, recorded, from, false))
+		steps = append(steps, stepRestorePoint(d, d.State.LoadInstallation, from, false))
 	}
 	steps = append(steps, stepStageUpdate(d, from, source, staged, opts))
 
@@ -1209,7 +1255,11 @@ func stepStageUpdate(d *Deps, from domain.ReleaseRecord, source, staged domain.R
 //
 // force re-creates every container as they come back, which a profile change
 // needs: the containers it started read the new profile's rendered files.
-func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseRecord, force bool) engine.Step {
+//
+// installation is what the release comes back with, asked for when the
+// restore runs.
+func stepRestorePoint(d *Deps, installation func(context.Context) (domain.Installation, error),
+	from domain.ReleaseRecord, force bool) engine.Step {
 	return engine.Step{
 		ID:          "restore-point",
 		Description: "keep " + from.Version.String() + " to bring back on failure",
@@ -1217,6 +1267,10 @@ func stepRestorePoint(d *Deps, inst domain.Installation, from domain.ReleaseReco
 		OnFailure:   engine.Abort,
 		Execute:     func(context.Context, *engine.State) error { return nil },
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			inst, err := installation(ctx)
+			if err != nil {
+				return err
+			}
 			return d.restorePreviousRuntime(ctx, st, inst, from, force)
 		},
 	}

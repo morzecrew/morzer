@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `update --set` and `--set-file` give values to the parameters of the release
   being installed, such as one it adds with no default. They are recorded
   once the update has converged on them, so one that rolls back records none,
-  and the journal names them without quoting a value.
+  and the journal names them without quoting a value. A `--resume` is held to
+  the values its run was given, and refuses one that differs by name.
 
 ### Fixed
 
@@ -24,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or no longer accepts a value recorded for one, staged, and names the
   parameter and the `morzer update --to <version> --set` that installs it,
   rather than trying to install it.
+
+- `init` and `config set` refuse a parameter given both as `name=value` and
+  with `--set-file name=-`, and `config set` refuses a setting beside
+  `--set-file`, before reading standard input. They used to wait for input they
+  then refused.
+
+- `apply`, `update` and `rollback` refuse when a `config set` of a parameter
+  their release declares, or of the domains, landed while they waited for the
+  deployment lock, as they already did for the profile. They used to deploy the
+  values read before it, so the deployment and the recorded state disagreed
+  until the next converge.
 
 ## [0.16.0] - 2026-11-11
 

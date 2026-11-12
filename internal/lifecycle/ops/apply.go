@@ -116,7 +116,7 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 				return err
 			}
 		}
-		if err := d.refuseChangedProfile(ctx, inst); err != nil {
+		if err := d.refuseChangedInstallation(ctx, inst, rel.Manifest.Parameters); err != nil {
 			return err
 		}
 		// Under the lock, because it is a read-modify-write of a record
@@ -1485,22 +1485,55 @@ func (d *Deps) refuseMovedRelease(ctx context.Context, planned domain.ReleaseRec
 	return refuseMoved("installed", planned, current)
 }
 
-// refuseChangedProfile is refuseMovedRelease for the profile: a `config set
-// installation.profile` that landed while this waited for the lock. The steps
-// were built for the profile read before it, and would deploy that one under
-// a record that names the other.
-func (d *Deps) refuseChangedProfile(ctx context.Context, planned domain.Installation) error {
+// refuseChangedInstallation is refuseMovedRelease for what the converge renders
+// from: a `config set` of the profile, a parameter or the domains that landed
+// while this waited for the lock. The steps were built for what was read
+// before it, and would deploy that under a record that says otherwise.
+//
+// Only the parameters the release being converged declares: one it does not
+// is rendered by nothing, and retire-parameters decides it when it runs.
+func (d *Deps) refuseChangedInstallation(
+	ctx context.Context, planned domain.Installation, declared map[string]domain.ParameterSpec,
+) error {
 	now, err := d.State.LoadInstallation(ctx)
 	if err != nil {
 		return err
 	}
-	if sameProfiles(now.Profiles, planned.Profiles) {
-		return nil
+	if !sameProfiles(now.Profiles, planned.Profiles) {
+		return domain.Usage(
+			"the installation's profile changed while waiting for the deployment lock, from %s to %s",
+			profileName(planned.Profiles), profileName(now.Profiles)).
+			WithHint("run the same command again to plan against %s", profileName(now.Profiles))
 	}
-	return domain.Usage(
-		"the installation's profile changed while waiting for the deployment lock, from %s to %s",
-		profileName(planned.Profiles), profileName(now.Profiles)).
-		WithHint("run the same command again to plan against %s", profileName(now.Profiles))
+	// By name, never a value, as every refusal about parameters is.
+	before, after := declaredValues(planned.Parameters, declared), declaredValues(now.Parameters, declared)
+	var changed []string
+	for name := range declared {
+		was, had := before[name]
+		is, has := after[name]
+		if had != has || was != is {
+			changed = append(changed, name)
+		}
+	}
+	if len(changed) > 0 {
+		slices.Sort(changed)
+		return domain.Usage("parameters changed while waiting for the deployment lock: %s",
+			strings.Join(changed, ", ")).
+			WithHint("run the same command again to plan against the values now recorded")
+	}
+	if !slices.Equal(now.Domains, planned.Domains) {
+		// As `config get installation.domains` reads them.
+		list := func(domains []string) string {
+			if len(domains) == 0 {
+				return "none"
+			}
+			return strings.Join(domains, ",")
+		}
+		return domain.Usage("the installation's domains changed while waiting for the deployment lock, from %s to %s",
+			list(planned.Domains), list(now.Domains)).
+			WithHint("run the same command again to plan against them")
+	}
+	return nil
 }
 
 // refuseMoved compares a release record a plan read before the lock with the
