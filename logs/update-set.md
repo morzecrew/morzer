@@ -201,3 +201,25 @@ evidence: internal/lifecycle/ops/update.go:447
 action: decided
 proposal: UNLISTED — a resumed update is given the values its interrupted run was, each checked against a digest the journal keeps per parameter; a resume naming a value that differs, or one the run was not given, is refused naming them
 ```
+
+## Follow-up self-audit, 2026-11-12T03:37:44Z
+
+Scope: branch update-set-followups, four commits: the resume held to its
+values, `--set-file` duplicates before standard input, the lock re-check of
+parameters and domains, and a test commit.
+
+- **Sabotage.** Twelve breaks, eleven caught. The survivor ignores whether a
+  parameter is recorded at all, comparing values only, under the lock. It
+  misses an absent value replaced by an explicit empty one, which renders
+  differently for a string with a default; the fixture declares none, and an
+  empty port or enum is refused by the converge anyway.
+- **Behaviour a test had pinned.** Two tests (rollback_test.go,
+  `...RetiresAValueSetBeforeItsLock`) had a `config set` of a name the target
+  release does not declare land before the lock and expect the operation to
+  go ahead. That is stepRetireParameters' stance, so the re-check compares
+  only the names the converged release declares.
+- **Not exercised.** A resume journalled by a build with `set` and no
+  `set_digest` is refused, since no released manager wrote one: #347 is
+  unreleased.
+
+**Drift count: 0.**
