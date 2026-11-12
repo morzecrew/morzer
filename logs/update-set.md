@@ -151,3 +151,27 @@ the fix, a refactor, two test commits and a resume fix.
   a different operation, which this branch does not change.
 
 **Drift count: 0.**
+
+## Review findings, 2026-11-12T02:42:45Z
+
+Defects the self-audit missed, each reproduced red before its fix:
+
+- **A failed update could not roll back** (d28976da). The restore point was
+  given the merged installation, so the previous release resolved a name only
+  the new one declares and refused: requires-manual-intervention instead of
+  compensated. The rule: a restore point gets the state as recorded, never
+  what the operation merged in memory.
+- **Given values were recorded raw** (610a54ed): a text value was rendered
+  normalised and recorded as typed. `init` records its `--set` the same way,
+  which this branch leaves alone.
+- **The unattended reason named an update that refuses** for want of a
+  release, and a recorded value the new release refuses passed the
+  assessment, so the tick's update was refused on every tick (d8f94031).
+- **A resumed record lost the names** given to the run it continued; carrying
+  them needed a skipped `record-parameters` to read as done (3a5a5b00).
+- **"Recorded only if the update succeeds"** overstated it: an abort in
+  retire-parameters leaves them recorded on a converged deployment (5d772ecc).
+
+Sabotage of these fixes: 8 breaks, 7 caught. The survivor drops the
+"given no values" condition on carrying the names, which differs only for a
+resume that gives different names after its run recorded its own.
