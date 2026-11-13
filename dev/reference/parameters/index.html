@@ -2729,7 +2729,10 @@ operator's walkthrough. In short:</p>
 <p><code>morzer config set</code> takes the deployment lock, validates the value, records it,
 re-renders the configuration, re-creates the services the release says depend
 on it, and then waits for the release's health checks. A check that fails undoes
-the change. With nothing re-created, there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
+the change. Only the re-created services are waited on, so a service they depend
+on that is already unhealthy does not fail the change, unless the release makes
+them wait for it to be healthy (<code>condition: service_healthy</code>). With nothing re-created,
+there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
 reads the value when the profile is turned on and it is created.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span>list<span class="w">                    </span><span class="c1"># every parameter, its value, and where it came from</span>
 morzer<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>http_port<span class="w">           </span><span class="c1"># the value alone, for a script</span>

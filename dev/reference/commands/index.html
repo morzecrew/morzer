@@ -3693,7 +3693,10 @@ release defines it, and its writable layer does not survive, as with any
 re-create <code>apply</code> does. Dependencies are converged as <code>apply</code> converges them,
 not forced: one that is down is started, and one whose container no longer
 matches the release is re-created. After an <code>apply</code>, every one matches, so
-only the named services are replaced.</p>
+only the named services are replaced. The wait covers the named services
+alone, so a dependency that is already unhealthy does not fail the restart,
+unless the release makes them wait for it to be healthy
+(<code>condition: service_healthy</code>).</p>
 <p>A <code>restart</code> operation in the journal, under the deployment lock. Refused with
 <a href="../exit-codes/">exit 2</a> while the product is stopped, before the first <code>apply</code>,
 with no service named, and for a service the release does not start, including
