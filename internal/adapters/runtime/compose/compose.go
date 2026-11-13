@@ -443,13 +443,25 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 //
 // It is idempotent by construction: Compose reconciles against the declared
 // state, so calling Up on a converged project changes nothing.
+//
+// Named services are waited on alone (#351). Compose's `--wait` also covers the
+// dependencies it found running, so one already unhealthy would fail a
+// re-create that does not touch it, and the compensation running the same Up.
+// The first call starts and converges the dependencies as any `up` does (RFC
+// 0050 decision 1); the second re-creates nothing and waits on the names only.
 func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
-	argv := r.args(cfg, "up", "--detach")
+	var wait []string
 	if opts.Wait {
-		argv = append(argv, "--wait")
+		wait = append(wait, "--wait")
 		if opts.WaitTimeout > 0 {
-			argv = append(argv, "--wait-timeout", strconv.Itoa(int(opts.WaitTimeout.Seconds())))
+			wait = append(wait, "--wait-timeout", strconv.Itoa(int(opts.WaitTimeout.Seconds())))
 		}
+	}
+	waitNamed := len(wait) > 0 && len(opts.Services) > 0
+
+	argv := r.args(cfg, "up", "--detach")
+	if !waitNamed {
+		argv = append(argv, wait...)
 	}
 	if opts.RemoveOrphans {
 		argv = append(argv, "--remove-orphans")
@@ -467,8 +479,26 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 		timeout += 60 * time.Second
 	}
 
+	if err := r.up(ctx, cfg, timeout, argv); err != nil || !waitNamed {
+		return err
+	}
+	argv = append(append(r.args(cfg, "up", "--detach", "--no-deps"), wait...), opts.Services...)
+	return r.up(ctx, cfg, timeout, argv)
+}
+
+func (r *Runtime) up(ctx context.Context, cfg ports.RuntimeConfig, timeout time.Duration, argv []string) error {
 	if _, err := r.runner.Run(ctx, r.command(cfg, timeout, argv...)); err != nil {
-		return wrapExit(err, "cannot start services",
+		// Compose's reason, such as the container that is unhealthy, in
+		// the message the step line shows, and not only in the verbose log
+		// (#351). Its last line, since Compose prints progress before it.
+		message := "cannot start services"
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if last := lastLine(exitErr.Stderr); last != "" {
+				message += ": " + last
+			}
+		}
+		return wrapExit(err, message,
 			"run `morzer status` for per-service state, or `docker compose logs` for detail")
 	}
 	return nil

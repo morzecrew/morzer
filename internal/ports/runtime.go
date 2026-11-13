@@ -185,7 +185,10 @@ type UpOptions struct {
 	// Services limits the operation; empty means the whole project.
 	Services []string
 
-	// Wait blocks until containers report healthy.
+	// Wait blocks until containers report healthy. With Services set, it
+	// waits on those services only: their dependencies are started and
+	// converged, and not waited on, so one already unhealthy does not fail
+	// a change that does not touch it (#351).
 	Wait bool
 
 	// WaitTimeout bounds that wait. Zero means the context's deadline

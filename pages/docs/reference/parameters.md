@@ -188,7 +188,9 @@ operator's walkthrough. In short:
 `morzer config set` takes the deployment lock, validates the value, records it,
 re-renders the configuration, re-creates the services the release says depend
 on it, and then waits for the release's health checks. A check that fails undoes
-the change. With nothing re-created, there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
+the change. Only the re-created services are waited on, so a service they depend
+on that is already unhealthy does not fail the change. With nothing re-created,
+there is nothing to wait for. A dependant behind a profile that is not active is not re-created: it
 reads the value when the profile is turned on and it is created.
 
 ```sh

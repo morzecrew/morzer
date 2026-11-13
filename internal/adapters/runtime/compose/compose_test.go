@@ -181,18 +181,42 @@ func TestUpPassesItsOptionsThrough(t *testing.T) {
 	r, runner := newRuntime()
 
 	err := r.Up(context.Background(), cfg(), ports.UpOptions{
-		Services: []string{"web"}, Wait: true, WaitTimeout: 90_000_000_000, RemoveOrphans: true,
-		ForceRecreate: true,
+		Wait: true, WaitTimeout: 90_000_000_000, RemoveOrphans: true, ForceRecreate: true,
 	})
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
 
 	line := strings.Join(runner.Calls()[0].Argv, " ")
-	for _, want := range []string{"up", "--detach", "--wait", "--remove-orphans", "--force-recreate", "web"} {
+	for _, want := range []string{"up", "--detach", "--wait", "--wait-timeout 90", "--remove-orphans", "--force-recreate"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the command line is missing %q: %s", want, line)
 		}
+	}
+}
+
+// Named services are waited on alone (#351): the re-create converges their
+// dependencies, and the wait that follows leaves them out.
+func TestUpWaitsOnTheNamedServicesAlone(t *testing.T) {
+	r, runner := newRuntime()
+
+	err := r.Up(context.Background(), cfg(), ports.UpOptions{
+		Services: []string{"web"}, Wait: true, WaitTimeout: 90_000_000_000, ForceRecreate: true,
+	})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	calls := runner.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("want a re-create and then a wait, got:\n%s", runner.CommandLines())
+	}
+	recreate, wait := strings.Join(calls[0].Argv, " "), strings.Join(calls[1].Argv, " ")
+	if !strings.HasSuffix(recreate, "up --detach --force-recreate web") {
+		t.Errorf("the re-create is not a plain up of the named service: %s", recreate)
+	}
+	if !strings.HasSuffix(wait, "up --detach --no-deps --wait --wait-timeout 90 web") {
+		t.Errorf("the wait does not keep to the named service: %s", wait)
 	}
 }
 
@@ -206,8 +230,9 @@ func TestUpReportsAServiceThatWillNotStart(t *testing.T) {
 	if err == nil {
 		t.Fatal("a failed start was reported as success")
 	}
-	if !strings.Contains(err.Error(), "unhealthy") {
-		t.Errorf("the daemon's reason did not survive: %v", err)
+	// In the message, which is what the step line shows (#351).
+	if msg := domain.AsError(err).Message; !strings.Contains(msg, "demo-db-1 is unhealthy") {
+		t.Errorf("the daemon's reason is not in the message: %q", msg)
 	}
 }
 

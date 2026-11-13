@@ -77,6 +77,34 @@ func TestRuntimeContract_Compose(t *testing.T) {
 	})
 }
 
+func TestRecreateContract_Compose(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	contract.RunRecreateSuite(t, func(t *testing.T) (ports.Runtime, ports.RuntimeConfig) {
+		return compose.New(infraexec.New()), dockerlab.Project(t, fmt.Sprintf(`
+services:
+  dep:
+    image: %s
+    init: true
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 1s
+      timeout: 2s
+      retries: 1
+      start_period: 0s
+  app:
+    image: %s
+    init: true
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    depends_on:
+      dep:
+        condition: service_started
+`, dockerlab.ImageBusybox, dockerlab.ImageBusybox))
+	})
+}
+
 // TestComposeDownKeepsTheVolumeAndDownWithVolumesDoesNot is the claim the
 // whole compensation design rests on, checked by writing a byte and looking
 // for it afterwards.

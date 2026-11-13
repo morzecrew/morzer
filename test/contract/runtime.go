@@ -209,6 +209,60 @@ func RunRuntimeSuite(t *testing.T, newRuntime RuntimeFactory) {
 	RunOptionSuite(t, newRuntime)
 }
 
+// RunRecreateSuite pins what an Up that names services and waits covers: the
+// named services, and not their dependencies (#351).
+//
+// `config set` and `restart` re-create the services they name. A dependency
+// that is already unhealthy, such as a proxy whose upstreams are all down, must
+// not fail a change that does not touch it, and the compensation, which runs the
+// same Up with the old values, would fail too and leave the change for a person.
+// A dependency that is down is still started (RFC 0050 decision 1).
+//
+// Its own factory, because the whole-project fixture must come up healthy, and
+// the fake models neither dependencies nor health. The configuration names two
+// services: `dep`, whose healthcheck never passes, and `app`, which depends on
+// it with `condition: service_started`.
+func RunRecreateSuite(t *testing.T, newRuntime RuntimeFactory) {
+	t.Helper()
+	ctx := context.Background()
+	recreate := ports.UpOptions{
+		Services: []string{"app"}, Wait: true, WaitTimeout: time.Minute, ForceRecreate: true,
+	}
+	serviceState := func(t *testing.T, rt ports.Runtime, cfg ports.RuntimeConfig, name string) ports.ServiceState {
+		t.Helper()
+		states, err := rt.Status(ctx, cfg)
+		require.NoError(t, err)
+		for _, s := range states {
+			if s.Name == name {
+				return s
+			}
+		}
+		return ports.ServiceState{}
+	}
+
+	t.Run("a re-create does not wait on an unhealthy dependency", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{}))
+		require.Eventually(t, func() bool {
+			return serviceState(t, rt, cfg, "dep").Health == ports.HealthUnhealthy
+		}, time.Minute, 500*time.Millisecond, "the fixture's dependency never reported unhealthy")
+
+		assert.NoError(t, rt.Up(ctx, cfg, recreate),
+			"a dependency the re-create does not touch failed it")
+	})
+
+	t.Run("a re-create starts a dependency that is down", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{}))
+		require.NoError(t, rt.Stop(ctx, cfg, []string{"dep"}, 10*time.Second))
+		require.NotEqual(t, "running", serviceState(t, rt, cfg, "dep").State)
+
+		require.NoError(t, rt.Up(ctx, cfg, recreate))
+		assert.Equal(t, "running", serviceState(t, rt, cfg, "dep").State,
+			"a dependency that was down was left down")
+	})
+}
+
 // runInspectionSuite covers what `morzer logs`, `ps` and `stats` read.
 //
 // These three are the ones a fake cannot prove on its own, in opposite
