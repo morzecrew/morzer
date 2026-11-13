@@ -388,3 +388,10 @@ P3a ships before P3b, and each is its own PR.
 
   The render unit G3 rejected would have turned the failure into a wait. The
   author did not ask to revisit that.
+- **Row 29 against the port's text.** The port's comments say `Stop` removes
+  no container and `Start` recreates nothing (`ports/runtime.go:62-79`), so
+  row 29 recreating a container reads as a breach of the contract. The
+  author's ruling (G4 a) is the answer, and §6 asked for exactly this verdict.
+  The row now says what that leaves undone: the build restates those comments
+  to the property row 29 protects, which is the definition, the values and
+  every declared volume, but not a container's writable layer.
