@@ -373,3 +373,18 @@ not fire. Each is logged when it is made:
   installations, the system ones, or both.
 
 P3a ships before P3b, and each is its own PR.
+
+## Review of #355, 2026-11-13
+
+- **Row 28: a missing `[Install]` does not stop a dependency pull.** A unit
+  outside the installation that `Requires=`, `Wants=` or `BindsTo=` one of the
+  adapter's units starts it whenever that unit starts, before any render. The
+  ruling stands, and the row now records the case:
+  - the start fails loudly, because the parameter file is absent (row 21);
+  - `apply --startup` starts the unit as usual afterwards;
+  - the adapter resets a failed unit before it starts one, so a start limit
+    those early pulls ran into does not refuse the manager's start;
+  - the docs say outside units order against the product unit.
+
+  The render unit G3 rejected would have turned the failure into a wait. The
+  author did not ask to revisit that.
