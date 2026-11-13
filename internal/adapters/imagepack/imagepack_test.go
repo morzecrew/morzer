@@ -16,6 +16,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/memory"
+	"oras.land/oras-go/v2/content/oci"
 
 	"github.com/morzecrew/morzer/internal/adapters/imagepack"
 	"github.com/morzecrew/morzer/internal/domain"
@@ -93,6 +94,45 @@ func TestPackWritesALayoutCarryingThePinnedDigest(t *testing.T) {
 func TestPackOfAnIndexNamesOnlyTheIndex(t *testing.T) {
 	dir := t.TempDir()
 	src, indexDigest, _ := multiPlatformImageInMemory(t)
+
+	m := manifestWith(map[string]domain.ImageSpec{
+		"app": {Ref: "registry.example/demo/app@" + indexDigest, From: domain.ImageFromBundle},
+	})
+	packer, err := imagepack.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := packer.WithSource(constantSource(src)).Pack(context.Background(), dir, m); err != nil {
+		t.Fatal(err)
+	}
+
+	digests, err := release.ImageLayoutDigests(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 1 || digests[0] != indexDigest {
+		t.Errorf("layout carries %v, want [%s]", digests, indexDigest)
+	}
+}
+
+// A layout that already names the manifests inside the pinned index -- left by
+// a pack before the one above, or by a copy that failed part way, since oras
+// saves index.json as each manifest lands -- is left naming the index alone
+// by the next pack.
+func TestPackOverALayoutNamingTheIndexManifestsNamesTheIndexAlone(t *testing.T) {
+	dir := t.TempDir()
+	src, indexDigest, _ := multiPlatformImageInMemory(t)
+
+	store, err := oci.New(filepath.Join(dir, release.ImagesDirName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := oras.Copy(context.Background(), src, indexDigest, store, indexDigest, oras.DefaultCopyOptions); err != nil {
+		t.Fatal(err)
+	}
+	if digests, _ := release.ImageLayoutDigests(dir); len(digests) != 3 {
+		t.Fatalf("the fixture's layout names %v, want the index and its two manifests", digests)
+	}
 
 	m := manifestWith(map[string]domain.ImageSpec{
 		"app": {Ref: "registry.example/demo/app@" + indexDigest, From: domain.ImageFromBundle},
