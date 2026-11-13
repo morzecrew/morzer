@@ -284,3 +284,92 @@ mounted an anonymous volume (`Volume=/anon`) and a named one
 - Item 6 is now measured: a Quadlet `Stop` deletes an anonymous volume's data,
   where `ports/runtime.go:62` says `Stop` removes no volumes.
 - The unit and the named volume were removed afterwards.
+
+## What G1 reaches, and the plan for P3a, 2026-11-13
+
+G1 (a) moves the manager, not only the runtime. P3 therefore splits in two:
+- **P3a, the user layout.** The manager runs as a user other than root, with
+  Compose, and nothing in it is Quadlet's. It can be tested by the suites that
+  already run without root.
+- **P3b, the Quadlet adapter.** This is the plan above, and it builds on P3a.
+
+G1 raised three questions. The author ruled each on 2026-11-13, as
+recommended (RFC 0023 rows 30–32):
+- **H1, where.** One tree, `$XDG_DATA_HOME/morzer/{etc,var/lib,opt}/<product>`.
+  The render directory is `$XDG_RUNTIME_DIR/morzer/<product>`. Both are
+  namespaced because a product's name could collide: `/run/user/1000` on the
+  development host already holds `containers`, `libpod`, `systemd`, `gnupg`,
+  `pulse` and more (`ls /run/user/1000`).
+- **H2, which.** The layout follows who runs the command. A user other than
+  root gets the user layout when it holds an installation, or for `init`.
+  Otherwise the system layout is used, as today.
+- **H3, Compose.** Compose may use the user layout, as an untested
+  configuration.
+
+Already settled, so no question was asked: RFC 0032 row 11 documents a
+declared secret owner under rootless and does not handle it. Without root,
+the render refuses to give a file to another uid, with the hint at
+`domain/secret.go:175`.
+
+### P3a plan
+
+- **Domain.** `internal/domain/paths.go` gains `UserPaths`: `PathsUnder` over
+  the user tree, with `RunDir` moved to `$XDG_RUNTIME_DIR/morzer/<product>`.
+  `$XDG_DATA_HOME` falls back to `~/.local/share`. `$XDG_RUNTIME_DIR` has no
+  fallback (decision U1).
+- **CLI layout resolution** (`internal/cli/root.go`):
+  - Path resolution and `rewireForProduct` choose by effective uid (row 31).
+  - `pathsFromConfig` maps a `--config` inside the user tree to `UserPaths`,
+    so a user unit's `--config` gets the tmpfs render directory and not
+    `<tree>/run`.
+  - `--root` keeps meaning `PathsUnder`, so the tests are unchanged.
+- **Supervisor** (`internal/adapters/supervisor/systemd/systemd.go`):
+  - A user scope. Units go in `$XDG_CONFIG_HOME/systemd/user`, and every call
+    is `systemctl --user`.
+  - The product unit is `WantedBy=default.target` rather than
+    `multi-user.target`.
+  - `Available` asks whether the user's manager is running.
+  - The composition root (`root.go:1065`) picks the scope from the layout.
+  - Units still order against system targets: decision U3.
+- **Manager binary** (#345):
+  - `atomicfs.ReplaceableByNonRoot` gains a sibling that takes the uid the
+    units run as. Under user units, a path that the user or root owns, and
+    that no one else can write, is one only they can replace.
+  - Callers: `ops/settings.go:1151`, `ops/manager_version.go:130-160` and
+    `ops/self_update.go`.
+- **Doctor:**
+  - A user installation on an account that is not lingering is warned about:
+    its units stop at logout and do not start at boot (§11; D-006).
+  - `net.ipv4.ip_unprivileged_port_start` is checked against the ports the
+    release publishes.
+  - The metrics directory check (`ops/metrics.go:270`) asks as the user the
+    units run as, which is not always root.
+- **Tests:**
+  - `domain` unit tests for `UserPaths`.
+  - `clitest`: resolution by uid, `--config` inside the user tree, and `init`
+    without root landing in the user tree. The harness sets `XDG_DATA_HOME`
+    and `XDG_RUNTIME_DIR` to temporary directories, so no test reads a real
+    home.
+  - Supervisor tests: `--user` in every argv, the unit directory, and
+    `default.target`.
+  - Ownership tests: replaceability for a uid.
+  - `test/suite`: one install and apply in the user layout against the fakes.
+- **Docs:**
+  - An operating page for a user installation: the layout, lingering, ports
+    below 1024, and that hooks run as the user.
+  - `reference/commands.md` on how a layout is chosen.
+  - `CHANGELOG.md`, Unreleased: Added.
+
+Decisions the plan leaves to the build. None is load-bearing, so the gate does
+not fire. Each is logged when it is made:
+- **U1.** With `$XDG_RUNTIME_DIR` unset, the user layout is refused rather
+  than falling back to a disk directory, because `RunDir` holds decrypted
+  secrets.
+- **U2.** Whether `Paths` carries its scope as a field or derives it, as
+  `Root()` is derived.
+- **U3.** What the user units do with `After=`/`Wants=network-online.target`
+  and `docker.service`. A user manager cannot order against system units.
+- **U4.** What `morzer ls` shows to a user other than root: their own
+  installations, the system ones, or both.
+
+P3a ships before P3b, and each is its own PR.
