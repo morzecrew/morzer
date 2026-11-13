@@ -7,15 +7,16 @@ import (
 	"github.com/morzecrew/morzer/test/clitest"
 )
 
-// `update --set` and `--set-file` go with an install: a check, a stage or a
-// tick records nothing they could go with, so the pair is refused, and a value
-// that is not name=value is refused before anything is fetched.
+// `update --set` and `--set-file` go with an install: a check or a stage
+// records nothing they could go with, and a tick installs a release nobody
+// chose them for, so the pair is refused, and a value that is not name=value
+// is refused before anything is fetched.
 func TestUpdateSetGoesWithAnInstall(t *testing.T) {
 	r := clitest.NewInstalled(t)
 
 	for _, mode := range [][]string{{"--check"}, {"--stage"}, {"--unattended"}} {
 		r.Run(append([]string{"update", "--set", "admin_email=ops@example.test"}, mode...)...).ExitCode(domain.ExitUsage).
-			SaysAll("--set and --set-file apply to an install")
+			SaysAll("--set and --set-file apply to an install", "update --to <version> --set")
 		r.Run(append([]string{"update", "--set-file", "admin_email=/dev/null"}, mode...)...).ExitCode(domain.ExitUsage).
 			SaysAll("--set and --set-file apply to an install")
 	}
