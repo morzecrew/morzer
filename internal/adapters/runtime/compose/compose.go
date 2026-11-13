@@ -449,6 +449,9 @@ func (r *Runtime) Pull(ctx context.Context, cfg ports.RuntimeConfig, images []st
 // re-create that does not touch it, and the compensation running the same Up.
 // The first call starts and converges the dependencies as any `up` does (RFC
 // 0050 decision 1); the second re-creates nothing and waits on the names only.
+// It prepares no image either: the first did, and `pull_policy: always` pulls
+// on every `up`, which is one more call to a registry that can fail. Measured
+// with Compose 5.5.1; both flags are in 2.17, as `--wait-timeout` is.
 func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
 	var wait []string
 	if opts.Wait {
@@ -482,7 +485,8 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	if err := r.up(ctx, cfg, timeout, argv); err != nil || !waitNamed {
 		return err
 	}
-	argv = append(append(r.args(cfg, "up", "--detach", "--no-deps"), wait...), opts.Services...)
+	argv = r.args(cfg, "up", "--detach", "--no-deps", "--no-build", "--pull", "never")
+	argv = append(append(argv, wait...), opts.Services...)
 	return r.up(ctx, cfg, timeout, argv)
 }
 

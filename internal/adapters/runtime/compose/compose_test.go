@@ -196,7 +196,8 @@ func TestUpPassesItsOptionsThrough(t *testing.T) {
 }
 
 // Named services are waited on alone (#351): the re-create converges their
-// dependencies, and the wait that follows leaves them out.
+// dependencies, and the wait that follows leaves them out, and prepares no
+// image again, since `pull_policy: always` pulls on every `up`.
 func TestUpWaitsOnTheNamedServicesAlone(t *testing.T) {
 	r, runner := newRuntime()
 
@@ -215,7 +216,7 @@ func TestUpWaitsOnTheNamedServicesAlone(t *testing.T) {
 	if !strings.HasSuffix(recreate, "up --detach --force-recreate web") {
 		t.Errorf("the re-create is not a plain up of the named service: %s", recreate)
 	}
-	if !strings.HasSuffix(wait, "up --detach --no-deps --wait --wait-timeout 90 web") {
+	if !strings.HasSuffix(wait, "up --detach --no-deps --no-build --pull never --wait --wait-timeout 90 web") {
 		t.Errorf("the wait does not keep to the named service: %s", wait)
 	}
 }
