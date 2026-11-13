@@ -97,6 +97,12 @@ attended update with the value:
 1.4.0 --set admin_email=<value>`
 ```
 
+On a machine that follows an authority, a document can give the value instead.
+A value it left pending for the staged release counts as given, and the tick
+installs the release with it. A pending value the release refuses holds the
+release too, and the tick says it waits for the authority's next document. See
+[crossing a release that adds a managed name](managing-from-elsewhere.md#crossing-a-release-that-adds-or-renames-a-managed-name).
+
 ## Turning it on
 
 ```sh

@@ -266,7 +266,7 @@ morzer update --to 1.3.0
 | --- | --- |
 | `--to` | Install a version already in the release store, instead of a bundle path. |
 | `--allow-older` | Install a release older than the one running, which is otherwise refused. Recorded in the journal, and `--resume` keeps it for the same release. Refused beside `--check`, `--stage` and `--unattended`. |
-| `--set` | Set a parameter of the release being installed, as `name=value`. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside `--check`, `--stage` and `--unattended`. |
+| `--set` | Set a parameter of the release being installed, as `name=value`. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside `--check`, `--stage` and `--unattended`. While [sync](desired-state.md) is enabled, a name the authority manages, or one it left pending, needs `--force`. |
 | `--set-file` | Read such a parameter's value from a file, as `name=path`; `-` is standard input. Repeat for several. |
 | `--digest` | Expected bundle content digest. A mismatch refuses the update. |
 | `--profile` | Override the installation's deployment profiles for this run. Repeat, or separate with commas, for several. [`config set installation.profile`](parameters.md#changing-the-profile) keeps a selection. |
@@ -289,6 +289,11 @@ serving and nothing is undone, and the hint names `--set`. A name the release
 does not declare is refused as a typo, and a value of the wrong type is refused
 by name. The values are recorded once the update has converged on them, so one
 that rolls back records none.
+
+On a machine that follows an authority, an update also takes the values a
+document left pending for the release it installs, as if they were given with
+`--set`, and the journal names them apart from those given with `--set`. See
+[names for the staged release](desired-state.md#names-for-the-staged-release).
 
 A `--resume` is held to the values its run was given. The journal keeps a
 digest of each, never the value, so a run that stopped before recording them

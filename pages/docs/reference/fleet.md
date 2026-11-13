@@ -155,21 +155,22 @@ problem can still publish a row saying exactly that.
 | `product`, `installation_id` | which installation this is |
 | `mode` | `dev` on a sandbox, absent on a production machine |
 | `version` | the release currently installed |
+| `staged` | the release the channel staged and this installation has not installed, absent when none is; a [desired-state document](desired-state.md#names-for-the-staged-release) may give values for the names it manages |
 | `manager_version` | which manager published it |
 | `health` | services and running counts, or why they were not taken |
 | `drift` | how many configuration targets differ — a count, never a diff |
 | `last_operation` | id, kind, outcome and when |
 | `signing_key` | the public half, for comparing a fingerprint by eye |
 | `age_recipient` | this machine's age public key, which an authority encrypts [desired-state documents](desired-state.md) to; trusted only from a row that verifies against the [roster](#the-roster) |
-| `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured |
+| `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, its last fetch, and `pending`, the parameters a document left for the staged release, by name and never by value; absent when no sync target or authority is configured |
 | `facts_digest` | the sha256 of the [facts](desired-state.md#facts) published beside this row, which an authority uses only when they are these |
 | `facts_problem` | why the latest facts run did not replace them, as a class: the task's exit status, too much output, or a run that did not start |
 | `published_at` | when this row was written |
 
-Rows are schema 2, which added `age_recipient`, `sync`, `facts_digest` and
-`facts_problem`. A manager that reads
-schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
-manager you read the fleet with first.
+Rows are schema 3, which added `staged` and the `sync` block's `pending`.
+Schema 2 added `age_recipient`, `sync`, `facts_digest` and `facts_problem`. A
+manager refuses a row of a newer schema than it reads as written by a newer
+manager, so upgrade the manager you read the fleet with first.
 
 ## What the row never carries
 
