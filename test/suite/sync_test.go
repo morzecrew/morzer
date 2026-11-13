@@ -55,8 +55,15 @@ func newSyncRig(t *testing.T) *syncRig {
 
 func newSyncRigFor(t *testing.T, product string) *syncRig {
 	t.Helper()
+	return newSyncRigOn(t, verifyHarnessFor(t, product))
+}
+
+// newSyncRigOn installs h's release, managing log_level, db_password and the
+// domains, and has it follow an authority. It writes a whole installation, as
+// h.install() does.
+func newSyncRigOn(t *testing.T, h *harness) *syncRig {
+	t.Helper()
 	ctx := context.Background()
-	h := verifyHarnessFor(t, product)
 
 	path := filepath.Join(h.Release.Root, "manifest.yaml")
 	raw, err := os.ReadFile(path)
@@ -512,7 +519,7 @@ func TestARowReportsSyncWithoutTheRefusalsText(t *testing.T) {
 
 	row, body := publishedRow(t, r.offsite, inst)
 	assert.NotContains(t, string(body), "PARAM-VALUE-MUST-NOT-TRAVEL", "a refusal's text reached the row")
-	assert.Equal(t, 2, row.Schema)
+	assert.Equal(t, 3, row.Schema)
 	assert.Equal(t, machine, row.AgeRecipient)
 	require.NotNil(t, row.Sync)
 	assert.Equal(t, domain.MinisignKeyID(r.key), row.Sync.AuthorityKeyID)

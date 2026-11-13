@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the journal names them without quoting a value. A `--resume` is held to
   the values its run was given, and refuses one that differs by name.
 
+- A desired-state document can give values to the release the channel staged,
+  for names only that release lets an authority manage. The machine keeps them
+  pending, and the next update to it, the tick's included, takes them as if
+  given with `--set`. `config list`, `status --json` and the fleet row report
+  them.
+
+### Changed
+
+- While sync is enabled, `update --set` of a parameter the authority manages,
+  or one it left pending, is refused unless `--force`, as `config set` of one
+  already is.
+
+- Fleet rows are schema 3 and name the staged release and the pending
+  parameters; a 0.16 manager refuses them, so upgrade the manager that reads
+  the fleet first. Installation state moves to schema 21.
+
 ### Fixed
 
 - `config set` and `restart` wait only on the services they re-create. A

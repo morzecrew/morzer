@@ -34,7 +34,7 @@ func configDoc(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
 
 	if len(report.Parameters) == 0 {
 		d.Text(0, "%s", t.Dim(report.Product+" "+report.Release+" declares no parameters"))
-		return d
+		return configPending(d, report)
 	}
 
 	d.Title(report.Product + " " + report.Release)
@@ -92,6 +92,7 @@ func configDoc(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
 		}
 	}
 
+	configPending(d, report)
 	if len(report.Stale) > 0 {
 		d.Blank()
 		d.Checks(2, []ui.CheckRow{{
@@ -100,5 +101,28 @@ func configDoc(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
 			Message:     "clear with: morzer config unset " + strings.Join(report.Stale, " "),
 		}})
 	}
+	return d
+}
+
+// configPending draws what a document left for the staged release, apart from
+// the values in force: nothing renders them until an update records them (RFC
+// 0058 §5.4).
+func configPending(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
+	p := report.Pending
+	if p == nil {
+		return d
+	}
+	t := d.Theme()
+	rows := make([][]string, 0, len(p.Parameters))
+	for _, v := range p.Parameters {
+		rows = append(rows, []string{v.Name, t.Highlight(shown(domain.FirstLine(v.Value)))})
+	}
+	d.Blank()
+	d.Text(2, "%s", t.Bold("pending for "+p.Release))
+	d.Table(2, ui.Table{
+		Columns: []ui.Column{{Header: "name", Essential: true}, {Header: "value", Essential: true}},
+		Rows:    rows,
+	})
+	d.Text(2, "%s", t.Dim("the next update to a release that declares them takes them, as --set would"))
 	return d
 }

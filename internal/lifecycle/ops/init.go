@@ -747,6 +747,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		// A repair is not a start: an operator repairing a machine they
 		// stopped still wants it down until `morzer start` (RFC 0040).
 		inst.Stopped = existing.Stopped
+		// Values a document left for a staged release, which the next
+		// update takes (RFC 0058): a record, not this command's to drop.
+		inst.Pending = existing.Pending
 		if len(opts.Profiles) == 0 {
 			inst.Profiles = existing.Profiles
 		}

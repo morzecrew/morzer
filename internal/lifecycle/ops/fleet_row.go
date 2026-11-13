@@ -49,6 +49,12 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 	if currentErr == nil && !current.IsZero() {
 		in.Version = current.Version.String()
 	}
+	// What a document may give values for besides the installed release
+	// (RFC 0058 §5.4). A record that cannot be read names none, as one that
+	// is lost costs only a fetch.
+	if candidate, err := d.State.UpdateCandidate(ctx); err == nil && candidate.IsStaged() {
+		in.Staged = candidate.Version.String()
+	}
 
 	in.Health = d.fleetHealth(ctx, inst, current, currentErr)
 	in.Drift = d.fleetDrift(ctx, inst, current, currentErr)

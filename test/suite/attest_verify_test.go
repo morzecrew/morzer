@@ -36,8 +36,14 @@ func verifyHarness(t *testing.T) *harness {
 
 func verifyHarnessFor(t *testing.T, product string) *harness {
 	t.Helper()
-	h := newHarnessFor(t, product)
-	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), product)
+	return verifying(newHarnessFor(t, product))
+}
+
+// verifying gives h a real signer and checker, and a runtime reporting the
+// images its release pins.
+func verifying(h *harness) *harness {
+	h.t.Helper()
+	h.Deps.Signer = signer.New(h.Paths.SigningKeyFile(), h.Paths.Product)
 	h.Deps.Checker = signer.NewChecker()
 
 	// What the services run, as the real adapter would report after an

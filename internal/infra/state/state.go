@@ -409,6 +409,10 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// 19 -> 20 added `sync.recipient` and the facts record (RFC
 			// 0057 §5.10). Nothing to convert: absent publishes no facts.
 			i.SchemaVersion = 20
+		case 20:
+			// 20 -> 21 added `pending` (RFC 0058). Nothing to convert:
+			// absent holds no values for a staged release.
+			i.SchemaVersion = 21
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

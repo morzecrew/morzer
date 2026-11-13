@@ -118,7 +118,10 @@ import (
 // Bumped to 18 for `profiles`, which replaces `profile` (RFC 0053 decision 2).
 // An older manager would ignore the list, deploy the base files and remove the
 // overlays' services.
-const InstallationSchemaVersion = 20
+// Bumped to 21 for `pending` (RFC 0058 decision 11). An older manager would
+// drop the values on its next write, and the update they wait for would then
+// stay refused for want of them.
+const InstallationSchemaVersion = 21
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18
@@ -264,6 +267,25 @@ func (m Mode) Describe() string {
 // default for every value nobody thought of.
 func (i Installation) IsDev() bool { return i.Mode == ModeDev }
 
+// PendingValues are parameter values waiting for a release (RFC 0058 §5.2).
+type PendingValues struct {
+	// Release is the staged release the values were checked against.
+	// Reported, not binding: an update checks them again against the
+	// release it installs.
+	Release Version `yaml:"release" json:"release"`
+
+	// Parameters are stored as written, as Installation.Parameters are.
+	Parameters map[string]string `yaml:"parameters" json:"parameters"`
+}
+
+// PendingParameters is the values pending holds, nil when none.
+func (i Installation) PendingParameters() map[string]string {
+	if i.Pending == nil {
+		return nil
+	}
+	return i.Pending.Parameters
+}
+
 // RuntimeName is the runtime this installation runs on.
 //
 // Empty means an installation created before the field existed, and those
@@ -389,6 +411,14 @@ type Installation struct {
 	// template context but had no writer, no schema, no documentation and
 	// no test -- it was never settable, so nothing can depend on it.
 	Parameters map[string]string `yaml:"parameters" json:"parameters,omitempty"`
+
+	// Pending is what a desired-state document gave the release the channel
+	// staged, for parameters the installed release does not manage (RFC
+	// 0058). Apart from Parameters, which every consumer validates whole
+	// against the installed release, and rendered by nothing. The next update
+	// takes the values its release declares as if given with --set, and
+	// clears it.
+	Pending *PendingValues `yaml:"pending,omitempty" json:"pending,omitempty"`
 
 	// Update is how this deployment learns that a release exists.
 	Update UpdateConfig `yaml:"update" json:"update,omitempty"`
