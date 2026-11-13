@@ -253,3 +253,34 @@ was left behind.
    - G4 (a) then needs `Validate` to refuse a `.container` with an anonymous
      volume.
    - No spike ran this.
+
+## Rulings, and a second spike, 2026-11-13
+
+The author ruled G1–G4 on 2026-11-13, each as recommended. The rows go to
+RFC 0023 as 26–29. G5–G7 stay with the build, and each is logged when it is
+decided.
+
+**Correction to spike item 5.** That item says the contract case has to
+rewrite the parameter file between `Stop` and `Start` and expect the values
+from before. Under Quadlet as planned, that case fails: the restarted
+container takes the new values, as the item itself measured. The fix belongs
+to the adapter, not the contract.
+- The drop-in references the adapter's own copy of the parameter file. `Up`
+  writes the copy, and nothing else does.
+- `Stop`, `Start` and `Restart` then bring back the values the containers were
+  created with, as Compose's `start` and `restart` do.
+- The file the manager renders reaches the containers at the next `Up`, the
+  way a changed `.env` reaches Compose.
+
+Row 29 records this as part of the ruling's mechanism. The author ruled the
+contract case; the copy is what lets Quadlet meet it.
+
+**Spike 2: volumes across a stop.** On the same host, a transient `.container`
+mounted an anonymous volume (`Volume=/anon`) and a named one
+(`Volume=morzer-spike2-named:/named`). A file was written into each.
+- After `systemctl --user stop`, the anonymous volume no longer existed, and
+  the named one did.
+- After the next start, `/anon/f` was gone and `/named/f` read back.
+- Item 6 is now measured: a Quadlet `Stop` deletes an anonymous volume's data,
+  where `ports/runtime.go:62` says `Stop` removes no volumes.
+- The unit and the named volume were removed afterwards.
