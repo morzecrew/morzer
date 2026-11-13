@@ -443,6 +443,16 @@ func TestRemoveImageTellsARefusalFromAnAbsentName(t *testing.T) {
 		t.Errorf("the in-use refusal came back as %v", err)
 	}
 
+	// The containerd image store, which a fresh Docker 29 install uses,
+	// words the same refusal differently.
+	inUseContainerd, runner5 := newRuntime()
+	runner5.OnError("image rm", &exec.ExitError{ExitCode: 1, Stderr: `Error response from daemon: conflict: ` +
+		`unable to delete app@sha256:aaa (must be forced) - container b6bffad22ce8 ` +
+		`is using its referenced image 2cdbeb8f9c64`})
+	if err := inUseContainerd.RemoveImage(context.Background(), "app@sha256:aaa"); !errors.Is(err, domain.ErrImageInUse) {
+		t.Errorf("the containerd store's in-use refusal came back as %v", err)
+	}
+
 	absent, runner3 := newRuntime()
 	runner3.OnError("image rm", &exec.ExitError{ExitCode: 1,
 		Stderr: "Error response from daemon: No such image: app@sha256:aaa"})

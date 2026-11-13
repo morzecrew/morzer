@@ -1450,14 +1450,23 @@ case "${image}" in
 *:morzer-sha256-*) info "app runs as ${image}" ;;
 *) fail "app is running as ${image}, which is not the alias ingest creates" ;;
 esac
-# The other half, and the one that would rot silently: the reference the
-# manifest pins must still not resolve. If this ever starts passing, the
-# measurement RFC 0011 decision 19 rests on has changed, and the design can be
-# revisited rather than worked around.
-if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
-	fail "the manifest's own reference resolves locally, which contradicts decision 19"
+# The other half, and the one that would rot silently: on the classic image
+# store the reference the manifest pins must still not resolve. If this ever
+# starts passing, the measurement RFC 0011 decision 19 rests on has changed, and
+# the design can be revisited rather than worked around. On the containerd image
+# store, a fresh Docker 29 install's default, it resolves after ingest (Docker
+# 29.4.2 in CI); the alias above is still what runs.
+if docker info --format '{{range .DriverStatus}}{{index . 0}}={{index . 1}} {{end}}' |
+	grep -q 'driver-type=io.containerd.snapshotter.v1'; then
+	docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 ||
+		fail "the containerd store no longer resolves the manifest's reference after ingest"
+	info "the containerd store resolves the manifest reference; app still runs as the alias"
+else
+	if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
+		fail "the manifest's own reference resolves locally, which contradicts decision 19"
+	fi
+	info "the manifest reference still resolves nowhere, as measured"
 fi
-info "the manifest reference still resolves nowhere, as measured"
 
 step "doctor is content with an installation that pulls nothing it cannot reach"
 "${MORZER}" --root "${AIR_ROOT}" --json doctor >"${WORK}/airgapped-doctor.json" 2>&1 ||

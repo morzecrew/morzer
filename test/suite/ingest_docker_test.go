@@ -58,19 +58,16 @@ func bundleWithImage(t *testing.T) (layoutDir, vendorRef string) {
 	t.Cleanup(func() { _, _ = dockerTry(t, "rmi", seed) })
 	dockerRun(t, "push", seed)
 
-	// The digest the registry issued for this repository, which is what a
-	// manifest pins. Selected by prefix: one image can sit in several
-	// repositories, and taking element 0 pins the wrong one.
-	out := dockerRun(t, "inspect", "--format",
-		"{{range .RepoDigests}}{{println .}}{{end}}", seed)
-	var digest string
-	for _, line := range strings.Split(out, "\n") {
-		if after, ok := strings.CutPrefix(strings.TrimSpace(line), addr+"/morzer-test/app@"); ok {
-			digest = after
-			break
-		}
-	}
-	require.NotEmpty(t, digest, "the registry issued no digest for %s:\n%s", seed, out)
+	// The digest the registry holds for the tag, which is what a manifest
+	// pins. Asked of the registry rather than read from RepoDigests: on the
+	// containerd image store (Docker 29.4.2 in CI), RepoDigests named a
+	// digest the registry did not hold after the push.
+	seeded, err := remote.NewRepository(addr + "/morzer-test/app")
+	require.NoError(t, err)
+	seeded.PlainHTTP = true
+	desc, err := seeded.Resolve(context.Background(), "seed")
+	require.NoError(t, err, "the registry has no %s", seed)
+	digest := desc.Digest.String()
 
 	vendorRef = vendorRepo + "@" + digest
 
@@ -166,12 +163,22 @@ func TestIngestMakesTheAliasResolveAndLeavesTheVendorReferenceUnresolvable(t *te
 	assert.True(t, present,
 		"the alias does not resolve after ingest, so the deployment cannot start")
 
+	// On the classic image store the vendor's reference resolves to nothing,
+	// which is the measurement decision 19 rests on. On the containerd image
+	// store it resolves after ingest (Docker 29.4.2 in CI), and the alias is
+	// still what a deployment runs.
 	vendorPresent, err := r.HasImage(ctx, vendorRef)
 	require.NoError(t, err)
-	assert.False(t, vendorPresent,
-		"the vendor's reference resolved, which contradicts the measurement the "+
-			"whole alias scheme is built on -- if this ever passes, decision 19 "+
-			"can be revisited rather than worked around")
+	if dockerlab.ContainerdStore(t) {
+		assert.True(t, vendorPresent,
+			"the containerd store no longer resolves the vendor's reference after "+
+				"ingest, so it now behaves as the classic store does")
+	} else {
+		assert.False(t, vendorPresent,
+			"the vendor's reference resolved, which contradicts the measurement the "+
+				"whole alias scheme is built on -- if this ever passes, decision 19 "+
+				"can be revisited rather than worked around")
+	}
 
 	// And the loopback reference is gone: it names a port that stopped
 	// listening when ingest returned, so leaving it would put a reference
