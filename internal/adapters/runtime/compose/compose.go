@@ -986,8 +986,10 @@ func (r *Runtime) HasImage(ctx context.Context, imageRef string) (bool, error) {
 //
 // The exit status cannot tell a refusal from an absent name -- both are 1 -- so
 // stderr decides, on the texts RFC 0031 §2.2 measured on Docker 29.7.2. By name
-// the refusal is always `conflict: unable to remove repository reference`;
-// nothing here removes by image ID, where the text differs.
+// the refusal is `conflict: unable to remove repository reference` there, and
+// `conflict: unable to delete <ref> (must be forced)` on the containerd image
+// store a fresh Docker 29 install uses; both end naming the container that is
+// using the image. Nothing here removes by image ID, where the text differs.
 func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 	res, err := r.runner.Run(ctx, exec.Command{
 		Argv: []string{r.docker, "image", "rm", ref},
@@ -1008,7 +1010,9 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 
 	stderr := res.Stderr + exitErr.Stderr
 	switch {
-	case strings.Contains(stderr, "conflict: unable to remove repository reference"):
+	case strings.Contains(stderr, "conflict: unable to remove repository reference"),
+		strings.Contains(stderr, "conflict: unable to delete") &&
+			strings.Contains(stderr, "is using its referenced image"):
 		return domain.RuntimeError(domain.ErrImageInUse, "a container uses %s", ref)
 	case strings.Contains(strings.ToLower(stderr), "no such image"):
 		// Removing an alias takes its repository's digest references on

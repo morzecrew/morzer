@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `release pack` of an image pinned by its index, without `--platform`, wrote
+  a layout `release verify` refused, naming each manifest inside the index as
+  undeclared. The layout now names the index alone. Docker 29's containerd
+  image store pushes even a single-platform build as an index.
+
+- `release prune` and `installation remove` report an image a container
+  still uses as kept because a container uses it on Docker 29's containerd
+  image store too. They used to report the daemon's message instead.
+
 - An update to a release that adds a parameter with no default, given no value
   for it, is refused before the backup and the stop, naming `--set`. It used to
   fail its render or health check after the downtime and roll back.

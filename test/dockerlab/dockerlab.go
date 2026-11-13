@@ -86,6 +86,23 @@ func Require(t *testing.T) {
 	}
 }
 
+// ContainerdStore reports whether the daemon keeps its images in the
+// containerd image store, the default on a fresh Docker 29 install, rather
+// than in the classic one. What resolves locally differs between the two (RFC
+// 0011 decision 19), so a test pinning that measurement has to know which it
+// is reading.
+func ContainerdStore(t *testing.T) bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := run(ctx, "docker", "info", "--format",
+		"{{range .DriverStatus}}{{index . 0}}={{index . 1}}\n{{end}}")
+	if err != nil {
+		t.Fatalf("cannot ask the daemon which image store it uses: %v\n%s", err, out)
+	}
+	return strings.Contains(out, "driver-type=io.containerd.snapshotter.v1")
+}
+
 // Pull makes sure an image is local before a test's clock starts.
 //
 // Pulling inside a timed wait is how a first run on a cold cache turns into a
