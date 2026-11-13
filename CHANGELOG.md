@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `config set` and `restart` wait only on the services they re-create. A
+  dependency already unhealthy used to fail the change, and then its rollback,
+  which stopped at manual intervention. A service that will not start is now
+  reported with Compose's reason, such as the container that is unhealthy.
+
 - `release pack` of an image pinned by its index, without `--platform`, wrote
   a layout `release verify` refused, naming each manifest inside the index as
   undeclared. The layout now names the index alone. Docker 29's containerd
