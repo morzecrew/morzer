@@ -395,3 +395,12 @@ P3a ships before P3b, and each is its own PR.
   The row now says what that leaves undone: the build restates those comments
   to the property row 29 protects, which is the definition, the values and
   every declared volume, but not a container's writable layer.
+- **Row 32: two installations, one Compose project.** A user installation
+  and a system installation of the same product, on Compose and one daemon,
+  select the same project, because row 20 defaults it to the product's name.
+  They then share its containers and named volumes. The author narrowed H3 on
+  2026-11-13: Compose in the user layout needs a daemon that is the user's
+  own (`docker info` lists `name=rootless`), and a system daemon reached
+  through the `docker` group is refused at `init` and reported by `doctor`.
+  The check is the Compose adapter's. P3a adds it, with a test against a fake
+  `docker info`.
