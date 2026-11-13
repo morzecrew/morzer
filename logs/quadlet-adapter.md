@@ -201,3 +201,55 @@ G5 retires decision 12). G1 is a design choice. G2 and G4 rest on the
 measurements above, which a short spike would carry end to end with a
 container on a free port other than 18080: a `.container` started, stopped, started
 again, and its published port read back.
+
+## Spike, 2026-11-13T10:10:39Z
+
+This carries G2 and G4 end to end, as the section above asks. Nothing in it
+is decided.
+
+On the development host, Podman 6.1.1:
+- a `.container` unit in `$XDG_RUNTIME_DIR/containers/systemd/`, which
+  Quadlet reads for a rootless user and which a reboot clears;
+- an image already on the host (`Pull=never`), publishing
+  `127.0.0.1:${SPIKE_PARAM_PORT}:80`;
+- a drop-in, `morzer-spike.container.d/10-params.conf`, that holds only
+  `[Service] EnvironmentFile=<file>`;
+- no `[Install]` section.
+
+The unit, the drop-in and the file were removed afterwards. No container
+was left behind.
+
+1. **G2 holds end to end.** Quadlet merged the drop-in into `[Service]`, and
+   the container published `127.0.0.1:18443` from `SPIKE_PARAM_PORT=18443` in
+   the file. The vendor's unit never names a manager path.
+2. **Decision 21 holds.** With the file removed, the start failed with
+   `Failed to load environment files: No such file or directory`
+   (`Result=resources`), and nothing ran.
+3. **G4 is as measurement 3 said.**
+   - After `systemctl --user stop`, no container was left.
+   - The next start ran a new container on the same port: `4289f621dcac`,
+     then `3b56d2d56c29`.
+   - A file written into the first container's writable layer was gone.
+4. **G3's shape needs nothing more.** `is-enabled` reports `generated`. Only
+   the explicit start started the unit.
+5. **New: systemd reads the parameter file at every start, not at
+   `daemon-reload`.** With the file changed to `18444` and no reload, the next
+   start published `18444`.
+   - G4 (a) says nothing drifts because no `daemon-reload` runs between
+     `Stop` and `Start`. That covers the unit. The values come from the file,
+     so the file has to be unchanged between them too.
+   - Under Compose, `start` keeps the ports the container was created with.
+   - If G4 (a) is ruled, the contract case it names pins both. It must also
+     rewrite the parameter file between `Stop` and `Start`, and expect the
+     values from before.
+   - Today the only `Stop`/`Start` pair in the manager is the cold volume
+     capture in one backup call (`hookbackup/volumes.go:386-404`). That pair
+     renders nothing. `morzer start` is an `apply`, not `Start`
+     (`ops/stop.go:178`).
+6. **Read, not measured: a stop also deletes anonymous volumes.** The
+   generated `ExecStop` is `podman rm -v -f -i`, and `-v` removes the
+   container's anonymous volumes. So a vendor `Volume=` with no name loses its
+   data at every `Stop`, the cold capture's included.
+   - G4 (a) then needs `Validate` to refuse a `.container` with an anonymous
+     volume.
+   - No spike ran this.
