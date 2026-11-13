@@ -363,11 +363,14 @@ func newUpdateCommand(app *App) *cobra.Command {
 						"--unattended never install an older release")
 			}
 			// Values for the release an install puts in place (#346);
-			// a check or a stage records nothing they could go with.
+			// a check or a stage records nothing they could go with, and
+			// a tick installs the channel's release, which nobody chose
+			// a value for.
 			if (len(set) > 0 || len(setFiles) > 0) && (check || stage || unattended) {
 				return domain.Usage("--set and --set-file apply to an install").
-					WithHint("pass them with a bundle or --to; --check, --stage and " +
-						"--unattended install nothing to record a value with")
+					WithHint("pass them with a bundle or --to; --check and --stage " +
+						"install nothing to record a value with, and --unattended " +
+						"leaves a release that needs one staged for update --to <version> --set")
 			}
 			// Parsed before anything is fetched, so a typo fails with
 			// nothing on disk, as `init` parses them.
