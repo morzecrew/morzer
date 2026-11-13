@@ -86,6 +86,34 @@ func TestPackWritesALayoutCarryingThePinnedDigest(t *testing.T) {
 	}
 }
 
+// A manifest pinned to a multi-platform index, packed without --platform,
+// travels as the index. The layout names the index alone: the per-platform
+// manifests are reachable through it, and `release verify` refuses a layout
+// that names anything the manifest does not.
+func TestPackOfAnIndexNamesOnlyTheIndex(t *testing.T) {
+	dir := t.TempDir()
+	src, indexDigest, _ := multiPlatformImageInMemory(t)
+
+	m := manifestWith(map[string]domain.ImageSpec{
+		"app": {Ref: "registry.example/demo/app@" + indexDigest, From: domain.ImageFromBundle},
+	})
+	packer, err := imagepack.New("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := packer.WithSource(constantSource(src)).Pack(context.Background(), dir, m); err != nil {
+		t.Fatal(err)
+	}
+
+	digests, err := release.ImageLayoutDigests(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 1 || digests[0] != indexDigest {
+		t.Errorf("layout carries %v, want [%s]", digests, indexDigest)
+	}
+}
+
 // TestPackRefusesAnImageTheSourceDoesNotHave.
 //
 // The ordinary failure: a reference that resolves to nothing. Named for what it

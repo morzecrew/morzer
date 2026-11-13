@@ -12,15 +12,21 @@ package imagepack
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/oci"
 
 	ocisource "github.com/morzecrew/morzer/internal/adapters/source/oci"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -87,13 +93,22 @@ func (p *Packer) Pack(ctx context.Context, dir string, m domain.Manifest) ([]str
 		return nil, nil
 	}
 
-	store, err := oci.New(filepath.Join(dir, release.ImagesDirName))
+	layout := filepath.Join(dir, release.ImagesDirName)
+	before, err := indexDigests(layout)
+	if err != nil {
+		return nil, err
+	}
+	store, err := oci.New(layout)
 	if err != nil {
 		return nil, domain.ValidationError(err,
 			"cannot open the image layout in %s", dir)
 	}
 
 	packed := make([]string, 0, len(bundled))
+	keep := make(map[digest.Digest]bool, len(before)+len(bundled))
+	for d := range before {
+		keep[d] = true
+	}
 	for _, name := range bundled {
 		if err := p.copyOne(ctx, store, name, m.Images[name].Ref); err != nil {
 			// No sums are written by the caller on this path, so the
@@ -103,9 +118,65 @@ func (p *Packer) Pack(ctx context.Context, dir string, m domain.Manifest) ([]str
 			// corruption.
 			return packed, err
 		}
+		pinned, _ := domain.ImageSpec{Ref: m.Images[name].Ref}.Digest()
+		keep[digest.Digest(pinned)] = true
 		packed = append(packed, name)
 	}
-	return packed, nil
+	return packed, keepOnly(layout, keep)
+}
+
+// keepOnly leaves index.json naming the pinned images and whatever it named
+// before this pack. oras's store records every manifest it is given, so
+// copying an index named each per-platform manifest beside it, and `release
+// verify` refuses a layout naming anything the manifest does not. The
+// manifests stay in blobs/, reachable through the index that names them.
+func keepOnly(layout string, keep map[digest.Digest]bool) error {
+	path := filepath.Join(layout, release.ImageIndexFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return domain.ValidationError(err, "cannot read %s", path)
+	}
+	var index ocispec.Index
+	if err := json.Unmarshal(data, &index); err != nil {
+		return domain.ValidationError(err, "%s is not a valid OCI image index", path)
+	}
+	kept := index.Manifests[:0]
+	for _, desc := range index.Manifests {
+		if keep[desc.Digest] {
+			kept = append(kept, desc)
+		}
+	}
+	if len(kept) == len(index.Manifests) {
+		return nil
+	}
+	index.Manifests = kept
+	out, err := json.Marshal(index)
+	if err != nil {
+		return domain.Internal(err, "cannot encode %s", path)
+	}
+	return atomicfs.WriteFile(path, out, 0o644)
+}
+
+// indexDigests is what index.json names before a pack, and nothing for a
+// layout that does not exist yet.
+func indexDigests(layout string) (map[digest.Digest]bool, error) {
+	data, err := os.ReadFile(filepath.Join(layout, release.ImageIndexFileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, domain.ValidationError(err, "cannot read the image layout in %s", layout)
+	}
+	var index ocispec.Index
+	if err := json.Unmarshal(data, &index); err != nil {
+		return nil, domain.ValidationError(err,
+			"%s/%s is not a valid OCI image index", release.ImagesDirName, release.ImageIndexFileName)
+	}
+	out := make(map[digest.Digest]bool, len(index.Manifests))
+	for _, desc := range index.Manifests {
+		out[desc.Digest] = true
+	}
+	return out, nil
 }
 
 // copyOne copies a single image and checks it is the one the manifest pins.
