@@ -517,6 +517,13 @@
     "published": {
       "additionalProperties": false,
       "properties": {
+        "refresh": {
+          "description": "When else the facts task runs. `publish` runs it before every `fleet publish`; absent, it runs after operations only.",
+          "enum": [
+            "publish"
+          ],
+          "type": "string"
+        },
         "task": {
           "type": "string"
         }

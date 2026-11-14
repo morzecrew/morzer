@@ -111,6 +111,16 @@ func TestPublishedNamesARunnableTask(t *testing.T) {
 	old := withTasks("entry")
 	old.Compatibility.MinManagerVersion = domain.MustParseVersion("0.15.0")
 	assert.Contains(t, problem(old), "because the release declares published")
+
+	// published.refresh takes `publish` alone, under a floor of its own
+	// (#353).
+	refreshing := withTasks("entry")
+	refreshing.Published.Refresh = domain.FactsRefreshPublish
+	assert.Contains(t, problem(refreshing), "because the release declares published.refresh")
+	refreshing.Compatibility.MinManagerVersion = domain.MustParseVersion(domain.FactsRefreshMinManagerVersion)
+	assert.NotContains(t, problem(refreshing), "published")
+	refreshing.Published.Refresh = "hourly"
+	assert.Contains(t, problem(refreshing), `published.refresh: is "hourly"; the one value is "publish"`)
 }
 
 // An empty block is still a block: an older manager refuses `managed: {}` and

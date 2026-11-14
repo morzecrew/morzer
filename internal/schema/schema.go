@@ -512,6 +512,10 @@ func stringSchema(t reflect.Type) map[string]any {
 			values[i] = string(pt)
 		}
 		out["enum"] = values
+	case reflect.TypeOf(domain.FactsRefreshPublish):
+		out["enum"] = []string{string(domain.FactsRefreshPublish)}
+		out["description"] = "When else the facts task runs. `publish` runs it " +
+			"before every `fleet publish`; absent, it runs after operations only."
 	case reflect.TypeOf(domain.VolumeCold):
 		values := make([]string, len(domain.VolumeConsistencies))
 		for i, c := range domain.VolumeConsistencies {

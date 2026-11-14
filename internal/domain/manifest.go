@@ -780,12 +780,28 @@ const TextParametersMinManagerVersion = "0.15.0"
 // strictly, so it is not ignored as RFC 0057 §5.6 supposed.
 const DesiredStateMinManagerVersion = "0.16.0"
 
+// FactsRefreshMinManagerVersion is the manager release that reads
+// `published.refresh`, which an older one refuses as an unknown field (#353).
+const FactsRefreshMinManagerVersion = "0.17.0"
+
 // PublishedSpec is what a machine tells the authority it follows.
 type PublishedSpec struct {
 	// Task is a task the release declares, run without arguments or
 	// inputs; its stdout is the facts.
 	Task string `yaml:"task" json:"task,omitempty"`
+
+	// Refresh asks for the task to run at another time than after an
+	// operation, for facts that change while the installation does not.
+	// Absent, it runs after operations only (#353).
+	Refresh FactsRefresh `yaml:"refresh" json:"refresh,omitempty"`
 }
+
+// FactsRefresh is when else the facts task runs.
+type FactsRefresh string
+
+// FactsRefreshPublish runs it before every `fleet publish`, the fleet timer's
+// and an operator's, and not before a sync's.
+const FactsRefreshPublish FactsRefresh = "publish"
 
 // IsZero reports whether the release publishes no facts.
 func (p *PublishedSpec) IsZero() bool { return p == nil || p.Task == "" }
@@ -903,6 +919,18 @@ func validatePublished(m *Manifest, v *validationErrors) {
 		v.add("compatibility.min_manager_version",
 			"must be at least %s, because the release declares published, which an older "+
 				"manager refuses as an unknown field", minimum)
+	}
+	switch m.Published.Refresh {
+	case "":
+	case FactsRefreshPublish:
+		if minimum := MustParseVersion(FactsRefreshMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+			v.add("compatibility.min_manager_version",
+				"must be at least %s, because the release declares published.refresh, which an older "+
+					"manager refuses as an unknown field", minimum)
+		}
+	default:
+		v.add("published.refresh", "is %q; the one value is %q, or leave it out to run the task after operations only",
+			m.Published.Refresh, FactsRefreshPublish)
 	}
 }
 

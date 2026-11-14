@@ -40,11 +40,28 @@ func (d *Deps) refreshFactsAfter(ctx context.Context, opts Options, rec domain.O
 	}
 }
 
+// refreshFactsBeforePublish runs the facts task before a `fleet publish`, for a
+// release that asks for it with `published.refresh: publish` (#353). Like a
+// run after an operation, it gives way to a held lock, and a failure leaves
+// the previous facts with the reason in facts_problem.
+func (d *Deps) refreshFactsBeforePublish(ctx context.Context) {
+	_, _, rel, err := d.taskRelease(ctx)
+	if err == nil && rel.Manifest.Published != nil && rel.Manifest.Published.Refresh == domain.FactsRefreshPublish {
+		d.refreshFacts(ctx)
+	}
+}
+
 // factsPair is the facts kept for the next row publish, as the one file that
 // holds both halves.
 type factsPair struct {
 	Ciphertext []byte `json:"ciphertext"`
 	Signature  []byte `json:"signature"`
+
+	// Content is the sha256 of what the task printed. The ciphertext's own
+	// digest cannot say the facts are unchanged, since age encryption is
+	// randomised, and a run printing the same keeps this pair (#353). Kept
+	// here and never in the row.
+	Content string `json:"content,omitempty"`
 }
 
 // refreshFacts runs the release's facts task, when this machine publishes
@@ -75,7 +92,7 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 	}
 	recipient := inst.Sync.Recipient
 
-	problem, sealed, locked := d.runFactsTask(ctx, rel.Manifest.Published.Task, recipient)
+	problem, sealed, content, locked := d.runFactsTask(ctx, rel.Manifest.Published.Task, recipient)
 	if locked {
 		// Another operation took the lock first. It is not a failure
 		// of the facts, and the next operation runs the task again;
@@ -85,7 +102,7 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 	}
 	var pair []byte
 	if problem == "" {
-		pair, problem = d.signFacts(ctx, inst, sealed)
+		pair, problem = d.signFacts(ctx, inst, sealed, content)
 	}
 
 	now := domain.NewTime(d.now())
@@ -105,6 +122,17 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 		facts := domain.SyncFacts{}
 		if fresh.Sync.Facts != nil {
 			facts = *fresh.Sync.Facts
+		}
+		// The same facts for the same recipient: the pair kept says them
+		// already, and a new one would only move the row's digest.
+		if problem == "" && facts.Digest != "" && facts.Recipient == recipient &&
+			d.keptContent(facts.Digest) == content {
+			if facts.Problem == "" {
+				return nil
+			}
+			facts.Problem = ""
+			fresh.Sync.Facts = &facts
+			return d.saveInstallation(ctx, fresh)
 		}
 		if problem == "" {
 			sum := sha256.Sum256(sealed)
@@ -153,7 +181,7 @@ func (d *Deps) removeFactsExcept(digest string) {
 
 // signFacts signs the ciphertext with the machine key, under a comment naming
 // the installation, and returns the pair as it is kept.
-func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed []byte) ([]byte, string) {
+func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed []byte, content string) ([]byte, string) {
 	if _, err := d.Signer.EnsureKey(ctx); err != nil {
 		return nil, "the facts could not be signed"
 	}
@@ -161,7 +189,7 @@ func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed [
 	if err != nil {
 		return nil, "the facts could not be signed"
 	}
-	pair, err := json.Marshal(factsPair{Ciphertext: sealed, Signature: sig.Encoded})
+	pair, err := json.Marshal(factsPair{Ciphertext: sealed, Signature: sig.Encoded, Content: content})
 	if err != nil {
 		return nil, "the facts could not be kept"
 	}
@@ -172,30 +200,45 @@ func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed [
 // is nothing to encrypt. The reason is a class, never the output: it reaches
 // the fleet row (decision 23's rule). locked says another operation held the
 // lock, and the task did not run.
-func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (problem string, sealed []byte, locked bool) {
+func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (problem string, sealed []byte, content string, locked bool) {
 	result, err := RunTask(ctx, d, TaskOptions{Name: task, facts: true})
 	run, ran := result.Data.(TaskRun)
 	switch {
 	case errors.Is(err, domain.ErrLocked):
-		return "", nil, true
+		return "", nil, "", true
 	case ran && run.ExitCode != 0:
-		return fmt.Sprintf("the facts task exited %d", run.ExitCode), nil, false
+		return fmt.Sprintf("the facts task exited %d", run.ExitCode), nil, "", false
 	case err != nil || !ran:
 		if err != nil {
 			d.warnf("facts task %s: %s", task, domain.AsError(err).Message)
 		}
-		return "the facts task did not run", nil, false
+		return "the facts task did not run", nil, "", false
 	case run.Truncated || len(run.Stdout) > domain.FactsLimit:
 		// A capture cut short can be under the bound, since the runtime
 		// says only that one stream was cut: refused rather than
 		// published as though it were all the task said.
-		return fmt.Sprintf("the facts task printed more than %d KiB", domain.FactsLimit>>10), nil, false
+		return fmt.Sprintf("the facts task printed more than %d KiB", domain.FactsLimit>>10), nil, "", false
 	}
 	var out bytes.Buffer
 	if err := agecrypt.Encrypt(&out, bytes.NewReader([]byte(run.Stdout)), []string{recipient}); err != nil {
-		return "the facts could not be encrypted", nil, false
+		return "the facts could not be encrypted", nil, "", false
 	}
-	return "", out.Bytes(), false
+	sum := sha256.Sum256([]byte(run.Stdout))
+	return "", out.Bytes(), "sha256:" + hex.EncodeToString(sum[:]), false
+}
+
+// keptContent is the digest of what the task printed for the kept pair named
+// digest, or empty when that pair is not here or predates the field.
+func (d *Deps) keptContent(digest string) string {
+	data, err := os.ReadFile(d.Paths.FactsFile(digest))
+	if err != nil {
+		return ""
+	}
+	var pair factsPair
+	if err := json.Unmarshal(data, &pair); err != nil {
+		return ""
+	}
+	return pair.Content
 }
 
 // keptFacts is the facts pair kept for the next row publish, when there is

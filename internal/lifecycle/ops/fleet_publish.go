@@ -38,6 +38,12 @@ const fleetSigExt = minisigExt
 // FleetPublishOptions selects where this installation's row goes.
 type FleetPublishOptions struct {
 	TargetOptions
+
+	// afterOperation is a sync's publish, which follows the operation that
+	// ran the facts task already. Every other publish, `fleet publish` by the
+	// fleet timer or an operator, runs the task first when the release asks
+	// for it before every publish (#353).
+	afterOperation bool
 }
 
 // FleetPublishReport is what `fleet publish` returns, and the `--json` shape.
@@ -95,8 +101,13 @@ func (r FleetPublishReport) Unreachable() bool {
 // and journals nothing, for the same reason `status` does not -- and because
 // decision 8 says the row is derived entirely from what is already computed. If
 // publishing ever needed to record something locally, that would be the signal
-// the payload had grown into a record.
+// the payload had grown into a record. The facts a release asks for before
+// every publish are refreshed first, as a task operation of their own, and the
+// row is built from what that left.
 func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Result, error) {
+	if !opts.afterOperation && !opts.DryRun {
+		d.refreshFactsBeforePublish(ctx)
+	}
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return Result{}, err
