@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
@@ -36,7 +37,7 @@ import (
 // changed something, and does nothing after any other.
 func (d *Deps) refreshFactsAfter(ctx context.Context, opts Options, rec domain.OperationRecord, err error) {
 	if err == nil && !opts.DryRun && rec.Status == domain.StatusSucceeded {
-		d.refreshFacts(ctx)
+		d.refreshFacts(ctx, false)
 	}
 }
 
@@ -47,9 +48,15 @@ func (d *Deps) refreshFactsAfter(ctx context.Context, opts Options, rec domain.O
 func (d *Deps) refreshFactsBeforePublish(ctx context.Context) {
 	_, _, rel, err := d.taskRelease(ctx)
 	if err == nil && rel.Manifest.Published.RefreshesBeforePublish() {
-		d.refreshFacts(ctx)
+		d.refreshFacts(ctx, true)
 	}
 }
+
+// factsBeforePublishTimeout bounds the facts task a publish runs first. The
+// fleet unit gives the whole publish 300 seconds (TimeoutStartSec in the
+// systemd adapter), and a task allowed the default ten minutes would leave
+// the row unpublished every hour.
+const factsBeforePublishTimeout = 3 * time.Minute
 
 // factsPair is the facts kept for the next row publish, as the one file that
 // holds both halves.
@@ -77,7 +84,11 @@ type factsPair struct {
 // committed only under the deployment lock, and only if the recipient and the
 // release it ran with are still the installation's: another operation may
 // have changed either while the task ran.
-func (d *Deps) refreshFacts(ctx context.Context) {
+//
+// beforePublish is the run a publish makes first: its task is bounded by
+// factsBeforePublishTimeout, and it records nothing when another operation
+// holds the lock by then, since waiting would hold the row back for it.
+func (d *Deps) refreshFacts(ctx context.Context, beforePublish bool) {
 	if d.Signer == nil || d.Locker == nil {
 		return
 	}
@@ -96,7 +107,11 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 	}
 	recipient := inst.Sync.Recipient
 
-	problem, sealed, content, locked := d.runFactsTask(ctx, rel.Manifest.Published.Task, recipient)
+	var timeout time.Duration
+	if beforePublish {
+		timeout = factsBeforePublishTimeout
+	}
+	problem, sealed, content, locked := d.runFactsTask(ctx, rel.Manifest.Published.Task, recipient, timeout)
 	if locked {
 		// Another operation took the lock first. It is not a failure
 		// of the facts, and the next operation runs the task again;
@@ -112,7 +127,7 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 
 	now := domain.NewTime(d.now())
 	stale := false
-	err = d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, Options{Wait: true}, func(ctx context.Context) error {
+	err = d.withLock(ctx, d.newOpID(), domain.OpTypeConfig, Options{Wait: !beforePublish}, func(ctx context.Context) error {
 		fresh, err := d.loadInstallation(ctx)
 		if err != nil {
 			return err
@@ -163,7 +178,12 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 		d.removeFactsExcept(facts.Digest)
 		return nil
 	})
-	if err != nil {
+	switch {
+	case beforePublish && errors.Is(err, domain.ErrLocked):
+		// Another operation took the lock while the task ran; it runs
+		// the task again when it ends, and this publish goes out with
+		// the facts it has.
+	case err != nil:
 		d.warnf("cannot record this machine's facts: %s", domain.AsError(err).Message)
 	}
 	if problem != "" && !stale {
@@ -207,8 +227,10 @@ func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed [
 // is nothing to encrypt. The reason is a class, never the output: it reaches
 // the fleet row (decision 23's rule). locked says another operation held the
 // lock, and the task did not run.
-func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (problem string, sealed []byte, content string, locked bool) {
-	result, err := RunTask(ctx, d, TaskOptions{Name: task, facts: true})
+func (d *Deps) runFactsTask(
+	ctx context.Context, task, recipient string, timeout time.Duration,
+) (problem string, sealed []byte, content string, locked bool) {
+	result, err := RunTask(ctx, d, TaskOptions{Name: task, facts: true, timeout: timeout})
 	run, ran := result.Data.(TaskRun)
 	switch {
 	case errors.Is(err, domain.ErrLocked):

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/engine"
@@ -41,6 +42,9 @@ type TaskOptions struct {
 	// §5.10), which follows another operation and is not notified: its
 	// outcome is the fleet row's facts_problem.
 	facts bool
+
+	// timeout caps the task's own, for the facts run a publish makes first.
+	timeout time.Duration
 }
 
 // TaskRun is what a task's container did: the `--json` payload of `task run`,
@@ -349,6 +353,9 @@ func stepRunTask(
 	// operator's arguments follow and are never templated.
 	argv := append(task.CommandWithInputs(), opts.Args...)
 	timeout := task.Timeout.Or(domain.DefaultOperationTimeout)
+	if opts.timeout > 0 && opts.timeout < timeout {
+		timeout = opts.timeout
+	}
 
 	return engine.Step{
 		ID:          "run-task",

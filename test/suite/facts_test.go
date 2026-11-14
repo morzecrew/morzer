@@ -649,3 +649,22 @@ func TestFactsAreSignedAgainAfterTheKeyRotates(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, digest, f.state(t).Facts.Digest, "facts signed by the retired key were kept")
 }
+
+// The refresh before a publish runs the task with a timeout that leaves the
+// publish time inside the fleet unit's own, and records without waiting for a
+// lock another operation holds: the row goes out with the facts it has.
+func TestARefreshBeforeAPublishFitsInsideThePublish(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	f.publishRefreshing(t)
+	last := f.h.Runtime.OneShots[len(f.h.Runtime.OneShots)-1]
+	assert.LessOrEqual(t, last.Timeout, 3*time.Minute, "the facts task may outlast the fleet unit")
+
+	before := *f.state(t).Facts
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "relay=down\n"}
+	// The task's own lock is the first; the record's is the second.
+	f.h.Locker.RefuseNth = map[string]int{"deployment": f.h.Locker.Acquired("deployment") + 2}
+	f.publishRefreshing(t)
+	f.h.Locker.RefuseNth = nil
+	assert.Equal(t, before, *f.state(t).Facts, "facts were recorded under a lock another operation held")
+}

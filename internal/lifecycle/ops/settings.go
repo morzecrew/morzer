@@ -951,7 +951,7 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 		return Result{Summary: "no change: every value already matches"}, nil
 	}
 	if !opts.DryRun {
-		d.refreshFacts(ctx)
+		d.refreshFacts(ctx, false)
 	}
 	return Result{Record: result.Record, Summary: settingsSummary(changed, plan, opts.DryRun)}, nil
 }
