@@ -61,8 +61,8 @@ rootdocker() { env -i PATH="$launchd_path" "$docker_bin" "$@"; }
 # The user's own CLI, with the user's config and context.
 userdocker() { sudo -u "$user" -H "$docker_bin" "$@"; }
 
-# Root's CLI as the manager would run it: with a config of its own naming the
-# directory the user's Compose plugin links to (RFC 0055 §13, the second run).
+# Root's CLI as the manager would run it: with a config of its own naming
+# Docker Desktop's Compose plugin directory (RFC 0055 §13, the second run).
 managerdocker() { rootdocker --config "$rootcfg" "$@"; }
 
 # S1, S2 and S6 need an engine. They use root's, as the manager would, and fall
@@ -84,11 +84,13 @@ tmp=$(mktemp -d /private/tmp/$p.XXXXXX)
 chmod 0755 "$tmp"
 trap 'rm -rf "${tmp:?}"' EXIT
 
+# Docker Desktop's own plugin directory, named here rather than read from the
+# user's symlink: root must not run whatever a link the user controls names.
+plugins=/Applications/Docker.app/Contents/Resources/cli-plugins
 rootcfg=$tmp/rootconfig
 mkdir "$rootcfg"
-plugin=$(readlink "$home/.docker/cli-plugins/docker-compose" 2>/dev/null)
-if [ -n "$plugin" ]; then
-    printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$(dirname "$plugin")" >"$rootcfg/config.json"
+if [ -x "$plugins/docker-compose" ]; then
+    printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$plugins" >"$rootcfg/config.json"
 fi
 
 touch "$report"
@@ -132,9 +134,19 @@ s3() {
     row "root, clean env: compose" "$(try rootdocker compose version --short)"
     row "root, $user's socket" "$(try rootdocker -H "unix://$home/.docker/run/docker.sock" version --format '{{.Server.Version}}')"
     # Whether root's CLI finds Compose when a config the manager would own names
-    # the directory the user's plugin links to.
-    row "$user's compose plugin" "${plugin:-not a link}"
-    [ -n "$plugin" ] && row "root, clean env, that dir: compose" "$(try managerdocker compose version --short)"
+    # Docker Desktop's plugin directory.
+    row "$user's compose plugin" "$(readlink "$home/.docker/cli-plugins/docker-compose" 2>&1)"
+    row "root, clean env, $plugins: compose" "$(try managerdocker compose version --short)"
+    # Who could replace what root runs: the owner and mode of each entry on the
+    # way to it, as ReplaceableByNonRoot (internal/infra/atomicfs) walks them.
+    for f in "$docker_bin" "$(readlink "$docker_bin" || echo "$docker_bin")" "$plugins/docker-compose"; do
+        chain=
+        while [ "$f" != / ] && [ -n "$f" ]; do
+            chain="$chain$(stat -f '%Su:%Sg %Lp' "$f" 2>&1) $f; "
+            f=$(dirname "$f")
+        done
+        row "who owns the way to it" "$chain"
+    done
     pick_engine
     row "S1, S2 and S6 run as" "$via"
 }
