@@ -229,6 +229,9 @@ s6() {
         return
     fi
     mkdir -p "$bin"
+    # A file left by an earlier run must not stand in for one this run failed
+    # to fetch.
+    rm -rf "${bin:?}/morzer" "$bin/.morzer.staged" "$bin/morzer.quarantined"
     # Built in a Linux container: the cross-compile goreleaser does, with its
     # flags. Two versions, so a replacement can be told from the original.
     engine run --rm -v "$src:/src:ro" -v "$out:/out" -v "$p-gocache:/root/go" -w /src \
@@ -237,16 +240,19 @@ s6() {
             go build -trimpath -ldflags "-s -w -X main.version=0.0.0-spike.old" -o /out/old ./cmd/morzer &&
             go build -trimpath -ldflags "-s -w -X main.version=0.0.0-spike.new" -o /out/new ./cmd/morzer' 2>&1 |
         tail -3
-    [ -f "$out/old" ] || { row "build" "FAILED"; return; }
+    if [ ! -f "$out/old" ] || [ ! -f "$out/new" ]; then row "build" "FAILED"; return; fi
 
     # Served over HTTP and fetched with curl, as install.sh fetches an archive.
     engine run -d --name "$p-s6-http" -p 127.0.0.1::8080 -v "$out:/www:ro" "$image" \
         httpd -f -p 8080 -h /www >/dev/null 2>&1
     port=$(engine port "$p-s6-http" 8080 2>/dev/null | head -1 | sed 's/.*://')
     sleep 1
-    curl -fsS -o "$bin/morzer" "http://127.0.0.1:$port/old" && chmod 0755 "$bin/morzer"
-    curl -fsS -o "$bin/.morzer.staged" "http://127.0.0.1:$port/new" && chmod 0755 "$bin/.morzer.staged"
+    fetched=no
+    curl -fsS -o "$bin/morzer" "http://127.0.0.1:$port/old" &&
+        curl -fsS -o "$bin/.morzer.staged" "http://127.0.0.1:$port/new" && fetched=yes
     engine rm -f "$p-s6-http" >/dev/null 2>&1
+    if [ "$fetched" != yes ]; then row "download" "FAILED"; return; fi
+    chmod 0755 "$bin/morzer" "$bin/.morzer.staged"
 
     row "xattr after curl" "$(xattr -l "$bin/morzer" 2>&1 | oneline)(empty is no quarantine)"
     row "codesign" "$(codesign -dv "$bin/morzer" 2>&1 | grep -E 'Signature|Identifier|CodeDirectory' | oneline)"
@@ -256,7 +262,7 @@ s6() {
     # What self-update does: the new binary beside the old, one rename over it
     # (internal/lifecycle/ops/self_update.go).
     old_inode=$(stat -f %i "$bin/morzer")
-    mv -f "$bin/.morzer.staged" "$bin/morzer"
+    if ! mv -f "$bin/.morzer.staged" "$bin/morzer"; then row "rename" "FAILED"; return; fi
     row "after a rename over it" "$(try "$bin/morzer" version) (inode $old_inode -> $(stat -f %i "$bin/morzer"))"
 
     # The contrast: the same path overwritten in place, one inode. A copy that
