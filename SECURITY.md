@@ -25,22 +25,23 @@ rather than misreading it.
 
 | Version | Supported |
 | --- | --- |
-| 0.16.x | ✅ |
-| 0.15.x | ❌ — upgrade to 0.16.x |
-| 0.14.x | ❌ — upgrade to 0.16.x |
-| 0.13.x | ❌ — upgrade to 0.16.x |
-| 0.12.x | ❌ — upgrade to 0.16.x |
-| 0.11.x | ❌ — upgrade to 0.16.x |
-| 0.10.x | ❌ — upgrade to 0.16.x |
-| 0.9.x | ❌ — upgrade to 0.16.x |
-| 0.8.x | ❌ — upgrade to 0.16.x |
-| 0.7.x | ❌ — upgrade to 0.16.x |
-| 0.6.x | ❌ — upgrade to 0.16.x |
-| 0.5.x | ❌ — upgrade to 0.16.x |
-| 0.4.x | ❌ — upgrade to 0.16.x |
-| 0.3.x | ❌ — upgrade to 0.16.x |
-| 0.2.x | ❌ — upgrade to 0.16.x |
-| 0.1.x | ❌ — upgrade to 0.16.x |
+| 0.17.x | ✅ |
+| 0.16.x | ❌ — upgrade to 0.17.x |
+| 0.15.x | ❌ — upgrade to 0.17.x |
+| 0.14.x | ❌ — upgrade to 0.17.x |
+| 0.13.x | ❌ — upgrade to 0.17.x |
+| 0.12.x | ❌ — upgrade to 0.17.x |
+| 0.11.x | ❌ — upgrade to 0.17.x |
+| 0.10.x | ❌ — upgrade to 0.17.x |
+| 0.9.x | ❌ — upgrade to 0.17.x |
+| 0.8.x | ❌ — upgrade to 0.17.x |
+| 0.7.x | ❌ — upgrade to 0.17.x |
+| 0.6.x | ❌ — upgrade to 0.17.x |
+| 0.5.x | ❌ — upgrade to 0.17.x |
+| 0.4.x | ❌ — upgrade to 0.17.x |
+| 0.3.x | ❌ — upgrade to 0.17.x |
+| 0.2.x | ❌ — upgrade to 0.17.x |
+| 0.1.x | ❌ — upgrade to 0.17.x |
 | `main` | Fixes land here first; it is not a release |
 
 ## Verifying a release
