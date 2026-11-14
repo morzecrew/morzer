@@ -109,7 +109,9 @@ names Docker Desktop's own plugin directory,
 `/Applications/Docker.app/Contents/Resources/cli-plugins`. It names that
 directory rather than following the link in your `~/.docker`, so root never
 runs what a link you control points at. S3 also reports who owns each entry on
-the way to the CLI and the plugin root runs. When that CLI cannot run
+the way to the CLI and the plugin root runs, how many entries in
+`Docker.app` an account other than root owns or could write, and who signed
+the two binaries. When that CLI cannot run
 Compose, they use yours instead, so a failed S3 does not hide the other
 answers. Every phase says which it was.
 

@@ -147,6 +147,15 @@ s3() {
         done
         row "who owns the way to it" "$chain"
     done
+    # Whether anything in the bundle could be changed by an account other than
+    # root, and who signed what root runs: a check that does not trust the path.
+    app=/Applications/Docker.app
+    loose=$(find "$app" \( ! -user root -o -perm -020 -o -perm -002 \) 2>/dev/null)
+    row "$app entries not root's, or writable" "$(printf '%s\n' "$loose" | grep -c . | tr -d ' '), first: $(printf '%s\n' "$loose" | head -3 | tr '\n' ' ')"
+    for f in "$(readlink "$docker_bin" || echo "$docker_bin")" "$plugins/docker-compose"; do
+        row "signature of ${f##*/}" "$(codesign -dv "$f" 2>&1 | grep -E '^(Authority=Developer ID|TeamIdentifier)' | oneline)"
+        row "verified ${f##*/}" "$(try codesign --verify --strict "$f")"
+    done
     pick_engine
     row "S1, S2 and S6 run as" "$via"
 }
