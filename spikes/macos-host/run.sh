@@ -260,6 +260,7 @@ s2() {
 s6() {
     hdr "S6, a cross-compiled darwin/arm64 binary from curl, $(now)"
     pick_engine
+    row "engine as" "$via"
     # Inside $tmp, which only root can write to, and owned by the user the
     # engine writes as, so no other account can swap a binary root then runs.
     out=$tmp/s6
