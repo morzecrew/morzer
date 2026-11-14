@@ -60,16 +60,21 @@ answers, which is what S3 asks: whether it works, and what enabling it takes.
 
 **S1** binds each spelling of each directory into a container through
 Compose, reads a file and writes one, and reports the exit status, the error
-when there is one, and the owner of the written file on the Mac.
+when there is one, and the owner of the written file on the Mac. One more
+directory is owned by you, the user who runs Docker Desktop, so a write
+refused by ownership can be told from one refused by the path. There the
+container also hands the file to `65532`, and the row shows what the Mac
+records. What the container prints starts with the bind's filesystem type.
 
 **S2** renders a file the way the manager renders a secret, in `0700` root
 directories, `0400` and owned by `65532:65532`, and mounts it as a Compose
 `secrets:` file into containers running as 65532, 0 and 1000. Four more
 variants each take one condition away (the path, the directory mode, the file
 mode, the owner), so a `DENIED` can be told apart from a uid mapping. RFC 0055
-§5.5 names three outcomes. A fourth is possible: Docker Desktop's file sharing
-runs as the logged-in user, so a file that user cannot read may be denied to
-every container uid. The variants are there to show that case if it happens.
+§5.5 names three outcomes, and the first run found a fourth (§13): Docker
+Desktop's file sharing acts as the logged-in user, so a file that user cannot
+read is denied to every container uid. One more variant keeps the layout and
+makes you its owner, which is the case that outcome turns on.
 
 **S4** installs `dev.morzer.spike`, whose program stands in for `apply
 --startup`. It exits 7 while the engine does not answer, exits 12 once when

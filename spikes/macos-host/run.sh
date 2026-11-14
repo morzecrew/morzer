@@ -140,15 +140,19 @@ s1() {
     for d in /etc /var/lib /opt /var/run; do
         row "$d" "$(ls -ld "$d" 2>&1) -> $(cd "$d" 2>/dev/null && pwd -P)"
     done
+    # Owned by the user who runs Docker Desktop, so a write refused by ownership
+    # can be told from one refused by the path.
+    mkdir -p "$lib/user" && echo probe >"$lib/user/probe" &&
+        chown -R "$uid:$gid" "$lib/user" && chmod 0700 "$lib/user"
     for s in "/etc/$p" "/private/etc/$p" "/var/lib/$p" "/private/var/lib/$p" \
-        "/opt/$p" "/var/run/$p" "/private/var/run/$p"; do
+        "/opt/$p" "/var/run/$p" "/private/var/run/$p" "/private/var/lib/$p/user"; do
         cat >"$tmp/s1.yaml" <<EOF
 services:
   probe:
     image: $image
     volumes:
       - $s:/mnt/probe
-    command: ["sh", "-c", "cat /mnt/probe/probe && touch /mnt/probe/written && echo wrote"]
+    command: ["sh", "-c", "grep /mnt/probe /proc/mounts | cut -d' ' -f3; cat /mnt/probe/probe && touch /mnt/probe/written && ls -n /mnt/probe/written && chown 65532:65532 /mnt/probe/written && ls -n /mnt/probe/written"]
 EOF
         out=$(engine compose -p "$p-s1" -f "$tmp/s1.yaml" run --rm -T probe 2>&1)
         rc=$?
@@ -159,11 +163,11 @@ EOF
     engine compose -p "$p-s1" -f "$tmp/s1.yaml" down >/dev/null 2>&1
 }
 
-# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER
+# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER [DIROWNER]
 s2_variant() {
     name=$1 dir=$2
     mkdir -p "$dir"
-    chown 0:0 "$dir"
+    chown "${6:-0:0}" "$dir"
     chmod "$3" "$dir"
     printf 'token\n' >"$dir/token"
     chown "$5" "$dir/token"
@@ -174,12 +178,12 @@ services:
   read:
     image: $image
     secrets: [token]
-    command: ["sh", "-c", "printf 'sees %s, ' \"\$\$(stat -c '%u:%g %a' /run/secrets/token 2>&1)\"; cat /run/secrets/token >/dev/null 2>&1 && echo READ || echo DENIED"]
+    command: ["sh", "-c", "printf 'on %s, sees %s, ' \"\$\$(grep /run/secrets/token /proc/mounts | cut -d' ' -f3)\" \"\$\$(stat -c '%u:%g %a' /run/secrets/token 2>&1)\"; cat /run/secrets/token >/dev/null 2>&1 && echo READ || echo DENIED"]
 secrets:
   token:
     file: $dir/token
 EOF
-    echo "$name: dir $3 root, file $4 $5, at $dir/token"
+    echo "$name: dir $3 ${6:-0:0}, file $4 $5, at $dir/token"
     for u in 65532 0 1000; do
         out=$(engine compose -p "$p-s2" -f "$tmp/s2.yaml" run --rm -T --user "$u" read 2>&1)
         row "    as uid $u" "exit $?: $(printf '%s' "$out" | oneline)"
@@ -195,6 +199,7 @@ s2() {
     # owner 65532 is 0400 65532:65532. The rest take one condition away at a
     # time, so a DENIED can be told apart from a uid mapping.
     s2_variant "layout" "/private/var/run/$p/secrets" 0700 0400 65532:65532
+    s2_variant "layout, owned by $user" "/private/var/run/$p/secrets-user" 0700 0400 "$uid:$gid" "$uid:$gid"
     s2_variant "layout, under /tmp" "/private/tmp/$p-s2/layout" 0700 0400 65532:65532
     s2_variant "open dir" "/private/tmp/$p-s2/open" 0755 0400 65532:65532
     s2_variant "readable" "/private/tmp/$p-s2/readable" 0755 0444 65532:65532
