@@ -522,6 +522,7 @@ func (r FleetRow) Bounded() FleetRow {
 	r.InstallationID = boundedText(r.InstallationID)
 	r.Mode = Mode(boundedText(string(r.Mode)))
 	r.Version = boundedText(r.Version)
+	r.Staged = boundedText(r.Staged)
 	r.ManagerVersion = boundedText(r.ManagerVersion)
 	r.SigningKey = boundedText(r.SigningKey)
 	r.AgeRecipient = boundedText(r.AgeRecipient)

@@ -143,6 +143,18 @@ func TestFreeTextInARowIsBounded(t *testing.T) {
 		"an escape sequence reached a document that is read in terminals")
 }
 
+// A row read from a target is bounded as one written here is: whoever can write
+// to the bucket chose every field of it.
+func TestARowReadBackIsBoundedWhole(t *testing.T) {
+	row := domain.FleetRow{
+		Version: "1.2.0", Staged: "1.3.0\x1b[2J",
+		Sync: &domain.FleetSync{Pending: []string{"name\x1b[2J"}},
+	}.Bounded()
+	assert.NotContains(t, row.Staged, "\x1b", "an escape sequence survived in staged")
+	require.NotNil(t, row.Sync)
+	assert.NotContains(t, row.Sync.Pending[0], "\x1b", "an escape sequence survived in sync.pending")
+}
+
 // The key is built from checked components, in both directions.
 func TestTheKeyRefusesWhatItWouldNotHaveWritten(t *testing.T) {
 	key, err := domain.FleetKey("demo", "op_01K2Z9QW8ERT6YH3VXNBM5CDFG")
