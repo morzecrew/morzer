@@ -139,9 +139,12 @@ s3() {
     row "root, clean env, $plugins: compose" "$(try managerdocker compose version --short)"
     # Who could replace what root runs: the owner and mode of each entry on the
     # way to it, as ReplaceableByNonRoot (internal/infra/atomicfs) walks them.
-    for f in "$docker_bin" "$(readlink "$docker_bin" || echo "$docker_bin")" "$plugins/docker-compose"; do
+    # A relative link is read against the link's own directory.
+    target=$(readlink "$docker_bin")
+    case $target in "" | /*) ;; *) target=$(dirname "$docker_bin")/$target ;; esac
+    for f in "$docker_bin" "${target:-$docker_bin}" "$plugins/docker-compose"; do
         chain=
-        while [ "$f" != / ] && [ -n "$f" ]; do
+        while [ "$f" != / ] && [ "$f" != . ] && [ -n "$f" ]; do
             chain="$chain$(stat -f '%Su:%Sg %Lp' "$f" 2>&1) $f; "
             f=$(dirname "$f")
         done
@@ -152,7 +155,7 @@ s3() {
     app=/Applications/Docker.app
     loose=$(find "$app" \( ! -user root -o -perm -020 -o -perm -002 \) 2>/dev/null)
     row "$app entries not root's, or writable" "$(printf '%s\n' "$loose" | grep -c . | tr -d ' '), first: $(printf '%s\n' "$loose" | head -3 | tr '\n' ' ')"
-    for f in "$(readlink "$docker_bin" || echo "$docker_bin")" "$plugins/docker-compose"; do
+    for f in "${target:-$docker_bin}" "$plugins/docker-compose"; do
         row "signature of ${f##*/}" "$(codesign -dv "$f" 2>&1 | grep -E '^(Authority=Developer ID|TeamIdentifier)' | oneline)"
         row "verified ${f##*/}" "$(try codesign --verify --strict "$f")"
     done
