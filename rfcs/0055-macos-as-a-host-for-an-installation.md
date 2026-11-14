@@ -957,3 +957,24 @@ the bind of a directory the user owns, the file-sharing layer's name (as the
 filesystem type a container sees), and the archive. Docker Desktop was still
 4.44.1. S1 and S2 again ran through the user's CLI, because the engine
 choice did not yet use root's config.
+
+### The third run
+
+The third run ran `s1` and `s2` from `run.sh` at `5f1633d1`, which drives the
+engine with root's CLI and its config. Both phases reported `engine as root`.
+
+- **Root's CLI measures what the user's did.** Every S1 and S2 row matches
+  the second run's. File sharing acts as the user who runs Docker Desktop,
+  whichever CLI asks for the bind.
+- **ACL entries do not let a container reach a secret root owns.** The
+  layout stayed root's: `RunDir` at `0750`, the secrets directory at `0700`,
+  and the file `0400` and owned by `65532:65532`. ACL entries let the user
+  list and search both directories and read the file. For every uid, no
+  container started:
+  `stat /host_mnt/private/var/run/morzer-spike/secrets-acl/token: permission denied`.
+  - Without the entries, the same layout fails on the Mac's path,
+    `/private/…`. With them, the error names the VM's path, `/host_mnt/…`.
+    So the entries get past the first check, and the read through file
+    sharing is still refused.
+  - A `0755` directory holding a `0400` file the user cannot read fails the
+    same way, on the VM's path.

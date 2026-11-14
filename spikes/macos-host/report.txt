@@ -236,3 +236,60 @@ with a quarantine attribute           (exit 137)
 
 == clean, 2026-11-14T22:30:00Z ==
 removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays
+
+== S1, which host paths a bind shares, by spelling, 2026-11-14T22:37:38Z ==
+engine as                            root
+mkdir /etc/morzer-spike              ok
+mkdir /var/lib/morzer-spike          ok
+mkdir /opt/morzer-spike              ok
+mkdir /var/run/morzer-spike          ok
+/etc                                 lrwxr-xr-x@ 1 root  wheel  11 Nov  6 08:22 /etc -> private/etc -> /private/etc
+/var/lib                             drwxr-xr-x  5 root  wheel  160 Nov 15 01:37 /var/lib -> /private/var/lib
+/opt                                 drwxr-xr-x  4 root  wheel  128 Nov 15 01:37 /opt -> /opt
+/var/run                             drwxrwxr-x  41 root  daemon  1312 Nov 15 01:37 /var/run -> /private/var/run
+/etc/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/etc/morzer-spike            exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/var/lib/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/lib/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/opt/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | Error response from daemon: mounts denied:  The path /opt/morzer-spike is not shared from the host and is not known to Docker. You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing. See https://docs.docke
+/var/run/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/run/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/lib/morzer-spike/user   exit 0, a file the container wrote is owned by 501:20 on the Mac | fakeowner probe -rw-r--r--    1 0        0                0 Nov 14 22:37 /mnt/probe/written -rw-r--r--    1 65532    65532            0 Nov 14 22:37 /mnt/probe/written 
+
+== S2, what owner a container sees for a rendered secret, 2026-11-14T22:37:50Z ==
+engine as                            root
+layout: dir 0700 0:0 in a 750 0:1 one, file 0400 65532:65532, at /private/var/run/morzer-spike/secrets/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+layout, owned by misery7100: dir 0700 501:20 in a 750 0:1 one, file 0400 501:20, at /private/var/run/morzer-spike/secrets-user/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+layout, owned by misery7100, under /tmp: dir 0700 501:20 in a 755 0:0 one, file 0400 501:20, at /private/tmp/morzer-spike-s2/owned/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 400, READ 
+layout, root's, with ACLs for misery7100: dir 0700 0:0 in a 750 0:1 one, file 0400 65532:65532, at /private/var/run/morzer-spike/secrets-acl/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/var/run/morzer-spike/secrets-acl/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/var/run/morzer-spike/secrets-acl/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/var/run/morzer-spike/secrets-acl/token: permission denied 
+layout, under /tmp: dir 0700 0:0 in a 755 0:0 one, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/layout/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+open dir: dir 0755 0:0 in a 755 0:0 one, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/open/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+readable: dir 0755 0:0 in a 755 0:0 one, file 0444 65532:65532, at /private/tmp/morzer-spike-s2/readable/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 444, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 444, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 444, READ 
+owned by misery7100: dir 0755 0:0 in a 755 0:0 one, file 0400 501:20, at /private/tmp/morzer-spike-s2/user/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 400, READ 
+
+== clean, 2026-11-14T22:37:59Z ==
+removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays
