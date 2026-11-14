@@ -115,7 +115,13 @@ func configPending(d *ui.Doc, report ops.ConfigReport) *ui.Doc {
 	t := d.Theme()
 	rows := make([][]string, 0, len(p.Parameters))
 	for _, v := range p.Parameters {
-		rows = append(rows, []string{v.Name, t.Highlight(shown(domain.FirstLine(v.Value)))})
+		value := t.Highlight(shown(domain.FirstLine(v.Value)))
+		// A value of several lines as the table above shows a text one:
+		// its first line and a count (RFC 0054 decision 10).
+		if n := domain.LineCount(v.Value); n > 1 {
+			value += " " + t.Dim("("+domain.Lines(n)+")")
+		}
+		rows = append(rows, []string{v.Name, value})
 	}
 	d.Blank()
 	d.Text(2, "%s", t.Bold("pending for "+p.Release))

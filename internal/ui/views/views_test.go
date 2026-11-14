@@ -203,6 +203,27 @@ func TestTheConfigViewShowsATextValuesFirstLine(t *testing.T) {
 	}
 }
 
+// What a document left for the staged release is shown apart from the values in
+// force, under the release it was checked against, and a text value as its
+// first line and a count, as above (RFC 0058 §5.4).
+func TestTheConfigViewShowsPendingValuesApart(t *testing.T) {
+	report := configReport()
+	report.Pending = &ops.ConfigPending{Release: "1.3.0", Parameters: []ops.ConfigPendingValue{
+		{Name: "admin_email", Value: "ops@example.test"},
+		{Name: "rules", Value: "DOMAIN-SUFFIX,a.example\nDOMAIN-SUFFIX,b.example"},
+	}}
+
+	for _, mode := range []ui.Mode{ui.ModeRich, ui.ModePlain} {
+		var b bytes.Buffer
+		require.NoError(t, ui.Render(&b, mode, theme.New(false, false), report))
+		out := b.String()
+		require.Containsf(t, out, "pending for 1.3.0", "%s:\n%s", mode, out)
+		require.Containsf(t, out, "ops@example.test", "%s:\n%s", mode, out)
+		require.Containsf(t, out, "DOMAIN-SUFFIX,a.example (2 lines)", "%s:\n%s", mode, out)
+		require.NotContainsf(t, out, "b.example", "%s printed the rest of the value:\n%s", mode, out)
+	}
+}
+
 // A value a release or an operator chose is shown as what it holds, so an
 // escape sequence in it is printed, not obeyed by the terminal.
 func TestTheConfigViewQuotesWhatATerminalWouldObey(t *testing.T) {
