@@ -220,11 +220,15 @@ s2() {
 s6() {
     hdr "S6, a cross-compiled darwin/arm64 binary from curl, $(now)"
     pick_engine
-    out=/private/tmp/$p-s6
+    # Inside $tmp, which only root can write to, and owned by the user the
+    # engine writes as, so no other account can swap a binary root then runs.
+    out=$tmp/s6
     bin=$lib/bin
-    rm -rf "${out:?}"
-    mkdir -p "$out" "$bin"
-    chmod 0777 "$out"
+    if ! { mkdir "$out" && chown "$uid:$gid" "$out" && chmod 0700 "$out"; }; then
+        row "build directory" "FAILED"
+        return
+    fi
+    mkdir -p "$bin"
     # Built in a Linux container: the cross-compile goreleaser does, with its
     # flags. Two versions, so a replacement can be told from the original.
     engine run --rm -v "$src:/src:ro" -v "$out:/out" -v "$p-gocache:/root/go" -w /src \
