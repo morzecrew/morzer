@@ -915,3 +915,43 @@ Not measured:
 - a restart with FileVault off;
 - a release's `tar.zst` archive fetched with `curl` and unpacked by macOS's
   `tar`, which is what `install.sh` does.
+
+### The second run
+
+The second run used the same Mac and the same Docker Desktop, later the same
+day. It ran `s3`, `s1`, `s2` and `s6` from `run.sh` at `c14b4c7b`, which has
+the checks added after the first run. Its output follows the first run's in
+`report.txt`.
+
+- **S3: root's Compose works through a config.** The user's plugin is a
+  symlink to `/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose`.
+  Root's CLI was started with launchd's `PATH` and no `HOME`. Given
+  `--config` pointing at a `config.json` whose `cliPluginsExtraDirs` names
+  that directory, `docker compose version` answers 2.39.1-desktop.1. Without
+  the config, it fails as in the first run.
+- **The file-sharing layer is `fakeowner`.** Every bind and every secret
+  mount reported that filesystem type inside the container.
+- **S1: a container writes to a directory the user owns.** The directory was
+  `0700`, owned by the user, inside a `0755` directory.
+  - The container wrote a file and saw it owned by `0:0`.
+  - A `chown 65532:65532` inside the container succeeded, and the container
+    then saw `65532`.
+  - On the Mac, the file was owned by `501:20` throughout.
+  - Every directory root owns refused the write again, and `/opt` was again
+    not shared.
+- **S2: every uid reads the layout owned by the user, when the user can
+  reach it.**
+  - Inside `RunDir` at the manager's `0750`, owned by root: no container
+    started, as with the layout root owns. The user cannot enter `RunDir`.
+  - Inside a `0755` directory under `/private/tmp`: every uid read it. 65532
+    and 0 saw `65532:0 400`, and 1000 saw `1000:0 400`.
+- **S6: the release archive's path works.** macOS's `tar` wrote a `tar.zst`.
+  After the `curl` download, `/usr/bin/tar` unpacked it with exit 0. The
+  binary carried `com.apple.provenance` and no quarantine attribute, and it
+  ran.
+
+From the first run's "not measured" list, this run measured three things:
+the bind of a directory the user owns, the file-sharing layer's name (as the
+filesystem type a container sees), and the archive. Docker Desktop was still
+4.44.1. S1 and S2 again ran through the user's CLI, because the engine
+choice did not yet use root's config.

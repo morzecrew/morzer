@@ -150,3 +150,89 @@ Next: sudo spikes/macos-host/run.sh clean, then send report.txt
 
 == clean, 2026-11-14T19:19:38Z ==
 removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays
+
+== S3, root's docker and Docker Desktop, 2026-11-14T22:29:01Z ==
+/var/run/docker.sock                 lrwxr-xr-x@ 1 root  daemon  41 Nov 14 22:57 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+what it reaches                      srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 23:01 /var/run/docker.sock
+/Users/misery7100/.docker/run/docker.sock srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 23:01 /Users/misery7100/.docker/run/docker.sock
+/usr/local/bin/docker                lrwxr-xr-x@ 1 root  wheel  54 Apr  2  2025 /usr/local/bin/docker -> /Applications/Docker.app/Contents/Resources/bin/docker
+/Users/misery7100/.docker/bin/docker ls: /Users/misery7100/.docker/bin/docker: No such file or directory
+docker on launchd's PATH             none on /usr/bin:/bin:/usr/sbin:/sbin
+compose plugin dirs                  /Users/misery7100/.docker/cli-plugins 
+misery7100's context                 desktop-linux 
+HOME under sudo                      /Users/misery7100
+root, sudo's env: version            28.3.2 (exit 0)
+root, clean env: version             28.3.2 (exit 0)
+root, clean env: compose             unknown flag: --short  Usage:  docker [OPTIONS] COMMAND [ARG...]  Run 'docker --help' for more information (exit 125)
+root, misery7100's socket            28.3.2 (exit 0)
+misery7100's compose plugin          /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose
+root, clean env, that dir: compose   2.39.1-desktop.1 (exit 0)
+S1, S2 and S6 run as                 user
+
+== S1, which host paths a bind shares, by spelling, 2026-11-14T22:29:10Z ==
+engine as                            user
+mkdir /etc/morzer-spike              ok
+mkdir /var/lib/morzer-spike          ok
+mkdir /opt/morzer-spike              ok
+mkdir /var/run/morzer-spike          ok
+/etc                                 lrwxr-xr-x@ 1 root  wheel  11 Nov  6 08:22 /etc -> private/etc -> /private/etc
+/var/lib                             drwxr-xr-x  5 root  wheel  160 Nov 15 01:29 /var/lib -> /private/var/lib
+/opt                                 drwxr-xr-x  4 root  wheel  128 Nov 15 01:29 /opt -> /opt
+/var/run                             drwxrwxr-x  41 root  daemon  1312 Nov 15 01:29 /var/run -> /private/var/run
+/etc/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/etc/morzer-spike            exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/var/lib/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/lib/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/opt/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | Error response from daemon: mounts denied:  The path /opt/morzer-spike is not shared from the host and is not known to Docker. You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing. See https://docs.docke
+/var/run/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/run/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | fakeowner probe touch: /mnt/probe/written: Permission denied 
+/private/var/lib/morzer-spike/user   exit 0, a file the container wrote is owned by 501:20 on the Mac | fakeowner probe -rw-r--r--    1 0        0                0 Nov 14 22:29 /mnt/probe/written -rw-r--r--    1 65532    65532            0 Nov 14 22:29 /mnt/probe/written 
+
+== S2, what owner a container sees for a rendered secret, 2026-11-14T22:29:19Z ==
+engine as                            user
+layout: dir 0700 0:0 in a 750 0:1 one, file 0400 65532:65532, at /private/var/run/morzer-spike/secrets/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+layout, owned by misery7100: dir 0700 501:20 in a 750 0:1 one, file 0400 501:20, at /private/var/run/morzer-spike/secrets-user/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets-user/token: permission denied 
+layout, owned by misery7100, under /tmp: dir 0700 501:20 in a 755 0:0 one, file 0400 501:20, at /private/tmp/morzer-spike-s2/owned/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 400, READ 
+layout, under /tmp: dir 0700 0:0 in a 755 0:0 one, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/layout/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+open dir: dir 0755 0:0 in a 755 0:0 one, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/open/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+readable: dir 0755 0:0 in a 755 0:0 one, file 0444 65532:65532, at /private/tmp/morzer-spike-s2/readable/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 444, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 444, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 444, READ 
+owned by misery7100: dir 0755 0:0 in a 755 0:0 one, file 0400 501:20, at /private/tmp/morzer-spike-s2/user/token
+    as uid 65532                     exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 0                         exit 0: on fakeowner, sees 65532:0 400, READ 
+    as uid 1000                      exit 0: on fakeowner, sees 1000:0 400, READ 
+
+== S6, a cross-compiled darwin/arm64 binary from curl, 2026-11-14T22:29:28Z ==
+go: downloading github.com/mattn/go-isatty v0.0.22
+go: downloading github.com/xo/terminfo v1.0.0
+go: downloading github.com/philhofer/fwd v1.2.0
+xattr after curl                     com.apple.provenance:  (empty is no quarantine)
+codesign                             Identifier=a.out CodeDirectory v=20400 size=165438 flags=0x20002(adhoc,linker-signed) hashes=5167+0 location=embedded Signature=adhoc TeamIdentifier=not set 
+spctl                                /var/lib/morzer-spike/bin/morzer: rejected 
+runs                                 morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0)
+unpacked by /usr/bin/tar              (exit 0)
+xattr after unpacking                com.apple.provenance:  (empty is no quarantine)
+runs from the archive                morzer 0.0.0-spike.new   manifest api  selfhost/v1alpha1 (exit 0)
+after a rename over it               morzer 0.0.0-spike.new   manifest api  selfhost/v1alpha1 (exit 0) (inode 25680100 -> 25680101)
+after an overwrite in place          morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0) (137 is SIGKILL)
+with a quarantine attribute           (exit 137)
+
+== clean, 2026-11-14T22:30:00Z ==
+removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays
