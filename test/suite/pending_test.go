@@ -555,3 +555,21 @@ func TestAResumeAfterTheRecordLandedIsNotRefused(t *testing.T) {
 	require.NoError(t, err, "a resume was refused over values its own run recorded")
 	assert.Equal(t, adminEmail, installation(t, r.h).Parameters["admin_email"])
 }
+
+// A staged release whose secret schema cannot be read is this machine's
+// problem, not the document's: the cycle fails and refuses nothing, so the
+// serial is tried again once the release is staged whole.
+func TestAStagedSchemaThatWillNotLoadRefusesNothing(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	candidate, err := r.h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(candidate.Root, "secrets.schema.yaml"), []byte("secrets: [\n"), 0o644))
+
+	r.publish(t, 40, "secrets:\n  api_token: token\n")
+	report, err := r.sync(t)
+	require.Error(t, err)
+	assert.Equal(t, domain.SyncFailed, report.Result)
+	assert.Nil(t, r.state(t).Refused, "a local read failure refused the document")
+}

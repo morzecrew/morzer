@@ -440,7 +440,7 @@ func (d *Deps) planChange(
 		var stagedSchema domain.SecretSchema
 		if staged != nil && len(staged.secrets) > 0 {
 			if stagedSchema, err = release.LoadSecretSchema(staged.rel); err != nil {
-				return planned, err
+				return planned, unreadableRelease("staged", staged.rel.Version(), err)
 			}
 		}
 		declaredBy := func(name string) (domain.SecretSchema, domain.Release) {

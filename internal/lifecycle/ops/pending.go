@@ -185,3 +185,11 @@ func (d *Deps) refuseChangedPending(ctx context.Context, planned domain.Installa
 func fromTheAuthority(inst domain.Installation, rel domain.Release, name string) bool {
 	return inst.Sync.Enabled && rel.Manifest.Managed.Allows("parameters", name)
 }
+
+// unreadableRelease is a release on this machine that will not read, as this
+// machine's error rather than the document's. Not chained: a validation error
+// inside would class a sync's cycle `invalid` and refuse the serial for good,
+// though the next stage or repair fixes it.
+func unreadableRelease(which string, version domain.Version, err error) error {
+	return domain.InstallationError(nil, "the %s release %s cannot be read: %s", which, version, err.Error())
+}

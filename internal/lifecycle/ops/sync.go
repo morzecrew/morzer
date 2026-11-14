@@ -427,7 +427,7 @@ func (d *Deps) sortManaged(ctx context.Context, rel domain.Release, hasRel bool,
 				}
 				if hasRel {
 					if installed, err = release.LoadSecretSchema(rel); err != nil {
-						return nil, err
+						return nil, unreadableRelease("installed", rel.Version(), err)
 					}
 				}
 			}
@@ -469,10 +469,7 @@ func (d *Deps) stagedRelease(ctx context.Context) (*stagedNames, error) {
 	}
 	rel, err := release.Load(candidate.Root)
 	if err != nil {
-		// Not the document's fault, so not chained: a validation error
-		// inside would class the cycle `invalid` and refuse the serial.
-		return nil, domain.InstallationError(nil, "the staged release %s cannot be read: %s",
-			candidate.Version, err.Error())
+		return nil, unreadableRelease("staged", candidate.Version, err)
 	}
 	return &stagedNames{rel: rel}, nil
 }
