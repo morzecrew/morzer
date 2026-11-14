@@ -838,12 +838,15 @@ With FileVault on, the data volume stays locked until a login, and
 before the login. A restart with FileVault off was not run, so this explanation
 is reasoned, not isolated.
 
-Under decision 5, FileVault is required: `init` refuses without it and
-`doctor` fails. So on every Mac this RFC supports, a boot waits for a login,
-whatever the engine. Decision 7's ruling made Colima a P2 candidate "if S4
-shows that Docker Desktop starting at login, not at boot, matters to an
-unattended Mac". Under decision 5 it does not, because Colima would wait for
-the same login.
+Decision 5 requires FileVault unless the operator sets
+`secrets.allow_unencrypted_disk`: without it `init` refuses, and `doctor`
+fails either way. So on a Mac that keeps decision 5's default, a boot waits for
+a login, whatever the engine. Decision 7's ruling made Colima a P2 candidate
+"if S4 shows that Docker Desktop starting at login, not at boot, matters to an
+unattended Mac". On such a Mac it does not, because Colima would wait for the
+same login. That is a deduction: Colima was not run, and neither was a restart
+with FileVault off, which is the one case where Colima's start at boot could
+matter.
 
 ### S5: `/private/var/run` is cleared at boot
 
@@ -894,7 +897,9 @@ These hold as measured:
 - Decision 8.
 - Decision 12, on one macOS version.
 - §5.4's boot branch.
-- Decision 7: its Colima condition is answered no, under decision 5.
+
+Decision 7's Colima condition is answered no by deduction from decision 5,
+not by a measurement (S4 above).
 
 Not measured:
 
