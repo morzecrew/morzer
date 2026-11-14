@@ -53,3 +53,17 @@ evidence: internal/lifecycle/ops/facts.go:191-198
 action: decided
 proposal: UNLISTED — a facts run whose output equals the kept facts' keeps them: the kept pair records a sha256 of the output, and the row's facts_digest moves only when the facts do
 ```
+
+## Review
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-14T10:37:07Z
+attempt: 1
+claim: The fleet unit gives a publish 300 seconds, and a facts task is allowed its declared timeout, ten minutes by default, so a slow one would leave every hourly row unpublished. The run a publish makes first bounds its task at three minutes, and its record gives way to a lock another operation holds rather than waiting, as the task's own run already gave way (decision 56): the row goes out with the facts it has, and the next run tries again. Found in review of #359.
+evidence: internal/adapters/supervisor/systemd/systemd.go:743
+action: decided
+proposal: UNLISTED — the facts run before a publish is bounded at three minutes and does not wait for the deployment lock to record, so the publish fits inside the fleet unit's timeout
+```
