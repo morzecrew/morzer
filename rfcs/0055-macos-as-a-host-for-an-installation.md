@@ -978,3 +978,24 @@ engine with root's CLI and its config. Both phases reported `engine as root`.
     sharing is still refused.
   - A `0755` directory holding a `0400` file the user cannot read fails the
     same way, on the VM's path.
+
+### The fourth run
+
+The fourth run ran `s1` and `s2` from `run.sh` at `e62681ba`, again with
+root's CLI. It measured a directory that root keeps at `0711`: others may
+pass through it but not list it.
+
+- **S2: a secret passes through a `0711` directory.** The layout the user
+  owns sat inside `RunDir` at `0711`, owned by root. Every uid read it.
+  65532 and 0 saw `65532:0 400`, and 1000 saw `1000:0 400`.
+- **S1: a directory bind does not pass through one.** Two directories sat
+  inside a `0711` directory that root owns: one owned by the user, and one
+  of root's at `0755` holding a file to read. Neither mounted. In both cases
+  the engine did not see the source and tried to create it:
+  `error while creating mount source path '/host_mnt/private/var/lib/morzer-spike/sealed/user': mkdir /host_mnt/private/var/lib/morzer-spike/sealed: permission denied`.
+  Inside a `0755` directory, the first and second runs bound the same
+  directories, and they worked.
+
+A file bind needs the user who runs Docker Desktop to be able to pass through
+each directory above it. A directory bind also needs that user to be able to
+list each one.
