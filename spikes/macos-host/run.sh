@@ -120,6 +120,15 @@ s3() {
     row "root, clean env: version" "$(try rootdocker version --format '{{.Server.Version}}')"
     row "root, clean env: compose" "$(try rootdocker compose version --short)"
     row "root, $user's socket" "$(try rootdocker -H "unix://$home/.docker/run/docker.sock" version --format '{{.Server.Version}}')"
+    # Whether root's CLI finds Compose when a config the manager would own names
+    # the directory the user's plugin links to.
+    plugin=$(readlink "$home/.docker/cli-plugins/docker-compose" 2>/dev/null)
+    row "$user's compose plugin" "${plugin:-not a link}"
+    if [ -n "$plugin" ]; then
+        mkdir -p "$tmp/rootconfig"
+        printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$(dirname "$plugin")" >"$tmp/rootconfig/config.json"
+        row "root, clean env, that dir: compose" "$(try rootdocker --config "$tmp/rootconfig" compose version --short)"
+    fi
     pick_engine
     row "S1, S2 and S6 run as" "$via"
 }
