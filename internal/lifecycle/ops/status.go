@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"time"
@@ -54,6 +55,11 @@ type Status struct {
 	//
 	// A pointer for the same reason the two above are.
 	StagedRelease *domain.UpdateCandidate `json:"staged_release,omitempty"`
+
+	// Pending names the parameters an authority's document gave the staged
+	// release, which the next update takes (RFC 0058 §5.4); `config list`
+	// shows their values.
+	Pending []string `json:"pending,omitempty"`
 
 	// Following is the channel this machine watches with nobody present.
 	// Absent when it follows none, which is the default.
@@ -155,6 +161,7 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 		Profiles:       inst.Profiles,
 		PublicURL:      inst.PublicURL(),
 		Stopped:        inst.Stopped,
+		Pending:        slices.Sorted(maps.Keys(inst.PendingParameters())),
 	}
 	if inst.Update.FollowsChannel() {
 		out.Following = &Following{

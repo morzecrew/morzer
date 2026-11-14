@@ -94,7 +94,9 @@ Each tick, or `morzer sync now`:
 4. Decrypt with the machine's age identity, read the envelope, check it against
    the comment, and check `expires_at`.
 5. Check every name against the release's [`managed`](manifest.md#managed) list.
-   One name outside it refuses the whole document.
+   A name only the release the channel staged lists waits for that release
+   ([below](#names-for-the-staged-release)). One name neither lists refuses the
+   whole document.
 6. Apply it as one operation. The serial is written in the operation's record
    step, so it commits with the change and is undone with it.
 
@@ -102,6 +104,39 @@ Each tick, or `morzer sync now`:
 object's name is anybody's who can write to the bucket, so a pair that fails its
 signature moves no watermark. A refused serial is not tried again, and a newer
 one is.
+
+## Names for the staged release
+
+A release the channel has staged, by the update timer or `update --stage`, and
+not yet installed, may list names the installed one does not. A cycle sorts each
+name the document mentions:
+
+| The installed release lists it | The staged release lists it | What happens |
+| --- | --- | --- |
+| yes | either | applied now |
+| no | yes | kept for the staged release |
+| no | no, or nothing is staged | the document is refused whole, `unmanageable` |
+
+Settings are always the installed release's. A name kept for the staged release
+is checked against it, and a value it would refuse refuses the document,
+`invalid`.
+
+- **A parameter** is kept *pending*, apart from the values in force, and
+  nothing renders it. `unset.parameters` removes a pending value. A document
+  that applies a value for the name now removes the pending one.
+- **A secret** is stored now, for the staged release to find, when the
+  installed release does not declare it. One the installed release declares
+  and does not list is refused, because storing it would change what that
+  release runs on.
+
+The next `update` to a release that declares a pending parameter takes the
+value as if it were given with `--set`, and so does the
+[unattended tick](../operating/unattended-updates.md). The update clears
+pending once it has recorded the values. A value its release does not declare
+is dropped, and the journal names it. An update that fails or rolls back keeps
+pending for the next one. An update to another release than the one the values
+were checked against checks them again, and one it refuses stops it before
+anything runs.
 
 ## Outcomes
 
@@ -290,9 +325,10 @@ a fact, and a task that prints a credential sends it to the authority.
 
 | Where | What |
 | --- | --- |
-| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, `facts_digest` and `facts_problem`, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
+| [Fleet row](fleet.md#what-the-row-carries) | `age_recipient`, `facts_digest`, `facts_problem` and `staged`, the release the channel staged, and a `sync` block with the applied and refused serials, steps, classes and names, never a refusal's text, and `pending`, the parameters kept for the staged release, by name. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last |
 | [Statement](attestations.md) | a `desired_state` block naming the document's serial, ciphertext digest and the authority's key id |
 | [Notifications](../operating/notifications.md#what-is-sent) | `sync.refused` once per refused document, `sync.expired` when a cycle first finds the document in force expired |
+| `config list`, `status --json` | the pending values, with the release they were checked against, and their names |
 | `doctor` | `sync.authority` warns when the document in force expires within a day or has expired, or the target has not answered for more than three intervals |
 | Supervisor | `<product>-sync.timer` and `<product>-sync.service` while `sync.enabled` is on, every `sync.interval` after the last tick, with up to a third of it as spread |
 
@@ -301,7 +337,9 @@ a fact, and a task that prints a credential sends it to the authority.
 While sync is enabled, `config set` and `config apply` refuse to change a
 parameter, secret or setting the release lets the authority manage, and name the
 authority's key. `--force` proceeds, and the authority's next document sets the
-value back. The `secret` commands are unchanged.
+value back. `update --set` of a parameter the release being installed lets the
+authority manage, or of one pending, is refused the same way, and with `--force`
+the value given wins over the pending one. The `secret` commands are unchanged.
 
 ## What a document can never change
 

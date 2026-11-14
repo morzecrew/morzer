@@ -692,20 +692,41 @@ func (d *Deps) assessUnattended(
 	// `update` would refuse it before anything runs.
 	declared := target.Manifest.Parameters
 	recorded := declaredValues(inst.Parameters, declared)
+	// A value a document left pending counts as given, as the update takes
+	// it (RFC 0058 decision 5), and one the release refuses holds it too.
+	pending := declaredValues(inst.PendingParameters(), declared)
+	maps.Copy(recorded, pending)
 	waits := func(why string, names []string) {
+		remedy := fmt.Sprintf("`morzer update --to %s --set %s=<value>`", target.Version(), names[0])
+		if fromTheAuthority(inst, target, names[0]) {
+			remedy = fmt.Sprintf("the authority's next document, or `morzer update --to %s --force --set %s=<value>`",
+				target.Version(), names[0])
+		}
 		assessment.OK = false
 		assessment.Reasons = append(assessment.Reasons, fmt.Sprintf(
-			"%s %s %s, so it waits for `morzer update --to %s --set %s=<value>`",
-			target.Version(), why, strings.Join(names, ", "), target.Version(), names[0]))
+			"%s %s %s, so it waits for %s", target.Version(), why, strings.Join(names, ", "), remedy))
 	}
-	var refused []string
+	var refused, refusedPending []string
 	for _, name := range slices.Sorted(maps.Keys(recorded)) {
 		if _, err := declared[name].Parse(recorded[name]); err != nil {
-			refused = append(refused, name)
+			if _, ok := pending[name]; ok {
+				refusedPending = append(refusedPending, name)
+			} else {
+				refused = append(refused, name)
+			}
 		}
 	}
 	if len(refused) > 0 {
 		waits("does not accept the recorded value of", refused)
+	}
+	if len(refusedPending) > 0 {
+		// The authority's to give again, not the operator's: a --set of
+		// it is refused while sync follows that authority (decision 6).
+		assessment.OK = false
+		assessment.Reasons = append(assessment.Reasons, fmt.Sprintf(
+			"%s does not accept the value a document left pending for %s, "+
+				"so it waits for the authority's next document",
+			target.Version(), strings.Join(refusedPending, ", ")))
 	}
 	if missing := domain.MissingValues(declared, recorded); len(missing) > 0 {
 		waits("declares no default for", missing)

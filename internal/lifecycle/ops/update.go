@@ -49,6 +49,16 @@ type UpdateOptions struct {
 	// once the update has converged on them, so one that rolls back
 	// records none. The journal names them and never quotes one.
 	Parameters map[string]string
+
+	// pending names the values in Parameters a document left pending for
+	// the release (RFC 0058 decision 5), rather than ones given with --set:
+	// a resume reads them from pending again, and asks for none of them.
+	pending []string
+
+	// pendingDone is a resume whose run recorded what it took from pending
+	// already: what is pending now is for a later update, so it takes none
+	// of it and clears none of it.
+	pendingDone bool
 }
 
 // Update installs a new release over the current one.
@@ -167,7 +177,12 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	// downtime (#346). The merged values are the new release's; the ones
 	// read here are what the lock re-check compares.
 	recorded := inst
-	if inst, opts.Parameters, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
+	if err := refuseSetOfManaged(inst, staged, opts.Parameters, opts.Force); err != nil {
+		return Result{}, err
+	}
+	// From the installation as recorded, before the values are merged in.
+	opts.pendingDone = prior != nil && (stepSucceeded(*prior, "record-parameters") || recordLanded(inst, *prior))
+	if inst, opts.Parameters, opts.pending, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
 	}
 	if err := d.gateUnfinished(ctx, excludeID(prior)); err != nil {
@@ -183,12 +198,17 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		Steps:       updateSteps(d, inst, from, fallback, source, staged, opts, prior),
 		Flags:       carryReplaced(updateFlags(inst, opts), prior),
 	}
+	// What its record step drops of what was left pending, named before it
+	// runs, as the journal names every value it is given (RFC 0058 decision 7).
+	if dropped := undeclaredPending(inst, staged); len(dropped) > 0 && clearsPending(inst, opts) {
+		op.Flags["pending_dropped"] = strings.Join(dropped, ",")
+	}
 	// A resume continues its run, so its record keeps every name and digest
 	// that run was given, beside those given again: a resume given some, or
 	// none because its run recorded them, still names the rest, and a
 	// later resume is held to them. A value given again matched its digest.
 	if prior != nil {
-		for _, key := range []string{"set", "set_digest"} {
+		for _, key := range []string{"set", "pending", "pending_dropped", "set_digest"} {
 			entries := slices.Concat(strings.Split(prior.Flags[key], ","), strings.Split(op.Flags[key], ","))
 			entries = slices.DeleteFunc(entries, func(e string) bool { return e == "" })
 			slices.Sort(entries)
@@ -224,6 +244,9 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 			return err
 		}
 		if err := d.refuseChangedInstallation(ctx, recorded, staged.Manifest.Parameters); err != nil {
+			return err
+		}
+		if err := d.refuseChangedPending(ctx, recorded); err != nil {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
@@ -440,8 +463,17 @@ func updateFlags(inst domain.Installation, opts UpdateOptions) map[string]string
 	if len(opts.Parameters) > 0 {
 		// The names and a digest of each value, never a value: `history`
 		// prints the flags, and a resumed run is given the values again
-		// and held to these.
-		flags["set"] = strings.Join(slices.Sorted(maps.Keys(opts.Parameters)), ",")
+		// and held to these. Those a document left pending are named
+		// apart, since a resume reads them from pending (RFC 0058).
+		set := slices.DeleteFunc(slices.Sorted(maps.Keys(opts.Parameters)), func(name string) bool {
+			return slices.Contains(opts.pending, name)
+		})
+		if len(set) > 0 {
+			flags["set"] = strings.Join(set, ",")
+		}
+		if len(opts.pending) > 0 {
+			flags["pending"] = strings.Join(opts.pending, ",")
+		}
 		digests := make([]string, 0, len(opts.Parameters))
 		for _, name := range slices.Sorted(maps.Keys(opts.Parameters)) {
 			digests = append(digests, parameterDigest(name, opts.Parameters[name]))
@@ -472,10 +504,18 @@ func parameterDigest(name, value string) string {
 // the digests that run journalled: again, when they were not recorded before it
 // stopped, since the journal never had them, and the same ones whenever it is
 // given any. A different value is a `config set` after the update.
+//
+// The values a document left pending for the release are taken as if given
+// with --set (RFC 0058 decision 5), except a name --set gives too, and returned
+// by name beside the merged values. A resume reads pending as it is then and is
+// held to its run's digests the same way (decision 13); one whose run recorded
+// its values already takes none, since what is pending now is for a later
+// update.
 func withUpdateParameters(inst domain.Installation, staged domain.Release, opts UpdateOptions,
-	prior *domain.OperationRecord) (domain.Installation, map[string]string, error) {
+	prior *domain.OperationRecord) (domain.Installation, map[string]string, []string, error) {
 	declared := staged.Manifest.Parameters
-	if prior != nil && !stepSucceeded(*prior, "record-parameters") {
+	recordedAlready := prior != nil && stepSucceeded(*prior, "record-parameters")
+	if prior != nil && !recordedAlready {
 		var again []string
 		for _, name := range strings.Split(prior.Flags["set"], ",") {
 			if _, given := opts.Parameters[name]; name != "" && !given {
@@ -483,46 +523,78 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 			}
 		}
 		if len(again) > 0 {
-			return inst, nil, domain.Usage("the interrupted update was given %s, and stopped before recording it",
+			return inst, nil, nil, domain.Usage("the interrupted update was given %s, and stopped before recording it",
 				strings.Join(again, ", ")).
 				WithHint("resume with the same values: --set %s=<value>", again[0])
 		}
 	}
+	pending := map[string]string{}
+	if !opts.pendingDone {
+		pending = declaredValues(inst.PendingParameters(), declared)
+		for name := range opts.Parameters {
+			delete(pending, name)
+		}
+	}
 
 	// Checked as the release will see them: what it declares of the recorded
-	// values, then what this update gives.
+	// values, then what was left pending for it, then what this update gives.
 	next := declaredValues(inst.Parameters, declared)
+	maps.Copy(next, pending)
 	maps.Copy(next, opts.Parameters)
 	resolved, err := domain.ResolveParameters(declared, next)
 	if err != nil {
-		return inst, nil, err
+		return inst, nil, nil, err
 	}
 	if missing := domain.MissingValues(declared, next); len(missing) > 0 {
-		return inst, nil, domain.Usage("release %s declares no default for %s",
-			staged.Version(), strings.Join(missing, ", ")).
-			WithHint("give it with the update: --set %s=<value> (repeat --set for several)", missing[0])
+		refusal := domain.Usage("release %s declares no default for %s",
+			staged.Version(), strings.Join(missing, ", "))
+		if fromTheAuthority(inst, staged, missing[0]) {
+			return inst, nil, nil, refusal.WithHint("give it in the authority's next document, "+
+				"or with the update: --force --set %s=<value>", missing[0])
+		}
+		return inst, nil, nil, refusal.WithHint("give it with the update: --set %s=<value> (repeat --set for several)", missing[0])
 	}
 
-	if len(opts.Parameters) == 0 {
-		return inst, nil, nil
-	}
-	given := make(map[string]string, len(opts.Parameters))
+	given := make(map[string]string, len(opts.Parameters)+len(pending))
 	for name := range opts.Parameters {
+		given[name] = resolved[name]
+	}
+	for name := range pending {
 		given[name] = resolved[name]
 	}
 	if prior != nil {
 		journalled := strings.Split(prior.Flags["set_digest"], ",")
-		var differ []string
+		var differ, changed []string
 		for _, name := range slices.Sorted(maps.Keys(given)) {
-			if !slices.Contains(journalled, parameterDigest(name, given[name])) {
+			switch _, fromPending := pending[name]; {
+			case slices.Contains(journalled, parameterDigest(name, given[name])):
+			case fromPending:
+				changed = append(changed, name)
+			default:
 				differ = append(differ, name)
 			}
 		}
+		for _, name := range strings.Split(prior.Flags["pending"], ",") {
+			if _, still := given[name]; name != "" && !still && !opts.pendingDone {
+				changed = append(changed, name)
+			}
+		}
 		if len(differ) > 0 {
-			return inst, nil, domain.Usage("the values of %s differ from what the interrupted update was given",
+			return inst, nil, nil, domain.Usage("the values of %s differ from what the interrupted update was given",
 				strings.Join(differ, ", ")).
 				WithHint("resume with the values it was given, and change them after it with `morzer config set`")
 		}
+		if len(changed) > 0 {
+			slices.Sort(changed)
+			return inst, nil, nil, domain.Usage("the values pending for %s changed since the interrupted update took them",
+				strings.Join(changed, ", ")).
+				WithHint("run `morzer update` without --resume to take the values pending now; " +
+					"if it is refused over the interrupted run, write that off first with " +
+					"`morzer status --clear-intervention`")
+		}
+	}
+	if len(given) == 0 {
+		return inst, nil, nil, nil
 	}
 	merged := maps.Clone(inst.Parameters)
 	if merged == nil {
@@ -530,7 +602,7 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 	}
 	maps.Copy(merged, given)
 	inst.Parameters = merged
-	return inst, given, nil
+	return inst, given, slices.Sorted(maps.Keys(pending)), nil
 }
 
 // declaredValues is the recorded values a release declares. A value it stopped
@@ -672,8 +744,11 @@ func updateSteps(
 	// Also on a resume given none, when the run it continues had the step:
 	// a resume plans the steps that run journalled, and the step finds
 	// nothing left to record.
-	if len(opts.Parameters) > 0 || (prior != nil && journalledStep(*prior, "record-parameters")) {
-		steps = append(steps, stepRecordGivenParameters(d, opts.Parameters))
+	// And to clear what a document left pending, recorded or not (RFC 0058
+	// decision 7).
+	clears := clearsPending(inst, opts)
+	if len(opts.Parameters) > 0 || clears || (prior != nil && journalledStep(*prior, "record-parameters")) {
+		steps = append(steps, stepRecordGivenParameters(d, opts.Parameters, staged, clears))
 	}
 	steps = append(steps, stepRetireParameters(d, staged))
 
@@ -732,7 +807,13 @@ func attestedInstallation(inst domain.Installation, rel domain.Release, rec doma
 //
 // Into the installation as recorded when it runs, as retire-parameters reads
 // it, so a `config set` that landed meanwhile on another name stays.
-func stepRecordGivenParameters(d *Deps, values map[string]string) engine.Step {
+//
+// With clearsPending, the same write clears what a document left pending (RFC
+// 0058 decision 7): the values the release declares are among those recorded,
+// and the rest are dropped and named, as retire-parameters names what it
+// retires. An update that fails or rolls back stops before this, and keeps
+// them.
+func stepRecordGivenParameters(d *Deps, values map[string]string, staged domain.Release, clearsPending bool) engine.Step {
 	names := strings.Join(slices.Sorted(maps.Keys(values)), ", ")
 	return engine.Step{
 		ID:          "record-parameters",
@@ -741,7 +822,9 @@ func stepRecordGivenParameters(d *Deps, values map[string]string) engine.Step {
 		OnFailure:   engine.Abort,
 		Timeout:     time.Minute,
 		// Nothing to record on a resume whose run recorded them already.
-		Check: func(context.Context, *engine.State) (bool, error) { return len(values) == 0, nil },
+		Check: func(context.Context, *engine.State) (bool, error) {
+			return len(values) == 0 && !clearsPending, nil
+		},
 		// The names, never a value: a plan is printed, and saved by
 		// whoever reviews it.
 		PlanDetail: func(context.Context, *engine.State) (string, string) { return names, "" },
@@ -756,10 +839,24 @@ func stepRecordGivenParameters(d *Deps, values map[string]string) engine.Step {
 			}
 			maps.Copy(params, values)
 			current.Parameters = params
+			var dropped []string
+			if clearsPending {
+				dropped = undeclaredPending(current, staged)
+				current.Pending = nil
+			}
 			if err := d.saveInstallation(ctx, current); err != nil {
 				return err
 			}
-			st.Detail("recorded %s", names)
+			if names != "" {
+				st.Detail("recorded %s", names)
+			}
+			if len(dropped) > 0 {
+				// After the write, as retire-parameters tells it.
+				d.Bus.Publish(events.Message(events.LevelWarn,
+					"release %s does not declare %s; the pending value(s) are dropped",
+					staged.Version(), strings.Join(dropped, ", ")))
+				st.Detail("dropped pending %s", strings.Join(dropped, ", "))
+			}
 			return nil
 		},
 	}

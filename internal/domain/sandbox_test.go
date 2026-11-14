@@ -98,6 +98,8 @@ func sandboxClassification() map[string]sandboxVerdict {
 
 		"Parameters": keep("the operator's choices; a sandbox renders nothing without them, " +
 			"and values reach templates rather than infrastructure"),
+		"Pending": keep("values for a staged release, which reach templates only once an " +
+			"update to it records them, as the parameters do"),
 
 		"Update": keep("how this machine learns a release exists"),
 		"Update.Check": keep("whether to contact the vendor's registry unprompted -- " +

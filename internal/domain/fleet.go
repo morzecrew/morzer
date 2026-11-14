@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -29,7 +31,11 @@ const (
 	// (RFC 0026 decision 4), and it cannot say that about a document which
 	// does not state its version -- it would have to guess from the fields
 	// present, which is indistinguishable from a truncated write.
-	FleetSchemaVersion = 2
+	//
+	// 3 added `staged` and `sync.pending` (RFC 0058), so a schema 2 reader
+	// refuses a row from a manager that has them, as it should: the authority
+	// reading the fleet is upgraded first.
+	FleetSchemaVersion = 3
 
 	// FleetPrefix is the key namespace rows live under on a target.
 	//
@@ -78,6 +84,12 @@ type FleetRow struct {
 
 	// Version is the release currently installed, empty when none is.
 	Version string `json:"version,omitempty"`
+
+	// Staged is the release the channel staged and this installation has
+	// not installed, empty when none is. It tells an authority that a
+	// document naming that release's managed names will be taken (RFC 0058
+	// §5.4). Schema 3.
+	Staged string `json:"staged,omitempty"`
 
 	ManagerVersion string `json:"manager_version,omitempty"`
 
@@ -131,6 +143,10 @@ type FleetSync struct {
 	Applied        *FleetSyncDocument `json:"applied,omitempty"`
 	Refused        *FleetSyncDocument `json:"refused,omitempty"`
 	LastFetch      *SyncFetch         `json:"last_fetch,omitempty"`
+
+	// Pending names the parameters a document gave the staged release that
+	// wait for the update, never a value (RFC 0058 decision 9). Schema 3.
+	Pending []string `json:"pending,omitempty"`
 }
 
 // FleetSyncDocument is one document as the row reports it.
@@ -149,7 +165,7 @@ const maxFleetSyncNames = 32
 
 // fleetSync is the block built field by field from what state records, so a
 // field added there reaches the row only by being named here.
-func fleetSync(c SyncConfig) *FleetSync {
+func fleetSync(c SyncConfig, pending *PendingValues) *FleetSync {
 	if c.Target == "" && c.Authority == "" {
 		return nil
 	}
@@ -169,6 +185,9 @@ func fleetSync(c SyncConfig) *FleetSync {
 	if c.LastFetch != nil {
 		fetch := *c.LastFetch
 		out.LastFetch = &fetch
+	}
+	if pending != nil {
+		out.Pending = slices.Sorted(maps.Keys(pending.Parameters))
 	}
 	return out.bounded()
 }
@@ -194,6 +213,10 @@ func (s *FleetSync) bounded() *FleetSync {
 		return &b
 	}
 	out.Applied, out.Refused = doc(s.Applied), doc(s.Refused)
+	out.Pending = nil
+	for _, name := range s.Pending[:min(len(s.Pending), maxFleetSyncNames)] {
+		out.Pending = append(out.Pending, boundedText(name))
+	}
 	if s.LastFetch != nil {
 		fetch := *s.LastFetch
 		fetch.Result = SyncOutcome(boundedText(string(fetch.Result)))
@@ -257,6 +280,7 @@ type FleetOperation struct {
 type FleetRowInputs struct {
 	Installation   Installation
 	Version        string
+	Staged         string
 	ManagerVersion string
 	Health         FleetHealth
 	Drift          FleetDrift
@@ -284,6 +308,7 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		InstallationID: in.Installation.ID,
 		Mode:           in.Installation.Mode,
 		Version:        boundedText(in.Version),
+		Staged:         boundedText(in.Staged),
 		ManagerVersion: boundedText(in.ManagerVersion),
 		// Bounded like the rest, and it is not the manager's own words
 		// either: the public key is copied out of installation.yaml,
@@ -292,7 +317,7 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		// and the id, and Validate only checks fields are non-empty.
 		SigningKey:   boundedText(in.Installation.Signing.PublicKey),
 		AgeRecipient: boundedText(in.AgeRecipient),
-		Sync:         fleetSync(in.Installation.Sync),
+		Sync:         fleetSync(in.Installation.Sync, in.Installation.Pending),
 		FactsDigest:  boundedText(in.FactsDigest),
 		PublishedAt:  in.PublishedAt,
 	}
@@ -497,6 +522,7 @@ func (r FleetRow) Bounded() FleetRow {
 	r.InstallationID = boundedText(r.InstallationID)
 	r.Mode = Mode(boundedText(string(r.Mode)))
 	r.Version = boundedText(r.Version)
+	r.Staged = boundedText(r.Staged)
 	r.ManagerVersion = boundedText(r.ManagerVersion)
 	r.SigningKey = boundedText(r.SigningKey)
 	r.AgeRecipient = boundedText(r.AgeRecipient)

@@ -134,6 +134,9 @@ var installationFieldsNotDescribed = map[string]string{
 
 	"Sync": "trust set locally and root-only, never by a document, and a record of what the " +
 		"machine last applied: a committed file must not hand a machine to an authority (RFC 0057)",
+
+	"Pending": "what an authority's document gave a release this machine staged, not an " +
+		"operator's choice: another machine never staged that release (RFC 0058)",
 }
 
 // Describe assembles the document from an installation, the release it is

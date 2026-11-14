@@ -55,11 +55,15 @@ func ConfigApply(ctx context.Context, d *Deps, opts ConfigApplyOptions) (Result,
 type changeNames struct {
 	settings, parameters, secrets                []string
 	unsetSettings, unsetParameters, unsetSecrets []string
+	// pending and unsetPending are a sync's values for the staged release
+	// (RFC 0058 §5.2), which are recorded and rendered by nothing.
+	pending, unsetPending []string
 }
 
 func (n changeNames) empty() bool {
 	return len(n.settings)+len(n.parameters)+len(n.secrets)+
-		len(n.unsetSettings)+len(n.unsetParameters)+len(n.unsetSecrets) == 0
+		len(n.unsetSettings)+len(n.unsetParameters)+len(n.unsetSecrets)+
+		len(n.pending)+len(n.unsetPending) == 0
 }
 
 func (n changeNames) settingNames() []string   { return sortedUnion(n.settings, n.unsetSettings) }
@@ -81,6 +85,12 @@ func (n changeNames) list() []string {
 	for _, name := range n.unsetSecrets {
 		out = append(out, "secret "+name+" (removed)")
 	}
+	for _, name := range n.pending {
+		out = append(out, name+" (pending)")
+	}
+	for _, name := range n.unsetPending {
+		out = append(out, name+" (pending, unset)")
+	}
 	return out
 }
 
@@ -91,6 +101,7 @@ func (n changeNames) flags() map[string]string {
 	for key, names := range map[string][]string{
 		"settings": n.settings, "parameters": n.parameters, "secrets": n.secrets,
 		"unset_settings": n.unsetSettings, "unset_parameters": n.unsetParameters, "unset_secrets": n.unsetSecrets,
+		"pending": n.pending, "unset_pending": n.unsetPending,
 	} {
 		if len(names) > 0 {
 			flags[key] = strings.Join(names, ",")
@@ -154,11 +165,12 @@ type changeExtras struct {
 	// the change before anything runs.
 	record func(*domain.Installation) error
 
-	// check refuses the change against the release it would apply under,
-	// before it is planned: a sync's managed names (RFC 0057 §5.6). Run
-	// again under the lock, because a release installed while this waited
-	// is the one the change applies under.
-	check func(rel domain.Release, hasRel bool) error
+	// sort refuses the change against the release it would apply under,
+	// before it is planned, and returns the names that wait for the staged
+	// release instead: a sync's managed names (RFC 0057 §5.6, RFC 0058
+	// §5.1). Run again under the lock, because a release installed while
+	// this waited is the one the change applies under.
+	sort func(ctx context.Context, rel domain.Release, hasRel bool) (*stagedNames, error)
 
 	// desiredState is the document a sync applied, which its statement
 	// names (RFC 0057 decision 15). Set, the statement is filed whether or
@@ -178,14 +190,15 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 	if err != nil {
 		return run, err
 	}
-	if extras.check != nil {
-		if err := extras.check(rel, hasRel); err != nil {
+	var staged *stagedNames
+	if extras.sort != nil {
+		if staged, err = extras.sort(ctx, rel, hasRel); err != nil {
 			return run, err
 		}
 	} else if err := refuseManagedLocally(inst, rel, hasRel, change, opts.Force); err != nil {
 		return run, err
 	}
-	planned, err := d.planChange(ctx, inst, rel, hasRel, change, opts.Force)
+	planned, err := d.planChange(ctx, inst, rel, hasRel, staged, change, opts.Force)
 	if err != nil {
 		return run, err
 	}
@@ -211,14 +224,14 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		if inst, rel, hasRel, err = d.changeTarget(ctx, change); err != nil {
 			return err
 		}
-		if extras.check != nil {
-			if err := extras.check(rel, hasRel); err != nil {
+		if extras.sort != nil {
+			if staged, err = extras.sort(ctx, rel, hasRel); err != nil {
 				return err
 			}
 		} else if err := refuseManagedLocally(inst, rel, hasRel, change, opts.Force); err != nil {
 			return err
 		}
-		if planned, err = d.planChange(ctx, inst, rel, hasRel, change, opts.Force); err != nil {
+		if planned, err = d.planChange(ctx, inst, rel, hasRel, staged, change, opts.Force); err != nil {
 			return err
 		}
 		if extras.record != nil {
@@ -307,9 +320,13 @@ func (d *Deps) changeTarget(ctx context.Context, change ConfigChange) (domain.In
 // planChange checks a change against an installation and returns the
 // installation it leaves. Every problem is collected, so a document is fixed
 // in one pass (RFC 0056 decision 5).
+//
+// staged is what a sync sorted to the staged release, nil otherwise (RFC 0058
+// §5.1): its parameters are kept pending, checked against that release, and
+// its secrets are checked against that release's schema and stored.
 func (d *Deps) planChange(
 	ctx context.Context, inst domain.Installation, rel domain.Release, hasRel bool,
-	change ConfigChange, force bool,
+	staged *stagedNames, change ConfigChange, force bool,
 ) (plannedChange, error) {
 	planned := plannedChange{after: inst, hasRel: hasRel}
 	var problems []error
@@ -328,6 +345,7 @@ func (d *Deps) planChange(
 			}
 		}
 	}
+	change, later := splitStaged(change, staged)
 
 	// Settings, through each one's own Apply, as `config set` takes them.
 	next := inst
@@ -403,22 +421,43 @@ func (d *Deps) planChange(
 			}
 		}
 	}
+	if staged != nil {
+		now := append(slices.Collect(maps.Keys(change.Parameters)), change.Unset.Parameters...)
+		pending, set, unset, laterProblems := planPending(inst, staged, later, now)
+		problems = append(problems, laterProblems...)
+		next.Pending = pending
+		planned.names.pending, planned.names.unsetPending = set, unset
+	}
 
-	// Secrets, against the release's schema and the store.
+	// Secrets, against the release's schema and the store: the staged
+	// release's for a name sorted to it.
 	if len(change.Secrets)+len(change.Unset.Secrets) > 0 {
 		schema, err := release.LoadSecretSchema(rel)
 		if err != nil {
 			return planned, err
 		}
 		planned.schema = schema
+		var stagedSchema domain.SecretSchema
+		if staged != nil && len(staged.secrets) > 0 {
+			if stagedSchema, err = release.LoadSecretSchema(staged.rel); err != nil {
+				return planned, unreadableRelease("staged", staged.rel.Version(), err)
+			}
+		}
+		declaredBy := func(name string) (domain.SecretSchema, domain.Release) {
+			if staged.has("secrets", name) {
+				return stagedSchema, staged.rel
+			}
+			return schema, rel
+		}
 		stored, err := d.Secrets.Load(ctx)
 		if err != nil {
 			return planned, err
 		}
 		for _, name := range sortedStrings(slices.Collect(maps.Keys(change.Secrets))) {
 			value := change.Secrets[name]
-			if _, declared := schema.Declaration(name); !declared {
-				problems = append(problems, domain.Usage("%s declares no secret named %q", rel.Version(), name).
+			s, r := declaredBy(name)
+			if _, declared := s.Declaration(name); !declared {
+				problems = append(problems, domain.Usage("%s declares no secret named %q", r.Version(), name).
 					WithHint("`morzer secret list` shows the secrets it declares"))
 				continue
 			}
@@ -432,11 +471,16 @@ func (d *Deps) planChange(
 			}
 		}
 		for _, name := range sortedStrings(change.Unset.Secrets) {
-			decl, declared := schema.Declaration(name)
+			s, r := declaredBy(name)
+			decl, declared := s.Declaration(name)
 			present := stored.Has(name)
 			switch {
 			case !declared && !present:
-				problems = append(problems, domain.Usage("%s declares no secret named %q, and none is stored", rel.Version(), name))
+				problems = append(problems, domain.Usage("%s declares no secret named %q, and none is stored", r.Version(), name))
+			case declared && decl.Required && !force && staged.has("secrets", name):
+				// The update that installs it would refuse for want of it.
+				problems = append(problems, domain.Usage("secret %q is required by the staged release %s", name, r.Version()).
+					WithHint("removing it will make the update to %s fail", r.Version()))
 			case declared && decl.Required && !force:
 				problems = append(problems, domain.Usage("secret %q is required by the installed release", name).
 					WithHint("removing it will make the next `apply` fail; pass --force if you mean to"))

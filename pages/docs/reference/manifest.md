@@ -767,7 +767,12 @@ compatibility:
 | `secrets` | list | Secrets a document may set or unset. Each must be declared by the secret schema, which `release verify` checks. |
 | `settings` | list | Settings a document may change: `installation.profile` and `installation.domains`, and no other. Trust, update, sync and policy settings, recipients and targets are never manageable, whatever a release lists. |
 
-A document naming anything outside these lists is refused whole. Name a
+A document naming anything outside these lists is refused whole, unless the
+release the channel has staged lists it: a value for a name only that release
+lists waits for it, so an authority can give it before the release is
+installed. See
+[names for the staged release](desired-state.md#names-for-the-staged-release).
+Name a
 parameter here only if its value is safe to take from an authority: one that
 reaches a command line hands whoever holds the authority's key code execution
 on the machine.

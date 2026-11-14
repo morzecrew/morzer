@@ -42,6 +42,24 @@ type ConfigReport struct {
 	// decision, and blocking every command over one helps nobody. They are
 	// what `config unset` exists to clear.
 	Stale []string `json:"stale,omitempty"`
+
+	// Pending is what an authority's document gave the release the channel
+	// staged, which the next update to a release declaring them takes (RFC
+	// 0058 §5.4). Nil when there is none.
+	Pending *ConfigPending `json:"pending,omitempty"`
+}
+
+// ConfigPending is the values waiting for a release, with the release they
+// were checked against.
+type ConfigPending struct {
+	Release    string               `json:"release"`
+	Parameters []ConfigPendingValue `json:"parameters"`
+}
+
+// ConfigPendingValue is one of them, shown as `config list` shows a value.
+type ConfigPendingValue struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // ConfigList reads the effective parameters. Read-only: no lock, no journal.
@@ -89,6 +107,13 @@ func ConfigList(ctx context.Context, d *Deps) (ConfigReport, error) {
 	}
 	sort.Strings(out.Stale)
 
+	if inst.Pending != nil {
+		out.Pending = &ConfigPending{Release: inst.Pending.Release.String()}
+		for _, name := range sortedStrings(slices.Collect(maps.Keys(inst.Pending.Parameters))) {
+			out.Pending.Parameters = append(out.Pending.Parameters,
+				ConfigPendingValue{Name: name, Value: inst.Pending.Parameters[name]})
+		}
+	}
 	return out, nil
 }
 

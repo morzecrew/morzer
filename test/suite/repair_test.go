@@ -403,6 +403,7 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 
 		"Parameters": "from the flags: --set is how a repair changes one, and an empty " +
 			"set carries what was there",
+		"Pending": "carried: values a document left for a staged release, which the next update takes",
 
 		"Update": "carried: a channel configured after `init` is not this command's to drop",
 		"Notify": "carried: alerting configured after `init` is not this command's to drop",

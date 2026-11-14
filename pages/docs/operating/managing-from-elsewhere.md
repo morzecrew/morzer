@@ -137,6 +137,34 @@ morzer state facts --target s3://acme-state/demo --expect ./roster.yaml \
 It prints the facts only when the machine's key signed them and they are the
 ones its newest row names.
 
+## Crossing a release that adds or renames a managed name
+
+A release may add a parameter you manage with no default, or rename one, and a
+machine cannot install it without a value. Give the value before the machine
+installs the release: the machine's channel stages it, and you publish a
+document for the release it staged. You do not choose the release or when it
+is installed; the machine's channel and its tick do.
+
+1. Upgrade the manager you publish and read the fleet with first. Rows that
+   name a staged release are schema 3, and an older manager refuses them.
+2. Wait for the machine to stage the release. Its row names it:
+
+   ```sh
+   morzer fleet ls s3://acme-state/demo --expect ./roster.yaml --json | jq '.data.rows[].row.staged'
+   ```
+
+3. Publish a document that names the new release's names beside the ones the
+   installed release manages. The machine applies the second kind now and keeps
+   the first [pending](../reference/desired-state.md#names-for-the-staged-release)
+   for the staged release. For a rename, give both the old name and the new.
+4. The tick installs the release with the pending values, as an
+   [unattended update](unattended-updates.md) does. On a machine that does not
+   install unattended, `morzer update --to <version>` takes them.
+
+The row's `sync.pending` names what is waiting. A document published before the
+release is staged is refused as `unmanageable`, and the next one, once the row
+names the release, is taken.
+
 ## Keep the authority heard from
 
 `doctor` warns when the document in force expires within a day, and when the

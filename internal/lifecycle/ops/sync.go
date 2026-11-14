@@ -16,6 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // Following an authority's desired state (RFC 0057 §5.8).
@@ -154,8 +155,8 @@ func syncCycle(ctx context.Context, d *Deps, opts SyncOptions) (SyncReport, erro
 	}
 
 	run, err := d.runChange(ctx, opts.Options, doc.change, changeExtras{
-		check: func(rel domain.Release, hasRel bool) error {
-			return checkManaged(rel, hasRel, doc.change)
+		sort: func(ctx context.Context, rel domain.Release, hasRel bool) (*stagedNames, error) {
+			return d.sortManaged(ctx, rel, hasRel, doc.change)
 		},
 		record: func(after *domain.Installation) error {
 			// Under the lock, from the installation as it stands: a
@@ -377,25 +378,100 @@ func currentOrExpired(cfg domain.SyncConfig, keyID string, serial int64, now dom
 	return domain.SyncCurrent
 }
 
-// checkManaged refuses a document naming anything the release does not let be
-// managed, whole (§5.6). No release lets nothing be.
-func checkManaged(rel domain.Release, hasRel bool, change ConfigChange) error {
-	var refused []string
+// stagedNames is what a sync sorted to the release the channel staged (RFC
+// 0058 §5.1): names it manages and the installed release does not. Its
+// parameters wait in pending, and its secrets are stored now, for it to find.
+type stagedNames struct {
+	rel                 domain.Release
+	parameters, secrets []string
+}
+
+func (s *stagedNames) has(section, name string) bool {
+	switch {
+	case s == nil:
+		return false
+	case section == "parameters":
+		return slices.Contains(s.parameters, name)
+	case section == "secrets":
+		return slices.Contains(s.secrets, name)
+	}
+	return false
+}
+
+// sortManaged sorts every name a document mentions by the releases that manage
+// it (RFC 0058 §5.1). The installed release's apply now, the staged release's
+// wait for the update that installs it, and a document naming one neither
+// manages is refused whole, as before (RFC 0057 §5.6). Settings are the
+// installed release's alone: no release declares one for its successor. No
+// release lets nothing be managed.
+func (d *Deps) sortManaged(ctx context.Context, rel domain.Release, hasRel bool, change ConfigChange) (*stagedNames, error) {
+	var (
+		staged    *stagedNames
+		installed domain.SecretSchema
+		looked    bool
+		refused   []string
+	)
 	for _, section := range []string{"settings", "parameters", "secrets"} {
 		for _, name := range changeSection(change, section) {
-			if !hasRel || !rel.Manifest.Managed.Allows(section, name) {
+			if hasRel && rel.Manifest.Managed.Allows(section, name) {
+				continue
+			}
+			if section != "settings" && !looked {
+				// Read only when a name needs it: a staged bundle that
+				// does not load holds back no document the installed
+				// release takes alone.
+				looked = true
+				var err error
+				if staged, err = d.stagedRelease(ctx); err != nil {
+					return nil, err
+				}
+				if hasRel {
+					if installed, err = release.LoadSecretSchema(rel); err != nil {
+						return nil, unreadableRelease("installed", rel.Version(), err)
+					}
+				}
+			}
+			// A secret has no pending of its own: storing one the
+			// installed release declares changes what it runs on.
+			_, inUse := installed.Declaration(name)
+			switch {
+			case section == "settings" || staged == nil || !staged.rel.Manifest.Managed.Allows(section, name),
+				section == "secrets" && inUse:
 				refused = append(refused, sectionName(section, name))
+			case section == "parameters":
+				staged.parameters = append(staged.parameters, name)
+			default:
+				staged.secrets = append(staged.secrets, name)
 			}
 		}
 	}
-	if len(refused) == 0 {
-		return nil
+	if len(refused) > 0 {
+		return nil, &syncRefusal{
+			result: domain.SyncUnmanageable, step: "validate", class: string(domain.SyncUnmanageable),
+			names: refused,
+			err:   domain.Usage("the release does not let %d name(s) be managed from elsewhere", len(refused)),
+		}
 	}
-	return &syncRefusal{
-		result: domain.SyncUnmanageable, step: "validate", class: string(domain.SyncUnmanageable),
-		names: refused,
-		err:   domain.Usage("the release does not let %d name(s) be managed from elsewhere", len(refused)),
+	// Never nil for a sync, even with nothing sorted to a staged release:
+	// what it applies now still supersedes what is pending (planPending).
+	if staged == nil {
+		return &stagedNames{}, nil
 	}
+	return staged, nil
+}
+
+// stagedRelease is the release the channel staged, nil when none is (RFC 0058
+// decision 2); `update --stage` writes the same record (decision 3).
+func (d *Deps) stagedRelease(ctx context.Context) (*stagedNames, error) {
+	candidate, err := d.State.UpdateCandidate(ctx)
+	if err != nil || !candidate.IsStaged() {
+		return nil, err
+	}
+	rel, err := release.Load(candidate.Root)
+	if err != nil {
+		return nil, unreadableRelease("staged", candidate.Version, err)
+	}
+	return &stagedNames{rel: rel}, nil
 }
 
 // changeSection is every name a change mentions in section, set or unset.
