@@ -159,8 +159,15 @@ s1() {
     # can be told from one refused by the path.
     mkdir -p "$lib/user" && echo probe >"$lib/user/probe" &&
         chown -R "$uid:$gid" "$lib/user" && chmod 0700 "$lib/user"
+    # Inside a directory root keeps at 0711, which others may pass through but
+    # not list: one directory the user owns, and one of root's to read from.
+    mkdir -p "$lib/sealed/user" "$lib/sealed/ro" && chmod 0711 "$lib/sealed" &&
+        chmod 0755 "$lib/sealed/ro" && echo probe >"$lib/sealed/ro/probe" &&
+        echo probe >"$lib/sealed/user/probe" && chown -R "$uid:$gid" "$lib/sealed/user" &&
+        chmod 0700 "$lib/sealed/user"
     for s in "/etc/$p" "/private/etc/$p" "/var/lib/$p" "/private/var/lib/$p" \
-        "/opt/$p" "/var/run/$p" "/private/var/run/$p" "/private/var/lib/$p/user"; do
+        "/opt/$p" "/var/run/$p" "/private/var/run/$p" "/private/var/lib/$p/user" \
+        "/private/var/lib/$p/sealed/user" "/private/var/lib/$p/sealed/ro"; do
         cat >"$tmp/s1.yaml" <<EOF
 services:
   probe:
@@ -226,6 +233,10 @@ s2() {
     chmod +a "$user allow list,search" "$run"
     s2_variant "layout, root's, with ACLs for $user" "/private/var/run/$p/secrets-acl" 0700 0400 65532:65532 0:0 acl
     chmod -N "$run"
+    # Root keeps RunDir and lets others through it, but not list it.
+    chmod 0711 "$run"
+    s2_variant "layout, owned by $user, in RunDir at 0711" "/private/var/run/$p/secrets-711" 0700 0400 "$uid:$gid" "$uid:$gid"
+    chmod 0750 "$run"
     s2_variant "layout, under /tmp" "/private/tmp/$p-s2/layout" 0700 0400 65532:65532
     s2_variant "open dir" "/private/tmp/$p-s2/open" 0755 0400 65532:65532
     s2_variant "readable" "/private/tmp/$p-s2/readable" 0755 0444 65532:65532
