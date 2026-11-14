@@ -495,3 +495,23 @@ func TestAValueKeptFromAnEarlierReleaseIsCheckedAgain(t *testing.T) {
 	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
 	assert.Equal(t, "1.3.0", installation(t, r.h).Pending.Release.String())
 }
+
+// A pending name the release does not declare, added while an update waits,
+// refuses it too: its record step would drop a value its journal never named.
+func TestAnUndeclaredPendingNameAddedWhileAnUpdateWaitedRefusesIt(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	r.publish(t, 40, "parameters:\n  admin_email: "+adminEmail+"\nsecrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	r.h.Locker.BeforeAcquire = func() {
+		r.h.Locker.BeforeAcquire = nil
+		inst := installation(t, r.h)
+		inst.Pending.Parameters = map[string]string{"admin_email": adminEmail, "retired_name": "x"}
+		require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+	}
+	_, err := ops.Update(ctx, r.h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "retired_name")
+}

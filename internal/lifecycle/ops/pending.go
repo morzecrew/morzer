@@ -154,18 +154,16 @@ func refuseSetOfManaged(inst domain.Installation, rel domain.Release, given map[
 
 // refuseChangedPending is refuseChangedInstallation for what a document left
 // pending for the release an update installs: a sync that wrote it while the
-// update waited for the lock changed what the update takes as given.
-func (d *Deps) refuseChangedPending(
-	ctx context.Context, planned domain.Installation, declared map[string]domain.ParameterSpec,
-) error {
+// update waited for the lock changed what the update takes as given, or what
+// its record step drops and its journal names. Every name, declared or not.
+func (d *Deps) refuseChangedPending(ctx context.Context, planned domain.Installation) error {
 	now, err := d.State.LoadInstallation(ctx)
 	if err != nil {
 		return err
 	}
-	before := declaredValues(planned.PendingParameters(), declared)
-	after := declaredValues(now.PendingParameters(), declared)
+	before, after := planned.PendingParameters(), now.PendingParameters()
 	var changed []string
-	for name := range declared {
+	for _, name := range sortedUnion(slices.Collect(maps.Keys(before)), slices.Collect(maps.Keys(after))) {
 		was, had := before[name]
 		is, has := after[name]
 		if had != has || was != is {

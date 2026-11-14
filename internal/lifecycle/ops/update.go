@@ -239,7 +239,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.refuseChangedInstallation(ctx, recorded, staged.Manifest.Parameters); err != nil {
 			return err
 		}
-		if err := d.refuseChangedPending(ctx, recorded, staged.Manifest.Parameters); err != nil {
+		if err := d.refuseChangedPending(ctx, recorded); err != nil {
 			return err
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
