@@ -39,10 +39,12 @@ const fleetSigExt = minisigExt
 type FleetPublishOptions struct {
 	TargetOptions
 
-	// afterOperation is a sync's publish, which follows the operation that
-	// ran the facts task already. Every other publish, `fleet publish` by the
-	// fleet timer or an operator, runs the task first when the release asks
-	// for it before every publish (#353).
+	// afterOperation is a sync's publish. It carries the facts kept from the
+	// last run, as every row does (RFC 0057 decision 31): its own operation's,
+	// when it applied a document, or the last publish's, when it only records
+	// what it fetched. Every other publish, `fleet publish` by the fleet
+	// timer or an operator, runs the task first when the release asks for it
+	// before every publish (#353).
 	afterOperation bool
 }
 
