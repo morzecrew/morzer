@@ -173,7 +173,15 @@ func BuildExport(ctx context.Context, d *Deps) (domain.InstallationExport, error
 // every backup was refused for want of a recipient, so it could never update
 // (#363). State that exists and names nobody is another matter: it is
 // unreadable, and the empty answer lets the backup engine refuse it and say so.
+//
+// Whether the state exists is read first. A first write landing between the
+// two reads then leaves either its recipients or the machine's key, both
+// right; read the other way round, it read as state naming nobody.
 func BackupRecipients(ctx context.Context, d *Deps) ([]string, error) {
+	initialized, err := d.Secrets.Initialized(ctx)
+	if err != nil {
+		return nil, err
+	}
 	recipients, err := d.Secrets.Recipients(ctx)
 	if err != nil {
 		return nil, err
@@ -182,12 +190,8 @@ func BackupRecipients(ctx context.Context, d *Deps) ([]string, error) {
 	for _, r := range recipients {
 		keys = append(keys, r.PublicKey)
 	}
-	if len(keys) > 0 {
+	if len(keys) > 0 || initialized {
 		return keys, nil
-	}
-	initialized, err := d.Secrets.Initialized(ctx)
-	if err != nil || initialized {
-		return keys, err
 	}
 	machine, err := d.Secrets.IdentityPublicKey(ctx)
 	if err != nil {
