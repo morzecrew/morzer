@@ -720,11 +720,13 @@ being released.
 
 P0 ran on 2026-11-14, on the author's M3 Max MacBook Pro (`Mac15,11`)
 rather than the Mac mini named above. The questions need Apple silicon, not a
-particular model. The script is
-[`spikes/macos-host/run.sh`](../spikes/macos-host/run.sh) as of `cf98c262`,
-and its whole output is
-[`spikes/macos-host/report.txt`](../spikes/macos-host/report.txt). Every
-number below comes from that file. Times are UTC.
+particular model. The script ran as
+[`spikes/macos-host/run.sh`](../spikes/macos-host/run.sh) stood at
+`cf98c262`, and
+[`spikes/macos-host/report.txt`](../spikes/macos-host/report.txt) is its whole
+output from that run. Later commits add checks for a second run, which that
+output does not include. Every number below comes from that file. Times are
+UTC.
 
 - macOS 26.5.2 (25F84), with FileVault and SIP on.
 - Docker Desktop 4.44.1 (201842): engine 28.3.2, Compose 2.39.1-desktop.1.
