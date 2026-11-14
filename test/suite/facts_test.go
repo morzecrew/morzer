@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -613,4 +614,38 @@ func TestARefreshBeforeAPublishGivesWayToAHeldLock(t *testing.T) {
 	assert.Equal(t, before, *f.state(t).Facts)
 	row, _ := publishedRow(t, f.offsite, f.inst)
 	assert.Equal(t, before.Digest, row.FactsDigest)
+}
+
+// A kept pair is reused only when it is still the one its record names: one
+// whose ciphertext was damaged is replaced, though the output is the same.
+func TestDamagedFactsAreReplacedThoughTheOutputIsTheSame(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	digest := f.state(t).Facts.Digest
+	path := f.h.Paths.FactsFile(digest)
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var pair map[string]any
+	require.NoError(t, json.Unmarshal(raw, &pair))
+	pair["ciphertext"] = []byte("damaged")
+	raw, err = json.Marshal(pair)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+
+	f.publishRefreshing(t)
+	assert.NotEqual(t, digest, f.state(t).Facts.Digest, "damaged facts were kept")
+	row, _ := publishedRow(t, f.offsite, f.inst)
+	assert.Equal(t, f.state(t).Facts.Digest, row.FactsDigest, "the row named no facts")
+}
+
+// Facts signed by a key the machine no longer signs with are signed again,
+// though the output is the same: the row names the key that signs now.
+func TestFactsAreSignedAgainAfterTheKeyRotates(t *testing.T) {
+	f := newFactsRig(t)
+	digest := f.state(t).Facts.Digest
+	_, err := ops.RotateSigningKey(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+	_, err = ops.Apply(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotEqual(t, digest, f.state(t).Facts.Digest, "facts signed by the retired key were kept")
 }

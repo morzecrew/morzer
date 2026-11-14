@@ -62,6 +62,10 @@ type factsPair struct {
 	// randomised, and a run printing the same keeps this pair (#353). Kept
 	// here and never in the row.
 	Content string `json:"content,omitempty"`
+
+	// Key is the public key that signed the pair, so one signed by a key
+	// rotated away is signed again rather than kept.
+	Key string `json:"key,omitempty"`
 }
 
 // refreshFacts runs the release's facts task, when this machine publishes
@@ -101,8 +105,9 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 		return
 	}
 	var pair []byte
+	var key string
 	if problem == "" {
-		pair, problem = d.signFacts(ctx, inst, sealed, content)
+		pair, key, problem = d.signFacts(ctx, inst, sealed, content)
 	}
 
 	now := domain.NewTime(d.now())
@@ -123,10 +128,11 @@ func (d *Deps) refreshFacts(ctx context.Context) {
 		if fresh.Sync.Facts != nil {
 			facts = *fresh.Sync.Facts
 		}
-		// The same facts for the same recipient: the pair kept says them
-		// already, and a new one would only move the row's digest.
-		if problem == "" && facts.Digest != "" && facts.Recipient == recipient &&
-			d.keptContent(facts.Digest) == content {
+		// The same facts for the same recipient, kept whole and signed by
+		// the key that signs now: the pair says them already, and a new
+		// one would only move the row's digest.
+		if kept, ok := d.keptPair(facts); problem == "" && ok && facts.Recipient == recipient &&
+			kept.Content == content && kept.Key == key {
 			if facts.Problem == "" {
 				return nil
 			}
@@ -181,19 +187,20 @@ func (d *Deps) removeFactsExcept(digest string) {
 
 // signFacts signs the ciphertext with the machine key, under a comment naming
 // the installation, and returns the pair as it is kept.
-func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed []byte, content string) ([]byte, string) {
-	if _, err := d.Signer.EnsureKey(ctx); err != nil {
-		return nil, "the facts could not be signed"
+func (d *Deps) signFacts(ctx context.Context, inst domain.Installation, sealed []byte, content string) ([]byte, string, string) {
+	key, err := d.Signer.EnsureKey(ctx)
+	if err != nil {
+		return nil, "", "the facts could not be signed"
 	}
 	sig, err := d.Signer.Sign(ctx, sealed, domain.FactsComment(inst.Product, inst.ID))
 	if err != nil {
-		return nil, "the facts could not be signed"
+		return nil, "", "the facts could not be signed"
 	}
-	pair, err := json.Marshal(factsPair{Ciphertext: sealed, Signature: sig.Encoded, Content: content})
+	pair, err := json.Marshal(factsPair{Ciphertext: sealed, Signature: sig.Encoded, Content: content, Key: key.Line})
 	if err != nil {
-		return nil, "the facts could not be kept"
+		return nil, "", "the facts could not be kept"
 	}
-	return pair, ""
+	return pair, key.Line, ""
 }
 
 // runFactsTask runs the task and encrypts what it printed, or says why there
@@ -227,18 +234,23 @@ func (d *Deps) runFactsTask(ctx context.Context, task, recipient string) (proble
 	return "", out.Bytes(), "sha256:" + hex.EncodeToString(sum[:]), false
 }
 
-// keptContent is the digest of what the task printed for the kept pair named
-// digest, or empty when that pair is not here or predates the field.
-func (d *Deps) keptContent(digest string) string {
-	data, err := os.ReadFile(d.Paths.FactsFile(digest))
+// keptPair is the pair the record names, when it is here whole: its
+// ciphertext is the one the record's digest names, as keptFacts requires of a
+// pair a row may vouch for.
+func (d *Deps) keptPair(facts domain.SyncFacts) (factsPair, bool) {
+	if facts.Digest == "" {
+		return factsPair{}, false
+	}
+	data, err := os.ReadFile(d.Paths.FactsFile(facts.Digest))
 	if err != nil {
-		return ""
+		return factsPair{}, false
 	}
 	var pair factsPair
 	if err := json.Unmarshal(data, &pair); err != nil {
-		return ""
+		return factsPair{}, false
 	}
-	return pair.Content
+	sum := sha256.Sum256(pair.Ciphertext)
+	return pair, "sha256:"+hex.EncodeToString(sum[:]) == facts.Digest
 }
 
 // keptFacts is the facts pair kept for the next row publish, when there is
