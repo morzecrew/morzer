@@ -798,6 +798,7 @@ compatibility:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `task` | string | Required. A task the release declares under `tasks`. It runs with no arguments and no inputs, so it must take none, and on every machine, so its `modes` must not leave one out. Its stdout is the facts, at most 64 KiB. |
+| `refresh` | string | `publish` also runs the task before every [`fleet publish`](fleet.md), the hourly timer's and an operator's, for facts that change while the installation does not, such as a canary's view of the relay it watches. Absent, the task runs after operations only. |
 
 The task runs after every successful apply, start, update, rollback, restore
 and configuration change, on a machine that sets `sync.recipient`. Never after
@@ -811,7 +812,15 @@ a fact, and a task that prints a credential sends it to the authority.
 
 A release declaring `published` needs `compatibility.min_manager_version` of at
 least `0.16.0`, for the reason `managed` does. Either block written empty needs
-it too: an older manager refuses the field, not its contents.
+it too: an older manager refuses the field, not its contents. One declaring
+`refresh` needs at least `0.17.0`.
+
+Each run is a task operation, journalled and attested, so `refresh: publish`
+adds one of each per publish, every hour on the default schedule. A release
+that asks for it should tell operators to set
+[`retention.attestations`](attestations.md#keeping-fewer-of-them). Output that has not
+changed keeps the facts the machine has, so the row's `facts_digest` stays the
+same; the facts and the row are still written to the target on every publish.
 
 ## health
 

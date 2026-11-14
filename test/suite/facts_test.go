@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/agecrypt"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // Facts going back to the authority (RFC 0057 P5): the release's task runs
@@ -535,4 +537,135 @@ func TestAMachineJoinedAtInitIsReadAndItsFactsReachAnother(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.SyncOK, f.syncOK(t).Result)
 	assert.Equal(t, []string{"joined.example"}, installation(t, f.h).Domains)
+}
+
+// refreshing has the installed release ask for its facts before every
+// `fleet publish` (#353).
+func (f *factsRig) refreshing(t *testing.T) {
+	t.Helper()
+	patchManifest(t, f.h.Release.Root, `min_manager_version: "0.16.0"`, `min_manager_version: "0.17.0"`)
+	patchManifest(t, f.h.Release.Root, "\npublished:\n  task: entry\n", "\npublished:\n  task: entry\n  refresh: publish\n")
+	// The record names the release by digest, and the patch moved it.
+	rel, err := release.Load(f.h.Release.Root)
+	require.NoError(t, err)
+	current, err := f.h.Deps.State.CurrentRelease(context.Background())
+	require.NoError(t, err)
+	current.Digest = rel.Digest
+	require.NoError(t, f.h.Deps.State.SetCurrentRelease(context.Background(), current))
+	f.h.Release = rel
+}
+
+func (f *factsRig) publishRefreshing(t *testing.T) {
+	t.Helper()
+	_, err := ops.FleetPublish(context.Background(), f.h.Deps, ops.FleetPublishOptions{})
+	require.NoError(t, err)
+}
+
+// A release that asks for it has its facts task run before every fleet
+// publish, so facts that change while the installation does not, such as a
+// canary's verdict on its relay, reach the authority. Output that has not
+// changed keeps the facts it has, so the row's digest moves only with them.
+func TestAReleaseCanAskForItsFactsBeforeEveryPublish(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	before := f.state(t).Facts.Digest
+
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "relay=down\n"}
+	f.publishRefreshing(t)
+	after := f.state(t).Facts.Digest
+	assert.NotEqual(t, before, after, "the facts were not refreshed before the publish")
+	row, _ := publishedRow(t, f.offsite, f.inst)
+	assert.Equal(t, after, row.FactsDigest, "the row named facts other than the ones refreshed for it")
+	report, err := f.facts(t)
+	require.NoError(t, err)
+	assert.Equal(t, "relay=down\n", report.Facts)
+
+	runs := len(f.h.Runtime.OneShots)
+	f.publishRefreshing(t)
+	assert.Len(t, f.h.Runtime.OneShots, runs+1, "the task did not run before the second publish")
+	assert.Equal(t, after, f.state(t).Facts.Digest, "unchanged facts were sealed and published again")
+}
+
+// Unasked, a publish runs no facts task: not for a release without the field,
+// and not for a sync's publish, which follows an operation that ran it once.
+func TestAPublishRefreshesNoFactsUnasked(t *testing.T) {
+	f := newFactsRig(t)
+	runs := len(f.h.Runtime.OneShots)
+	f.publishRefreshing(t)
+	assert.Len(t, f.h.Runtime.OneShots, runs, "a release that did not ask had its facts task run")
+
+	f.refreshing(t)
+	f.publish(t, 50, "parameters:\n  log_level: debug\n")
+	require.Equal(t, domain.SyncOK, f.syncOK(t).Result)
+	assert.Len(t, f.h.Runtime.OneShots, runs+1, "a sync ran the facts task again for its own publish")
+}
+
+// A refresh that finds the deployment lock held gives way, as a run after an
+// operation does (RFC 0057 decision 56), and the row is published anyway.
+func TestARefreshBeforeAPublishGivesWayToAHeldLock(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	before := *f.state(t).Facts
+	runs := len(f.h.Runtime.OneShots)
+	f.h.Locker.RefuseNth = map[string]int{"deployment": f.h.Locker.Acquired("deployment") + 1}
+	f.publishRefreshing(t)
+	f.h.Locker.RefuseNth = nil
+	assert.Len(t, f.h.Runtime.OneShots, runs, "the facts task ran without the lock")
+	assert.Equal(t, before, *f.state(t).Facts)
+	row, _ := publishedRow(t, f.offsite, f.inst)
+	assert.Equal(t, before.Digest, row.FactsDigest)
+}
+
+// A kept pair is reused only when it is still the one its record names: one
+// whose ciphertext was damaged is replaced, though the output is the same.
+func TestDamagedFactsAreReplacedThoughTheOutputIsTheSame(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	digest := f.state(t).Facts.Digest
+	path := f.h.Paths.FactsFile(digest)
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var pair map[string]any
+	require.NoError(t, json.Unmarshal(raw, &pair))
+	pair["ciphertext"] = []byte("damaged")
+	raw, err = json.Marshal(pair)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+
+	f.publishRefreshing(t)
+	assert.NotEqual(t, digest, f.state(t).Facts.Digest, "damaged facts were kept")
+	row, _ := publishedRow(t, f.offsite, f.inst)
+	assert.Equal(t, f.state(t).Facts.Digest, row.FactsDigest, "the row named no facts")
+}
+
+// Facts signed by a key the machine no longer signs with are signed again,
+// though the output is the same: the row names the key that signs now.
+func TestFactsAreSignedAgainAfterTheKeyRotates(t *testing.T) {
+	f := newFactsRig(t)
+	digest := f.state(t).Facts.Digest
+	_, err := ops.RotateSigningKey(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+	_, err = ops.Apply(context.Background(), f.h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotEqual(t, digest, f.state(t).Facts.Digest, "facts signed by the retired key were kept")
+}
+
+// The refresh before a publish runs the task with a timeout that leaves the
+// publish time inside the fleet unit's own, and records without waiting for a
+// lock another operation holds: the row goes out with the facts it has.
+func TestARefreshBeforeAPublishFitsInsideThePublish(t *testing.T) {
+	f := newFactsRig(t)
+	f.refreshing(t)
+	f.publishRefreshing(t)
+	last := f.h.Runtime.OneShots[len(f.h.Runtime.OneShots)-1]
+	assert.LessOrEqual(t, last.Timeout, 3*time.Minute, "the facts task may outlast the fleet unit")
+	assert.False(t, f.h.Locker.Waited("deployment"), "the record before a publish waits for another operation")
+
+	before := *f.state(t).Facts
+	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "relay=down\n"}
+	// The task's own lock is the first; the record's is the second.
+	f.h.Locker.RefuseNth = map[string]int{"deployment": f.h.Locker.Acquired("deployment") + 2}
+	f.publishRefreshing(t)
+	f.h.Locker.RefuseNth = nil
+	assert.Equal(t, before, *f.state(t).Facts, "facts were recorded under a lock another operation held")
 }

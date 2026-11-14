@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given with `--set`. `config list`, `status --json` and the fleet row report
   them.
 
+- A release can ask for its facts before every `fleet publish` with
+  `published.refresh: publish`, for facts that change while the installation
+  does not. Each run is journalled and attested like any facts run, and
+  output that has not changed keeps the row's facts digest.
+
 ### Changed
 
 - While sync is enabled, `update --set` of a parameter the authority manages,

@@ -458,6 +458,7 @@ type Locker struct {
 	// one precise moment, among acquisitions of other locks.
 	RefuseNth map[string]int
 	acquired  map[string]int
+	waited    map[string]bool
 
 	// BeforeAcquire runs at the start of an acquisition, before the lock is
 	// looked at. A test uses it to land another operation in the window
@@ -466,6 +467,14 @@ type Locker struct {
 }
 
 func NewLocker() *Locker { return &Locker{} }
+
+// Waited reports whether the last acquisition of the named lock asked to wait
+// for it. The fake never waits; this is what a caller asked for.
+func (l *Locker) Waited(name string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.waited[name]
+}
 
 // Acquired is how many times the named lock has been asked for.
 func (l *Locker) Acquired(name string) int {
@@ -484,9 +493,10 @@ func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOption
 	defer l.mu.Unlock()
 
 	if l.acquired == nil {
-		l.acquired = map[string]int{}
+		l.acquired, l.waited = map[string]int{}, map[string]bool{}
 	}
 	l.acquired[name]++
+	l.waited[name] = opts.Wait
 	owner, held := l.held[name]
 	if l.FailAcquire || held || (l.RefuseNth[name] != 0 && l.RefuseNth[name] == l.acquired[name]) {
 		return nil, domain.Locked("the %s lock is held by %s operation %s",

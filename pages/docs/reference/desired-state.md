@@ -299,9 +299,12 @@ machine sets `sync.recipient`, the authority's age recipient. Without either,
 nothing is published.
 
 After every successful apply, start, update, rollback, restore and
-configuration change, the task runs with no arguments. It never runs after
-`init`, which starts nothing, and gives way when another operation holds the
-lock. Its stdout, at most 64 KiB, is encrypted to `sync.recipient` and signed
+configuration change, the task runs with no arguments. A release that declares
+[`published.refresh: publish`](manifest.md#published) also has it run before
+every `fleet publish`, the timer's and an operator's, though not before the row
+a sync publishes. It never runs after `init`, which starts nothing, and gives
+way when another operation holds the lock. Output that has not changed since
+the last run keeps the facts the machine has. Its stdout, at most 64 KiB, is encrypted to `sync.recipient` and signed
 with the machine's key, with a trusted comment naming the installation.
 
 A row publish on a machine that holds facts writes them beside the row as

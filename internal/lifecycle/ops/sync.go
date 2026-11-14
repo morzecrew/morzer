@@ -120,7 +120,7 @@ func (d *Deps) publishSyncOutcome(ctx context.Context) {
 	if err != nil || !inst.Backup.HasTargets() {
 		return
 	}
-	if _, err := FleetPublish(ctx, d, FleetPublishOptions{}); err != nil {
+	if _, err := FleetPublish(ctx, d, FleetPublishOptions{afterOperation: true}); err != nil {
 		d.warnf("cannot publish the fleet row: %s", domain.AsError(err).Message)
 	}
 }
