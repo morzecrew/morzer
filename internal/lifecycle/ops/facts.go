@@ -180,9 +180,10 @@ func (d *Deps) refreshFacts(ctx context.Context, beforePublish bool) {
 	})
 	switch {
 	case beforePublish && errors.Is(err, domain.ErrLocked):
-		// Another operation took the lock while the task ran; it runs
-		// the task again when it ends, and this publish goes out with
-		// the facts it has.
+		// Another operation took the lock while the task ran. This
+		// publish goes out with the facts it has, and the next
+		// successful operation, or the next publish, runs the task
+		// again.
 	case err != nil:
 		d.warnf("cannot record this machine's facts: %s", domain.AsError(err).Message)
 	}
