@@ -61,11 +61,15 @@ rootdocker() { env -i PATH="$launchd_path" "$docker_bin" "$@"; }
 # The user's own CLI, with the user's config and context.
 userdocker() { sudo -u "$user" -H "$docker_bin" "$@"; }
 
+# Root's CLI as the manager would run it: with a config of its own naming the
+# directory the user's Compose plugin links to (RFC 0055 §13, the second run).
+managerdocker() { rootdocker --config "$rootcfg" "$@"; }
+
 # S1, S2 and S6 need an engine. They use root's, as the manager would, and fall
 # back to the user's only so that a failed S3 does not hide the other answers.
 via=
 pick_engine() {
-    if rootdocker info >/dev/null 2>&1 && rootdocker compose version >/dev/null 2>&1; then
+    if managerdocker info >/dev/null 2>&1 && managerdocker compose version >/dev/null 2>&1; then
         via=root
     elif userdocker info >/dev/null 2>&1; then
         via=user
@@ -73,12 +77,19 @@ pick_engine() {
         die "no engine answers, as root or as $user; start Docker Desktop and run this again"
     fi
 }
-engine() { if [ "$via" = root ]; then rootdocker "$@"; else userdocker "$@"; fi; }
+engine() { if [ "$via" = root ]; then managerdocker "$@"; else userdocker "$@"; fi; }
 
 tmp=$(mktemp -d /private/tmp/$p.XXXXXX)
 # Compose files sit here, so it must be readable by the user's CLI too.
 chmod 0755 "$tmp"
 trap 'rm -rf "${tmp:?}"' EXIT
+
+rootcfg=$tmp/rootconfig
+mkdir "$rootcfg"
+plugin=$(readlink "$home/.docker/cli-plugins/docker-compose" 2>/dev/null)
+if [ -n "$plugin" ]; then
+    printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$(dirname "$plugin")" >"$rootcfg/config.json"
+fi
 
 touch "$report"
 chown "$user" "$report"
@@ -122,13 +133,8 @@ s3() {
     row "root, $user's socket" "$(try rootdocker -H "unix://$home/.docker/run/docker.sock" version --format '{{.Server.Version}}')"
     # Whether root's CLI finds Compose when a config the manager would own names
     # the directory the user's plugin links to.
-    plugin=$(readlink "$home/.docker/cli-plugins/docker-compose" 2>/dev/null)
     row "$user's compose plugin" "${plugin:-not a link}"
-    if [ -n "$plugin" ]; then
-        mkdir -p "$tmp/rootconfig"
-        printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$(dirname "$plugin")" >"$tmp/rootconfig/config.json"
-        row "root, clean env, that dir: compose" "$(try rootdocker --config "$tmp/rootconfig" compose version --short)"
-    fi
+    [ -n "$plugin" ] && row "root, clean env, that dir: compose" "$(try managerdocker compose version --short)"
     pick_engine
     row "S1, S2 and S6 run as" "$via"
 }
