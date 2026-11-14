@@ -1,0 +1,152 @@
+
+== info, 2026-11-14T19:04:01Z ==
+macOS                                26.5.2 (25F84)
+model                                Mac15,11, Apple M3 Max
+arch                                 arm64
+FileVault                            FileVault is On.
+SIP                                  System Integrity Protection status: enabled.
+Docker Desktop                       4.44.1
+docker CLI                           /usr/local/bin/docker -> /Applications/Docker.app/Contents/Resources/bin/docker
+engine, as misery7100                Docker Desktop 4.44.1 (201842), engine 28.3.2 
+compose, as misery7100               2.39.1-desktop.1 
+settings                             /Users/misery7100/Library/Group Containers/group.com.docker/settings-store.json
+    "AutoStart": true
+
+== S3, root's docker and Docker Desktop, 2026-11-14T19:04:03Z ==
+/var/run/docker.sock                 lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+what it reaches                      srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 10:47 /var/run/docker.sock
+/Users/misery7100/.docker/run/docker.sock srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 10:47 /Users/misery7100/.docker/run/docker.sock
+/usr/local/bin/docker                lrwxr-xr-x@ 1 root  wheel  54 Apr  2  2025 /usr/local/bin/docker -> /Applications/Docker.app/Contents/Resources/bin/docker
+/Users/misery7100/.docker/bin/docker ls: /Users/misery7100/.docker/bin/docker: No such file or directory
+docker on launchd's PATH             none on /usr/bin:/bin:/usr/sbin:/sbin
+compose plugin dirs                  /Users/misery7100/.docker/cli-plugins 
+misery7100's context                 desktop-linux 
+HOME under sudo                      /Users/misery7100
+root, sudo's env: version            28.3.2 (exit 0)
+root, clean env: version             28.3.2 (exit 0)
+root, clean env: compose             unknown flag: --short  Usage:  docker [OPTIONS] COMMAND [ARG...]  Run 'docker --help' for more information (exit 125)
+root, misery7100's socket            28.3.2 (exit 0)
+S1, S2 and S6 run as                 user
+
+== S1, which host paths a bind shares, by spelling, 2026-11-14T19:04:03Z ==
+engine as                            user
+mkdir /etc/morzer-spike              ok
+mkdir /var/lib/morzer-spike          ok
+mkdir /opt/morzer-spike              ok
+mkdir /var/run/morzer-spike          ok
+/etc                                 lrwxr-xr-x@ 1 root  wheel  11 Jun 25 05:29 /etc -> private/etc -> /private/etc
+/var/lib                             drwxr-xr-x  5 root  wheel  160 Nov 14 22:04 /var/lib -> /private/var/lib
+/opt                                 drwxr-xr-x  4 root  wheel  128 Nov 14 22:04 /opt -> /opt
+/var/run                             drwxrwxr-x  37 root  daemon  1184 Nov 14 22:04 /var/run -> /private/var/run
+/etc/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+/private/etc/morzer-spike            exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+/var/lib/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+/private/var/lib/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+/opt/morzer-spike                    exit 1, a file the container wrote is owned by - on the Mac | Error response from daemon: mounts denied:  The path /opt/morzer-spike is not shared from the host and is not known to Docker. You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing. See https://docs.docke
+/var/run/morzer-spike                exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+/private/var/run/morzer-spike        exit 1, a file the container wrote is owned by - on the Mac | probe touch: /mnt/probe/written: Permission denied 
+
+== S2, what owner a container sees for a rendered secret, 2026-11-14T19:04:11Z ==
+engine as                            user
+layout: dir 0700 root, file 0400 65532:65532, at /private/var/run/morzer-spike/secrets/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/var/run/morzer-spike/secrets/token: permission denied 
+layout, under /tmp: dir 0700 root, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/layout/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /private/tmp/morzer-spike-s2/layout/token: permission denied 
+open dir: dir 0755 root, file 0400 65532:65532, at /private/tmp/morzer-spike-s2/open/token
+    as uid 65532                     exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 0                         exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+    as uid 1000                      exit 1: Error response from daemon: invalid mount config for type "bind": stat /host_mnt/private/tmp/morzer-spike-s2/open/token: permission denied 
+readable: dir 0755 root, file 0444 65532:65532, at /private/tmp/morzer-spike-s2/readable/token
+    as uid 65532                     exit 0: sees 65532:0 444, READ 
+    as uid 0                         exit 0: sees 65532:0 444, READ 
+    as uid 1000                      exit 0: sees 1000:0 444, READ 
+owned by misery7100: dir 0755 root, file 0400 501:20, at /private/tmp/morzer-spike-s2/user/token
+    as uid 65532                     exit 0: sees 65532:0 400, READ 
+    as uid 0                         exit 0: sees 65532:0 400, READ 
+    as uid 1000                      exit 0: sees 1000:0 400, READ 
+
+== S6, a cross-compiled darwin/arm64 binary from curl, 2026-11-14T19:04:16Z ==
+go: downloading golang.org/x/text v0.43.0
+go: downloading github.com/xo/terminfo v1.0.0
+go: downloading github.com/philhofer/fwd v1.2.0
+xattr after curl                     com.apple.provenance:  (empty is no quarantine)
+codesign                             Identifier=a.out CodeDirectory v=20400 size=165438 flags=0x20002(adhoc,linker-signed) hashes=5167+0 location=embedded Signature=adhoc TeamIdentifier=not set 
+spctl                                /var/lib/morzer-spike/bin/morzer: rejected 
+runs                                 morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0)
+after a rename over it               morzer 0.0.0-spike.new   manifest api  selfhost/v1alpha1 (exit 0) (inode 25445177 -> 25445178)
+after an overwrite in place          morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0) (137 is SIGKILL)
+with a quarantine attribute           (exit 137)
+
+== S4, the boot job under launchd, 2026-11-14T19:06:40Z ==
+a: loaded with the engine running; expect one attempt that converges and starts the overdue backup
+2026-11-14T19:06:40Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:06:40Z engine 28.3.2; converged
+2026-11-14T19:06:40Z backup overdue: kickstart
+2026-11-14T19:06:45Z backup after 3s:  state = not running; runs = 1; last exit code = 0; state = active; state = active;
+backup.log                           2026-11-14T19:06:40Z backup ran, pid 40324 
+
+>>> Quit Docker Desktop (whale menu > Quit Docker Desktop) and wait until it has quit.
+>>> Press Enter when done. b: retried while the engine is down; expect an attempt about every 30 seconds, each exit 7
+2026-11-14T19:07:29Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:07:29Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+2026-11-14T19:07:59Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:07:59Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+2026-11-14T19:08:29Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:08:29Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+2026-11-14T19:08:59Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:08:59Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+
+>>> Start Docker Desktop and wait until it says the engine is running.
+>>> Press Enter when done. c: expect the next attempt to converge, and the attempts to stop
+d: an exit 12; expect it once, then one 'record stands' 30 seconds later, then nothing
+2026-11-14T19:13:42Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 10:47 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:13:42Z engine 28.3.2; exit 12, recorded
+2026-11-14T19:14:12Z record stands: exit 0 without converging
+launchctl print                       state = not running; runs = 9; last exit code = 0; state = active; state = active;
+The two jobs stay loaded for the reboot; next: sudo spikes/macos-host/run.sh before-reboot
+
+== before the reboot, 2026-11-14T19:15:18Z ==
+boot time now                        { sec = 1794642392, usec = 169375 } Sat Nov 14 10:46:32 2026
+S5 markers                           written 2026-11-14T19:15:18Z written 2026-11-14T19:15:18Z 
+S4 jobs loaded                       2 of 2
+backup                               stamp removed, so the boot job finds it overdue
+
+Next, with the power connected and the lid open:
+  1. Make sure Docker Desktop starts when you log in (Settings > General).
+  2. Restart from the Apple menu.
+  3. At the login screen, wait two full minutes by a clock before logging in,
+     and note the time you log in.
+  4. Run: sudo spikes/macos-host/run.sh after-reboot
+
+== after the reboot, 2026-11-14T19:19:19Z ==
+boot time now                        { sec = 1794683773, usec = 458535 } Sat Nov 14 22:16:13 2026
+FileVault                            FileVault is On.
+S5, /var/run/morzer-spike/s5/marker  cat: /var/run/morzer-spike/s5/marker: No such file or directory
+S5, /private/var/run/morzer-spike.s5 cat: /private/var/run/morzer-spike.s5: No such file or directory
+S5, /var/run/morzer-spike            find: /var/run/morzer-spike: No such file or directory 
+logins                               
+    misery7100 ttys002                         Sat Nov 14 22:19   still logged in
+    misery7100 console                         Sat Nov 14 22:18   still logged in
+    misery7100 ttys002                         Sat Nov 14 22:15 - 22:15  (00:00)
+    misery7100 ttys002                         Sat Nov 14 22:06 - 22:14  (00:08)
+    misery7100 ttys002                         Sat Nov 14 22:04 - 22:05  (00:01)
+What time did you log in (HH:MM, local)? logged in at, by the clock           22:18, MSK
+attempts since the reboot (UTC):
+2026-11-14T19:18:11Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: ls: /var/run/docker.sock: No such file or directory
+2026-11-14T19:18:11Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+2026-11-14T19:18:42Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: ls: /var/run/docker.sock: No such file or directory
+2026-11-14T19:18:42Z engine does not answer: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; exit 7
+2026-11-14T19:19:12Z attempt, uid 0, HOME=unset, PATH=/usr/bin:/bin:/usr/sbin:/sbin, docker on PATH: none, sock: lrwxr-xr-x@ 1 root  daemon  41 Nov 14 22:18 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+2026-11-14T19:19:12Z engine 28.3.2; converged
+2026-11-14T19:19:12Z backup overdue: kickstart
+2026-11-14T19:19:18Z backup after 3s:  state = not running; runs = 1; last exit code = 0; state = active; state = active;
+backup.log                           2026-11-14T19:06:40Z backup ran, pid 40324 2026-11-14T19:19:12Z backup ran, pid 1705 
+launchctl print                       state = not running; runs = 3; last exit code = 0; state = active; state = active;
+Next: sudo spikes/macos-host/run.sh clean, then send report.txt
+
+== clean, 2026-11-14T19:19:38Z ==
+removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays

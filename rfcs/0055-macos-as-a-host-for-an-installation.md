@@ -5,7 +5,9 @@
   first two outcomes; 9 with a release-time acceptance run by hand in place of
   a self-hosted runner; and 12 narrowed to `arm64`. The author runs the P0
   spike on an Apple-silicon Mac mini, and P1 is gated on its measurements
-  (§12).
+  (§12). P0 ran 2026-11-14 (§13). S1 failed, and S2 found an outcome §5.5
+  did not list, so the RFC is back with the author, and P1 waits for the
+  rulings.
 - **Scope:** Makes macOS a supported host for an installation that runs
   unattended, so a release such as dotdash's client can be installed, updated,
   rolled back and backed up on a Mac with the guarantees Linux gives, and
@@ -713,3 +715,203 @@ and the engine restarts its containers. P1 alone is usable, and it says so.
 **P3 — the client bundle**, in morzecrew/dotdash: `requirements.platforms`,
 `tun` marked `[linux]`, and whatever S2 asks of its secrets. It is gated on P1
 being released.
+
+## 13. Measurements
+
+P0 ran on 2026-11-14, on the author's M3 Max MacBook Pro (`Mac15,11`)
+rather than the Mac mini named above. The questions need Apple silicon, not a
+particular model. The script ran as
+[`spikes/macos-host/run.sh`](../spikes/macos-host/run.sh) stood at
+`cf98c262`, and
+[`spikes/macos-host/report.txt`](../spikes/macos-host/report.txt) is its whole
+output from that run. Later commits add checks for a second run, which that
+output does not include. Every number below comes from that file. Times are
+UTC.
+
+- macOS 26.5.2 (25F84), with FileVault and SIP on.
+- Docker Desktop 4.44.1 (201842): engine 28.3.2, Compose 2.39.1-desktop.1.
+- Docker Desktop's settings as installed, with "Start Docker Desktop when you
+  sign in" on. The settings file holds no key for the socket or for file
+  sharing.
+
+### S3: root reaches the engine and does not find Compose
+
+`/var/run/docker.sock` was in place before the spike changed anything. It is a
+symlink owned by root, pointing at the user's `~/.docker/run/docker.sock`.
+Root's `docker`, started with launchd's `PATH`, `HOME=/var/root` and nothing
+else, answers `version` with 28.3.2, and so does the real LaunchDaemon in S4.
+§5.3 does not say three things the manager meets there:
+
+- `docker` is not on launchd's `PATH`, `/usr/bin:/bin:/usr/sbin:/sbin`. It is
+  `/usr/local/bin/docker`, a symlink into `Docker.app`.
+- launchd starts a daemon with no `HOME` at all.
+- Root's CLI finds no Compose plugin. `docker compose version --short` fails
+  with the CLI's top-level usage error, exit 125. The plugin's only directory
+  is the user's `~/.docker/cli-plugins`. Pointing root's CLI at it, for
+  example through `cliPluginsExtraDirs` in a config the manager owns, was not
+  tried.
+
+Root's Compose failed, so S1, S2 and S6 ran through the user's CLI. Every
+refusal below is reported as `Error response from daemon` or by the
+container, never by the CLI. Root's CLI was not used for them.
+
+### S1: the paths are shared, except `/opt`, and no container writes to them
+
+Each spelling was bound through Compose into a container running as root. The
+container read a file root had written there, then wrote one:
+
+- `/etc/<p>`, `/private/etc/<p>`, `/var/lib/<p>`, `/private/var/lib/<p>`,
+  `/var/run/<p>` and `/private/var/run/<p>` mount under either spelling, and
+  the read succeeds.
+- `/opt/<p>` is refused: "mounts denied: The path /opt/morzer-spike is not
+  shared from the host and is not known to Docker". `/opt` is not in Docker
+  Desktop's default file sharing.
+- **Every write fails** with `touch: /mnt/probe/written: Permission denied`.
+  The target in each case is a `0755` directory that root created.
+
+### S2: the fourth outcome
+
+Docker Desktop lets a container read only the files that the Mac user who runs
+it can read, whatever uid the container runs as. Each variant below was
+mounted as a Compose `secrets:` file into containers running as 65532, 0 and
+1000:
+
+| Variant, on the Mac | 65532 | 0 | 1000 |
+| --- | --- | --- | --- |
+| The layout: `/private/var/run/<p>/secrets` `0700` root, the file `0400` `65532:65532` | not started | not started | not started |
+| The same, under `/private/tmp` | not started | not started | not started |
+| The directory `0755` | not started | not started | not started |
+| The file `0444` | reads, sees `65532:0 444` | reads, sees `65532:0 444` | reads, sees `1000:0 444` |
+| The file `0400`, owned by the user, `501:20` | reads, sees `65532:0 400` | reads, sees `65532:0 400` | reads, sees `1000:0 400` |
+
+"Not started" means Compose failed before the container existed:
+`invalid mount config for type "bind": stat …: permission denied`.
+
+The deciding identity is uid 501, the user who runs Docker Desktop:
+
+- When that user can read the file, every container uid reads it.
+- When that user cannot, no container that mounts it starts.
+- A container does not see the file's owner on the Mac: `501:20` showed as
+  `65532:0` or `1000:0`. The group showed as `0` in every case, and the mode
+  came through unchanged.
+- S1's writes fit the same reading. The user cannot write to a `0755`
+  directory that root owns, and neither could the container.
+
+None of §5.5's three outcomes is this:
+
+- The host uid does not pass through, so it is not outcome 1.
+- Every uid reads the file only when the Mac user can, a condition outcome 2
+  does not have.
+- Root in the VM is not what refuses, so it is not outcome 3.
+
+The ruling on decision 6 accepted the first two outcomes. It said nothing
+about this one.
+
+### S4: launchd behaves as §5.6 assumes
+
+- **With the engine up**, the first attempt converged. It started the overdue
+  backup with `launchctl kickstart`, and the backup ran once and exited 0,
+  read back from `launchctl print`.
+- **With Docker Desktop quit**, an attempt came every 30 seconds, at 19:07:29,
+  19:07:59, 19:08:29 and 19:08:59, each exiting 7.
+  - The socket's symlink stayed in place while the engine was down, so the
+    symlink being there says nothing about the engine, as §5.11 assumed.
+- **Once the engine was back**, the attempts stopped. None came in the three
+  and a half minutes before the exit-12 step.
+  - Two attempts fell between the end of step b's window and the start of step
+    c's, so the report does not show them. The second converged. The final
+    `runs = 9` from `launchctl print` counts them: 1 + 4 + 2 + 2.
+- **With an exit 12**, the attempt recorded it. Thirty seconds later the job
+  found the record and exited 0, and it was not started again.
+- **Every attempt** saw uid 0, no `HOME`, and launchd's `PATH`.
+
+### S4 across a restart, with FileVault on
+
+The Mac booted at 19:16:13 and sat at the login screen for two minutes. The
+author logged in at 19:18 by the clock.
+
+- 19:18:11: the job's first attempt, after the login. None ran before it.
+- 19:18:11 and 19:18:42: no socket.
+- 19:19:12: the symlink was back, because Docker Desktop recreates it as it
+  starts. The attempt converged and started the backup, which ran.
+
+With FileVault on, the data volume stays locked until a login, and
+`/Library/LaunchDaemons` is on that volume. That would explain why nothing ran
+before the login. A restart with FileVault off was not run, so this explanation
+is reasoned, not isolated.
+
+Decision 5 requires FileVault unless the operator sets
+`secrets.allow_unencrypted_disk`: without it `init` refuses, and `doctor`
+fails either way. So on a Mac that keeps decision 5's default, a boot waits for
+a login, whatever the engine. Decision 7's ruling made Colima a P2 candidate
+"if S4 shows that Docker Desktop starting at login, not at boot, matters to an
+unattended Mac". On such a Mac it does not, because Colima would wait for the
+same login. That is a deduction: Colima was not run, and neither was a restart
+with FileVault off, which is the one case where Colima's start at boot could
+matter.
+
+### S5: `/private/var/run` is cleared at boot
+
+After the restart, both markers were gone, and so was `/var/run/<p>` itself.
+The engine's socket was also gone until Docker Desktop started. §5.4's first
+branch holds: the render is redone by `apply --startup`.
+
+### S6: the binary runs, and self-update's rename keeps it running
+
+The darwin/arm64 binary was cross-compiled in the pinned `golang` container
+with goreleaser's flags and fetched with `curl`. It runs, exit 0:
+
+- It carries `com.apple.provenance` and no `com.apple.quarantine`.
+- Its signature is ad hoc and linker-signed.
+- `spctl` rejects it, but that does not stop it running.
+
+After a rename over it, the new version runs. Two contrasts:
+
+- **Overwritten in place**, on the same inode, it still ran, exit 0. The
+  SIGKILL the script expected did not happen on 26.5.2. `self-update` renames
+  rather than overwrites, so nothing depends on this result.
+- **With a browser's quarantine attribute**, a copy was killed, exit 137. An
+  archive downloaded in a browser does not run until the attribute is
+  removed, and the docs need to say so.
+
+This is one macOS version. §5.9 says S6 should cover "the macOS versions
+supported", and those still have to be named.
+
+### What goes back to the author
+
+§12 sends this RFC back if S1, S2 or S3 fails. S1 and S2 fail, for one
+reason: Docker Desktop's file sharing reaches the Mac's files as the user who
+runs it. It does not act as root or as the container's uid. This needs a
+ruling:
+
+- **Decision 4.** `/opt` is not shared by default, and no container can write
+  to a directory that root owns. The paths in the layout work; root owning
+  them does not. S1's directories were `0755`. The manager makes `VarDir` and
+  `RunDir` `0750` root (`ManagedDirs`, `paths.go:216` and `:226`), which the
+  user who runs Docker Desktop cannot even enter.
+- **Decision 6.** The layout's secret cannot be mounted at all. This is the
+  fourth outcome above, which the ruling did not cover.
+- **§5.3's preflight** binds each directory and lists it. Here a listing
+  passes and a write fails, so the check as written passes on this Mac.
+- **§5.3 and S3.** Root reaches the engine through the socket. The Compose
+  plugin is a gap that P1 has to close before root can run Compose.
+
+These hold as measured:
+
+- Decision 8.
+- Decision 12, on one macOS version.
+- §5.4's boot branch.
+
+Decision 7's Colima condition is answered no by deduction from decision 5,
+not by a measurement (S4 above).
+
+Not measured:
+
+- root's CLI for S1 and S2;
+- a Docker Desktop later than 4.44.1;
+- the file-sharing implementation by name (the settings name none);
+- a bind of a directory that the Docker Desktop user owns, written to by a
+  container;
+- a restart with FileVault off;
+- a release's `tar.zst` archive fetched with `curl` and unpacked by macOS's
+  `tar`, which is what `install.sh` does.
