@@ -76,7 +76,8 @@ Desktop's file sharing acts as the logged-in user, so a file that user cannot
 read is denied to every container uid. Two more variants keep the layout and
 make you its owner, which is the case that outcome turns on: one inside
 `RunDir`, which the manager makes `0750` root, and one in a `0755` directory
-under `/private/tmp`.
+under `/private/tmp`. A last one leaves the layout root's and adds ACL entries
+that let you alone enter `RunDir` and the secrets directory and read the file.
 
 **S4** installs `dev.morzer.spike`, whose program stands in for `apply
 --startup`. It exits 7 while the engine does not answer, exits 12 once when

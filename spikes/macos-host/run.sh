@@ -178,7 +178,7 @@ EOF
     engine compose -p "$p-s1" -f "$tmp/s1.yaml" down >/dev/null 2>&1
 }
 
-# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER [DIROWNER]
+# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER [DIROWNER] [acl]
 s2_variant() {
     name=$1 dir=$2
     mkdir -p "$dir"
@@ -187,6 +187,11 @@ s2_variant() {
     printf 'token\n' >"$dir/token"
     chown "$5" "$dir/token"
     chmod "$4" "$dir/token"
+    # Root keeps ownership; an ACL entry lets the user alone enter and read.
+    if [ "${7:-}" = acl ]; then
+        chmod +a "$user allow list,search" "$dir"
+        chmod +a "$user allow read" "$dir/token"
+    fi
     # \$\$ reaches Compose as $$, which it passes to sh as one $.
     cat >"$tmp/s2.yaml" <<EOF
 services:
@@ -214,10 +219,13 @@ s2() {
     # RunDir/secrets is 0700 root, and a secret declaring owner 65532 is 0400
     # 65532:65532. The rest take one condition away at a time, so a DENIED can
     # be told apart from a uid mapping.
-    mkdir -p "$run" && chmod 0750 "$run"
+    mkdir -p "$run" && chmod 0750 "$run" && chmod -N "$run" 2>/dev/null
     s2_variant "layout" "/private/var/run/$p/secrets" 0700 0400 65532:65532
     s2_variant "layout, owned by $user" "/private/var/run/$p/secrets-user" 0700 0400 "$uid:$gid" "$uid:$gid"
     s2_variant "layout, owned by $user, under /tmp" "/private/tmp/$p-s2/owned" 0700 0400 "$uid:$gid" "$uid:$gid"
+    chmod +a "$user allow list,search" "$run"
+    s2_variant "layout, root's, with ACLs for $user" "/private/var/run/$p/secrets-acl" 0700 0400 65532:65532 0:0 acl
+    chmod -N "$run"
     s2_variant "layout, under /tmp" "/private/tmp/$p-s2/layout" 0700 0400 65532:65532
     s2_variant "open dir" "/private/tmp/$p-s2/open" 0755 0400 65532:65532
     s2_variant "readable" "/private/tmp/$p-s2/readable" 0755 0444 65532:65532
