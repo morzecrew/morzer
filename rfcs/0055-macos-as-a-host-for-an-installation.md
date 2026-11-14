@@ -6,8 +6,10 @@
   a self-hosted runner; and 12 narrowed to `arm64`. The author runs the P0
   spike on an Apple-silicon Mac mini, and P1 is gated on its measurements
   (§12). P0 ran 2026-11-14 (§13). S1 failed, and S2 found an outcome §5.5
-  did not list, so the RFC is back with the author, and P1 waits for the
-  rulings.
+  did not list, so §12 sent the RFC back to the author, who ruled the same
+  day: decisions 4 and 6 are superseded by 16 and 17, and decision 18 keeps
+  root from running Docker Desktop's binaries where another user can replace
+  them. With those rulings, P1 can start.
 - **Scope:** Makes macOS a supported host for an installation that runs
   unattended, so a release such as dotdash's client can be installed, updated,
   rolled back and backed up on a Mac with the guarantees Linux gives, and
@@ -677,9 +679,9 @@ say.
 | 1 | `LOCKED` | macOS is a supported host for an installation that runs unattended. This supersedes RFC 0029 decision 1, and RFC 0029's decisions 4 (no launchd) and 6 (refuse unrooted on darwin) with it. Each weaker guarantee is stated in `doctor` and the docs, never left implicit. Reversing this later means withdrawing darwin archives from operators who depend on them. |
 | 2 | `LOCKED` | A release runs on macOS only if it declares `requirements.platforms` containing `darwin`, and the default is `[linux]`. Every existing bundle is refused on a Mac until its vendor opts in (RFC 0010's rule). |
 | 3 | `ASSUMED` | The per-profile restriction's shape. The lean is `runtimes.<runtime>.platforms: {<profile>: [platform…]}` beside `profiles` and `combinable`, refused wherever a selection is made or checked. The alternative is to make each `profiles` entry a mapping with `files` and `platforms`, which changes a shape every bundle uses. Both need the 0.16.0 floor. Was `OPEN`; ruled by the author 2026-11-11: as recommended. |
-| 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. |
+| 4 | `ASSUMED` | On darwin the layout keeps `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink. `RunDir` is `/var/run/<p>`, and a declared `render_to` under `/run/` is read under `/var/run/`. It rests on S1. If the engine will not share those paths, this row is superseded with the measurement. *(Superseded by decision 16.)* |
 | 5 | `ASSUMED` | Secrets on disk. The lean: they render under `/var/run/<p>/secrets`; `doctor` warns that the platform has no memory-backed filesystem and **fails** when FileVault is off, since the age identity is on that disk too; `init` refuses with FileVault off before it writes the identity, unless `--allow-unencrypted-disk`, which records the setting below; and every render refuses with FileVault off, the check first in the store's `Render` so `apply`, `update`, `secret render` and the restart after a `secret` change all reach it, and a `secret` change runs the same check before it stores the value. The override is the setting `secrets.allow_unencrypted_disk`, not a flag, because the boot job and a scheduled update render with nobody to pass one; setting it is a journaled downgrade. The alternative is a warning alone. A RAM disk is out (§8). Was `OPEN`; ruled by the author 2026-11-11: as recommended. |
-| 6 | `ASSUMED` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. Was `OPEN`; ruled by the author 2026-11-11, before S2: the first two outcomes are acceptable. If root owns the file in the VM, the refusal stays, and reading its secrets as root is dotdash's change to make. |
+| 6 | `ASSUMED` | Secret `owner` on macOS follows S2's measurement (§5.5): lifted if the host uid passes through; replaced by a stated non-enforcement if every uid reads the file; kept refused if root owns it in the VM. The author rules which outcome is acceptable before S2 runs, so the measurement decides and nobody argues it afterwards. Was `OPEN`; ruled by the author 2026-11-11, before S2: the first two outcomes are acceptable. If root owns the file in the VM, the refusal stays, and reading its secrets as root is dotdash's change to make. *(Superseded by decision 17.)* |
 | 7 | `ASSUMED` | The supported engine. The lean is Docker Desktop alone in P1, verified on the self-hosted lane. Others work if they pass preflight and are not claimed. The alternative is Colima first: it starts at boot with no login and has no licence threshold, but it is not what the bundle's users have installed. Was `OPEN`; ruled by the author 2026-11-11: as recommended, with Colima a candidate for P2 if S4 shows that Docker Desktop starting at login, not at boot, matters to an unattended Mac. |
 | 8 | `ASSUMED` | The supervisor is a launchd adapter of LaunchDaemons, one per systemd unit. Boot convergence runs from `RunAtLoad`, and `KeepAlive` `{SuccessfulExit: false}` retries it every 30 seconds until the engine answers, with no path event involved; a recorded exit 12 makes it exit 0 until an operator's `apply`. Schedules translate to `StartCalendarInterval` exactly or are refused by `ValidateSchedule`, and the four jobs systemd marks `Persistent` are caught up at boot from their stamps, one at a time in a fixed order; a run that cannot reach the engine leaves its stamp, so it is caught up too. It rests on S4. |
 | 9 | `ASSUMED` | Verification. The lean has three parts: a hosted `macos-latest` unit lane on every push; a self-hosted Apple-silicon runner with Docker Desktop, required on release PRs and nightly; and darwin archives dropped from a release whose self-hosted lane is red. The author says whose Mac the runner is. Without a runner, this RFC does not ship P1, because a production claim with no real-engine run is the thing RFC 0029 §5.7 called worse than none. Was `OPEN`; ruled by the author 2026-11-11, without a self-hosted runner: the hosted `macos-latest` lane on every push, which runs no engine; before each release, the acceptance run by hand on the author's Apple-silicon Mac mini with Docker Desktop, its result recorded in the release PR; and darwin archives left out of a release without that record. |
@@ -689,6 +691,9 @@ say.
 | 13 | `ASSUMED` | The manager runs as root on macOS, as on Linux. A per-user installation is a separate layout with separate guarantees, and is not designed here. |
 | 14 | `ASSUMED` | Linux is unchanged by construction: per-OS files, no runtime branches on `GOOS` beyond those that exist (RFC 0029 decision 8). A Linux-only release behaves as today. |
 | 15 | `ASSUMED` | The floor for `requirements.platforms` and `runtimes.<r>.platforms` is 0.16.0, the next minor. A release in between moves it, logged as a departure. |
+| 16 | `ASSUMED` | On darwin the layout keeps decision 4's paths: `/etc/<p>`, `/var/lib/<p>` and `/opt/<p>` through `/private` and the `/opt` firmlink, `RunDir` at `/var/run/<p>`, and a declared `render_to` under `/run/` read under `/var/run/`. Docker Desktop reaches the Mac's files as the user who runs it, so a container can enter, read and write only what that user can (§13). Root keeps every directory it trusts. `EtcDir`, `VarDir`, `RunDir`, and every directory on the way to a bind, stay root's at `0755` on darwin. A directory bind needs that user to be able to list each directory above it; passing through is not enough (§13, the fourth run). That user owns only the directories a container writes, and the rendered secrets directory and its files, at `0700` and `0400`. Everything else keeps root as owner and its Linux mode: the age identity, the signing key, the state, the manager's staging and locks, the backups and the releases. So no directory on the way to a file root trusts is writable by anyone but root, the rule `ReplaceableByNonRoot` checks (`internal/infra/atomicfs/atomicfs.go:451`). The secrets directory's entry sits in `RunDir`, which only root can change, so that user cannot swap the directory for a link. Root writes into it through `os.Root`, as `Render` already does (`WriteFileInAs`). `/opt` is not in Docker Desktop's default file sharing, so the operator adds it. Preflight checks each directory a container writes by writing to it from a container, since a listing passes where a write fails. Consequence: other accounts on the Mac can list those `0755` directories. They can also read any file a container reads, because that file has to be readable by more than root while no group holds that one user. The secrets stay readable by root and that user alone. A dedicated group with the directories at `0750` would keep Linux's privacy; it is not measured. Ruled by the author 2026-11-14 on §13's measurements, superseding decision 4. The first wording gave that user `EtcDir`, `VarDir` and `RunDir` themselves; the author narrowed it the same day, before it merged, after the fourth run. |
+| 17 | `ASSUMED` | Secret `owner` is not enforced inside a container on macOS. A container reads a rendered secret only when the user who runs Docker Desktop can, and then every container uid reads it (§13 S2, an outcome §5.5 did not list). Per decision 16, secrets render owned by that user, `0400` in a `0700` directory. On darwin, `OwnerRefusal` is replaced by a `doctor` warning, and the docs say `owner` is not enforced on macOS, as decision 6's accepted second outcome would have had it. §5.5's host-side check can no longer compare the file's owner with the declaration. What it checks instead is P1's to settle. Ruled by the author 2026-11-14 on §13's measurements, superseding decision 6. |
+| 18 | `ASSUMED` | On darwin, root never runs Docker Desktop's CLI or Compose plugin from inside `Docker.app`. That user owns both binaries, and so does every directory from `Docker.app` down; `/Applications` is writable by the admin group (§13, the fifth run). So either could replace what root runs, which `ReplaceableByNonRoot` refuses for the manager's own binary. Preflight copies the CLI and the plugin into a directory under `VarDir/manager`, which only root can write. Before a copy is used, preflight checks it with `codesign --verify --strict` and requires Docker's team identifier, `9BNSXJN65R`. The manager runs only the copies, giving the CLI a config whose `cliPluginsExtraDirs` names the copied plugin's directory. When Docker Desktop's version changes, the copies are made and checked again. Refused: checking the signature in place and running the original, since the file can be replaced between the check and the run. Also refused: requiring `Docker.app` to be root's, which would likely break Docker Desktop's own updates, which run as that user. Ruled by the author 2026-11-14 on §13's fifth run. |
 
 ## 12. Phasing
 
@@ -915,3 +920,117 @@ Not measured:
 - a restart with FileVault off;
 - a release's `tar.zst` archive fetched with `curl` and unpacked by macOS's
   `tar`, which is what `install.sh` does.
+
+### The second run
+
+The second run used the same Mac and the same Docker Desktop, later the same
+day. It ran `s3`, `s1`, `s2` and `s6` from `run.sh` at `c14b4c7b`, which has
+the checks added after the first run. Its output follows the first run's in
+`report.txt`.
+
+- **S3: root's Compose works through a config.** The user's plugin is a
+  symlink to `/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose`.
+  Root's CLI was started with launchd's `PATH` and no `HOME`. Given
+  `--config` pointing at a `config.json` whose `cliPluginsExtraDirs` names
+  that directory, `docker compose version` answers 2.39.1-desktop.1. Without
+  the config, it fails as in the first run.
+- **The file-sharing layer is `fakeowner`.** Every bind and every secret
+  mount reported that filesystem type inside the container.
+- **S1: a container writes to a directory the user owns.** The directory was
+  `0700`, owned by the user, inside a `0755` directory.
+  - The container wrote a file and saw it owned by `0:0`.
+  - A `chown 65532:65532` inside the container succeeded, and the container
+    then saw `65532`.
+  - On the Mac, the file was owned by `501:20` throughout.
+  - Every directory root owns refused the write again, and `/opt` was again
+    not shared.
+- **S2: every uid reads the layout owned by the user, when the user can
+  reach it.**
+  - Inside `RunDir` at the manager's `0750`, owned by root: no container
+    started, as with the layout root owns. The user cannot enter `RunDir`.
+  - Inside a `0755` directory under `/private/tmp`: every uid read it. 65532
+    and 0 saw `65532:0 400`, and 1000 saw `1000:0 400`.
+- **S6: the release archive's path works.** macOS's `tar` wrote a `tar.zst`.
+  After the `curl` download, `/usr/bin/tar` unpacked it with exit 0. The
+  binary carried `com.apple.provenance` and no quarantine attribute, and it
+  ran.
+
+From the first run's "not measured" list, this run measured three things:
+the bind of a directory the user owns, the file-sharing layer's name (as the
+filesystem type a container sees), and the archive. Docker Desktop was still
+4.44.1. S1 and S2 again ran through the user's CLI, because the engine
+choice did not yet use root's config.
+
+### The third run
+
+The third run ran `s1` and `s2` from `run.sh` at `5f1633d1`, which drives the
+engine with root's CLI and its config. Both phases reported `engine as root`.
+
+- **Root's CLI measures what the user's did.** Every S1 and S2 row matches
+  the second run's. File sharing acts as the user who runs Docker Desktop,
+  whichever CLI asks for the bind.
+- **ACL entries do not let a container reach a secret root owns.** The
+  layout stayed root's: `RunDir` at `0750`, the secrets directory at `0700`,
+  and the file `0400` and owned by `65532:65532`. ACL entries let the user
+  list and search both directories and read the file. For every uid, no
+  container started:
+  `stat /host_mnt/private/var/run/morzer-spike/secrets-acl/token: permission denied`.
+  - Without the entries, the same layout fails on the Mac's path,
+    `/private/…`. With them, the error names the VM's path, `/host_mnt/…`.
+    So the entries get past the first check, and the read through file
+    sharing is still refused.
+  - A `0755` directory holding a `0400` file the user cannot read fails the
+    same way, on the VM's path.
+
+### The fourth run
+
+The fourth run ran `s1` and `s2` from `run.sh` at `e62681ba`, again with
+root's CLI. It measured a directory that root keeps at `0711`: others may
+pass through it but not list it.
+
+- **S2: a secret passes through a `0711` directory.** The layout the user
+  owns sat inside `RunDir` at `0711`, owned by root. Every uid read it.
+  65532 and 0 saw `65532:0 400`, and 1000 saw `1000:0 400`.
+- **S1: a directory bind does not pass through one.** Two directories sat
+  inside a `0711` directory that root owns: one owned by the user, and one
+  of root's at `0755` holding a file to read. Neither mounted. In both cases
+  the engine did not see the source and tried to create it:
+  `error while creating mount source path '/host_mnt/private/var/lib/morzer-spike/sealed/user': mkdir /host_mnt/private/var/lib/morzer-spike/sealed: permission denied`.
+  Inside a `0755` directory, the first and second runs bound the same
+  directories, and they worked.
+
+A file bind needs the user who runs Docker Desktop to be able to pass through
+each directory above it. A directory bind also needs that user to be able to
+list each one.
+
+### The fifth run
+
+The fifth run ran `s3` and `s6` from `run.sh` at `37b879f4`.
+
+- **Root runs Compose from Docker Desktop's own plugin directory.** Given a
+  config naming `/Applications/Docker.app/Contents/Resources/cli-plugins`,
+  root's CLI answered 2.39.1-desktop.1, and S6 ran through it.
+- **What root runs belongs to the user who runs Docker Desktop.**
+  - `/usr/local/bin/docker` is a link owned by root, in directories root
+    owns.
+  - What the link names,
+    `/Applications/Docker.app/Contents/Resources/bin/docker`, is owned by
+    that user (`misery7100:staff`). So is the Compose plugin, and so is every
+    directory from `Docker.app` down.
+  - `/Applications` is `root:admin 775`, so any administrator can rename
+    `Docker.app` itself.
+  - 371 entries in `Docker.app` are not root's, or are writable by others.
+  - `ReplaceableByNonRoot` would refuse both binaries.
+- **Both binaries are signed by Docker's team.** `codesign` reports
+  `TeamIdentifier=9BNSXJN65R` for the CLI and the plugin, and
+  `codesign --verify --strict` passes for each.
+- **S6 behaved as in the runs through the user's CLI.** The build, the
+  download, the archive, the rename, the overwrite in place and the
+  quarantined copy all gave the same results.
+
+So the "root's `docker`" of §5.3 is a binary that the user who runs Docker
+Desktop, and any administrator, can replace. Root running it from there would
+let either of them run code as root. `ReplaceableByNonRoot` exists to refuse
+exactly that for the manager's own binary. This is one installation, from
+Docker Desktop's disk image. Docker Desktop installed another way may leave
+these files owned by root.

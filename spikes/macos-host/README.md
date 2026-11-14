@@ -76,7 +76,11 @@ Desktop's file sharing acts as the logged-in user, so a file that user cannot
 read is denied to every container uid. Two more variants keep the layout and
 make you its owner, which is the case that outcome turns on: one inside
 `RunDir`, which the manager makes `0750` root, and one in a `0755` directory
-under `/private/tmp`.
+under `/private/tmp`. Another leaves the layout root's and adds ACL entries
+that let you alone enter `RunDir` and the secrets directory and read the file.
+The last puts the layout you own in `RunDir` at `0711`, root's, which others
+may pass through but not list. S1 binds two directories inside such a `0711`
+directory of root's: one you own, and one of root's with a file to read.
 
 **S4** installs `dev.morzer.spike`, whose program stands in for `apply
 --startup`. It exits 7 while the engine does not answer, exits 12 once when
@@ -99,9 +103,17 @@ unpacks it with macOS's `tar`, as `install.sh` would.
 The boot job is a shell script, not the manager. S4 measures launchd's
 behaviour and the engine's availability, not `apply --startup`.
 
-S1 and S2 use the engine as root when S3 says root reaches it, and as you
-otherwise, so a failed S3 does not hide the other answers. Every row says which
-it was.
+S1, S2 and S6 drive the engine with root's CLI, as the manager would: no
+`HOME`, launchd's `PATH`, and a config of its own whose `cliPluginsExtraDirs`
+names Docker Desktop's own plugin directory,
+`/Applications/Docker.app/Contents/Resources/cli-plugins`. It names that
+directory rather than following the link in your `~/.docker`, so root never
+runs what a link you control points at. S3 also reports who owns each entry on
+the way to the CLI and the plugin root runs, how many entries in
+`Docker.app` an account other than root owns or could write, and who signed
+the two binaries. When that CLI cannot run
+Compose, they use yours instead, so a failed S3 does not hide the other
+answers. Every phase says which it was.
 
 With FileVault on, macOS keeps the data volume locked after a restart until
 someone logs in, and `/Library/LaunchDaemons` is on that volume. If that holds,

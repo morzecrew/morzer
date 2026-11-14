@@ -61,11 +61,15 @@ rootdocker() { env -i PATH="$launchd_path" "$docker_bin" "$@"; }
 # The user's own CLI, with the user's config and context.
 userdocker() { sudo -u "$user" -H "$docker_bin" "$@"; }
 
+# Root's CLI as the manager would run it: with a config of its own naming
+# Docker Desktop's Compose plugin directory (RFC 0055 §13, the second run).
+managerdocker() { rootdocker --config "$rootcfg" "$@"; }
+
 # S1, S2 and S6 need an engine. They use root's, as the manager would, and fall
 # back to the user's only so that a failed S3 does not hide the other answers.
 via=
 pick_engine() {
-    if rootdocker info >/dev/null 2>&1 && rootdocker compose version >/dev/null 2>&1; then
+    if managerdocker info >/dev/null 2>&1 && managerdocker compose version >/dev/null 2>&1; then
         via=root
     elif userdocker info >/dev/null 2>&1; then
         via=user
@@ -73,12 +77,21 @@ pick_engine() {
         die "no engine answers, as root or as $user; start Docker Desktop and run this again"
     fi
 }
-engine() { if [ "$via" = root ]; then rootdocker "$@"; else userdocker "$@"; fi; }
+engine() { if [ "$via" = root ]; then managerdocker "$@"; else userdocker "$@"; fi; }
 
 tmp=$(mktemp -d /private/tmp/$p.XXXXXX)
 # Compose files sit here, so it must be readable by the user's CLI too.
 chmod 0755 "$tmp"
 trap 'rm -rf "${tmp:?}"' EXIT
+
+# Docker Desktop's own plugin directory, named here rather than read from the
+# user's symlink: root must not run whatever a link the user controls names.
+plugins=/Applications/Docker.app/Contents/Resources/cli-plugins
+rootcfg=$tmp/rootconfig
+mkdir "$rootcfg"
+if [ -x "$plugins/docker-compose" ]; then
+    printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$plugins" >"$rootcfg/config.json"
+fi
 
 touch "$report"
 chown "$user" "$report"
@@ -121,14 +134,31 @@ s3() {
     row "root, clean env: compose" "$(try rootdocker compose version --short)"
     row "root, $user's socket" "$(try rootdocker -H "unix://$home/.docker/run/docker.sock" version --format '{{.Server.Version}}')"
     # Whether root's CLI finds Compose when a config the manager would own names
-    # the directory the user's plugin links to.
-    plugin=$(readlink "$home/.docker/cli-plugins/docker-compose" 2>/dev/null)
-    row "$user's compose plugin" "${plugin:-not a link}"
-    if [ -n "$plugin" ]; then
-        mkdir -p "$tmp/rootconfig"
-        printf '{"cliPluginsExtraDirs": ["%s"]}\n' "$(dirname "$plugin")" >"$tmp/rootconfig/config.json"
-        row "root, clean env, that dir: compose" "$(try rootdocker --config "$tmp/rootconfig" compose version --short)"
-    fi
+    # Docker Desktop's plugin directory.
+    row "$user's compose plugin" "$(readlink "$home/.docker/cli-plugins/docker-compose" 2>&1)"
+    row "root, clean env, $plugins: compose" "$(try managerdocker compose version --short)"
+    # Who could replace what root runs: the owner and mode of each entry on the
+    # way to it, as ReplaceableByNonRoot (internal/infra/atomicfs) walks them.
+    # A relative link is read against the link's own directory.
+    target=$(readlink "$docker_bin")
+    case $target in "" | /*) ;; *) target=$(dirname "$docker_bin")/$target ;; esac
+    for f in "$docker_bin" "${target:-$docker_bin}" "$plugins/docker-compose"; do
+        chain=
+        while [ "$f" != / ] && [ "$f" != . ] && [ -n "$f" ]; do
+            chain="$chain$(stat -f '%Su:%Sg %Lp' "$f" 2>&1) $f; "
+            f=$(dirname "$f")
+        done
+        row "who owns the way to it" "$chain"
+    done
+    # Whether anything in the bundle could be changed by an account other than
+    # root, and who signed what root runs: a check that does not trust the path.
+    app=/Applications/Docker.app
+    loose=$(find "$app" \( ! -user root -o -perm -020 -o -perm -002 \) 2>/dev/null)
+    row "$app entries not root's, or writable" "$(printf '%s\n' "$loose" | grep -c . | tr -d ' '), first: $(printf '%s\n' "$loose" | head -3 | tr '\n' ' ')"
+    for f in "${target:-$docker_bin}" "$plugins/docker-compose"; do
+        row "signature of ${f##*/}" "$(codesign -dv "$f" 2>&1 | grep -E '^(Authority=Developer ID|TeamIdentifier)' | oneline)"
+        row "verified ${f##*/}" "$(try codesign --verify --strict "$f")"
+    done
     pick_engine
     row "S1, S2 and S6 run as" "$via"
 }
@@ -153,8 +183,15 @@ s1() {
     # can be told from one refused by the path.
     mkdir -p "$lib/user" && echo probe >"$lib/user/probe" &&
         chown -R "$uid:$gid" "$lib/user" && chmod 0700 "$lib/user"
+    # Inside a directory root keeps at 0711, which others may pass through but
+    # not list: one directory the user owns, and one of root's to read from.
+    mkdir -p "$lib/sealed/user" "$lib/sealed/ro" && chmod 0711 "$lib/sealed" &&
+        chmod 0755 "$lib/sealed/ro" && echo probe >"$lib/sealed/ro/probe" &&
+        echo probe >"$lib/sealed/user/probe" && chown -R "$uid:$gid" "$lib/sealed/user" &&
+        chmod 0700 "$lib/sealed/user"
     for s in "/etc/$p" "/private/etc/$p" "/var/lib/$p" "/private/var/lib/$p" \
-        "/opt/$p" "/var/run/$p" "/private/var/run/$p" "/private/var/lib/$p/user"; do
+        "/opt/$p" "/var/run/$p" "/private/var/run/$p" "/private/var/lib/$p/user" \
+        "/private/var/lib/$p/sealed/user" "/private/var/lib/$p/sealed/ro"; do
         cat >"$tmp/s1.yaml" <<EOF
 services:
   probe:
@@ -172,7 +209,7 @@ EOF
     engine compose -p "$p-s1" -f "$tmp/s1.yaml" down >/dev/null 2>&1
 }
 
-# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER [DIROWNER]
+# s2_variant NAME DIR DIRMODE FILEMODE FILEOWNER [DIROWNER] [acl]
 s2_variant() {
     name=$1 dir=$2
     mkdir -p "$dir"
@@ -181,6 +218,11 @@ s2_variant() {
     printf 'token\n' >"$dir/token"
     chown "$5" "$dir/token"
     chmod "$4" "$dir/token"
+    # Root keeps ownership; an ACL entry lets the user alone enter and read.
+    if [ "${7:-}" = acl ]; then
+        chmod +a "$user allow list,search" "$dir"
+        chmod +a "$user allow read" "$dir/token"
+    fi
     # \$\$ reaches Compose as $$, which it passes to sh as one $.
     cat >"$tmp/s2.yaml" <<EOF
 services:
@@ -208,10 +250,17 @@ s2() {
     # RunDir/secrets is 0700 root, and a secret declaring owner 65532 is 0400
     # 65532:65532. The rest take one condition away at a time, so a DENIED can
     # be told apart from a uid mapping.
-    mkdir -p "$run" && chmod 0750 "$run"
+    mkdir -p "$run" && chmod 0750 "$run" && chmod -N "$run" 2>/dev/null
     s2_variant "layout" "/private/var/run/$p/secrets" 0700 0400 65532:65532
     s2_variant "layout, owned by $user" "/private/var/run/$p/secrets-user" 0700 0400 "$uid:$gid" "$uid:$gid"
     s2_variant "layout, owned by $user, under /tmp" "/private/tmp/$p-s2/owned" 0700 0400 "$uid:$gid" "$uid:$gid"
+    chmod +a "$user allow list,search" "$run"
+    s2_variant "layout, root's, with ACLs for $user" "/private/var/run/$p/secrets-acl" 0700 0400 65532:65532 0:0 acl
+    chmod -N "$run"
+    # Root keeps RunDir and lets others through it, but not list it.
+    chmod 0711 "$run"
+    s2_variant "layout, owned by $user, in RunDir at 0711" "/private/var/run/$p/secrets-711" 0700 0400 "$uid:$gid" "$uid:$gid"
+    chmod 0750 "$run"
     s2_variant "layout, under /tmp" "/private/tmp/$p-s2/layout" 0700 0400 65532:65532
     s2_variant "open dir" "/private/tmp/$p-s2/open" 0755 0400 65532:65532
     s2_variant "readable" "/private/tmp/$p-s2/readable" 0755 0444 65532:65532
@@ -223,6 +272,7 @@ s2() {
 s6() {
     hdr "S6, a cross-compiled darwin/arm64 binary from curl, $(now)"
     pick_engine
+    row "engine as" "$via"
     # Inside $tmp, which only root can write to, and owned by the user the
     # engine writes as, so no other account can swap a binary root then runs.
     out=$tmp/s6
