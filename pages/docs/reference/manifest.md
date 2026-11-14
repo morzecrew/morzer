@@ -819,7 +819,8 @@ Each run is a task operation, journalled and attested, so `refresh: publish`
 adds one of each per publish, every hour on the default schedule. A release
 that asks for it should tell operators to set
 [`retention.attestations`](attestations.md#keeping-fewer-of-them). Output that has not
-changed keeps the facts the machine has, so nothing new reaches the target.
+changed keeps the facts the machine has, so the row's `facts_digest` stays the
+same; the facts and the row are still written to the target on every publish.
 
 ## health
 

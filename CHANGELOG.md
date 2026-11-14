@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A release can ask for its facts before every `fleet publish` with
   `published.refresh: publish`, for facts that change while the installation
   does not. Each run is journalled and attested like any facts run, and
-  output that has not changed publishes nothing new.
+  output that has not changed keeps the row's facts digest.
 
 ### Changed
 
