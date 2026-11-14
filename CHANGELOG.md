@@ -7,13 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-14
+
+An update can give values to the parameters of the release it installs, so a
+release that adds one with no default installs in one command. A desired-state
+document can give those values to the release the channel staged, so a fleet
+crosses such a release with nobody at each machine. A release can also ask for
+its facts before every fleet publish. This release also fixes `release pack`,
+`release prune` and `installation remove` on Docker 29's containerd image
+store.
+
+Upgrading moves installation state from schema 20 to 21, so a 0.16 manager
+refuses a machine 0.17.0 has run on. Operators, scripts and authors may notice:
+
+- Fleet rows are schema 3, which a 0.16 manager refuses. Upgrade the machine
+  that reads the fleet before the machines that publish to it.
+
+- While sync is enabled, `update --set` of a parameter the authority manages,
+  or one it left pending, needs `--force`.
+
+- An unattended update leaves a release that needs a parameter value it was
+  not given staged, and names the command that installs it, instead of
+  trying to install it.
+
+- A bundle declaring `published.refresh` needs
+  `compatibility.min_manager_version: "0.17.0"`, which `release verify`
+  checks.
+
+Under `--json`, `status` and `config list` gain `pending`, fleet rows gain
+`staged` and `sync.pending`, and no existing field changed meaning.
+
 ### Added
 
 - `update --set` and `--set-file` give values to the parameters of the release
   being installed, such as one it adds with no default. They are recorded
-  once the update has converged on them, so one that rolls back records none,
-  and the journal names them without quoting a value. A `--resume` is held to
-  the values its run was given, and refuses one that differs by name.
+  once the update converges, so a rollback records none, and the journal
+  names them without their values. A `--resume` is held to the values its run
+  was given.
 
 - A desired-state document can give values to the release the channel staged,
   for names only that release lets an authority manage. The machine keeps them
@@ -69,8 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apply`, `update` and `rollback` refuse when a `config set` of a parameter
   their release declares, or of the domains, landed while they waited for the
   deployment lock, as they already did for the profile. They used to deploy the
-  values read before it, so the deployment and the recorded state disagreed
-  until the next converge.
+  values read before it, so deployment and recorded state disagreed until the
+  next converge.
 
 ## [0.16.0] - 2026-11-11
 
@@ -1588,7 +1618,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.16.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/morzecrew/morzer/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/morzecrew/morzer/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/morzecrew/morzer/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/morzecrew/morzer/compare/v0.14.0...v0.15.0
