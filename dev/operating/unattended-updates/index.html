@@ -2497,6 +2497,13 @@ attended update with the value:</p>
 <div class="highlight"><pre><span></span><code>1.4.0 declares no default for admin_email, so it waits for `morzer update --to
 1.4.0 --set admin_email=&lt;value&gt;`
 </code></pre></div>
+<p>On a machine that follows an authority, a document can give the value instead.
+A value it left pending counts as given for a release that declares the name,
+and the tick installs that release with it. If the channel has moved on to one
+that does not declare it, the update drops the value and names it. A pending
+value the release refuses holds the release too, and the tick says it waits
+for the authority's next document. See
+<a href="../managing-from-elsewhere/#crossing-a-release-that-adds-or-renames-a-managed-name">crossing a release that adds a managed name</a>.</p>
 <h2 id="turning-it-on">Turning it on<a class="headerlink" href="#turning-it-on" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.check<span class="o">=</span><span class="nb">true</span>
 morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>update.channel<span class="o">=</span>oci://registry.example/demo/bundle:stable

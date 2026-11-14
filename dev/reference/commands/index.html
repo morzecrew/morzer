@@ -3558,7 +3558,7 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 </tr>
 <tr>
 <td><code>--set</code></td>
-<td>Set a parameter of the release being installed, as <code>name=value</code>. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside <code>--check</code>, <code>--stage</code> and <code>--unattended</code>.</td>
+<td>Set a parameter of the release being installed, as <code>name=value</code>. Repeat for several. Recorded once the update has converged on it, so an update that rolls back records nothing; the journal names it and never quotes the value. Refused beside <code>--check</code>, <code>--stage</code> and <code>--unattended</code>. While <a href="../desired-state/">sync</a> is enabled, a name the authority manages, or one it left pending, needs <code>--force</code>.</td>
 </tr>
 <tr>
 <td><code>--set-file</code></td>
@@ -3606,6 +3606,10 @@ serving and nothing is undone, and the hint names <code>--set</code>. A name the
 does not declare is refused as a typo, and a value of the wrong type is refused
 by name. The values are recorded once the update has converged on them, so one
 that rolls back records none.</p>
+<p>On a machine that follows an authority, an update also takes the values a
+document left pending for the release it installs, as if they were given with
+<code>--set</code>, and the journal names them apart from those given with <code>--set</code>. See
+<a href="../desired-state/#names-for-the-staged-release">names for the staged release</a>.</p>
 <p>A <code>--resume</code> is held to the values its run was given. The journal keeps a
 digest of each, never the value, so a run that stopped before recording them
 needs the same <code>--set</code> again. A value that differs, or one the run was not

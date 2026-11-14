@@ -2716,6 +2716,10 @@ problem can still publish a row saying exactly that.</p>
 <td>the release currently installed</td>
 </tr>
 <tr>
+<td><code>staged</code></td>
+<td>the release the channel staged and this installation has not installed, absent when none is; a <a href="../desired-state/#names-for-the-staged-release">desired-state document</a> may give values for the names it manages</td>
+</tr>
+<tr>
 <td><code>manager_version</code></td>
 <td>which manager published it</td>
 </tr>
@@ -2741,7 +2745,7 @@ problem can still publish a row saying exactly that.</p>
 </tr>
 <tr>
 <td><code>sync</code></td>
-<td>whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, and its last fetch; absent when no sync target or authority is configured</td>
+<td>whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, its last fetch, and <code>pending</code>, the parameters a document left for the staged release, by name and never by value; absent when no sync target or authority is configured</td>
 </tr>
 <tr>
 <td><code>facts_digest</code></td>
@@ -2757,10 +2761,10 @@ problem can still publish a row saying exactly that.</p>
 </tr>
 </tbody>
 </table>
-<p>Rows are schema 2, which added <code>age_recipient</code>, <code>sync</code>, <code>facts_digest</code> and
-<code>facts_problem</code>. A manager that reads
-schema 1 refuses a schema 2 row as written by a newer manager, so upgrade the
-manager you read the fleet with first.</p>
+<p>Rows are schema 3, which added <code>staged</code> and the <code>sync</code> block's <code>pending</code>.
+Schema 2 added <code>age_recipient</code>, <code>sync</code>, <code>facts_digest</code> and <code>facts_problem</code>. A
+manager refuses a row of a newer schema than it reads as written by a newer
+manager, so upgrade the manager you read the fleet with first.</p>
 <h2 id="what-the-row-never-carries">What the row never carries<a class="headerlink" href="#what-the-row-never-carries" title="Permanent link">&para;</a></h2>
 <p>Parameter values, hostnames, container logs, configuration content, and anything
 the <a href="../support-bundle/">support bundle</a> refuses. The payload is deliberately

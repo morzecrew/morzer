@@ -1114,6 +1114,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#crossing-a-release-that-adds-or-renames-a-managed-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Crossing a release that adds or renames a managed name
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-authority-heard-from" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2263,6 +2274,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#crossing-a-release-that-adds-or-renames-a-managed-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Crossing a release that adds or renames a managed name
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keep-the-authority-heard-from" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2473,6 +2495,31 @@ your age identity:</p>
 </code></pre></div>
 <p>It prints the facts only when the machine's key signed them and they are the
 ones its newest row names.</p>
+<h2 id="crossing-a-release-that-adds-or-renames-a-managed-name">Crossing a release that adds or renames a managed name<a class="headerlink" href="#crossing-a-release-that-adds-or-renames-a-managed-name" title="Permanent link">&para;</a></h2>
+<p>A release may add a parameter you manage with no default, or rename one, and a
+machine cannot install it without a value. Give the value before the machine
+installs the release: the machine's channel stages it, and you publish a
+document for the release it staged. You do not choose the release or when it
+is installed; the machine's channel and its tick do.</p>
+<ol>
+<li>Upgrade the manager you publish and read the fleet with first. Rows that
+   name a staged release are schema 3, and an older manager refuses them.</li>
+<li>Wait for the machine to stage the release. Its row names it:</li>
+</ol>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>fleet<span class="w"> </span>ls<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.data.rows[].row.staged'</span>
+</code></pre></div>
+<ol>
+<li>Publish a document that names the new release's names beside the ones the
+   installed release manages. The machine applies the second kind now and keeps
+   the first <a href="../../reference/desired-state/#names-for-the-staged-release">pending</a>
+   for the staged release. For a rename, give both the old name and the new.</li>
+<li>The tick installs the release with the pending values, as an
+   <a href="../unattended-updates/">unattended update</a> does. On a machine that does not
+   install unattended, <code>morzer update --to &lt;version&gt;</code> takes them.</li>
+</ol>
+<p>The row's <code>sync.pending</code> names what is waiting. A document published before the
+release is staged is refused as <code>unmanageable</code>, and the next one, once the row
+names the release, is taken.</p>
 <h2 id="keep-the-authority-heard-from">Keep the authority heard from<a class="headerlink" href="#keep-the-authority-heard-from" title="Permanent link">&para;</a></h2>
 <p><code>doctor</code> warns when the document in force expires within a day, and when the
 target has not answered for three intervals. A target that withholds your

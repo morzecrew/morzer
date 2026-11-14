@@ -1891,6 +1891,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#names-for-the-staged-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Names for the staged release
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#outcomes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2308,6 +2319,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#names-for-the-staged-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Names for the staged release
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#outcomes" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2632,7 +2654,9 @@ machine which installations exist, even though it cannot read their documents.</
 <li>Decrypt with the machine's age identity, read the envelope, check it against
    the comment, and check <code>expires_at</code>.</li>
 <li>Check every name against the release's <a href="../manifest/#managed"><code>managed</code></a> list.
-   One name outside it refuses the whole document.</li>
+   A name only the release the channel staged lists waits for that release
+   (<a href="#names-for-the-staged-release">below</a>). One name neither lists refuses the
+   whole document.</li>
 <li>Apply it as one operation. The serial is written in the operation's record
    step, so it commits with the change and is undone with it.</li>
 </ol>
@@ -2640,6 +2664,56 @@ machine which installations exist, even though it cannot read their documents.</
 object's name is anybody's who can write to the bucket, so a pair that fails its
 signature moves no watermark. A refused serial is not tried again, and a newer
 one is.</p>
+<h2 id="names-for-the-staged-release">Names for the staged release<a class="headerlink" href="#names-for-the-staged-release" title="Permanent link">&para;</a></h2>
+<p>A release the channel has staged, by the update timer or <code>update --stage</code>, and
+not yet installed, may list names the installed one does not. A cycle sorts each
+name the document mentions:</p>
+<table>
+<thead>
+<tr>
+<th>The installed release lists it</th>
+<th>The staged release lists it</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>yes</td>
+<td>either</td>
+<td>applied now</td>
+</tr>
+<tr>
+<td>no</td>
+<td>yes</td>
+<td>kept for the staged release</td>
+</tr>
+<tr>
+<td>no</td>
+<td>no, or nothing is staged</td>
+<td>the document is refused whole, <code>unmanageable</code></td>
+</tr>
+</tbody>
+</table>
+<p>Settings are always the installed release's. A name kept for the staged release
+is checked against it, and a value it would refuse refuses the document,
+<code>invalid</code>.</p>
+<ul>
+<li><strong>A parameter</strong> is kept <em>pending</em>, apart from the values in force, and
+  nothing renders it. <code>unset.parameters</code> removes a pending value. A document
+  that applies a value for the name now removes the pending one.</li>
+<li><strong>A secret</strong> is stored now, for the staged release to find, when the
+  installed release does not declare it. One the installed release declares
+  and does not list is refused, because storing it would change what that
+  release runs on.</li>
+</ul>
+<p>The next <code>update</code> to a release that declares a pending parameter takes the
+value as if it were given with <code>--set</code>, and so does the
+<a href="../../operating/unattended-updates/">unattended tick</a>. The update clears
+pending once it has recorded the values. A value its release does not declare
+is dropped, and the journal names it. An update that fails or rolls back keeps
+pending for the next one. An update to another release than the one the values
+were checked against checks them again, and one it refuses stops it before
+anything runs.</p>
 <h2 id="outcomes">Outcomes<a class="headerlink" href="#outcomes" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2901,7 +2975,7 @@ a fact, and a task that prints a credential sends it to the authority.</p>
 <tbody>
 <tr>
 <td><a href="../fleet/#what-the-row-carries">Fleet row</a></td>
-<td><code>age_recipient</code>, <code>facts_digest</code> and <code>facts_problem</code>, and a <code>sync</code> block with the applied and refused serials, steps, classes and names, never a refusal's text. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last</td>
+<td><code>age_recipient</code>, <code>facts_digest</code>, <code>facts_problem</code> and <code>staged</code>, the release the channel staged, and a <code>sync</code> block with the applied and refused serials, steps, classes and names, never a refusal's text, and <code>pending</code>, the parameters kept for the staged release, by name. A cycle publishes the row to the installation's backup targets when its outcome is news: a document applied or refused, or a result unlike the last</td>
 </tr>
 <tr>
 <td><a href="../attestations/">Statement</a></td>
@@ -2910,6 +2984,10 @@ a fact, and a task that prints a credential sends it to the authority.</p>
 <tr>
 <td><a href="../../operating/notifications/#what-is-sent">Notifications</a></td>
 <td><code>sync.refused</code> once per refused document, <code>sync.expired</code> when a cycle first finds the document in force expired</td>
+</tr>
+<tr>
+<td><code>config list</code>, <code>status --json</code></td>
+<td>the pending values, with the release they were checked against, and their names</td>
 </tr>
 <tr>
 <td><code>doctor</code></td>
@@ -2925,7 +3003,9 @@ a fact, and a task that prints a credential sends it to the authority.</p>
 <p>While sync is enabled, <code>config set</code> and <code>config apply</code> refuse to change a
 parameter, secret or setting the release lets the authority manage, and name the
 authority's key. <code>--force</code> proceeds, and the authority's next document sets the
-value back. The <code>secret</code> commands are unchanged.</p>
+value back. <code>update --set</code> of a parameter the release being installed lets the
+authority manage, or of one pending, is refused the same way, and with <code>--force</code>
+the value given wins over the pending one. The <code>secret</code> commands are unchanged.</p>
 <h2 id="what-a-document-can-never-change">What a document can never change<a class="headerlink" href="#what-a-document-can-never-change" title="Permanent link">&para;</a></h2>
 <p>Settings are limited to <code>installation.domains</code> and <code>installation.profile</code>, and
 only those the release also lists. A document can never change <code>sync.*</code>, which
