@@ -46,7 +46,7 @@ func (d *Deps) refreshFactsAfter(ctx context.Context, opts Options, rec domain.O
 // the previous facts with the reason in facts_problem.
 func (d *Deps) refreshFactsBeforePublish(ctx context.Context) {
 	_, _, rel, err := d.taskRelease(ctx)
-	if err == nil && rel.Manifest.Published != nil && rel.Manifest.Published.Refresh == domain.FactsRefreshPublish {
+	if err == nil && rel.Manifest.Published.RefreshesBeforePublish() {
 		d.refreshFacts(ctx)
 	}
 }

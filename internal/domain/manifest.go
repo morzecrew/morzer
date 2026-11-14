@@ -792,8 +792,16 @@ type PublishedSpec struct {
 
 	// Refresh asks for the task to run at another time than after an
 	// operation, for facts that change while the installation does not.
-	// Absent, it runs after operations only (#353).
-	Refresh FactsRefresh `yaml:"refresh" json:"refresh,omitempty"`
+	// Absent, it runs after operations only (#353). A pointer, so a field
+	// written empty is still one an older manager refuses, and needs the
+	// floor.
+	Refresh *FactsRefresh `yaml:"refresh" json:"refresh,omitempty"`
+}
+
+// RefreshesBeforePublish reports whether the release asks for its facts before
+// every `fleet publish`.
+func (p *PublishedSpec) RefreshesBeforePublish() bool {
+	return p != nil && p.Refresh != nil && *p.Refresh == FactsRefreshPublish
 }
 
 // FactsRefresh is when else the facts task runs.
@@ -920,17 +928,16 @@ func validatePublished(m *Manifest, v *validationErrors) {
 			"must be at least %s, because the release declares published, which an older "+
 				"manager refuses as an unknown field", minimum)
 	}
-	switch m.Published.Refresh {
-	case "":
-	case FactsRefreshPublish:
+	if refresh := m.Published.Refresh; refresh != nil {
 		if minimum := MustParseVersion(FactsRefreshMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
 			v.add("compatibility.min_manager_version",
 				"must be at least %s, because the release declares published.refresh, which an older "+
 					"manager refuses as an unknown field", minimum)
 		}
-	default:
-		v.add("published.refresh", "is %q; the one value is %q, or leave it out to run the task after operations only",
-			m.Published.Refresh, FactsRefreshPublish)
+		if *refresh != FactsRefreshPublish {
+			v.add("published.refresh", "is %q; the one value is %q, or leave it out to run the task after operations only",
+				*refresh, FactsRefreshPublish)
+		}
 	}
 }
 

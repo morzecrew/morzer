@@ -3,6 +3,7 @@ package domain_test
 import (
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -115,12 +116,28 @@ func TestPublishedNamesARunnableTask(t *testing.T) {
 	// published.refresh takes `publish` alone, under a floor of its own
 	// (#353).
 	refreshing := withTasks("entry")
-	refreshing.Published.Refresh = domain.FactsRefreshPublish
+	publish, hourly := domain.FactsRefreshPublish, domain.FactsRefresh("hourly")
+	refreshing.Published.Refresh = &publish
 	assert.Contains(t, problem(refreshing), "because the release declares published.refresh")
 	refreshing.Compatibility.MinManagerVersion = domain.MustParseVersion(domain.FactsRefreshMinManagerVersion)
 	assert.NotContains(t, problem(refreshing), "published")
-	refreshing.Published.Refresh = "hourly"
+	refreshing.Published.Refresh = &hourly
 	assert.Contains(t, problem(refreshing), `published.refresh: is "hourly"; the one value is "publish"`)
+}
+
+// An empty refresh is still a declared one, which an older manager refuses
+// as an unknown field, so the floor applies to it too.
+func TestAnEmptyRefreshStillNeedsItsFloor(t *testing.T) {
+	m := managedManifest(domain.ManagedSpec{})
+	m.Tasks = map[string]domain.TaskSpec{"entry": {Service: "app", Command: []string{"relay-entry"}}}
+	var published domain.PublishedSpec
+	require.NoError(t, yaml.UnmarshalWithOptions([]byte("task: entry\nrefresh: \"\"\n"), &published,
+		yaml.Strict(), yaml.DisallowUnknownField()))
+	m.Published = &published
+	m.Compatibility.MinManagerVersion = domain.MustParseVersion("0.16.0")
+	err := m.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "published.refresh")
 }
 
 // An empty block is still a block: an older manager refuses `managed: {}` and
