@@ -55,9 +55,9 @@ for c in /usr/local/bin/docker "$home/.docker/bin/docker" /Applications/Docker.a
 done
 [ -n "$docker_bin" ] || die "no docker CLI found; is Docker Desktop installed?"
 
-# Root as launchd starts it: root's own HOME, launchd's PATH, nothing of the
-# user's environment. This is how the manager will run.
-rootdocker() { env -i PATH="$launchd_path" HOME=/var/root "$docker_bin" "$@"; }
+# Root as launchd starts it: launchd's PATH, no HOME (S4 measured both), and
+# nothing of the user's environment. This is how the manager will run.
+rootdocker() { env -i PATH="$launchd_path" "$docker_bin" "$@"; }
 # The user's own CLI, with the user's config and context.
 userdocker() { sudo -u "$user" -H "$docker_bin" "$@"; }
 
