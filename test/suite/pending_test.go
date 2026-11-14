@@ -469,3 +469,29 @@ func TestADocumentCannotRemoveASecretTheStagedReleaseRequires(t *testing.T) {
 	_, ok := r.secret(t, "api_token")
 	assert.True(t, ok, "a secret the staged release requires was removed")
 }
+
+// Values a document gives a newer staged release are checked against it, and
+// so are the ones kept from an earlier document, since the section then names
+// that release as what they were all checked against.
+func TestAValueKeptFromAnEarlierReleaseIsCheckedAgain(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	inst := installation(t, r.h)
+	inst.Pending = &domain.PendingValues{
+		Release:    domain.MustParseVersion("1.2.9"),
+		Parameters: map[string]string{"mail_port": "not-a-number"},
+	}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+
+	r.publish(t, 40, "parameters:\n  admin_email: "+adminEmail+"\n")
+	assert.Equal(t, domain.SyncInvalid, r.syncOK(t).Result)
+	assert.Equal(t, "1.2.9", installation(t, r.h).Pending.Release.String(), "a refused document relabelled pending")
+
+	inst = installation(t, r.h)
+	inst.Pending.Parameters = map[string]string{"mail_port": "2525"}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+	r.publish(t, 41, "parameters:\n  admin_email: "+adminEmail+"\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+	assert.Equal(t, "1.3.0", installation(t, r.h).Pending.Release.String())
+}

@@ -88,6 +88,21 @@ func planPending(
 		}
 		values[name] = value
 	}
+	// The section names one release as what its values were checked
+	// against, so the values kept from an earlier one are checked again
+	// before it names a new one. A name the new release does not declare
+	// stays, and the update to it drops it, naming it (decision 7).
+	if inst.Pending != nil && !release.Equal(inst.Pending.Release) {
+		for _, name := range sortedStrings(slices.Collect(maps.Keys(values))) {
+			spec, declared := staged.rel.Manifest.Parameters[name]
+			if _, given := later.Parameters[name]; given || !declared {
+				continue
+			}
+			if _, err := spec.Parse(values[name]); err != nil {
+				problems = append(problems, domain.RefusedParameterValue(err, name, spec))
+			}
+		}
+	}
 	if len(values) == 0 {
 		return nil, set, unset, problems
 	}
