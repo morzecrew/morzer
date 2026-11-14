@@ -81,9 +81,9 @@ Each attempt logs launchd's `PATH`, `HOME` and the socket it saw.
 from a busybox `httpd` on localhost and fetches them with `curl`. It reports
 the quarantine attribute, the signature and whether each runs. It runs the
 binary after a rename over it, which is what `self-update` does. It runs it
-after an overwrite of the same file in place, where macOS is expected to kill
-the process (exit 137). It runs it with a browser's quarantine attribute
-added, which may show a dialog; dismiss it.
+after an overwrite of the same file in place, where macOS was expected to kill
+the process (exit 137); on 26.5.2 it did not. It runs it with a browser's
+quarantine attribute added, which may show a dialog; dismiss it.
 
 ## What it is not
 
