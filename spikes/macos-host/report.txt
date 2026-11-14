@@ -356,3 +356,48 @@ owned by misery7100: dir 0755 0:0 in a 755 0:0 one, file 0400 501:20, at /privat
 
 == clean, 2026-11-14T22:44:30Z ==
 removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays
+
+== S3, root's docker and Docker Desktop, 2026-11-14T22:54:33Z ==
+/var/run/docker.sock                 lrwxr-xr-x@ 1 root  daemon  41 Nov 14 22:57 /var/run/docker.sock -> /Users/misery7100/.docker/run/docker.sock
+what it reaches                      srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 23:01 /var/run/docker.sock
+/Users/misery7100/.docker/run/docker.sock srwxr-xr-x@ 1 misery7100  staff  0 Nov 14 23:01 /Users/misery7100/.docker/run/docker.sock
+/usr/local/bin/docker                lrwxr-xr-x@ 1 root  wheel  54 Apr  2  2025 /usr/local/bin/docker -> /Applications/Docker.app/Contents/Resources/bin/docker
+/Users/misery7100/.docker/bin/docker ls: /Users/misery7100/.docker/bin/docker: No such file or directory
+docker on launchd's PATH             none on /usr/bin:/bin:/usr/sbin:/sbin
+compose plugin dirs                  /Users/misery7100/.docker/cli-plugins 
+misery7100's context                 desktop-linux 
+HOME under sudo                      /Users/misery7100
+root, sudo's env: version            28.3.2 (exit 0)
+root, clean env: version             28.3.2 (exit 0)
+root, clean env: compose             unknown flag: --short  Usage:  docker [OPTIONS] COMMAND [ARG...]  Run 'docker --help' for more information (exit 125)
+root, misery7100's socket            28.3.2 (exit 0)
+misery7100's compose plugin          /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose
+root, clean env, /Applications/Docker.app/Contents/Resources/cli-plugins: compose 2.39.1-desktop.1 (exit 0)
+who owns the way to it               root:wheel 755 /usr/local/bin/docker; root:wheel 755 /usr/local/bin; root:wheel 755 /usr/local; root:wheel 755 /usr; 
+who owns the way to it               misery7100:staff 755 /Applications/Docker.app/Contents/Resources/bin/docker; misery7100:staff 755 /Applications/Docker.app/Contents/Resources/bin; misery7100:staff 755 /Applications/Docker.app/Contents/Resources; misery7100:staff 755 /Applications/Docker.app/Contents; misery7100:staff 755 /Applications/Docker.app; root:admin 775 /Applications; 
+who owns the way to it               misery7100:staff 755 /Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose; misery7100:staff 755 /Applications/Docker.app/Contents/Resources/cli-plugins; misery7100:staff 755 /Applications/Docker.app/Contents/Resources; misery7100:staff 755 /Applications/Docker.app/Contents; misery7100:staff 755 /Applications/Docker.app; root:admin 775 /Applications; 
+/Applications/Docker.app entries not root's, or writable 371, first: /Applications/Docker.app /Applications/Docker.app/Contents /Applications/Docker.app/Contents/_CodeSignature 
+signature of docker                  TeamIdentifier=9BNSXJN65R 
+verified docker                       (exit 0)
+signature of docker-compose          TeamIdentifier=9BNSXJN65R 
+verified docker-compose               (exit 0)
+S1, S2 and S6 run as                 root
+
+== S6, a cross-compiled darwin/arm64 binary from curl, 2026-11-14T22:54:41Z ==
+engine as                            root
+go: downloading github.com/mattn/go-isatty v0.0.22
+go: downloading github.com/philhofer/fwd v1.2.0
+go: downloading github.com/xo/terminfo v1.0.0
+xattr after curl                     com.apple.provenance:  (empty is no quarantine)
+codesign                             Identifier=a.out CodeDirectory v=20400 size=165438 flags=0x20002(adhoc,linker-signed) hashes=5167+0 location=embedded Signature=adhoc TeamIdentifier=not set 
+spctl                                /var/lib/morzer-spike/bin/morzer: rejected 
+runs                                 morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0)
+unpacked by /usr/bin/tar              (exit 0)
+xattr after unpacking                com.apple.provenance:  (empty is no quarantine)
+runs from the archive                morzer 0.0.0-spike.new   manifest api  selfhost/v1alpha1 (exit 0)
+after a rename over it               morzer 0.0.0-spike.new   manifest api  selfhost/v1alpha1 (exit 0) (inode 25693259 -> 25693260)
+after an overwrite in place          morzer 0.0.0-spike.old   manifest api  selfhost/v1alpha1 (exit 0) (137 is SIGKILL)
+with a quarantine attribute           (exit 137)
+
+== clean, 2026-11-14T22:55:00Z ==
+removed the jobs, /etc/morzer-spike, /var/lib/morzer-spike, /opt/morzer-spike, /var/run/morzer-spike and the build cache volume; report.txt stays

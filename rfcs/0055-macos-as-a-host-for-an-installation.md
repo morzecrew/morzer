@@ -1000,3 +1000,35 @@ pass through it but not list it.
 A file bind needs the user who runs Docker Desktop to be able to pass through
 each directory above it. A directory bind also needs that user to be able to
 list each one.
+
+### The fifth run
+
+The fifth run ran `s3` and `s6` from `run.sh` at `37b879f4`.
+
+- **Root runs Compose from Docker Desktop's own plugin directory.** Given a
+  config naming `/Applications/Docker.app/Contents/Resources/cli-plugins`,
+  root's CLI answered 2.39.1-desktop.1, and S6 ran through it.
+- **What root runs belongs to the user who runs Docker Desktop.**
+  - `/usr/local/bin/docker` is a link owned by root, in directories root
+    owns.
+  - What the link names,
+    `/Applications/Docker.app/Contents/Resources/bin/docker`, is owned by
+    that user (`misery7100:staff`). So is the Compose plugin, and so is every
+    directory from `Docker.app` down.
+  - `/Applications` is `root:admin 775`, so any administrator can rename
+    `Docker.app` itself.
+  - 371 entries in `Docker.app` are not root's, or are writable by others.
+  - `ReplaceableByNonRoot` would refuse both binaries.
+- **Both binaries are signed by Docker's team.** `codesign` reports
+  `TeamIdentifier=9BNSXJN65R` for the CLI and the plugin, and
+  `codesign --verify --strict` passes for each.
+- **S6 behaved as in the runs through the user's CLI.** The build, the
+  download, the archive, the rename, the overwrite in place and the
+  quarantined copy all gave the same results.
+
+So the "root's `docker`" of §5.3 is a binary that the user who runs Docker
+Desktop, and any administrator, can replace. Root running it from there would
+let either of them run code as root. `ReplaceableByNonRoot` exists to refuse
+exactly that for the manager's own binary. This is one installation, from
+Docker Desktop's disk image. Docker Desktop installed another way may leave
+these files owned by root.
