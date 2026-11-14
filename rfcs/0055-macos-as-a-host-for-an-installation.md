@@ -886,7 +886,9 @@ ruling:
 
 - **Decision 4.** `/opt` is not shared by default, and no container can write
   to a directory that root owns. The paths in the layout work; root owning
-  them does not.
+  them does not. S1's directories were `0755`. The manager makes `VarDir` and
+  `RunDir` `0750` root (`ManagedDirs`, `paths.go:216` and `:226`), which the
+  user who runs Docker Desktop cannot even enter.
 - **Decision 6.** The layout's secret cannot be mounted at all. This is the
   fourth outcome above, which the ruling did not cover.
 - **§5.3's preflight** binds each directory and lists it. Here a listing

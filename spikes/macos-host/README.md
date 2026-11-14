@@ -73,8 +73,10 @@ variants each take one condition away (the path, the directory mode, the file
 mode, the owner), so a `DENIED` can be told apart from a uid mapping. RFC 0055
 §5.5 names three outcomes, and the first run found a fourth (§13): Docker
 Desktop's file sharing acts as the logged-in user, so a file that user cannot
-read is denied to every container uid. One more variant keeps the layout and
-makes you its owner, which is the case that outcome turns on.
+read is denied to every container uid. Two more variants keep the layout and
+make you its owner, which is the case that outcome turns on: one inside
+`RunDir`, which the manager makes `0750` root, and one in a `0755` directory
+under `/private/tmp`.
 
 **S4** installs `dev.morzer.spike`, whose program stands in for `apply
 --startup`. It exits 7 while the engine does not answer, exits 12 once when

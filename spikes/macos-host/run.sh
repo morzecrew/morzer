@@ -192,7 +192,7 @@ secrets:
   token:
     file: $dir/token
 EOF
-    echo "$name: dir $3 ${6:-0:0}, file $4 $5, at $dir/token"
+    echo "$name: dir $3 ${6:-0:0} in a $(stat -f '%Lp %u:%g' "${dir%/*}") one, file $4 $5, at $dir/token"
     for u in 65532 0 1000; do
         out=$(engine compose -p "$p-s2" -f "$tmp/s2.yaml" run --rm -T --user "$u" read 2>&1)
         row "    as uid $u" "exit $?: $(printf '%s' "$out" | oneline)"
@@ -204,11 +204,14 @@ s2() {
     pick_engine
     row "engine as" "$via"
     engine pull -q "$image" >/dev/null 2>&1
-    # The real layout first: RunDir/secrets is 0700 root, and a secret declaring
-    # owner 65532 is 0400 65532:65532. The rest take one condition away at a
-    # time, so a DENIED can be told apart from a uid mapping.
+    # The real layout first: RunDir is 0750 (ManagedDirs, internal/domain/paths.go),
+    # RunDir/secrets is 0700 root, and a secret declaring owner 65532 is 0400
+    # 65532:65532. The rest take one condition away at a time, so a DENIED can
+    # be told apart from a uid mapping.
+    mkdir -p "$run" && chmod 0750 "$run"
     s2_variant "layout" "/private/var/run/$p/secrets" 0700 0400 65532:65532
     s2_variant "layout, owned by $user" "/private/var/run/$p/secrets-user" 0700 0400 "$uid:$gid" "$uid:$gid"
+    s2_variant "layout, owned by $user, under /tmp" "/private/tmp/$p-s2/owned" 0700 0400 "$uid:$gid" "$uid:$gid"
     s2_variant "layout, under /tmp" "/private/tmp/$p-s2/layout" 0700 0400 65532:65532
     s2_variant "open dir" "/private/tmp/$p-s2/open" 0755 0400 65532:65532
     s2_variant "readable" "/private/tmp/$p-s2/readable" 0755 0444 65532:65532
