@@ -599,3 +599,89 @@ func TestAResumeAfterTheRecordLandedKeepsLaterPendingValues(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, later, installation(t, r.h).Pending, "a resume cleared values left for a later update")
 }
+
+// A recorded value that happens to equal what the run took from pending is not
+// proof that its record step wrote it. An update stopped before that step, and
+// a sync that then changed the pending value, still refuses the resume.
+func TestAResumeIsNotFooledByARecordedValueEqualToThePendingOne(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	inst := installation(t, r.h)
+	inst.Parameters = map[string]string{"http_port": "9000"}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+	r.publish(t, 40, "parameters:\n  http_port: \"9000\"\nsecrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+	require.Equal(t, "9000", installation(t, r.h).Pending.Parameters["http_port"])
+
+	given := ops.UpdateOptions{Options: ops.Options{Force: true}, To: "1.3.0",
+		Parameters: map[string]string{"admin_email": adminEmail}}
+	r.h.Backup.Fail["Create"] = domain.BackupError(errInjected, "no space left on device")
+	_, err := ops.Update(ctx, r.h.Deps, given)
+	require.Error(t, err)
+	delete(r.h.Backup.Fail, "Create")
+
+	r.publish(t, 41, "parameters:\n  http_port: \"9100\"\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	given.Resume = true
+	_, err = ops.Update(ctx, r.h.Deps, given)
+	require.Error(t, err, "a resume read a coincidentally equal value as its own record")
+	assert.Contains(t, err.Error(), "values pending for http_port changed")
+}
+
+// coincidingRig is a rig whose installed release records http_port=9000, the
+// value a document then leaves pending for the staged release.
+func coincidingRig(t *testing.T) *syncRig {
+	t.Helper()
+	r := newPendingRig(t)
+	r.stage(t)
+	inst := installation(t, r.h)
+	inst.Parameters = map[string]string{"http_port": "9000"}
+	require.NoError(t, r.h.Deps.State.SaveInstallation(context.Background(), inst))
+	r.publish(t, 40, "parameters:\n  http_port: \"9000\"\nsecrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+	return r
+}
+
+// Stopped before its record step began, a run's pending value that a document
+// then unset is gone, though an equal value is recorded: the resume is refused.
+func TestAResumeAfterAPendingValueWasUnsetIsRefused(t *testing.T) {
+	r := coincidingRig(t)
+	ctx := context.Background()
+	given := ops.UpdateOptions{Options: ops.Options{Force: true}, To: "1.3.0",
+		Parameters: map[string]string{"admin_email": adminEmail}}
+	r.h.Backup.Fail["Create"] = domain.BackupError(errInjected, "no space left on device")
+	_, err := ops.Update(ctx, r.h.Deps, given)
+	require.Error(t, err)
+	delete(r.h.Backup.Fail, "Create")
+
+	r.publish(t, 41, "unset:\n  parameters: [http_port]\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	given.Resume = true
+	_, err = ops.Update(ctx, r.h.Deps, given)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "values pending for http_port changed")
+}
+
+// A record step that began and whose write failed left pending as it was, so
+// the resume takes it and clears it, though an equal value was recorded.
+func TestAResumeAfterARecordThatFailedClearsPending(t *testing.T) {
+	r := coincidingRig(t)
+	ctx := context.Background()
+	given := ops.UpdateOptions{Options: ops.Options{Force: true}, To: "1.3.0",
+		Parameters: map[string]string{"admin_email": adminEmail}}
+	armed := true
+	store := r.h.Deps.State
+	r.h.Deps.State = saveFailingWhen{StateStore: store, when: recording("admin_email", adminEmail), armed: &armed}
+	_, err := ops.Update(ctx, r.h.Deps, given)
+	require.Error(t, err)
+	r.h.Deps.State = store
+	require.NotNil(t, installation(t, r.h).Pending)
+
+	given.Resume = true
+	_, err = ops.Update(ctx, r.h.Deps, given)
+	require.NoError(t, err)
+	assert.Nil(t, installation(t, r.h).Pending, "a resume read a failed write as landed and left pending")
+}

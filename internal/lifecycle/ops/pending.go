@@ -118,19 +118,27 @@ func clearsPending(inst domain.Installation, opts UpdateOptions) bool {
 
 // recordLanded reports whether the record step of the run a resume continues
 // wrote what it took from pending though the journal never heard the step
-// finish: every such name is recorded with a digest that run journalled. The
-// write that recorded them cleared pending, so whatever is pending since is a
-// later document's.
+// finish. The write that recorded them cleared pending, so whatever is pending
+// since is a later document's.
+//
+// Three things together, since a recorded value can equal a pending one before
+// any write: the step began, every such name is recorded with a digest that run
+// journalled, and none of them is pending any more.
 func recordLanded(inst domain.Installation, prior domain.OperationRecord) bool {
+	began := slices.ContainsFunc(prior.Steps, func(s domain.StepRecord) bool {
+		return s.ID == "record-parameters" &&
+			(s.Status == domain.StepRunning || s.Status == domain.StepFailed || s.Status == domain.StepInterrupted)
+	})
 	names := slices.DeleteFunc(strings.Split(prior.Flags["pending"], ","), func(n string) bool { return n == "" })
 	journalled := strings.Split(prior.Flags["set_digest"], ",")
 	for _, name := range names {
 		value, ok := inst.Parameters[name]
-		if !ok || !slices.Contains(journalled, parameterDigest(name, value)) {
+		_, stillPending := inst.PendingParameters()[name]
+		if !ok || stillPending || !slices.Contains(journalled, parameterDigest(name, value)) {
 			return false
 		}
 	}
-	return len(names) > 0
+	return began && len(names) > 0
 }
 
 // undeclaredPending is the pending names rel does not declare, which an update
