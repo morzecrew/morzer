@@ -515,3 +515,43 @@ func TestAnUndeclaredPendingNameAddedWhileAnUpdateWaitedRefusesIt(t *testing.T) 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "retired_name")
 }
+
+// saveThenFail saves the installation when picks out, then reports a failure,
+// as a run killed after its write and before the journal heard of it would.
+type saveThenFail struct {
+	saveFailingWhen
+}
+
+func (s saveThenFail) SaveInstallation(ctx context.Context, inst domain.Installation) error {
+	if *s.armed && s.when(inst) {
+		*s.armed = false
+		if err := s.StateStore.SaveInstallation(ctx, inst); err != nil {
+			return err
+		}
+		return assert.AnError
+	}
+	return s.StateStore.SaveInstallation(ctx, inst)
+}
+
+// A run whose record step wrote the values, and cleared pending, but stopped
+// before its journal said so is resumed, not refused: what it took from
+// pending is recorded, with the digests it journalled.
+func TestAResumeAfterTheRecordLandedIsNotRefused(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	r.publish(t, 40, "parameters:\n  admin_email: "+adminEmail+"\nsecrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	armed := true
+	store := r.h.Deps.State
+	r.h.Deps.State = saveThenFail{saveFailingWhen{StateStore: store, when: recording("admin_email", adminEmail), armed: &armed}}
+	_, err := ops.Update(ctx, r.h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.Error(t, err)
+	r.h.Deps.State = store
+	require.Nil(t, installation(t, r.h).Pending, "the record step's write did not land")
+
+	_, err = ops.Update(ctx, r.h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, To: "1.3.0"})
+	require.NoError(t, err, "a resume was refused over values its own run recorded")
+	assert.Equal(t, adminEmail, installation(t, r.h).Parameters["admin_email"])
+}

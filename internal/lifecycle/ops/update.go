@@ -568,7 +568,13 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 			}
 		}
 		for _, name := range strings.Split(prior.Flags["pending"], ",") {
-			if _, still := given[name]; name != "" && !still && !recordedAlready {
+			_, still := given[name]
+			// Recorded by its run's record step, whose write cleared
+			// pending before the journal heard the step finish: the
+			// value is the one the run took, by its digest.
+			recorded, ok := inst.Parameters[name]
+			landed := ok && slices.Contains(journalled, parameterDigest(name, recorded))
+			if name != "" && !still && !recordedAlready && !landed {
 				changed = append(changed, name)
 			}
 		}
