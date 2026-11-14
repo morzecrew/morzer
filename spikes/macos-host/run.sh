@@ -231,7 +231,8 @@ s6() {
     mkdir -p "$bin"
     # A file left by an earlier run must not stand in for one this run failed
     # to fetch.
-    rm -rf "${bin:?}/morzer" "$bin/.morzer.staged" "$bin/morzer.quarantined"
+    rm -rf "${bin:?}/morzer" "$bin/.morzer.staged" "$bin/morzer.quarantined" \
+        "$bin/morzer.tar.zst" "$bin/unpacked"
     # Built in a Linux container: the cross-compile goreleaser does, with its
     # flags. Two versions, so a replacement can be told from the original.
     engine run --rm -v "$src:/src:ro" -v "$out:/out" -v "$p-gocache:/root/go" -w /src \
@@ -241,6 +242,9 @@ s6() {
             go build -trimpath -ldflags "-s -w -X main.version=0.0.0-spike.new" -o /out/new ./cmd/morzer' 2>&1 |
         tail -3
     if [ ! -f "$out/old" ] || [ ! -f "$out/new" ]; then row "build" "FAILED"; return; fi
+    # A release archive is tar.zst (.goreleaser.yaml). macOS's tar writes one
+    # if it can; the release's own is written by goreleaser.
+    tar -c --zstd -f "$out/new.tar.zst" -C "$out" new 2>/dev/null || rm -f "$out/new.tar.zst"
 
     # Served over HTTP and fetched with curl, as install.sh fetches an archive.
     engine run -d --name "$p-s6-http" -p 127.0.0.1::8080 -v "$out:/www:ro" "$image" \
@@ -250,6 +254,7 @@ s6() {
     fetched=no
     curl -fsS -o "$bin/morzer" "http://127.0.0.1:$port/old" &&
         curl -fsS -o "$bin/.morzer.staged" "http://127.0.0.1:$port/new" && fetched=yes
+    [ -f "$out/new.tar.zst" ] && curl -fsS -o "$bin/morzer.tar.zst" "http://127.0.0.1:$port/new.tar.zst"
     engine rm -f "$p-s6-http" >/dev/null 2>&1
     if [ "$fetched" != yes ]; then row "download" "FAILED"; return; fi
     chmod 0755 "$bin/morzer" "$bin/.morzer.staged"
@@ -258,6 +263,16 @@ s6() {
     row "codesign" "$(codesign -dv "$bin/morzer" 2>&1 | grep -E 'Signature|Identifier|CodeDirectory' | oneline)"
     row "spctl" "$(spctl --assess --type execute -v "$bin/morzer" 2>&1 | oneline)"
     row "runs" "$(try "$bin/morzer" version)"
+
+    # What install.sh does with an archive: unpacks it with the system's tar.
+    if [ -f "$bin/morzer.tar.zst" ]; then
+        mkdir "$bin/unpacked"
+        row "unpacked by $(command -v tar)" "$(try tar -xf "$bin/morzer.tar.zst" -C "$bin/unpacked")"
+        row "xattr after unpacking" "$(xattr -l "$bin/unpacked/new" 2>&1 | oneline)(empty is no quarantine)"
+        row "runs from the archive" "$(try "$bin/unpacked/new" version)"
+    else
+        row "a tar.zst archive" "not written or not fetched, so unpacking was not measured"
+    fi
 
     # What self-update does: the new binary beside the old, one rename over it
     # (internal/lifecycle/ops/self_update.go).

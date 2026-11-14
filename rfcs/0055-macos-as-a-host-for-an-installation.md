@@ -910,4 +910,6 @@ Not measured:
 - the file-sharing implementation by name (the settings name none);
 - a bind of a directory that the Docker Desktop user owns, written to by a
   container;
-- a restart with FileVault off.
+- a restart with FileVault off;
+- a release's `tar.zst` archive fetched with `curl` and unpacked by macOS's
+  `tar`, which is what `install.sh` does.

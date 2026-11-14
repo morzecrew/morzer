@@ -88,7 +88,9 @@ the quarantine attribute, the signature and whether each runs. It runs the
 binary after a rename over it, which is what `self-update` does. It runs it
 after an overwrite of the same file in place, where macOS was expected to kill
 the process (exit 137); on 26.5.2 it did not. It runs it with a browser's
-quarantine attribute added, which may show a dialog; dismiss it.
+quarantine attribute added, which may show a dialog; dismiss it. It also packs
+the binary as the `tar.zst` a release ships, fetches that with `curl` and
+unpacks it with macOS's `tar`, as `install.sh` would.
 
 ## What it is not
 
