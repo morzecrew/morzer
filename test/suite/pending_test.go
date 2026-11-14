@@ -453,3 +453,19 @@ func TestAMissingManagedValueIsTheAuthoritys(t *testing.T) {
 	assert.Contains(t, res.Assessment.Why(),
 		"so it waits for the authority's next document, or `morzer update --to 1.3.0 --force --set admin_email=<value>`")
 }
+
+// A document may not unset a secret the staged release requires, as it may
+// not unset one the installed release requires: the update would then refuse
+// for want of it.
+func TestADocumentCannotRemoveASecretTheStagedReleaseRequires(t *testing.T) {
+	r := newPendingRig(t)
+	r.stage(t)
+	r.publish(t, 40, "secrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	r.publish(t, 41, "unset:\n  secrets: [api_token]\n")
+	report := r.syncOK(t)
+	assert.Equal(t, domain.SyncInvalid, report.Result)
+	_, ok := r.secret(t, "api_token")
+	assert.True(t, ok, "a secret the staged release requires was removed")
+}

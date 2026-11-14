@@ -477,7 +477,11 @@ func (d *Deps) planChange(
 			switch {
 			case !declared && !present:
 				problems = append(problems, domain.Usage("%s declares no secret named %q, and none is stored", r.Version(), name))
-			case declared && decl.Required && !force && !staged.has("secrets", name):
+			case declared && decl.Required && !force && staged.has("secrets", name):
+				// The update that installs it would refuse for want of it.
+				problems = append(problems, domain.Usage("secret %q is required by the staged release %s", name, r.Version()).
+					WithHint("removing it will make the update to %s fail", r.Version()))
+			case declared && decl.Required && !force:
 				problems = append(problems, domain.Usage("secret %q is required by the installed release", name).
 					WithHint("removing it will make the next `apply` fail; pass --force if you mean to"))
 			case present:
