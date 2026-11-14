@@ -659,6 +659,7 @@ func TestARefreshBeforeAPublishFitsInsideThePublish(t *testing.T) {
 	f.publishRefreshing(t)
 	last := f.h.Runtime.OneShots[len(f.h.Runtime.OneShots)-1]
 	assert.LessOrEqual(t, last.Timeout, 3*time.Minute, "the facts task may outlast the fleet unit")
+	assert.False(t, f.h.Locker.Waited("deployment"), "the record before a publish waits for another operation")
 
 	before := *f.state(t).Facts
 	f.h.Runtime.OneShotResults["app"] = ports.ExitResult{Stdout: "relay=down\n"}
