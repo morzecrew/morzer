@@ -42,7 +42,7 @@ Under `--json`, `status` and `config list` gain `pending`, fleet rows gain
 - `update --set` and `--set-file` give values to the parameters of the release
   being installed, such as one it adds with no default. They are recorded
   once the update converges, so a rollback records none, and the journal
-  names them without their values. A `--resume` is held to the names its run
+  names them without their values. A `--resume` is held to the values its run
   was given.
 
 - A desired-state document can give values to the release the channel staged,
