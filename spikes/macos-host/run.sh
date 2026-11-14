@@ -350,9 +350,10 @@ s4() {
     sleep 95
     attempts_since "$t"
 
+    # Before the pause: the attempt that converges can come before Enter.
+    t=$(now)
     pause "Start Docker Desktop and wait until it says the engine is running."
     echo "c: expect the next attempt to converge, and the attempts to stop"
-    t=$(now)
     i=0
     while [ $i -lt 180 ] && ! attempts_since "$t" | grep -q converged; do sleep 5; i=$((i + 5)); done
     sleep 35
