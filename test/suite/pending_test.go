@@ -573,3 +573,29 @@ func TestAStagedSchemaThatWillNotLoadRefusesNothing(t *testing.T) {
 	assert.Equal(t, domain.SyncFailed, report.Result)
 	assert.Nil(t, r.state(t).Refused, "a local read failure refused the document")
 }
+
+// And what a later document left pending, after that write landed, is for a
+// later update: the resume leaves it.
+func TestAResumeAfterTheRecordLandedKeepsLaterPendingValues(t *testing.T) {
+	r := newPendingRig(t)
+	ctx := context.Background()
+	r.stage(t)
+	r.publish(t, 40, "parameters:\n  admin_email: "+adminEmail+"\nsecrets:\n  api_token: token\n")
+	require.Equal(t, domain.SyncOK, r.syncOK(t).Result)
+
+	armed := true
+	store := r.h.Deps.State
+	r.h.Deps.State = saveThenFail{saveFailingWhen{StateStore: store, when: recording("admin_email", adminEmail), armed: &armed}}
+	_, err := ops.Update(ctx, r.h.Deps, ops.UpdateOptions{To: "1.3.0"})
+	require.Error(t, err)
+	r.h.Deps.State = store
+
+	later := &domain.PendingValues{Release: domain.MustParseVersion("1.4.0"), Parameters: map[string]string{"next_name": "x"}}
+	inst := installation(t, r.h)
+	inst.Pending = later
+	require.NoError(t, r.h.Deps.State.SaveInstallation(ctx, inst))
+
+	_, err = ops.Update(ctx, r.h.Deps, ops.UpdateOptions{Options: ops.Options{Resume: true}, To: "1.3.0"})
+	require.NoError(t, err)
+	assert.Equal(t, later, installation(t, r.h).Pending, "a resume cleared values left for a later update")
+}

@@ -112,8 +112,25 @@ func planPending(
 // clearsPending reports whether an update's record step clears what a document
 // left pending: whenever some is, unless the run a resume continues recorded
 // already, since what is pending then is for a later update.
-func clearsPending(inst domain.Installation, prior *domain.OperationRecord) bool {
-	return inst.Pending != nil && (prior == nil || !stepSucceeded(*prior, "record-parameters"))
+func clearsPending(inst domain.Installation, opts UpdateOptions) bool {
+	return inst.Pending != nil && !opts.pendingDone
+}
+
+// recordLanded reports whether the record step of the run a resume continues
+// wrote what it took from pending though the journal never heard the step
+// finish: every such name is recorded with a digest that run journalled. The
+// write that recorded them cleared pending, so whatever is pending since is a
+// later document's.
+func recordLanded(inst domain.Installation, prior domain.OperationRecord) bool {
+	names := slices.DeleteFunc(strings.Split(prior.Flags["pending"], ","), func(n string) bool { return n == "" })
+	journalled := strings.Split(prior.Flags["set_digest"], ",")
+	for _, name := range names {
+		value, ok := inst.Parameters[name]
+		if !ok || !slices.Contains(journalled, parameterDigest(name, value)) {
+			return false
+		}
+	}
+	return len(names) > 0
 }
 
 // undeclaredPending is the pending names rel does not declare, which an update

@@ -54,6 +54,11 @@ type UpdateOptions struct {
 	// the release (RFC 0058 decision 5), rather than ones given with --set:
 	// a resume reads them from pending again, and asks for none of them.
 	pending []string
+
+	// pendingDone is a resume whose run recorded what it took from pending
+	// already: what is pending now is for a later update, so it takes none
+	// of it and clears none of it.
+	pendingDone bool
 }
 
 // Update installs a new release over the current one.
@@ -175,6 +180,8 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err := refuseSetOfManaged(inst, staged, opts.Parameters, opts.Force); err != nil {
 		return Result{}, err
 	}
+	// From the installation as recorded, before the values are merged in.
+	opts.pendingDone = prior != nil && (stepSucceeded(*prior, "record-parameters") || recordLanded(inst, *prior))
 	if inst, opts.Parameters, opts.pending, err = withUpdateParameters(inst, staged, opts, prior); err != nil {
 		return Result{}, err
 	}
@@ -193,7 +200,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	}
 	// What its record step drops of what was left pending, named before it
 	// runs, as the journal names every value it is given (RFC 0058 decision 7).
-	if dropped := undeclaredPending(inst, staged); len(dropped) > 0 && clearsPending(inst, prior) {
+	if dropped := undeclaredPending(inst, staged); len(dropped) > 0 && clearsPending(inst, opts) {
 		op.Flags["pending_dropped"] = strings.Join(dropped, ",")
 	}
 	// A resume continues its run, so its record keeps every name and digest
@@ -522,7 +529,7 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 		}
 	}
 	pending := map[string]string{}
-	if !recordedAlready {
+	if !opts.pendingDone {
 		pending = declaredValues(inst.PendingParameters(), declared)
 		for name := range opts.Parameters {
 			delete(pending, name)
@@ -568,13 +575,7 @@ func withUpdateParameters(inst domain.Installation, staged domain.Release, opts 
 			}
 		}
 		for _, name := range strings.Split(prior.Flags["pending"], ",") {
-			_, still := given[name]
-			// Recorded by its run's record step, whose write cleared
-			// pending before the journal heard the step finish: the
-			// value is the one the run took, by its digest.
-			recorded, ok := inst.Parameters[name]
-			landed := ok && slices.Contains(journalled, parameterDigest(name, recorded))
-			if name != "" && !still && !recordedAlready && !landed {
+			if _, still := given[name]; name != "" && !still && !opts.pendingDone {
 				changed = append(changed, name)
 			}
 		}
@@ -745,7 +746,7 @@ func updateSteps(
 	// nothing left to record.
 	// And to clear what a document left pending, recorded or not (RFC 0058
 	// decision 7).
-	clears := clearsPending(inst, prior)
+	clears := clearsPending(inst, opts)
 	if len(opts.Parameters) > 0 || clears || (prior != nil && journalledStep(*prior, "record-parameters")) {
 		steps = append(steps, stepRecordGivenParameters(d, opts.Parameters, staged, clears))
 	}
