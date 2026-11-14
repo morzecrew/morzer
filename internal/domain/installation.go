@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -278,12 +279,12 @@ type PendingValues struct {
 	Parameters map[string]string `yaml:"parameters" json:"parameters"`
 }
 
-// PendingParameters is the values pending holds, nil when none.
+// PendingParameters is a copy of the values pending holds, nil when none.
 func (i Installation) PendingParameters() map[string]string {
 	if i.Pending == nil {
 		return nil
 	}
-	return i.Pending.Parameters
+	return maps.Clone(i.Pending.Parameters)
 }
 
 // RuntimeName is the runtime this installation runs on.

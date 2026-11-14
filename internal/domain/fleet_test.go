@@ -155,6 +155,15 @@ func TestARowReadBackIsBoundedWhole(t *testing.T) {
 	assert.NotContains(t, row.Sync.Pending[0], "\x1b", "an escape sequence survived in sync.pending")
 }
 
+// The pending values come back as a copy: a caller that edits them must not
+// edit the installation it read.
+func TestPendingParametersAreACopy(t *testing.T) {
+	inst := domain.Installation{Pending: &domain.PendingValues{Parameters: map[string]string{"a": "1"}}}
+	inst.PendingParameters()["a"] = "2"
+	assert.Equal(t, "1", inst.Pending.Parameters["a"])
+	assert.Nil(t, domain.Installation{}.PendingParameters())
+}
+
 // The key is built from checked components, in both directions.
 func TestTheKeyRefusesWhatItWouldNotHaveWritten(t *testing.T) {
 	key, err := domain.FleetKey("demo", "op_01K2Z9QW8ERT6YH3VXNBM5CDFG")
