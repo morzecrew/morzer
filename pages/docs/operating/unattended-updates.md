@@ -98,9 +98,11 @@ attended update with the value:
 ```
 
 On a machine that follows an authority, a document can give the value instead.
-A value it left pending for the staged release counts as given, and the tick
-installs the release with it. A pending value the release refuses holds the
-release too, and the tick says it waits for the authority's next document. See
+A value it left pending counts as given for a release that declares the name,
+and the tick installs that release with it. If the channel has moved on to one
+that does not declare it, the update drops the value and names it. A pending
+value the release refuses holds the release too, and the tick says it waits
+for the authority's next document. See
 [crossing a release that adds a managed name](managing-from-elsewhere.md#crossing-a-release-that-adds-or-renames-a-managed-name).
 
 ## Turning it on
