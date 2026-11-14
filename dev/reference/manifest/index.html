@@ -4273,6 +4273,11 @@ reached at.</p>
 <td>string</td>
 <td>Required. A task the release declares under <code>tasks</code>. It runs with no arguments and no inputs, so it must take none, and on every machine, so its <code>modes</code> must not leave one out. Its stdout is the facts, at most 64 KiB.</td>
 </tr>
+<tr>
+<td><code>refresh</code></td>
+<td>string</td>
+<td><code>publish</code> also runs the task before every <a href="../fleet/"><code>fleet publish</code></a>, the hourly timer's and an operator's, for facts that change while the installation does not, such as a canary's view of the relay it watches. Absent, the task runs after operations only.</td>
+</tr>
 </tbody>
 </table>
 <p>The task runs after every successful apply, start, update, rollback, restore
@@ -4285,7 +4290,14 @@ previous facts, and the row says it failed.</p>
 a fact, and a task that prints a credential sends it to the authority.</p>
 <p>A release declaring <code>published</code> needs <code>compatibility.min_manager_version</code> of at
 least <code>0.16.0</code>, for the reason <code>managed</code> does. Either block written empty needs
-it too: an older manager refuses the field, not its contents.</p>
+it too: an older manager refuses the field, not its contents. One declaring
+<code>refresh</code> needs at least <code>0.17.0</code>.</p>
+<p>Each run is a task operation, journalled and attested, so <code>refresh: publish</code>
+adds one of each per publish, every hour on the default schedule. A release
+that asks for it should tell operators to set
+<a href="../attestations/#keeping-fewer-of-them"><code>retention.attestations</code></a>. Output that has not
+changed keeps the facts the machine has, so the row's <code>facts_digest</code> stays the
+same; the facts and the row are still written to the target on every publish.</p>
 <h2 id="health">health<a class="headerlink" href="#health" title="Permanent link">&para;</a></h2>
 <p><code>checks</code> is a list; each entry has a unique <code>name</code>, a <code>type</code>, a <code>timeout</code>
 (default <code>120s</code>) and an optional <code>start_period</code>.</p>

@@ -2946,9 +2946,12 @@ release names a task under <a href="../manifest/#published"><code>published</cod
 machine sets <code>sync.recipient</code>, the authority's age recipient. Without either,
 nothing is published.</p>
 <p>After every successful apply, start, update, rollback, restore and
-configuration change, the task runs with no arguments. It never runs after
-<code>init</code>, which starts nothing, and gives way when another operation holds the
-lock. Its stdout, at most 64 KiB, is encrypted to <code>sync.recipient</code> and signed
+configuration change, the task runs with no arguments. A release that declares
+<a href="../manifest/#published"><code>published.refresh: publish</code></a> also has it run before
+every <code>fleet publish</code>, the timer's and an operator's, though not before the row
+a sync publishes. It never runs after <code>init</code>, which starts nothing, and gives
+way when another operation holds the lock. Output that has not changed since
+the last run keeps the facts the machine has. Its stdout, at most 64 KiB, is encrypted to <code>sync.recipient</code> and signed
 with the machine's key, with a trusted comment naming the installation.</p>
 <p>A row publish on a machine that holds facts writes them beside the row as
 <code>fleet/&lt;product&gt;/&lt;installation-id&gt;/facts.age</code> and its <code>.minisig</code>, then the row,
