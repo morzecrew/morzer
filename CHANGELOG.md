@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A refused `init --repair` keeps the installation it was asked to repair.
   A `--profile` the release does not declare used to delete its state.
 
+- A refused `init --repair` of the installed version leaves that release as
+  it was. A bundle that failed its signature check used to rewrite the
+  installed release first, which then no longer matched its record.
+
+- `release diff` reports a change to a profile named `combinable` and to the
+  combinable list beside it. Each used to hide the other.
+
 ## [0.17.1] - 2026-11-15
 
 A release that declares no secrets, installed with no recovery recipient, can
