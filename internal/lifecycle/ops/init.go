@@ -608,6 +608,10 @@ const keyReleaseDirExisted = "release-dir-existed"
 // which its compensation makes current again.
 const keyReplacedRelease = "replaced-release"
 
+// keyReplacedInstallation is the installation a repair's write-installation
+// replaced, which its compensation saves back.
+const keyReplacedInstallation = "replaced-installation"
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -622,6 +626,11 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 				return err
 			}
 			st.Set(keyInstallationExisted, existed)
+			if existed {
+				if replaced, err := d.State.LoadInstallation(ctx); err == nil {
+					st.Set(keyReplacedInstallation, replaced)
+				}
+			}
 			inst, err := d.buildInstallation(ctx, st, opts)
 			if err != nil {
 				return err
@@ -630,12 +639,20 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 
 			return d.saveInstallation(ctx, inst)
 		},
-		// Only what this step created. A repair finds the installation
-		// there, and one it refused, a selection the release will not run
-		// included, removed the installation it was asked to repair.
+		// Only what this step created is removed. A repair finds the
+		// installation there, and one it refused, a selection the release
+		// will not run included, removed the installation it was asked to
+		// repair. What a repair replaced is saved back instead, as
+		// stage-release makes the release it replaced current again, so
+		// the two still agree.
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			existed, known := st.Get(keyInstallationExisted)
 			if was, ok := existed.(bool); !known || !ok || was {
+				if replaced, ok := st.Get(keyReplacedInstallation); ok {
+					if inst, ok := replaced.(domain.Installation); ok {
+						return d.saveInstallation(ctx, inst)
+					}
+				}
 				return nil
 			}
 			_ = os.Remove(d.Paths.InstallationFile())

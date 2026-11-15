@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -167,6 +168,29 @@ func TestARefusedRepairToAnotherReleaseKeepsTheCurrentOne(t *testing.T) {
 	root, err := filepath.EvalSymlinks(before.Root)
 	require.NoError(t, err)
 	assert.Equal(t, root, target)
+}
+
+// A repair that fails after it wrote the installation puts back the one it
+// replaced with the release it replaced, so the two still agree.
+func TestARepairThatFailsLaterKeepsTheInstallationItReplaced(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	realIdentity(t, h)
+	before := installation(t, h)
+	h.Secrets.Fail["Load"] = errors.New("the secret store cannot be read")
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", ReleasePath: stageUpgradeSource(t, h), Domains: []string{"repaired.example"}, Repair: true,
+		NoRecoveryKey: true, GenerateSecrets: true,
+	})
+
+	require.ErrorContains(t, err, "the secret store cannot be read")
+	assert.Equal(t, before.Domains, installation(t, h).Domains, "the repair kept the settings of the release it gave back")
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, h.Release.Root, current.Root)
 }
 
 // The remedy the refusals name works: a recorded profile this platform does
