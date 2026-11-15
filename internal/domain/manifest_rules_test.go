@@ -87,7 +87,7 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 		"a parameter that is required and has a default": {
 			func(m *Manifest) {
 				m.Parameters = map[string]ParameterSpec{
-					"http_port": {Type: ParamPort, Required: true, Default: "8080"},
+					"http_port": {Type: ParamPort, Required: true, Default: new("8080")},
 				}
 			},
 			"parameters.http_port",

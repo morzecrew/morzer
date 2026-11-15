@@ -49,17 +49,18 @@ func TestATextValueSurvivesTheStateAndTheReport(t *testing.T) {
 // by a final newline is not (decision 14).
 func TestADiffDescribesATextDefaultByItsLinesAndDigest(t *testing.T) {
 	text := func(def string) domain.ParameterSpec {
-		return domain.ParameterSpec{Type: domain.ParamText, Default: def}
+		return domain.ParameterSpec{Type: domain.ParamText, Default: new(def)}
 	}
 
-	assert.Equal(t, "text, no default", describeParameter(text("")))
+	assert.Equal(t, "text, no default", describeParameter(domain.ParameterSpec{Type: domain.ParamText}))
+	assert.Equal(t, "text, empty by default", describeParameter(text("")))
 	described := describeParameter(text("a\nb"))
 	assert.Regexp(t, `^text, default of 2 lines \(sha256 [0-9a-f]{12}\)$`, described)
 	assert.Equal(t, described, describeParameter(text("a\nb\n")),
 		"a final newline the deployment never sees reads as a change")
 	assert.NotEqual(t, described, describeParameter(text("a\nc")), "a change on the second line is not listed")
 	assert.Equal(t, "port, default 8080",
-		describeParameter(domain.ParameterSpec{Type: domain.ParamPort, Default: "8080"}))
+		describeParameter(domain.ParameterSpec{Type: domain.ParamPort, Default: new("8080")}))
 }
 
 // The summary names a text parameter with its line counts before and after,
@@ -67,8 +68,8 @@ func TestADiffDescribesATextDefaultByItsLinesAndDigest(t *testing.T) {
 func TestTheSummaryCountsATextParametersLines(t *testing.T) {
 	rel := domain.Release{Manifest: domain.Manifest{Parameters: map[string]domain.ParameterSpec{
 		"rules":     {Type: domain.ParamText},
-		"motd":      {Type: domain.ParamText, Default: "welcome\nto demo\n"},
-		"http_port": {Type: domain.ParamPort, Default: "8080"},
+		"motd":      {Type: domain.ParamText, Default: new("welcome\nto demo\n")},
+		"http_port": {Type: domain.ParamPort, Default: new("8080")},
 	}}}
 
 	got := summaryNames(rel,

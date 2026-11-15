@@ -28,7 +28,7 @@ func syntheticRelease() (domain.Release, domain.SecretSchema) {
 		},
 	}}
 	rel.Manifest.Parameters = map[string]domain.ParameterSpec{
-		"http_port": {Type: domain.ParamPort, Default: "8080"},
+		"http_port": {Type: domain.ParamPort, Default: new("8080")},
 		"log_level": {Type: domain.ParamEnum, Values: []string{"info", "debug"}},
 	}
 
@@ -127,7 +127,7 @@ func TestASyntheticParameterSatisfiesItsDeclaration(t *testing.T) {
 		"timeout":  {Type: domain.ParamDuration},
 		"capacity": {Type: domain.ParamBytes},
 		"rules":    {Type: domain.ParamText},
-		"defaults": {Type: domain.ParamPort, Default: "08080"},
+		"defaults": {Type: domain.ParamPort, Default: new("08080")},
 	}
 
 	params := syntheticParameters(specs)
@@ -159,6 +159,15 @@ func TestASyntheticParameterSatisfiesItsDeclaration(t *testing.T) {
 	// more (RFC 0054 decision 13).
 	if got := domain.LineCount(params["rules"]); got < 2 {
 		t.Errorf("a text parameter's synthetic value has %d line(s), want several", got)
+	}
+
+	// An empty default is what every installation that sets nothing gets,
+	// so the check renders it rather than an invented value (#368).
+	empty := syntheticParameters(map[string]domain.ParameterSpec{
+		"listen": {Type: domain.ParamString, Default: new("")},
+	})
+	if got := empty["listen"]; got != "" {
+		t.Errorf("an empty default rendered as %q", got)
 	}
 }
 

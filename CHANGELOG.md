@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `release diff` reports a change to a profile named `combinable` and to the
   combinable list beside it. Each used to hide the other.
 
+- A parameter can default to the empty string. `init` used to ask for one
+  declared `default: ""` as if it had no default. A `port` or `enum` with
+  that default, or `required` beside it, is now refused when it loads.
+
 ## [0.17.1] - 2026-11-15
 
 A release that declares no secrets, installed with no recovery recipient, can

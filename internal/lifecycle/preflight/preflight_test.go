@@ -660,7 +660,7 @@ func TestCPUs(t *testing.T) {
 func TestRequiredParameters(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"admin_email": {Type: domain.ParamString, Required: true},
-		"http_port":   {Type: domain.ParamPort, Default: "8080"},
+		"http_port":   {Type: domain.ParamPort, Default: new("8080")},
 	}
 
 	t.Run("unset", func(t *testing.T) {

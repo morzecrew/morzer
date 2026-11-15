@@ -13,7 +13,7 @@ import (
 // health probe all derive from one parameter.
 func portedManifest() *domain.Manifest {
 	m := validManifestWithParameters(map[string]domain.ParameterSpec{
-		"http_port": {Type: domain.ParamPort, Default: "18080"},
+		"http_port": {Type: domain.ParamPort, Default: new("18080")},
 	})
 	m.Requirements.Ports = []domain.PortSpec{"{{ .Parameters.http_port }}"}
 	m.Health.Checks = []domain.HealthCheck{
@@ -123,7 +123,7 @@ func TestAnUnparseableTemplateIsMatchedByItsSentinel(t *testing.T) {
 
 func TestAPortThatResolvesToNonsenseIsRefused(t *testing.T) {
 	m := validManifestWithParameters(map[string]domain.ParameterSpec{
-		"listen": {Type: domain.ParamString, Default: "http"},
+		"listen": {Type: domain.ParamString, Default: new("http")},
 	})
 	m.Requirements.Ports = []domain.PortSpec{"{{ .Parameters.listen }}"}
 

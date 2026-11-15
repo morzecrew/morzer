@@ -19,7 +19,7 @@ type ConfigEntry struct {
 	Name        string               `json:"name"`
 	Type        domain.ParameterType `json:"type"`
 	Value       string               `json:"value"`
-	Default     string               `json:"default,omitempty"`
+	Default     *string              `json:"default,omitempty"`
 	Description string               `json:"description,omitempty"`
 
 	// Source is where Value came from: "installation" when the operator
@@ -78,11 +78,15 @@ func ConfigList(ctx context.Context, d *Deps) (ConfigReport, error) {
 		// written as a `|` block ends in a newline the deployment never
 		// sees (RFC 0054 decision 10). An invalid one is refused when the
 		// release loads.
-		def := spec.Default
-		if parsed, err := spec.Parse(spec.Default); err == nil && spec.Default != "" {
-			def = parsed
+		var def *string
+		value, source := "", "release"
+		if spec.Default != nil {
+			value = *spec.Default
+			if parsed, err := spec.Parse(value); err == nil {
+				value = parsed
+			}
+			def = new(value)
 		}
-		value, source := def, "release"
 		if set, ok := inst.Parameters[name]; ok {
 			// Parsed rather than echoed, so `list` shows what the
 			// deployment will actually receive.
@@ -458,8 +462,8 @@ func summaryNames(rel domain.Release, before, after map[string]string, changed [
 // value or the default, parsed.
 func effectiveValue(spec domain.ParameterSpec, set map[string]string, name string) string {
 	raw, ok := set[name]
-	if !ok {
-		raw = spec.Default
+	if !ok && spec.Default != nil {
+		raw = *spec.Default
 	}
 	if value, err := spec.Parse(raw); err == nil {
 		return value

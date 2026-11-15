@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // Parameters are the only supported way an operator value reaches a Compose
@@ -52,6 +55,45 @@ func TestAnOperatorValueReachesCompose(t *testing.T) {
 		"a parameter the operator did not set keeps its default")
 }
 
+// A release can default a parameter to the empty string: `init` installs it
+// without asking, and Compose receives the variable set and empty, which
+// `${DEMO_PARAM_LISTEN:-}` reads as unset (#368).
+func TestAnEmptyDefaultIsInstalledWithoutBeingAskedFor(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
+		"parameters:\n", "parameters:\n  listen:\n    type: string\n    default: \"\"\n", 1)), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+
+	require.NoError(t, err)
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	rel, err := release.Load(current.Root)
+	require.NoError(t, err)
+	cfg, err := h.Deps.RuntimeConfigFor(rel, inst)
+	require.NoError(t, err)
+	value, ok := cfg.Env["DEMO_PARAM_LISTEN"]
+	assert.True(t, ok, "a parameter with an empty default was not exported")
+	assert.Empty(t, value)
+
+	// And `config get --json` says so, where no default leaves the key out.
+	entry, err := ops.ConfigGet(ctx, h.Deps, "listen")
+	require.NoError(t, err)
+	require.NotNil(t, entry.Default, "an empty default was reported as no default")
+	assert.Empty(t, *entry.Default)
+}
+
 // TestAParameterCannotShadowAManagedVariable pins the namespacing decision.
 //
 // With a flat <PRODUCT>_<NAME>, a parameter named `data_dir` would overwrite
@@ -63,9 +105,9 @@ func TestAParameterCannotShadowAManagedVariable(t *testing.T) {
 
 	rel := h.Release
 	rel.Manifest.Parameters = map[string]domain.ParameterSpec{
-		"data_dir":    {Type: domain.ParamString, Default: "/tmp/attacker"},
-		"secrets_dir": {Type: domain.ParamString, Default: "/tmp/attacker"},
-		"config_file": {Type: domain.ParamString, Default: "/tmp/attacker"},
+		"data_dir":    {Type: domain.ParamString, Default: new("/tmp/attacker")},
+		"secrets_dir": {Type: domain.ParamString, Default: new("/tmp/attacker")},
+		"config_file": {Type: domain.ParamString, Default: new("/tmp/attacker")},
 	}
 
 	cfg, err := h.Deps.RuntimeConfigFor(rel, inst)

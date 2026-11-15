@@ -52,9 +52,13 @@ const TextParameterLimit ByteSize = 64 * KiB
 // declared, audited, tmpfs-rendered path and this must never become a second
 // one.
 type ParameterSpec struct {
-	Type        ParameterType `yaml:"type" json:"type"`
-	Default     string        `yaml:"default" json:"default,omitempty"`
-	Description string        `yaml:"description" json:"description,omitempty"`
+	Type ParameterType `yaml:"type" json:"type"`
+
+	// Default is nil when the release declares none, which `init` asks the
+	// operator for. `default: ""` is a default, the empty one: an empty host
+	// address is what Compose reads as every address (#368).
+	Default     *string `yaml:"default" json:"default,omitempty"`
+	Description string  `yaml:"description" json:"description,omitempty"`
 
 	// Values is the permitted set for an enum, and is meaningless otherwise.
 	Values []string `yaml:"values" json:"values,omitempty"`
@@ -119,15 +123,15 @@ func ValidateParameters(params map[string]ParameterSpec, v *validationErrors) {
 		// is what stops `required` becoming decorative -- a winner
 		// picked silently would leave the vendor believing they had
 		// made the choice mandatory.
-		if spec.Required && spec.Default != "" {
+		if spec.Required && spec.Default != nil {
 			v.add(field, "cannot be both required and have a default")
 		}
 
 		// A default that does not satisfy its own declaration is the
 		// worst kind of manifest bug: nothing fails until an operator
 		// who never touched the parameter runs `apply`.
-		if spec.Default != "" {
-			if _, err := spec.Parse(spec.Default); err != nil {
+		if spec.Default != nil {
+			if _, err := spec.Parse(*spec.Default); err != nil {
 				v.add(field+".default", "%s", AsError(err).Message)
 			}
 		}
@@ -299,11 +303,11 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 	// the update before anything stops, since the value cannot be set
 	// before the release that declares it is installed (#346).
 	for name, spec := range declared {
-		if spec.Default == "" {
+		if spec.Default == nil {
 			out[name] = ""
 			continue
 		}
-		value, err := spec.Parse(spec.Default)
+		value, err := spec.Parse(*spec.Default)
 		if err != nil {
 			return nil, ValidationError(err, "release parameter %q has an invalid default", name)
 		}
@@ -335,7 +339,7 @@ func ResolveParameters(declared map[string]ParameterSpec, set map[string]string)
 func MissingValues(declared map[string]ParameterSpec, set map[string]string) []string {
 	var missing []string
 	for name, spec := range declared {
-		if spec.Default != "" {
+		if spec.Default != nil {
 			continue
 		}
 		if value, ok := set[name]; !ok || strings.TrimSpace(value) == "" {
@@ -428,8 +432,12 @@ func DescribeParameter(name string, spec ParameterSpec) string {
 	} else {
 		fmt.Fprintf(&b, "%s takes a %s value", name, spec.Type)
 	}
-	if spec.Default != "" {
-		fmt.Fprintf(&b, "; default %s", spec.Default)
+	switch {
+	case spec.Default == nil:
+	case *spec.Default == "":
+		fmt.Fprintf(&b, "; empty by default")
+	default:
+		fmt.Fprintf(&b, "; default %s", *spec.Default)
 	}
 	if spec.Description != "" {
 		fmt.Fprintf(&b, " -- %s", spec.Description)

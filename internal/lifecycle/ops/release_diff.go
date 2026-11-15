@@ -125,22 +125,25 @@ func identity(s string) string { return s }
 // describeParameter is what of a parameter the comparison reads: its type and
 // its default.
 func describeParameter(p domain.ParameterSpec) string {
-	if p.Default == "" {
+	switch {
+	case p.Default == nil:
 		return string(p.Type) + ", no default"
+	case *p.Default == "":
+		return string(p.Type) + ", empty by default"
 	}
 	// A line count and a digest of the value delivered: the whole of a
 	// multi-line default does not fit a one-line row, and the digest keeps a
 	// change on any line listed (RFC 0054 decision 14).
 	if p.Type == domain.ParamText {
-		value, err := p.Parse(p.Default)
+		value, err := p.Parse(*p.Default)
 		if err != nil {
-			value = p.Default
+			value = *p.Default
 		}
 		sum := sha256.Sum256([]byte(value))
 		return fmt.Sprintf("%s, default of %s (sha256 %x)",
 			p.Type, domain.Lines(domain.LineCount(value)), sum[:6])
 	}
-	return string(p.Type) + ", default " + p.Default
+	return string(p.Type) + ", default " + *p.Default
 }
 
 // describePreflight is the whole of a check's declaration, so a change to any
