@@ -1775,6 +1775,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platforms
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2605,6 +2622,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#platforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Platforms
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3293,6 +3327,12 @@ declaring several carries a set of files for each.</p>
 <td>The profiles that may run together, in the order their files are layered. See <a href="#combinable-profiles">Combinable profiles</a>.</td>
 </tr>
 <tr>
+<td><code>platforms</code></td>
+<td>map</td>
+<td style="text-align: center;"></td>
+<td>Profiles narrowed to some platforms, each a list. See <a href="#platforms">Platforms</a>.</td>
+</tr>
+<tr>
 <td><code>options</code></td>
 <td>map</td>
 <td style="text-align: center;"></td>
@@ -3461,9 +3501,14 @@ created with refuses the change as well.</p>
 <td>Accepted machine architectures, e.g. <code>[amd64, arm64]</code>.</td>
 </tr>
 <tr>
+<td><code>platforms</code></td>
+<td>list</td>
+<td>The operating systems the release is made for: <code>linux</code>, <code>darwin</code>. Absent, <code>[linux]</code>. See <a href="#platforms">Platforms</a>.</td>
+</tr>
+<tr>
 <td><code>os</code></td>
 <td>list</td>
-<td>Accepted distributions. Each entry has an <code>id</code> and a <code>version</code> constraint.</td>
+<td>The distributions the release was tested on. Each entry has an <code>id</code> and a <code>version</code> constraint. A mismatch warns.</td>
 </tr>
 <tr>
 <td><code>tools</code></td>
@@ -3492,6 +3537,49 @@ created with refuses the change as well.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="platforms">Platforms<a class="headerlink" href="#platforms" title="Permanent link">&para;</a></h3>
+<p>A release runs only on the platforms <code>requirements.platforms</code> lists:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">requirements</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">platforms</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">linux</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">darwin</span><span class="p p-Indicator">]</span>
+<span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compose</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/compose.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">tun</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">compose/tun.yaml</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">platforms</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">tun</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">linux</span><span class="p p-Indicator">]</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.18.0"</span>
+</code></pre></div>
+<ul>
+<li><strong>Absent, the list is <code>[linux]</code>.</strong> A release that does not declare it is
+  refused on a Mac. Add <code>darwin</code> once the release runs there.</li>
+<li><strong>A release not made for the machine is refused.</strong> <code>init --dry-run</code>,
+  <code>update</code> and <code>rollback</code> refuse it before they start, exit 9. <code>init</code> refuses
+  it once it has fetched the release, and leaves nothing installed, exit 11.
+  The <code>system.platform</code> check in <code>apply</code> and <code>doctor</code> covers a machine whose
+  state arrived another way, such as a Linux backup restored on a Mac.</li>
+<li><strong><code>runtimes.&lt;runtime&gt;.platforms</code> narrows single profiles.</strong> A profile listed
+  there is refused on a platform it does not name, wherever a selection is
+  deployed or recorded: <code>init --profile</code>, <code>--profile</code>, <code>config set
+  installation.profile</code>, and a recorded selection at <code>update</code> and <code>rollback</code>.
+  Reading, stopping and removing what runs still work, and so does
+  <code>config set installation.profile</code> to a selection this platform runs. A
+  profile not listed runs wherever the release does.</li>
+<li><strong>Mark a profile <code>[linux]</code> when a container on a Mac cannot do what it
+  promises.</strong> On a Mac, containers run in the engine's Linux VM, so a
+  container's host network and <code>/dev/net/tun</code> are the VM's. A TUN profile
+  there would route the VM and look like success.</li>
+</ul>
+<p>Each list names <code>linux</code> or <code>darwin</code>, at least one, each once. A profile's
+list stays within the release's, and names a profile the runtime declares.
+Either key needs <code>compatibility.min_manager_version</code> of at least <code>0.18.0</code>,
+because an older manager refuses it as unknown. <code>release verify</code> checks the
+shape. It cannot check that a release works on a Mac.</p>
+<p><code>platforms</code> is not <code>os</code>. <code>os</code> lists the Linux distributions a release was
+tested on. It only warns, and passes when empty. On a Mac it passes, saying the
+list names Linux distributions. <code>os: [darwin]</code> fails to decode, because each
+<code>os</code> entry is a mapping with an <code>id</code>.</p>
 <h2 id="bundle">bundle<a class="headerlink" href="#bundle" title="Permanent link">&para;</a></h2>
 <p>What the release says about its own packaging, as distinct from what it needs
 of the host.</p>
