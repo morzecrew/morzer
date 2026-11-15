@@ -361,6 +361,17 @@ evidence: internal/lifecycle/ops/doctor.go:897-925
 action: decided
 ```
 
+```divergence
+decision: 16
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T11:12:27Z
+attempt: 1
+claim: A group nested in the one that owns RunDir's parent gives its members that group's access, and the check read only direct members and primary groups. It now reads the owning group's `NestedGroups` too and counts each nested group as a writer, by name. On the author's M3 Mac, `ls -ld /private/var/run` printed `drwxrwxr-x root daemon` and `dscl . -read /Groups/daemon GroupMembership` printed `GroupMembership: root`, so a stock machine passes with no direct member but root
+evidence: internal/adapters/dirservice/dirservice.go:53-75
+action: decided
+```
+
 ## The FileVault gate
 
 On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.
