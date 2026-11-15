@@ -311,6 +311,21 @@ func (m Manifest) ProfileNames() []string {
 	return out
 }
 
+// ProfileNamesOn is ProfileNames less the profiles a runtime narrows away from
+// platform, for a question that should offer only what it will accept (RFC
+// 0055 decision 3).
+func (m Manifest) ProfileNamesOn(platform string) []string {
+	declared := m.DeclaredRuntimes()
+	return slices.DeleteFunc(m.ProfileNames(), func(name string) bool {
+		for _, decl := range declared {
+			if runs, _ := decl.ProfileRunsOn(name, platform); !runs {
+				return true
+			}
+		}
+		return false
+	})
+}
+
 // CombinableNames is every profile a runtime of this release lets run beside
 // others, for `release show`, `release diff` and the synthetic render context.
 //

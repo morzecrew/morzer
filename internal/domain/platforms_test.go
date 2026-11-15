@@ -61,6 +61,11 @@ func TestAProfileIsRefusedOnAPlatformItIsNotMadeFor(t *testing.T) {
 	assert.Equal(t, `profile "xdns" does not run on darwin`, AsError(err).Message)
 	assert.Equal(t, "this release runs it on linux only", AsError(err).Hint)
 
+	// A question offers only what this platform accepts.
+	m := manifestForPlatforms(nil, map[string][]Platform{"xdns": {PlatformLinux}})
+	assert.Equal(t, []string{"embedded", "external-db", "xdns", "xhttp-reality"}, m.ProfileNamesOn("linux"))
+	assert.Equal(t, []string{"embedded", "external-db", "xhttp-reality"}, m.ProfileNamesOn("darwin"))
+
 	// Which files a selection layers does not depend on where it runs.
 	files, err := decl.FilesFor([]string{"xdns"})
 	require.NoError(t, err)

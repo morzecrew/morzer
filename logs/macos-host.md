@@ -116,3 +116,26 @@ evidence: internal/lifecycle/preflight/preflight.go:204-207
 action: decided
 proposal: UNLISTED — on darwin `system.os` passes, saying the release's list names Linux distributions
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T05:26:16Z
+attempt: 1
+claim: §5.1 refuses a narrowed profile wherever a selection is checked, and the `init` wizard offers every profile a bundle declares, so on a Mac it would offer one that `init` then refuses. The wizard offers only the profiles that run on this platform.
+evidence: internal/cli/init_wizard.go:370
+action: decided
+proposal: UNLISTED — a question that offers profiles offers only those that run on this platform
+```
+
+```divergence
+decision: 2
+grade: LOCKED
+kind: resolved
+at: 2026-11-15T05:26:16Z
+attempt: 1
+claim: touched the governed area; a release runs on darwin only when `requirements.platforms` lists it, absent reads as `[linux]`, and every gate reads that one answer
+evidence: internal/domain/manifest.go:868-889
+action: decided
+```
