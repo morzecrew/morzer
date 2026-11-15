@@ -300,3 +300,39 @@ func TestARefusedPluginKeepsThePairCheckedBefore(t *testing.T) {
 	leftovers, _ := filepath.Glob(filepath.Join(r.managerDir, "docker", "*", "*.new"))
 	assert.Empty(t, leftovers)
 }
+
+// On an installation the config is rebuilt from root's own before anything
+// reaches a registry, an update's download of its release included, so a
+// helper is never named that was not checked by this process, and each kept
+// one is linked first on PATH, where its name resolves to the file checked.
+func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	r := newRig(t)
+	dir := filepath.Join(r.managerDir, "docker")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"credsStore": "stale"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), []byte(`{
+		"auths": {"ghcr.io": {}}, "credsStore": "desktop", "credHelpers": {"b.example": "vault"}
+	}`), 0o600))
+	r.onPath["docker-credential-desktop"] = "/usr/local/bin/docker-credential-desktop"
+	r.replaceable["/usr/local/bin/docker-credential-desktop"] = "uid 501"
+	r.onPath["docker-credential-vault"] = "/usr/local/sbin/docker-credential-vault"
+	engine := r.engine()
+	engine.setPath = true
+
+	require.NoError(t, engine.Prepare())
+
+	config := read(t, filepath.Join(dir, "config.json"))
+	assert.NotContains(t, config, "stale")
+	assert.NotContains(t, config, `"credsStore"`)
+	link, err := os.Readlink(filepath.Join(dir, "bin", "docker-credential-vault"))
+	require.NoError(t, err)
+	assert.Equal(t, "/usr/local/sbin/docker-credential-vault", link)
+	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Join(dir, "bin")+string(os.PathListSeparator)))
+
+	// Before `init` creates the manager directory there is nothing to read,
+	// and nothing is made.
+	r.managerDir = filepath.Join(r.managerDir, "missing")
+	require.NoError(t, r.engine().Prepare())
+	assert.NoDirExists(t, r.managerDir)
+}

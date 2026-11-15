@@ -147,14 +147,54 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		return ports.EngineCLI{}, err
 	}
 	cli.Verified = Verified
-	if e.setPath {
-		path := filepath.Dir(cli.Path) + string(os.PathListSeparator) + startEnv()["PATH"]
-		if err := os.Setenv("PATH", path); err != nil {
-			return ports.EngineCLI{}, domain.Internal(err, "cannot put %s first on PATH", filepath.Dir(cli.Path))
-		}
+	if err := e.putFirstOnPath(filepath.Dir(cli.Path)); err != nil {
+		return ports.EngineCLI{}, err
 	}
 	e.cli = &cli
 	return cli, nil
+}
+
+// Prepare rebuilds the manager's config from root's own, and puts its CLI
+// directory first on PATH, before anything reaches a registry, an update's
+// download of its release included: a config an earlier run left would name
+// helpers this process has not checked. Before `init` creates the manager
+// directory there is nothing to rebuild, and a registry is reached
+// anonymously (logs/macos-host.md).
+func (e *Engine) Prepare() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, err := os.Stat(filepath.Dir(e.dir)); err != nil {
+		return nil
+	}
+	// First, so a refusal below leaves no config to read.
+	if err := os.Remove(filepath.Join(e.dir, "config.json")); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.Internal(err, "cannot replace the docker CLI's config in %s", e.dir)
+	}
+	if err := atomicfs.MkdirMineNoFollow(e.dir, 0o700); err != nil {
+		return err
+	}
+	if _, err := e.writeConfig(filepath.Join(e.dir, "cli-plugins")); err != nil {
+		return err
+	}
+	return e.putFirstOnPath("")
+}
+
+// putFirstOnPath puts the directory of the checked helpers, and the settled
+// CLI's when it is elsewhere, first on the process's PATH, so every process the
+// manager starts finds those by name (decision 22).
+func (e *Engine) putFirstOnPath(cliDir string) error {
+	if !e.setPath {
+		return nil
+	}
+	dirs := []string{filepath.Join(e.dir, "bin")}
+	if cliDir != "" && cliDir != dirs[0] {
+		dirs = append(dirs, cliDir)
+	}
+	path := strings.Join(append(dirs, startEnv()["PATH"]), string(os.PathListSeparator))
+	if err := os.Setenv("PATH", path); err != nil {
+		return domain.Internal(err, "cannot put %s first on PATH", strings.Join(dirs, ", "))
+	}
+	return nil
 }
 
 // Runner runs every docker command with the settled CLI, and refuses one when
@@ -320,14 +360,20 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 		out["auths"] = auths
 	}
 	var dropped []string
+	linked := map[string]string{}
+	keep := func(name string) bool {
+		path, ok := e.checkedHelper(name)
+		if ok {
+			linked["docker-credential-"+name] = path
+		} else if !slices.Contains(dropped, name) {
+			dropped = append(dropped, name)
+		}
+		return ok
+	}
 	if raw, err := e.rootConfigField("credsStore"); err == nil && raw != nil {
 		var name string
-		if json.Unmarshal(raw, &name) == nil && name != "" {
-			if e.helperTrusted(name) {
-				out["credsStore"] = name
-			} else {
-				dropped = append(dropped, name)
-			}
+		if json.Unmarshal(raw, &name) == nil && name != "" && keep(name) {
+			out["credsStore"] = name
 		}
 	}
 	if raw, err := e.rootConfigField("credHelpers"); err == nil && raw != nil {
@@ -335,16 +381,17 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 		if json.Unmarshal(raw, &helpers) == nil {
 			kept := map[string]string{}
 			for registry, name := range helpers {
-				if e.helperTrusted(name) {
+				if keep(name) {
 					kept[registry] = name
-				} else if !slices.Contains(dropped, name) {
-					dropped = append(dropped, name)
 				}
 			}
 			if len(kept) > 0 {
 				out["credHelpers"] = kept
 			}
 		}
+	}
+	if err := e.linkHelpers(linked); err != nil {
+		return nil, err
 	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
@@ -354,13 +401,38 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 	return dropped, atomicfs.WriteFile(filepath.Join(e.dir, "config.json"), data, 0o600)
 }
 
-func (e *Engine) helperTrusted(name string) bool {
+// checkedHelper is where docker-credential-<name> is on root's PATH, when
+// nobody but root can replace it.
+func (e *Engine) checkedHelper(name string) (string, bool) {
 	path, err := e.look("docker-credential-" + name)
 	if err != nil {
-		return false
+		return "", false
 	}
 	who, err := e.replaceable(path)
-	return err == nil && who == ""
+	return path, err == nil && who == ""
+}
+
+// linkHelpers links each kept helper into the directory first on PATH, and
+// removes the links to ones no longer kept: a helper is run by name, and a
+// directory earlier on root's PATH that someone else can write could
+// otherwise gain one of the same name after it was checked.
+func (e *Engine) linkHelpers(linked map[string]string) error {
+	bin := filepath.Join(e.dir, "bin")
+	if err := atomicfs.MkdirMineNoFollow(bin, 0o700); err != nil {
+		return err
+	}
+	old, _ := filepath.Glob(filepath.Join(bin, "docker-credential-*"))
+	for _, path := range old {
+		if _, ok := linked[filepath.Base(path)]; !ok {
+			_ = os.Remove(path)
+		}
+	}
+	for name, target := range linked {
+		if err := atomicfs.ReplaceSymlink(target, filepath.Join(bin, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // rootConfigField reads one key of root's own config.json; an absent file or

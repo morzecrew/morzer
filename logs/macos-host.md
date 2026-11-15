@@ -560,3 +560,17 @@ evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:698
 action: decided
 proposal: ASSUMED — Docker Desktop is `/Applications/Docker.app` alone; elsewhere, decision 21 applies
 ```
+
+## Review of the engine
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T18:24:16Z
+attempt: 2
+claim: The earlier entry set `DOCKER_CONFIG` at the first command and wrote the config only when the CLI was settled, so on an installation an `update` downloaded its release with the config an earlier run left: stale credentials, and a helper named by a check this process never made, run by name from root's PATH. Every command on an installation now rebuilds the config from root's own before anything reaches a registry, removing the old one first. It links each kept helper into the directory first on PATH, so the name resolves to the file checked.
+evidence: internal/adapters/dockerdesktop/cli.go:157-180
+action: decided
+proposal: ASSUMED — on darwin every command on an installation rebuilds the manager's Docker config before any registry is reached, and runs each kept credential helper through a link first on PATH
+```
