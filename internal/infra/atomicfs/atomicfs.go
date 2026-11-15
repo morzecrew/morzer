@@ -300,6 +300,7 @@ func MkdirExact(path string, mode fs.FileMode) error {
 //
 // Missing parents are created at 0755, as a layout under --root needs.
 func MkdirExactNoFollow(path string, mode fs.FileMode) error {
+	//nolint:gosec // on the way to a bind, which a Mac's Docker Desktop user passes through (RFC 0055 decision 16)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return domain.Internal(err, "cannot create directory %s", filepath.Dir(path))
 	}
