@@ -337,3 +337,26 @@ evidence: internal/lifecycle/ops/ops.go:316-324
 action: decided
 proposal: UNLISTED — every restart through the runtime gives DataDir to the engine's user first, as every start does
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:49:46Z
+attempt: 1
+claim: A migration and a task run their service to completion through the runtime's one-shot, which starts that service and what it depends on before services start, so a fresh installation's database would start on a `DataDir` the engine's user cannot write. The one-shot hands `DataDir` over first, as a start and a restart do.
+evidence: internal/lifecycle/ops/ops.go:332-341
+action: decided
+proposal: UNLISTED — every way the runtime starts a container, a one-shot included, gives DataDir to the engine's user first
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T07:49:46Z
+attempt: 1
+claim: The darwin `doctor` check the earlier entry promised lands here, beside the hardening it backs: `storage.run-directory` fails while an account other than root can write the directory RunDir's entry sits in, read from Directory Services. It counts the group's members, and the people's accounts whose primary group it is; macOS's own accounts below uid 500, such as `daemon`, whose primary group `daemon` is, are left out
+evidence: internal/lifecycle/ops/doctor.go:897-925
+action: decided
+```
