@@ -400,3 +400,16 @@ evidence: internal/domain/errors.go:274-276
 action: decided
 proposal: UNLISTED — the FileVault refusal is exit 6 and names both remedies; the flag and the setting are accepted on Linux and change nothing there
 ```
+
+## Review of the FileVault gate
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T08:06:18Z
+attempt: 1
+claim: Decision 5's gate reads the policy where it acts. `config apply` reads the policy the change leaves, so one document can allow an unencrypted disk and give a secret, and reads it again under the lock. `init` asks again under its lock, so a `config set` that withdrew the setting while a repair waited is honoured. A repair given `--allow-unencrypted-disk` keeps it over the policy it carries, which had dropped it.
+evidence: internal/lifecycle/ops/init.go:629-635
+action: decided
+```
