@@ -72,7 +72,13 @@ func TestADiffReportsPlatforms(t *testing.T) {
 	assert.Equal(t, []Change{{Name: "tun", Kind: ChangeChanged, From: "", To: "on linux"}},
 		profileChanges(manifest(both), manifest(both, domain.PlatformLinux)))
 	assert.Equal(t, "linux, darwin", compatibility(domain.Compatibility{}, manifest(both).Requirements)["platforms"])
-	assert.NotContains(t, compatibility(domain.Compatibility{}, domain.Requirements{}), "platforms")
+	// A release that declares none runs on Linux alone, as the gates read it.
+	assert.Equal(t, "linux", compatibility(domain.Compatibility{}, domain.Requirements{})["platforms"])
+	assert.Equal(t, []Change{{Name: "platforms", Kind: ChangeChanged, From: "linux, darwin", To: "linux"}},
+		changes(compatibility(domain.Compatibility{RollbackSafe: true}, manifest(both).Requirements),
+			compatibility(domain.Compatibility{RollbackSafe: true}, domain.Requirements{}), identity))
+	assert.Empty(t, changes(compatibility(domain.Compatibility{}, domain.Requirements{}),
+		compatibility(domain.Compatibility{}, domain.Requirements{Platforms: []domain.Platform{domain.PlatformLinux}}), identity))
 
 	// Two runtimes narrowing one name: a change to the second shows too.
 	two := func(second domain.Platform) domain.Manifest {

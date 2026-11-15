@@ -1472,7 +1472,7 @@ func (d *Deps) restorePreviousRuntime(
 	if err != nil {
 		return err
 	}
-	if err := d.Runtime.Up(ctx, cfg, ports.UpOptions{
+	if err := d.up(ctx, cfg, ports.UpOptions{
 		Wait:          true,
 		WaitTimeout:   5 * time.Minute,
 		RemoveOrphans: true,
@@ -1503,7 +1503,7 @@ func (d *Deps) renderReleaseSecrets(ctx context.Context, rec domain.ReleaseRecor
 	if err != nil {
 		return domain.Release{}, err
 	}
-	if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
+	if _, err := d.RenderSecrets(ctx, schema); err != nil {
 		return domain.Release{}, err
 	}
 	return rel, nil

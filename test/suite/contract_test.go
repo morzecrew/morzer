@@ -37,6 +37,14 @@ func TestSecretStoreContract_Fake(t *testing.T) {
 	})
 }
 
+func TestSecretStoreRenderOwnerContract_Fake(t *testing.T) {
+	contract.RunRenderOwnerSuite(t, func(t *testing.T, owner func() (int, int, error)) ports.SecretStore {
+		store := fakes.NewSecretStore()
+		store.RenderOwner = owner
+		return store
+	})
+}
+
 // TestSecretStoreContract_SOPSAge runs the same suite against the real
 // adapter. It needs the sops binary, so it skips rather than fails when sops
 // is absent: a developer without it should still get a green run for
@@ -56,6 +64,23 @@ func TestSecretStoreContract_SOPSAge(t *testing.T) {
 		locker := lock.New(filepath.Join(dir, "locks")).WithPollInterval(10 * time.Millisecond)
 		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity,
 			sopsage.WithLocker(locker))
+	})
+}
+
+func TestSecretStoreRenderOwnerContract_SOPSAge(t *testing.T) {
+	if _, err := exec.LookPath("sops"); err != nil {
+		t.Skip("sops is not installed; skipping the real SecretStore contract suite")
+	}
+
+	contract.RunRenderOwnerSuite(t, func(t *testing.T, owner func() (int, int, error)) ports.SecretStore {
+		dir := t.TempDir()
+		identity := filepath.Join(dir, "age", "identity")
+
+		_, err := sopsage.GenerateIdentity(identity)
+		require.NoError(t, err)
+
+		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity,
+			sopsage.WithRenderOwner(owner))
 	})
 }
 

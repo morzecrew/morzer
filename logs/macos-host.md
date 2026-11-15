@@ -140,6 +140,69 @@ evidence: internal/domain/manifest.go:868-889
 action: decided
 ```
 
+## The darwin layout, and who owns what
+
+On branch `rfc-0055-ownership`, stacked on `rfc-0055-manifest`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 gives the user who runs Docker Desktop the directories a container writes, which is `DataDir`. A vendor's hooks run as root and write into it, a restore's most of all, and a file root owns there is one no container can write on a Mac, since file sharing acts as that user. What a container writes already shows as that user through fakeowner. So before every `Up`, the manager walks `DataDir` and gives that user each entry another user owns.
+evidence: internal/lifecycle/ops/backup.go:1182
+action: decided
+proposal: UNLISTED — on darwin, before the runtime starts services, `DataDir` and every entry in it another user owns are given to the user who runs Docker Desktop
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 needs `RunDir` at 0755 so that user can pass through it to the secrets, and a boot clears `/private/var/run` (§13 S5). `Render` then recreates it as the parent of the secrets directory, and `MkdirExact` gives a parent the leaf's mode, 0700, which no container mount passes through. Linux has the same defect at 0700 against its 0750, which `storage.directories` warns about after every reboot. Reproduced: `MkdirExact(<root>/run/demo/secrets, 0700)` leaves `<root>/run/demo` at 0700. Rendering now recreates the managed directories under `RunDir` with their own modes first, on both platforms.
+evidence: internal/adapters/secrets/sopsage/sopsage.go:485
+action: decided
+proposal: UNLISTED — rendering recreates `RunDir` and the managed directories under it with their own modes before writing into them
+```
+
+```divergence
+decision: 17
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 17 replaces `OwnerRefusal` with a `doctor` warning and leaves P1 to settle what `apply`'s host-side check compares. The store is given the user who runs Docker Desktop when it is built and owns every rendered file and the directory by that user at each render, setting the declared owner aside, so `OwnerRefusal` is removed rather than bypassed. `apply` compares each file's owner with that same user, read again, where Linux compares the declaration.
+evidence: internal/lifecycle/ops/apply.go:446
+action: decided
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decisions 4 and 16 read a declared `render_to` under `/run/` under `/var/run/` on darwin. Nothing renders to `render_to`: it is defaulted from `DefaultPaths` and checked to be absolute, and secrets render to `Paths.SecretsRenderDir()` on every platform. With `DefaultPaths` per platform, the default follows, and a declared value has nothing to translate.
+evidence: internal/domain/manifest.go:1368-1369
+action: departed
+proposal: UNLISTED — `render_to` is not where secrets render, so no translation is built; the darwin layout's `RunDir` is what moves
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 says only root can change `RunDir`, and that holds for `RunDir` itself, root's at 0755. Its own entry sits in `/private/var/run`, which is `root:daemon 0775`, so a member of `daemon` could rename it away. On a default macOS that group's only member is root. The darwin `doctor` checks gain one that says so, in the pull request that adds them.
+evidence: spikes/macos-host/report.txt:40
+action: decided
+proposal: UNLISTED — `doctor` on darwin warns when the group that can write `/private/var/run` has a member other than root
+```
+
 ## Review of the opt-in
 
 ```divergence
@@ -235,4 +298,124 @@ claim: The start paths' check read only the selection, so a restart or a paramet
 evidence: internal/lifecycle/ops/config.go:384-387
 action: decided
 proposal: UNLISTED — starting or re-creating services refuses a release this platform does not run as well as a selection, and a refused re-create's undo restores files without re-creating services
+```
+
+## Review of the ownership
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: Decision 16 gives the secrets directory to the user who runs Docker Desktop, and `secret edit` made its plaintext session directories inside it and wrote them by path, so that user could swap a session for a link and redirect what root writes or read back. Sessions now live in `RunDir/edit`, root's at 0700 on the same tmpfs, created without following a link.
+evidence: internal/domain/paths.go:195-200
+action: departed
+proposal: ASSUMED — `secret edit` sessions live in a root-only directory under RunDir, beside the secrets directory rather than in it
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: RunDir's own entry is in `/private/var/run`, which its `daemon` group can write, and `MkdirExact` sets a mode through `chmod(2)`, which follows a link. So a member of that group could put a link where RunDir or the secrets directory belongs and have root change the mode of what it names. Those directories, and the edit sessions', are now created, and their modes set, through a descriptor opened with `O_NOFOLLOW`, which refuses a link in their place. A link swapped in for a directory above them is still followed, so the guarantee rests on that group having no member but root, which the darwin `doctor` checks will report.
+evidence: internal/infra/atomicfs/atomicfs.go:302-318
+action: departed
+proposal: ASSUMED — RunDir and the directories under it are created and given their modes without following a link; a group writing /private/var/run with a member other than root is reported by doctor
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: The restart after a secret change, and `config apply`'s, start processes through the runtime's restart rather than `up`, so they skipped the hand-over of `DataDir` every start makes. Both go through `RestartServices`, which hands it over first. The walk also stops when its context does, and fails on an entry it cannot read rather than reporting a half-given tree.
+evidence: internal/lifecycle/ops/ops.go:316-324
+action: decided
+proposal: UNLISTED — every restart through the runtime gives DataDir to the engine's user first, as every start does
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:49:46Z
+attempt: 1
+claim: A migration and a task run their service to completion through the runtime's one-shot, which starts that service and what it depends on before services start, so a fresh installation's database would start on a `DataDir` the engine's user cannot write. The one-shot hands `DataDir` over first, as a start and a restart do.
+evidence: internal/lifecycle/ops/ops.go:332-341
+action: decided
+proposal: UNLISTED — every way the runtime starts a container, a one-shot included, gives DataDir to the engine's user first
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T07:49:46Z
+attempt: 1
+claim: The darwin `doctor` check the earlier entry promised lands here, beside the hardening it backs: `storage.run-directory` fails while an account other than root can write the directory RunDir's entry sits in, read from Directory Services. It counts the group's members, and the people's accounts whose primary group it is; macOS's own accounts below uid 500, such as `daemon`, whose primary group `daemon` is, are left out
+evidence: internal/lifecycle/ops/doctor.go:897-925
+action: decided
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T11:12:27Z
+attempt: 1
+claim: A group nested in the one that owns RunDir's parent gives its members that group's access, and the check read only direct members and primary groups. It now reads the owning group's `NestedGroups` too and counts each nested group as a writer, by name. On the author's M3 Mac, `ls -ld /private/var/run` printed `drwxrwxr-x root daemon` and `dscl . -read /Groups/daemon GroupMembership` printed `GroupMembership: root`, so a stock machine passes with no direct member but root
+evidence: internal/adapters/dirservice/dirservice.go:53-75
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: The earlier entry left a link swapped in for RunDir's entry to `doctor` alone, and only `doctor` ran `storage.run-directory`, so `apply` and the edit session rendered on a Mac where another account could move RunDir aside between two of its steps, or had made RunDir itself. Every render and every edit session now refuses while an account other than root can write where RunDir's entry sits, or while RunDir is not root's, before it creates anything under RunDir; `doctor` reports the same condition
+evidence: internal/lifecycle/ops/ops.go:304-312
+action: decided
+proposal: UNLISTED — RunDir is prepared only while root alone can write where its entry sits and RunDir is root's, refused otherwise at every render and edit session, not reported by doctor alone
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: A refused `init --repair` to another release left the current link and the current-release record naming the release it had staged, whose directory its compensation then removed, so the installation pointed at nothing. Reproduced with an undeclared `--profile` against the 1.3.0 fixture; the platform refusal of a Linux-only profile reaches the same step. The stage step now records the release it replaced and its compensation puts back the link and the record before it removes what it created
+evidence: internal/lifecycle/ops/init.go:1007-1021
+action: decided
+proposal: UNLISTED — a stage step that makes a release current records the one it replaced, and its compensation makes that one current again
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: The release diff listed `platforms` only where a release declared them, so a release dropping `[linux, darwin]` read as a declaration removed rather than as a release that runs on Linux alone, and an explicit `[linux]` beside none read as a change. It lists the platforms the release runs on, `linux` where none are declared, as the gates read them
+evidence: internal/lifecycle/ops/release_diff.go:166-171
+action: decided
+proposal: UNLISTED — the release diff compares the platforms each release runs on, not the ones it declares
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T12:14:43Z
+attempt: 2
+claim: The earlier entry made a failed repair put back the release it replaced, and `write-installation` kept the installation it had written for the other release, so a repair that failed at `init-secrets` left settings for one release beside another; reproduced with a domain changed by a repair to the 1.3.0 fixture. The step now records the installation it replaced, and its compensation saves that one back. On Linux, where `/run` is root's alone, RunDir's owner is no longer checked: only the Mac's shared parent makes a RunDir someone else made possible, and the acceptance run's `--root` layout, made as its user and driven as root, was refused by it
+evidence: internal/lifecycle/ops/init.go:612-645
+action: decided
+proposal: UNLISTED — a repair's compensation puts back the installation and the release it replaced together; RunDir's owner is checked where RunDirWriters is, the Mac
 ```

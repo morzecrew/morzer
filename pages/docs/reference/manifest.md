@@ -1065,9 +1065,11 @@ secrets:
   naming the secret. It never falls back to a file it owns, which would fail
   later as `Permission denied` inside the container. The manager runs as root
   wherever it installs units, and only root can give a file to another user.
-- **A manager on macOS refuses every `owner`.** What Docker Desktop shows a
-  container for a file given to another user has not been measured yet
-  (RFC 0029).
+- **On macOS, `owner` is not enforced.** Docker Desktop reads the Mac's files
+  as the user who runs it, whatever uid the container runs as. A container
+  reads a secret only when that user can, and then every container uid can.
+  So the manager gives every rendered secret to that user, and `doctor` warns
+  `secrets.owner` while a secret declares an owner.
 
 A schema that declares `owner` needs the manifest to declare
 `compatibility.min_manager_version: "0.6.0"` or later. An older manager then

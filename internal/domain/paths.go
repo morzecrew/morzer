@@ -48,7 +48,8 @@ type Paths struct {
 	VarDir string
 
 	// RunDir is ephemeral and expected to be tmpfs. Cleared on reboot;
-	// decrypted secrets live here and nowhere else.
+	// decrypted secrets live here and nowhere else. On a Mac it is
+	// /var/run/<product>, on a disk (RFC 0055 decision 16).
 	RunDir string
 
 	// OptDir holds unpacked releases and the current/previous symlinks.
@@ -61,7 +62,7 @@ func DefaultPaths(product string) Paths {
 		Product: product,
 		EtcDir:  filepath.Join("/etc", product),
 		VarDir:  filepath.Join("/var/lib", product),
-		RunDir:  filepath.Join("/run", product),
+		RunDir:  filepath.Join(runRoot, product),
 		OptDir:  filepath.Join("/opt", product),
 	}
 }
@@ -191,7 +192,13 @@ func (p Paths) RemovedJournalFile(opID string) string {
 // Ephemeral state. Decrypted secrets never leave RunDir.
 
 func (p Paths) SecretsRenderDir() string { return filepath.Join(p.RunDir, "secrets") }
-func (p Paths) GeneratedDir() string     { return filepath.Join(p.RunDir, "generated") }
+
+// EditDir holds `secret edit` sessions: plaintext beside the rendered secrets,
+// on RunDir's tmpfs, and root's alone. Not inside the secrets directory, which
+// on a Mac belongs to the user who runs Docker Desktop, who could otherwise
+// swap a session for a link and redirect what root writes (RFC 0055).
+func (p Paths) EditDir() string      { return filepath.Join(p.RunDir, "edit") }
+func (p Paths) GeneratedDir() string { return filepath.Join(p.RunDir, "generated") }
 
 // Release storage.
 
@@ -207,13 +214,13 @@ func (p Paths) PreviousLink() string { return filepath.Join(p.OptDir, "previous"
 // creates them correctly.
 func (p Paths) ManagedDirs() []ManagedDir {
 	return []ManagedDir{
-		{Path: p.EtcDir, Mode: 0o750},
+		{Path: p.EtcDir, Mode: sharedDirMode},
 		{Path: p.AgeDir(), Mode: 0o700},
 		// 0700 like the age directory: it holds a private key, and the
 		// group that may read configuration is not the group that may
 		// read the key the machine signs with.
 		{Path: p.SigningDir(), Mode: 0o700},
-		{Path: p.VarDir, Mode: 0o750},
+		{Path: p.VarDir, Mode: sharedDirMode},
 		{Path: p.DataDir(), Mode: 0o750},
 		{Path: p.BackupsDir(), Mode: 0o700},
 		// 0755: attestations are audit records that carry no secret by
@@ -223,12 +230,24 @@ func (p Paths) ManagedDirs() []ManagedDir {
 		{Path: p.ManagerDir(), Mode: 0o750},
 		{Path: p.StagingDir(), Mode: 0o750},
 		{Path: p.LockDir(), Mode: 0o750},
-		{Path: p.RunDir, Mode: 0o750},
+		{Path: p.RunDir, Mode: sharedDirMode},
 		{Path: p.SecretsRenderDir(), Mode: 0o700},
-		{Path: p.GeneratedDir(), Mode: 0o750},
+		{Path: p.GeneratedDir(), Mode: sharedDirMode},
 		{Path: p.OptDir, Mode: 0o755},
 		{Path: p.ReleasesDir(), Mode: 0o755},
 	}
+}
+
+// EphemeralDirs is the managed directories under RunDir, parent first: what a
+// boot clears and a render has to recreate with their own modes.
+func (p Paths) EphemeralDirs() []ManagedDir {
+	var out []ManagedDir
+	for _, dir := range p.ManagedDirs() {
+		if dir.Path == p.RunDir || strings.HasPrefix(dir.Path, p.RunDir+string(filepath.Separator)) {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 // ManagedDir is a directory the manager owns, with the permissions it must

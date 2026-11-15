@@ -606,21 +606,19 @@ func TestSecretOwnerIsNumeric(t *testing.T) {
 	})
 }
 
-func TestADarwinManagerRefusesEveryOwner(t *testing.T) {
-	owned := SecretSchema{Secrets: []SecretDeclaration{
+// A store rendering for an engine that reads the host as one user gives that
+// user every secret, whatever each declares (RFC 0055 decision 17).
+func TestOwnedBySetsEveryDeclaredOwnerAside(t *testing.T) {
+	schema := SecretSchema{Secrets: []SecretDeclaration{
 		{Name: "plain"},
 		{Name: "backend_key", Owner: SecretOwner{UID: 65532, Set: true}},
 	}}
-
-	err := owned.OwnerRefusal("darwin")
-	require.Error(t, err, "RFC 0032 decision 10: macOS gives no rendered secret away")
-	assert.Equal(t, ExitSecrets, ExitCode(err))
-	assert.Contains(t, err.Error(), `"backend_key"`)
-	assert.Contains(t, AsError(err).Hint, "Apply this release on Linux")
-
-	assert.NoError(t, owned.OwnerRefusal("linux"))
-	assert.NoError(t, SecretSchema{Secrets: owned.Secrets[:1]}.OwnerRefusal("darwin"),
-		"a schema declaring no owner renders on macOS as before")
+	owned := schema.OwnedBy(501, 20)
+	for _, d := range owned.Secrets {
+		uid, gid := d.Owner.IDs()
+		assert.Equal(t, [2]int{501, 20}, [2]int{uid, gid}, d.Name)
+	}
+	assert.False(t, schema.Secrets[0].Owner.Set, "the schema it was given changed")
 }
 
 func TestAnUnprivilegedChownIsNamedForWhatItIs(t *testing.T) {

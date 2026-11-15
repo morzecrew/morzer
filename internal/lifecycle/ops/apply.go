@@ -406,7 +406,7 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 		Execute: func(ctx context.Context, st *engine.State) error {
 			schema := engine.MustGet[domain.SecretSchema](st, engine.KeySecretSchema)
 
-			files, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema)
+			files, err := d.RenderSecrets(ctx, schema)
 			if err != nil {
 				return err
 			}
@@ -426,6 +426,22 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 				return domain.SecretsError(nil,
 					"the secret directory %s is not 0700: %s", d.Paths.SecretsRenderDir(), detail)
 			}
+			// The directory too, since a container lists it on the way
+			// to the file (RFC 0055 decision 16).
+			if d.EngineUser != nil {
+				uid, gid, err := d.EngineUser()
+				if err != nil {
+					return err
+				}
+				ok, detail, err := atomicfs.CheckOwner(d.Paths.SecretsRenderDir(), uid, gid)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return domain.SecretsError(nil,
+						"the secret directory %s has the wrong owner: %s", d.Paths.SecretsRenderDir(), detail)
+				}
+			}
 
 			files := engine.MustGet[[]ports.RenderedFile](st, engine.KeyRenderedFiles)
 			schema := engine.MustGet[domain.SecretSchema](st, engine.KeySecretSchema)
@@ -441,10 +457,17 @@ func stepRenderSecrets(d *Deps, inst domain.Installation, rel domain.Release, op
 
 				// The owner is the same property since RFC 0032: it
 				// decides which one user a container can read the file
-				// as. Undeclared, the file stays the manager's.
+				// as. Undeclared, the file stays the manager's. Where
+				// the engine reads as one user, every file is that
+				// user's (RFC 0055 decision 17).
 				uid, gid := os.Geteuid(), -1
 				if decl, found := schema.Declaration(f.Name); found && decl.Owner.Set {
 					uid, gid = decl.Owner.IDs()
+				}
+				if d.EngineUser != nil {
+					if uid, gid, err = d.EngineUser(); err != nil {
+						return err
+					}
 				}
 				ok, detail, err = atomicfs.CheckOwner(f.Path, uid, gid)
 				if err != nil {
@@ -980,7 +1003,7 @@ func (d *Deps) runMigrateStep(
 		// failure from here on has services to put back, as one after
 		// start-services does.
 		st.Set(keyServicesTouched, true)
-		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
+		res, err := d.runOneShot(ctx, cfg, spec.Service, ports.RunOptions{
 			Env:     ports.ServiceEnvVars(env),
 			Timeout: spec.Timeout.Or(30 * time.Minute),
 			Remove:  true,
@@ -1103,7 +1126,7 @@ func stepStartServices(d *Deps, inst domain.Installation, rel domain.Release, op
 			// Before Up, not after: a failed Up may still have
 			// replaced some of the containers.
 			st.Set(keyServicesTouched, true)
-			return d.Runtime.Up(ctx, cfg, ports.UpOptions{
+			return d.up(ctx, cfg, ports.UpOptions{
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
 				RemoveOrphans: true,

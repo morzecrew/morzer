@@ -735,7 +735,7 @@ func (d *Deps) putSecretsBack(ctx context.Context, st *engine.State, schema doma
 	_, rendered := st.Get(engine.KeyRenderedFiles)
 	_, tried := st.Get(keyRenderTried)
 	if rendered || tried {
-		if _, err := d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema); err != nil {
+		if _, err := d.RenderSecrets(ctx, schema); err != nil {
 			return err
 		}
 	}
@@ -775,7 +775,7 @@ func stepRestartForSecrets(
 		if err != nil {
 			return err
 		}
-		return d.Runtime.Restart(ctx, cfg, services)
+		return d.RestartServices(ctx, cfg, services)
 	}
 	return engine.Step{
 		ID:          "restart-services",

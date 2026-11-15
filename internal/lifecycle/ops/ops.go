@@ -143,6 +143,19 @@ type Deps struct {
 	// Injectable for the same reason: a test cannot make a file root's.
 	ReplaceableByNonRoot func(string) (string, error)
 
+	// EngineUser is who the engine reads the host's files as, where that is
+	// one user rather than root: on a Mac, the user who runs Docker Desktop
+	// (RFC 0055 decision 19). That user is given DataDir before services
+	// start, and the store, built with the same function, gives it the
+	// rendered secrets. Nil where the engine reads as root, as on Linux.
+	EngineUser func() (uid, gid int, err error)
+
+	// RunDirWriters lists who other than root can write a directory, for
+	// the one RunDir's own entry sits in where that is not root's alone: a
+	// Mac's /private/var/run, which its group can write (logs/macos-host.md).
+	// Nil where it is not checked, as on Linux, whose /run is root's.
+	RunDirWriters func(ctx context.Context, dir string) ([]string, error)
+
 	// Platform is the GOOS the platform gates compare a release with (RFC
 	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
 	// same reason again: the refusals on a Mac are tested on Linux.
@@ -278,6 +291,94 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 		return d.FreeSpace(path)
 	}
 	return atomicfs.FreeSpace(path)
+}
+
+// RenderSecrets renders the release's secrets into the secrets directory,
+// RunDir prepared first. Every render goes through here.
+func (d *Deps) RenderSecrets(ctx context.Context, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
+	if err := d.PrepareRunDir(ctx); err != nil {
+		return nil, err
+	}
+	return d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema)
+}
+
+// PrepareRunDir recreates RunDir and the managed directories under it with
+// their own modes. A boot clears RunDir, and the store would recreate it as the
+// secrets directory's parent at that directory's 0700, which on a Mac no
+// container's mount passes through (logs/macos-host.md).
+//
+// Without following a link, and refused, where RunDir's parent is checked,
+// while RunDir could be moved aside or is someone else's: on a Mac, RunDir's
+// own entry is in a directory its group can write, and an account that could
+// write there, or had made RunDir, could redirect where root writes decrypted
+// secrets between two of these steps. Linux's /run is root's alone.
+func (d *Deps) PrepareRunDir(ctx context.Context) error {
+	if d.RunDirWriters != nil {
+		parent := filepath.Dir(d.Paths.RunDir)
+		writers, err := d.RunDirWriters(ctx, parent)
+		if err != nil {
+			return domain.SecretsError(err, "cannot tell who can write %s, where %s sits", parent, d.Paths.RunDir)
+		}
+		if len(writers) > 0 {
+			return domain.SecretsError(nil,
+				"%s can write %s, where %s sits, and so could redirect where decrypted secrets are written",
+				strings.Join(writers, ", "), parent, d.Paths.RunDir).
+				WithHint("take %s out of the group that owns %s; `ls -ld %s` names it", strings.Join(writers, ", "), parent, parent)
+		}
+	}
+	for _, dir := range d.Paths.EphemeralDirs() {
+		mkdir := atomicfs.MkdirExactNoFollow
+		if dir.Path == d.Paths.RunDir && d.RunDirWriters != nil {
+			mkdir = atomicfs.MkdirMineNoFollow
+		}
+		if err := mkdir(dir.Path, os.FileMode(dir.Mode)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// up starts services through the runtime, DataDir given to the engine's user
+// first.
+func (d *Deps) up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
+	if err := d.giveDataDir(ctx); err != nil {
+		return err
+	}
+	return d.Runtime.Up(ctx, cfg, opts)
+}
+
+// RestartServices restarts services through the runtime, DataDir given to the
+// engine's user first, as up gives it: a restart starts processes that write
+// there too.
+func (d *Deps) RestartServices(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+	if err := d.giveDataDir(ctx); err != nil {
+		return err
+	}
+	return d.Runtime.Restart(ctx, cfg, services)
+}
+
+// runOneShot runs a service to completion through the runtime, DataDir given to
+// the engine's user first: a migration or a task starts its service and what it
+// depends on, a database among them, before services start.
+func (d *Deps) runOneShot(ctx context.Context, cfg ports.RuntimeConfig, service string, opts ports.RunOptions) (ports.ExitResult, error) {
+	if err := d.giveDataDir(ctx); err != nil {
+		return ports.ExitResult{}, err
+	}
+	return d.Runtime.RunOneShot(ctx, cfg, service, opts)
+}
+
+// giveDataDir gives DataDir to the user the engine reads the host as, where
+// that is not root, so a container can write what a hook running as root left
+// there (logs/macos-host.md).
+func (d *Deps) giveDataDir(ctx context.Context) error {
+	if d.EngineUser == nil {
+		return nil
+	}
+	uid, gid, err := d.EngineUser()
+	if err != nil {
+		return err
+	}
+	return atomicfs.GiveTree(ctx, d.Paths.DataDir(), uid, gid)
 }
 
 // platform is the GOOS the platform gates compare a release with.

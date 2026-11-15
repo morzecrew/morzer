@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A refused `init --repair` keeps the installation it was asked to repair.
   A `--profile` the release does not declare used to delete its state.
 
+- After a reboot, rendering secrets recreates `/run/<product>` at `0750`, as
+  `init` made it, rather than at the secrets directory's `0700`. `doctor` no
+  longer warns `storage.directories` about it after every boot.
+
 - A refused `init --repair` of the installed version leaves that release as
   it was. A bundle that failed its signature check used to rewrite the
   installed release first, which then no longer matched its record.

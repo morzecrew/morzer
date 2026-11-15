@@ -396,7 +396,7 @@ func stepRunTask(
 				mounts, inputEnv = inputMounts(staged)
 				maps.Copy(env, inputEnv)
 			}
-			res, err := d.Runtime.RunOneShot(ctx, cfg, task.Service, ports.RunOptions{
+			res, err := d.runOneShot(ctx, cfg, task.Service, ports.RunOptions{
 				Argv:    argv,
 				Env:     env,
 				Timeout: timeout,
