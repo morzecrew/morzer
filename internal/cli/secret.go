@@ -224,11 +224,12 @@ func newSecretRemoveCommand(app *App) *cobra.Command {
 func newSecretRenderCommand(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "render",
-		Short: "Render secrets to the tmpfs directory the product reads",
-		Long: "Decrypts the secret state and writes each value to its own file under\n" +
-			"/run, with the mode the release declares. This is the only path by which\n" +
-			"a secret leaves the encrypted state, and /run is a tmpfs: a reboot takes\n" +
-			"the plaintext with it.\n\n" +
+		Short: "Render secrets to the directory the product reads",
+		Long: "Decrypts the secret state and writes each value to its own file in the\n" +
+			"secrets directory under the run directory, with the mode the release\n" +
+			"declares. This is the only path by which a secret leaves the encrypted\n" +
+			"state. On Linux the run directory is /run, a tmpfs. On a Mac it is\n" +
+			"/var/run, on a disk FileVault must encrypt. Both are cleared at boot.\n\n" +
 			"Run by `apply` before the deployment starts. Running it by hand is for\n" +
 			"diagnosing a service that cannot read what it expects.",
 		Args: cobra.NoArgs,
@@ -238,8 +239,7 @@ func newSecretRenderCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			files, err := app.Deps.Secrets.Render(cmd.Context(),
-				app.Deps.Paths.SecretsRenderDir(), schema)
+			files, err := app.Deps.RenderSecrets(cmd.Context(), schema)
 			if err != nil {
 				return err
 			}
@@ -487,7 +487,7 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	// services would come back holding the old value. Rendered whether or
 	// not a service declares the secret: a template or a container may read
 	// the file without the release saying so (#238).
-	files, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema)
+	files, err := a.Deps.RenderSecrets(ctx, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +547,7 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 		return nil, validateErr
 	}
 
-	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {
+	if err := a.Deps.RestartServices(ctx, cfg, services); err != nil {
 		return nil, err
 	}
 	return services, nil

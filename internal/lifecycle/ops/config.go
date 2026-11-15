@@ -416,7 +416,7 @@ func (d *Deps) recreate(
 	if err != nil {
 		return err
 	}
-	return d.Runtime.Up(ctx, cfg, ports.UpOptions{
+	return d.up(ctx, cfg, ports.UpOptions{
 		Services: services, Wait: true, WaitTimeout: 5 * time.Minute, ForceRecreate: true,
 	})
 }

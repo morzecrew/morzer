@@ -1091,7 +1091,7 @@ func stepStopServices(d *Deps, inst domain.Installation, rel domain.Release) eng
 			// Bring the product back up: an aborted restore should
 			// leave it serving, not stopped -- unless an operator
 			// stopped it, when serving is what they asked it not to do.
-			return d.Runtime.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 5 * time.Minute})
+			return d.up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 5 * time.Minute})
 		},
 	}
 }
@@ -1179,7 +1179,7 @@ func stepReapply(d *Deps, inst domain.Installation, rel domain.Release) engine.S
 					return err
 				}
 			}
-			return d.Runtime.Up(ctx, cfg, ports.UpOptions{
+			return d.up(ctx, cfg, ports.UpOptions{
 				Wait:          true,
 				WaitTimeout:   10 * time.Minute,
 				RemoveOrphans: true,

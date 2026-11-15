@@ -636,6 +636,75 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 	})
 }
 
+// OwnedSecretStoreFactory builds a store given a render owner, as the real one
+// takes WithRenderOwner.
+type OwnedSecretStoreFactory func(t *testing.T, owner func() (uid, gid int, err error)) ports.SecretStore
+
+// RunRenderOwnerSuite is the contract of a store rendering for an engine that
+// reads the host as one user (RFC 0055 decisions 17 and 19): that user gets
+// every file and the directory, each declared owner set aside, and is asked
+// at every render.
+func RunRenderOwnerSuite(t *testing.T, newStore OwnedSecretStoreFactory) {
+	t.Helper()
+
+	t.Run("a render owner gets every file and the directory, whatever each declares", func(t *testing.T) {
+		owner, observable := ownerThisProcessCanGive()
+		if !observable {
+			t.Log("this process is not root and belongs to no second group, so a store " +
+				"that ignored the render owner would pass the group half of the assertions below")
+		}
+		uid, gid := owner.IDs()
+		asked := 0
+		store := newStore(t, func() (int, int, error) {
+			asked++
+			return uid, gid, nil
+		})
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "backend_key", domain.NewSecret("a-value")))
+		require.NoError(t, store.Set(ctx, "plain", domain.NewSecret("another")))
+
+		// A declared owner this process cannot give a file to, which a
+		// store that honoured it would be refused (the case above).
+		other := uint32(65532)
+		if uid == int(other) {
+			other++
+		}
+		schema := domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "backend_key", Required: true, Owner: domain.SecretOwner{UID: other, Set: true}},
+			{Name: "plain", Required: true},
+		}}
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+
+		files, err := store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		require.Len(t, files, 2)
+		assertOwner(t, targetDir, uid, gid)
+		for _, f := range files {
+			assertOwner(t, f.Path, uid, gid)
+			assert.Equal(t, [2]int{uid, gid}, [2]int{f.UID, f.GID}, f.Name)
+		}
+
+		_, err = store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		assert.Equal(t, 2, asked, "the owner was not asked at every render")
+	})
+
+	t.Run("a render owner that cannot be read refuses before anything is written", func(t *testing.T) {
+		store := newStore(t, func() (int, int, error) {
+			return 0, 0, domain.RuntimeError(nil, "no engine socket")
+		})
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "plain", domain.NewSecret("a-value")))
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+
+		_, err := store.Render(ctx, targetDir, domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "plain", Required: true},
+		}})
+		require.ErrorContains(t, err, "no engine socket")
+		assert.NoDirExists(t, targetDir)
+	})
+}
+
 // ownerThisProcessCanGive is an owner a chown by this process succeeds for,
 // and whether a store that ignored it would be seen to: root may give a file
 // to anyone, and anybody else to their own uid and a group of theirs that is

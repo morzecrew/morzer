@@ -97,7 +97,7 @@ func (a *App) editSecretsWith(ctx context.Context, names, editor []string) error
 	// anything that gets logged from here on is scrubbed.
 	a.registerSecretValues(before)
 
-	dir, path, err := a.newEditSession()
+	dir, path, err := a.newEditSession(ctx)
 	if err != nil {
 		return err
 	}
@@ -189,16 +189,19 @@ func (a *App) registerSecretValues(values map[string]string) {
 // tmpfs, and a crash there would leave plaintext on a disk the operator
 // believes is clean. A directory of its own rather than a bare file, because an
 // editor writes more than the file it was handed.
-func (a *App) newEditSession() (dir, path string, err error) {
-	renderDir := a.Deps.Paths.SecretsRenderDir()
-	if err := atomicfs.MkdirExact(renderDir, 0o700); err != nil {
+func (a *App) newEditSession(ctx context.Context) (dir, path string, err error) {
+	editDir := a.Deps.Paths.EditDir()
+	if err := a.Deps.PrepareRunDir(ctx); err != nil {
+		return "", "", err
+	}
+	if err := atomicfs.MkdirExactNoFollow(editDir, 0o700); err != nil {
 		return "", "", err
 	}
 
-	dir, err = os.MkdirTemp(renderDir, ".edit-")
+	dir, err = os.MkdirTemp(editDir, ".edit-")
 	if err != nil {
 		return "", "", domain.SecretsError(err,
-			"cannot create an edit session under %s", renderDir)
+			"cannot create an edit session under %s", editDir)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", "", domain.SecretsError(err, "cannot secure the edit session directory")

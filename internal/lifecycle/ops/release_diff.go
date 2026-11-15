@@ -162,12 +162,12 @@ func describePreflight(c domain.PreflightCheck) string {
 }
 
 // compatibility is the declarations an update and a rollback gate on, keyed by
-// their manifest names, each only when declared. rollback_safe always is: unset
-// reads as false, which the rollback gate acts on.
+// their manifest names, each only when declared. rollback_safe and platforms
+// always are: unset reads as false and as Linux alone, which the gates act on.
 func compatibility(c domain.Compatibility, req domain.Requirements) map[string]string {
-	out := map[string]string{"rollback_safe": strconv.FormatBool(c.RollbackSafe)}
-	if len(req.Platforms) > 0 {
-		out["platforms"] = domain.JoinPlatforms(req.Platforms)
+	out := map[string]string{
+		"rollback_safe": strconv.FormatBool(c.RollbackSafe),
+		"platforms":     domain.JoinPlatforms(req.RunsOn()),
 	}
 	if !c.UpgradeFrom.IsZero() {
 		out["upgrade_from"] = c.UpgradeFrom.String()
