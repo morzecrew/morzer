@@ -192,7 +192,13 @@ func (p Paths) RemovedJournalFile(opID string) string {
 // Ephemeral state. Decrypted secrets never leave RunDir.
 
 func (p Paths) SecretsRenderDir() string { return filepath.Join(p.RunDir, "secrets") }
-func (p Paths) GeneratedDir() string     { return filepath.Join(p.RunDir, "generated") }
+
+// EditDir holds `secret edit` sessions: plaintext beside the rendered secrets,
+// on RunDir's tmpfs, and root's alone. Not inside the secrets directory, which
+// on a Mac belongs to the user who runs Docker Desktop, who could otherwise
+// swap a session for a link and redirect what root writes (RFC 0055).
+func (p Paths) EditDir() string      { return filepath.Join(p.RunDir, "edit") }
+func (p Paths) GeneratedDir() string { return filepath.Join(p.RunDir, "generated") }
 
 // Release storage.
 
