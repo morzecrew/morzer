@@ -249,7 +249,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	validated := false
 	if opts.DryRun && opts.ReleasePath != "" {
 		var err error
-		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters); err != nil {
+		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters, opts.Profiles); err != nil {
 			return Result{}, err
 		}
 	}

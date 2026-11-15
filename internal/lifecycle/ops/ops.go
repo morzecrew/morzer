@@ -375,7 +375,7 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
 func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
-	set map[string]string) (bool, error) {
+	set map[string]string, profiles []string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
 		return false, err
@@ -419,6 +419,18 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	// arriving through the parameters instead of the manifest.
 	if err := m.Requirements.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
 		return false, err
+	}
+	// And the selection, as the write-installation step checks it against the
+	// staged release, platform included.
+	if len(profiles) > 0 {
+		rel := domain.Release{Manifest: m}
+		runtime, err := runtimeForRelease(rel)
+		if err != nil {
+			return false, err
+		}
+		if _, err := rel.Selection(runtime, profiles, d.platform()); err != nil {
+			return false, err
+		}
 	}
 	if _, err := domain.ResolveParameters(m.Parameters, set); err != nil {
 		return false, err
