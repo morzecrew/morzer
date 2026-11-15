@@ -1181,9 +1181,17 @@ func stageBeside(dest string) (string, error) {
 // a crash too. What a repair replaced is kept rather than removed: a running
 // container mounts files from the release's directory, and the one it mounts
 // is the one swapped out. Named as update names a tree it moves aside, which
-// its staging cleanup leaves. A first init's leftover runs nothing, and is
-// left at staged for the caller to remove.
+// its staging cleanup leaves, before the exchange, so no failure or crash
+// after it leaves the replaced release under a name that is cleaned up. A
+// first init's leftover runs nothing, and is left at staged for the caller to
+// remove.
 func placeRelease(staged, dest string, keep bool) (kept string, err error) {
+	return placeReleaseWith(staged, dest, keep, atomicfs.SwapDirs)
+}
+
+// placeReleaseWith is placeRelease with the exchange given, so a test can see
+// where each tree is at the moment of it.
+func placeReleaseWith(staged, dest string, keep bool, swap func(a, b string) error) (kept string, err error) {
 	// MkdirTemp creates 0700; the release store is 0755, as CopyTree and
 	// ExtractTarZst would have made dest themselves.
 	if err := os.Chmod(staged, 0o755); err != nil {
@@ -1191,16 +1199,19 @@ func placeRelease(staged, dest string, keep bool) (kept string, err error) {
 	}
 	atomicfs.SyncTree(staged)
 	if _, err := os.Stat(dest); err == nil {
-		if err := atomicfs.SwapDirs(staged, dest); err != nil {
+		from := staged
+		if keep {
+			kept = filepath.Join(filepath.Dir(dest), fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
+			if err := os.Rename(staged, kept); err != nil {
+				return "", domain.Internal(err, "cannot stage the release beside %s", dest)
+			}
+			from = kept
+		}
+		if err := swap(from, dest); err != nil {
+			// Nothing was exchanged: from holds the bundle, which
+			// nothing runs from.
+			_ = atomicfs.RemoveAll(from)
 			return "", domain.Internal(err, "cannot swap the staged release into place at %s", dest)
-		}
-		if !keep {
-			atomicfs.SyncDir(filepath.Dir(dest))
-			return "", nil
-		}
-		kept = filepath.Join(filepath.Dir(dest), fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
-		if err := os.Rename(staged, kept); err != nil {
-			return "", domain.Internal(err, "cannot keep the release replaced at %s", dest)
 		}
 	} else if err := os.Rename(staged, dest); err != nil {
 		return "", domain.Internal(err, "cannot move the staged release into place")
