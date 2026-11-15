@@ -986,11 +986,15 @@ func (d *Deps) checkEngineVersion() preflight.Check {
 					return preflight.OK("Docker Desktop %s", cli.DesktopVersion)
 				}
 			}
+			passed := "none has yet"
+			if len(cli.Verified) > 0 {
+				passed = "it passed on " + strings.Join(cli.Verified, ", ")
+			}
 			return preflight.Warn(
 				"nothing to change if it works: a manager release that passed on it says so",
 				"Docker Desktop %s is not a release the acceptance run passed on (%s); how it shares "+
 					"this Mac's files is the part of it least pinned by documentation",
-				cli.DesktopVersion, strings.Join(cli.Verified, ", "))
+				cli.DesktopVersion, passed)
 		},
 	}
 }

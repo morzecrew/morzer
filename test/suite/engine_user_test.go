@@ -246,7 +246,9 @@ func TestDoctorSaysWhichDockerCLIRootRuns(t *testing.T) {
 	cli.DesktopVersion = "4.45.0"
 	check = doctorCheck(t, h, "runtime.engine-version")
 	assert.Equal(t, events.CheckWarn, check.Status)
-	assert.Contains(t, check.Message, "Docker Desktop 4.45.0 is not a release the acceptance run passed on (4.44)")
+	assert.Contains(t, check.Message, "Docker Desktop 4.45.0 is not a release the acceptance run passed on (it passed on 4.44)")
+	cli.Verified = nil
+	assert.Contains(t, doctorCheck(t, h, "runtime.engine-version").Message, "(none has yet)")
 
 	settleErr = domain.Preflight(nil, "the docker CLI at /opt/homebrew/bin/docker can be replaced by uid 501")
 	check = doctorCheck(t, h, "runtime.cli")
