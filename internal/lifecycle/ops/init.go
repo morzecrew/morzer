@@ -596,6 +596,10 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 	}
 }
 
+// keyInstallationExisted is whether write-installation found an installation
+// already there, which its compensation leaves.
+const keyInstallationExisted = "installation-existed"
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -605,6 +609,11 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 		OnFailure:   engine.Compensate,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			existed, err := d.State.InstallationExists(ctx)
+			if err != nil {
+				return err
+			}
+			st.Set(keyInstallationExisted, existed)
 			inst, err := d.buildInstallation(ctx, st, opts)
 			if err != nil {
 				return err
@@ -613,7 +622,14 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 
 			return d.saveInstallation(ctx, inst)
 		},
+		// Only what this step created. A repair finds the installation
+		// there, and one it refused, a selection the release will not run
+		// included, removed the installation it was asked to repair.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			existed, known := st.Get(keyInstallationExisted)
+			if was, ok := existed.(bool); !known || !ok || was {
+				return nil
+			}
 			_ = os.Remove(d.Paths.InstallationFile())
 			_ = os.Remove(d.Paths.InstallationState())
 			return nil
