@@ -139,3 +139,64 @@ claim: touched the governed area; a release runs on darwin only when `requiremen
 evidence: internal/domain/manifest.go:868-889
 action: decided
 ```
+
+## Review of the opt-in
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:02:49Z
+attempt: 1
+claim: The profile refusal sat in the selection every runtime call makes, so on a Mac whose recorded profile the release narrows to Linux, `stop`, `status`, `doctor` and `installation remove` were refused, and so was the `config set installation.profile` the refusals name as the remedy, since a change reads the old selection to see what runs. Reproduced: on darwin, `config set installation.profile=external-db` over a recorded `embedded` narrowed to Linux failed with `profile "embedded" does not run on darwin`. The runtime's configuration checks no platform now, and deploying a selection is refused where configuration is rendered, and at `update`, `rollback`, `init` and `config set`.
+evidence: internal/lifecycle/ops/ops.go:1183-1189
+action: decided
+proposal: UNLISTED — a profile this platform does not run is refused where a selection is deployed or recorded, never where what runs is read, stopped or removed
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:02:49Z
+attempt: 1
+claim: `init` refuses a release not made for this platform at its stage step, after fetching it, and the step's compensation removes the copy, so the operation exits 11, not 9, as it does for a `--set` the release does not declare. Its plan refuses before anything starts, exit 9, for a local bundle. A refusal before the operation would mean fetching the release twice, so this is left as built, and the docs say the refusal comes at `init` rather than before it.
+evidence: internal/lifecycle/ops/init.go:938-943
+action: decided
+proposal: UNLISTED — `init` refuses a release not made for this platform at its stage step, exit 11 with nothing installed; its plan, `update` and `rollback` refuse before they start, exit 9
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:02:49Z
+attempt: 1
+claim: `write-installation`'s compensation removed `installation.yaml` and the state whether or not the step created them, so a repair refused in that step, an undeclared profile already or a narrowed one now, deleted the installation it was asked to repair. Reproduced with `init --repair --profile undeclared`: the state file was gone afterwards. The step records whether the installation existed and undoes only what it created.
+evidence: internal/lifecycle/ops/init.go:625-635
+action: decided
+proposal: UNLISTED — init's write-installation step undoes only an installation it created
+```
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T06:02:49Z
+attempt: 1
+claim: §5.4's darwin `FilesystemType` through `statfs(2)` lands with the opt-in rather than with the FileVault gate, because the macOS lane runs the test that needs it; it reads `f_fstypename` for the nearest existing directory
+evidence: internal/lifecycle/preflight/mounts_darwin.go:15
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:02:49Z
+attempt: 1
+claim: Decision 21 as first written checked "the Compose plugin it finds on PATH", and the docker CLI does not find plugins on `PATH`: it searches the directories its config names in `cliPluginsExtraDirs`, then its own and the system's. So the row now checks the plugin that CLI would load and names its directory in the manager's config, which the CLI searches first. Corrected in the row before it merged, as the review of this change pointed out.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:701
+action: decided
+proposal: ASSUMED — decision 21 as corrected
+```

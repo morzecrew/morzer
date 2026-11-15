@@ -282,15 +282,18 @@ compatibility:
 
 - **Absent, the list is `[linux]`.** A release that does not declare it is
   refused on a Mac. Add `darwin` once the release runs there.
-- **A release not made for the machine is refused** by `init`, its
-  `--dry-run`, `update` and `rollback` before they start, and by the
-  `system.platform` check in `apply` and `doctor`. The check covers a machine
-  whose state arrived another way, such as a Linux backup restored on a Mac.
+- **A release not made for the machine is refused.** `init --dry-run`,
+  `update` and `rollback` refuse it before they start, exit 9. `init` refuses
+  it once it has fetched the release, and leaves nothing installed, exit 11.
+  The `system.platform` check in `apply` and `doctor` covers a machine whose
+  state arrived another way, such as a Linux backup restored on a Mac.
 - **`runtimes.<runtime>.platforms` narrows single profiles.** A profile listed
   there is refused on a platform it does not name, wherever a selection is
-  checked: `init --profile`, `--profile`, `config set installation.profile`,
-  and a recorded selection at `update` and `rollback`. A profile not listed
-  runs wherever the release does.
+  deployed or recorded: `init --profile`, `--profile`, `config set
+  installation.profile`, and a recorded selection at `update` and `rollback`.
+  Reading, stopping and removing what runs still work, and so does
+  `config set installation.profile` to a selection this platform runs. A
+  profile not listed runs wherever the release does.
 - **Mark a profile `[linux]` when a container on a Mac cannot do what it
   promises.** On a Mac, containers run in the engine's Linux VM, so a
   container's host network and `/dev/net/tun` are the VM's. A TUN profile
