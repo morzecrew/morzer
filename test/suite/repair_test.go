@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,9 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/adapters/verify"
+	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
+	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/test/fakes"
 )
 
@@ -554,4 +560,154 @@ func TestARepairKeepsTheRecordedRuntime(t *testing.T) {
 	assert.Equal(t, "quadlet", after.Runtime,
 		"the repair re-pointed the installation at the release's runtime, "+
 			"which is the transition decision 3 forbids arriving as a repair")
+}
+
+// A repair handed a bundle of the installed version that fails verification
+// leaves the installed release as it was: the bundle is staged and checked
+// beside it, and moved into place only once it passes.
+func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	h.Deps.Verifier = verify.NewChain(checksum.New(), minisign.New())
+
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	key := signBundle(t, src)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src, SigningKeys: []string{key},
+	})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+
+	// The same version, changed after it was signed.
+	tampered := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, src, tampered)
+	compose := filepath.Join(tampered, "compose", "compose.yaml")
+	raw, err := os.ReadFile(compose)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(compose, append(raw, []byte("# changed after signing\n")...), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{key},
+	})
+
+	require.Error(t, err)
+	got, err := os.ReadFile(filepath.Join(installed.Root, "compose", "compose.yaml"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing", "a refused repair rewrote the installed release")
+	landed, err := release.Load(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "the installed release no longer matches its record")
+
+	// Signed again, it passes verification, and a selection the release
+	// does not declare refuses the repair before the release is replaced.
+	resigned := signBundle(t, tampered)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{resigned},
+		Profiles: []string{"undeclared"},
+	})
+
+	require.ErrorContains(t, err, `unknown deployment profile "undeclared"`)
+	got, err = os.ReadFile(filepath.Join(installed.Root, "compose", "compose.yaml"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing", "a refused selection replaced the installed release")
+	after, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, after.Digest), "a refused selection changed the release record")
+
+	// Passing every check, it is swapped in; a step after that fails, and
+	// the record still describes the files the release's directory holds.
+	h.Secrets.Fail["Load"] = errors.New("the secret store cannot be read")
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{resigned},
+	})
+
+	require.ErrorContains(t, err, "the secret store cannot be read")
+	landed, err = release.Load(installed.Root)
+	require.NoError(t, err)
+	after, err = h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(landed.Digest, after.Digest), "the release record no longer describes its directory")
+	// What it replaced is kept, for the containers still mounting it.
+	kept, err := filepath.Glob(filepath.Join(filepath.Dir(installed.Root), ".staging-debris-*", "compose", "compose.yaml"))
+	require.NoError(t, err)
+	require.Len(t, kept, 1, "the replaced release was removed while containers may mount it")
+	got, err = os.ReadFile(kept[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing")
+}
+
+// A repair with the bundle the release was installed from replaces nothing:
+// running containers mount files from the release's directory, and the
+// directory they mount stays the one there. The modes its digest leaves out
+// are put back on it in place.
+func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	before, err := os.Stat(installed.Root)
+	require.NoError(t, err)
+	modeOf := func(path string) os.FileMode {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		return info.Mode().Perm()
+	}
+	dir := filepath.Join(installed.Root, "compose")
+	file := filepath.Join(dir, "compose.yaml")
+	rootMode, dirMode, fileMode := modeOf(installed.Root), modeOf(dir), modeOf(file)
+	require.NoError(t, os.Chmod(file, 0o600))
+	require.NoError(t, os.Chmod(dir, 0o700))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Repair: true})
+
+	require.NoError(t, err)
+	after, err := os.Stat(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, os.SameFile(before, after), "a repair with the same bundle replaced the release's directory")
+	assert.Equal(t, fileMode, modeOf(file), "a repair left a file another user's container cannot read")
+	assert.Equal(t, dirMode, modeOf(dir), "a repair left a directory another user's container cannot read")
+	assert.Equal(t, rootMode, modeOf(installed.Root), "a repair changed the mode of the release's directory")
+}
+
+// A bundle of the installed version that this manager cannot run is refused
+// before it replaces the installed release, whether or not a profile is named.
+func TestARepairWithABundleDeclaringTwoRuntimesLeavesTheInstalledReleaseUntouched(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+
+	two := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, src, two)
+	manifest := filepath.Join(two, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
+		"runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: two, Repair: true})
+
+	require.ErrorContains(t, err, "cannot yet choose between them")
+	landed, err := release.Load(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a bundle this manager cannot run replaced the installed release")
 }

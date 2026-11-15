@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -659,8 +660,8 @@ const keyInstallationExisted = "installation-existed"
 // directory already there, which its compensation leaves.
 const keyReleaseDirExisted = "release-dir-existed"
 
-// keyReplacedRelease is the current release a repair's stage-release replaced,
-// which its compensation makes current again.
+// keyReplacedRelease is the current release, in another directory, that a
+// repair's stage-release replaced, which its compensation makes current again.
 const keyReplacedRelease = "replaced-release"
 
 // keyReplacedInstallation is the installation a repair's write-installation
@@ -958,7 +959,15 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			// first init, a directory there is a leftover to clear.
 			_, statErr := os.Stat(dest)
 			st.Set(keyReleaseDirExisted, opts.Repair && statErr == nil)
-			if _, err := d.Source.Fetch(ctx, ref, dest); err != nil {
+			// Fetched beside it and checked there, then moved into
+			// place: fetched into dest, a bundle refused below had
+			// already rewritten the installed release a repair names.
+			staged, err := stageBeside(dest)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = atomicfs.RemoveAll(staged) }()
+			if _, err := d.Source.Fetch(ctx, ref, staged); err != nil {
 				return err
 			}
 
@@ -985,7 +994,7 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				// The refusal a script that passed a key and no
 				// --require-signature now meets, so it names the way
 				// back to installing an unsigned release.
-				if trust.implied && !isSigned(dest) {
+				if trust.implied && !isSigned(staged) {
 					return domain.Usage(
 						"--signing-key was given, so a signature is required, and release %s is not signed",
 						resolved.Version).
@@ -996,7 +1005,7 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				// bundle at its source.
 				var shipped ports.ShippedKey
 				if trust.shipped {
-					if shipped, err = d.shippedKey(dest); err != nil {
+					if shipped, err = d.shippedKey(staged); err != nil {
 						return err
 					}
 					if err := checkFirstUseKey(shipped, opts); err != nil {
@@ -1006,7 +1015,7 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 						expect.Required, expect.PublicKeys = true, []string{shipped.Key}
 					}
 				}
-				key, err := d.verifyBundle(ctx, ports.BundlePath(dest), expect)
+				key, err := d.verifyBundle(ctx, ports.BundlePath(staged), expect)
 				if err != nil {
 					return err
 				}
@@ -1014,11 +1023,11 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 					signed = &domain.SignatureCheck{KeyID: key, OperationID: st.OpID, At: domain.NewTime(d.now())}
 				}
 				if trust.shipped {
-					d.noteFirstUse(st, dest, resolved.Version, shipped)
+					d.noteFirstUse(st, staged, resolved.Version, shipped)
 				}
 			}
 
-			rel, err := release.Load(dest)
+			rel, err := release.Load(staged)
 			if err != nil {
 				return err
 			}
@@ -1054,9 +1063,49 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 					WithHint("pass --set %s=<value> (repeat --set for several)", missing[0])
 			}
 
+			// The runtime and the selection too, as buildInstallation
+			// checks them, so a release this manager will not run
+			// refuses a repair before the installed release is
+			// replaced.
+			runtime, err := runtimeForRelease(rel)
+			if err != nil {
+				return err
+			}
+			if len(opts.Profiles) > 0 {
+				if _, err := rel.Selection(domain.Installation{Runtime: runtime}.RuntimeName(), opts.Profiles, d.platform()); err != nil {
+					return err
+				}
+			}
+
+			// MkdirTemp creates 0700; the release store is 0755, as
+			// CopyTree and ExtractTarZst would have made dest themselves.
+			if err := os.Chmod(staged, 0o755); err != nil {
+				return domain.Internal(err, "cannot set mode on the staged release")
+			}
+			// The installed release's own bundle again replaces nothing:
+			// running containers mount files from its directory. The
+			// modes the digest leaves out are put back on it in place.
+			if installed, err := release.Load(dest); err == nil && atomicfs.SameDigest(installed.Digest, rel.Digest) {
+				if err := atomicfs.MatchModes(staged, dest); err != nil {
+					return err
+				}
+			} else {
+				kept, err := placeRelease(staged, dest, opts.Repair)
+				if err != nil {
+					return err
+				}
+				if kept != "" {
+					st.Warn("kept the release it replaced at %s, for the services still running from it; "+
+						"it can go once they are re-created", kept)
+				}
+			}
+			rel.Root = dest
 			st.Set(engine.KeyRelease, rel)
 
-			if current, err := d.State.CurrentRelease(ctx); err == nil && opts.Repair {
+			// Another release's directory is untouched and can be made
+			// current again; the installed one's now holds this bundle,
+			// which the record has to go on describing.
+			if current, err := d.State.CurrentRelease(ctx); err == nil && opts.Repair && current.Root != dest {
 				st.Set(keyReplacedRelease, current)
 			}
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
@@ -1118,6 +1167,62 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			return nil
 		},
 	}
+}
+
+// stageBeside creates an empty directory beside dest, in the release store,
+// for a bundle to be fetched into and checked before it is moved to dest.
+func stageBeside(dest string) (string, error) {
+	parent := filepath.Dir(dest)
+	if err := atomicfs.MkdirAll(parent, 0o755); err != nil {
+		return "", err
+	}
+	staged, err := os.MkdirTemp(parent, ".staging-")
+	if err != nil {
+		return "", domain.Internal(err, "cannot create a staging directory in %s", parent)
+	}
+	return staged, nil
+}
+
+// placeRelease moves a checked bundle from staged to dest, replacing what is
+// there, the installed release a repair re-stages or a first init's leftover,
+// and returns where a repair's is kept.
+//
+// Swapped in one step, so dest names a whole release at every moment, through
+// a crash too. What a repair replaced is kept rather than removed: a running
+// container mounts files from the release's directory, and the one it mounts
+// is the one swapped out. Named as update names a tree it moves aside, which
+// its staging cleanup leaves, before the exchange, so no failure or crash
+// after it leaves the replaced release under a name that is cleaned up. A
+// first init's leftover runs nothing, and is left at staged for the caller to
+// remove.
+func placeRelease(staged, dest string, keep bool) (kept string, err error) {
+	return placeReleaseWith(staged, dest, keep, atomicfs.SwapDirs)
+}
+
+// placeReleaseWith is placeRelease with the exchange given, so a test can see
+// where each tree is at the moment of it.
+func placeReleaseWith(staged, dest string, keep bool, swap func(a, b string) error) (kept string, err error) {
+	atomicfs.SyncTree(staged)
+	if _, err := os.Stat(dest); err == nil {
+		from := staged
+		if keep {
+			kept = filepath.Join(filepath.Dir(dest), fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
+			if err := os.Rename(staged, kept); err != nil {
+				return "", domain.Internal(err, "cannot stage the release beside %s", dest)
+			}
+			from = kept
+		}
+		if err := swap(from, dest); err != nil {
+			// Nothing was exchanged: from holds the bundle, which
+			// nothing runs from.
+			_ = atomicfs.RemoveAll(from)
+			return "", domain.Internal(err, "cannot swap the staged release into place at %s", dest)
+		}
+	} else if err := os.Rename(staged, dest); err != nil {
+		return "", domain.Internal(err, "cannot move the staged release into place")
+	}
+	atomicfs.SyncDir(filepath.Dir(dest))
+	return kept, nil
 }
 
 // stepInitSecrets creates the encrypted secret state and generates what it

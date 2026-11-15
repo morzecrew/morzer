@@ -205,17 +205,18 @@ func schemaSecretNames(rel domain.Release) (map[string]string, error) {
 }
 
 // profileChanges is the declared names, each with the platforms it is narrowed
-// to, and `combinable` as one entry beside them in layering order, since
-// reordering it changes which overlay wins (RFC 0053 decision 17).
+// to, and `combinable` as one entry after them in layering order, since
+// reordering it changes which overlay wins (RFC 0053 decision 17). Compared
+// apart, since a profile may be named `combinable` too.
 func profileChanges(a, b domain.Manifest) []Change {
-	from, to := profilePlatforms(a), profilePlatforms(b)
-	if names := a.CombinableNames(); len(names) > 0 {
-		from["combinable"] = strings.Join(names, ", ")
+	combinable := func(m domain.Manifest) map[string]string {
+		if names := m.CombinableNames(); len(names) > 0 {
+			return map[string]string{"combinable": strings.Join(names, ", ")}
+		}
+		return map[string]string{}
 	}
-	if names := b.CombinableNames(); len(names) > 0 {
-		to["combinable"] = strings.Join(names, ", ")
-	}
-	return changes(from, to, identity)
+	return append(changes(profilePlatforms(a), profilePlatforms(b), identity),
+		changes(combinable(a), combinable(b), identity)...)
 }
 
 // profilePlatforms is the declared profile names, each with the platforms the

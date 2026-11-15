@@ -13,6 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 )
 
@@ -151,6 +152,7 @@ func TestARefusedRepairToAnotherReleaseKeepsTheCurrentOne(t *testing.T) {
 	realIdentity(t, h)
 	before, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
+	require.NoError(t, atomicfs.ReplaceSymlink(before.Root, h.Paths.CurrentLink()))
 
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", ReleasePath: stageUpgradeSource(t, h), Profiles: []string{"undeclared"}, Repair: true,
@@ -180,6 +182,7 @@ func TestARepairThatFailsLaterKeepsTheInstallationItReplaced(t *testing.T) {
 	realIdentity(t, h)
 	before := installation(t, h)
 	h.Secrets.Fail["Load"] = errors.New("the secret store cannot be read")
+	require.NoError(t, atomicfs.ReplaceSymlink(h.Release.Root, h.Paths.CurrentLink()))
 
 	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
 		Product: "demo", ReleasePath: stageUpgradeSource(t, h), Domains: []string{"repaired.example"}, Repair: true,
@@ -191,6 +194,11 @@ func TestARepairThatFailsLaterKeepsTheInstallationItReplaced(t *testing.T) {
 	current, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, h.Release.Root, current.Root)
+	target, err := filepath.EvalSymlinks(h.Paths.CurrentLink())
+	require.NoError(t, err, "the failed repair left the current link naming nothing")
+	root, err := filepath.EvalSymlinks(h.Release.Root)
+	require.NoError(t, err)
+	assert.Equal(t, root, target)
 }
 
 // The remedy the refusals name works: a recorded profile this platform does
