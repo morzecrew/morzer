@@ -158,8 +158,10 @@ func HookEnvVars(e HookEnv) map[string]string {
 	}
 	set("URL", e.URL)
 
+	// Every declared parameter, an empty one too, as Compose gets them: a
+	// hook under `set -u` must find one that defaults to empty.
 	for name, value := range e.Parameters {
-		set("PARAM_"+strings.ToUpper(name), value)
+		out[e.Var("PARAM_"+strings.ToUpper(name))] = value
 	}
 
 	// DRY_RUN is always present, including as "0". A hook testing for the

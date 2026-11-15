@@ -326,6 +326,19 @@ func TestHookEnvVarsAlwaysCarriesDryRun(t *testing.T) {
 	}
 }
 
+// Every declared parameter reaches a hook, an empty one too, as it reaches
+// Compose: a hook under `set -u` reading a parameter that defaults to empty
+// must not fail as if it were undeclared (#368).
+func TestHookEnvVarsCarriesEveryParameter(t *testing.T) {
+	vars := ports.HookEnvVars(ports.HookEnv{Product: "demo", Parameters: map[string]string{"listen": "", "http_port": "80"}})
+	if value, ok := vars["DEMO_PARAM_LISTEN"]; !ok || value != "" {
+		t.Errorf("DEMO_PARAM_LISTEN = %q, present %v; want present and empty", value, ok)
+	}
+	if vars["DEMO_PARAM_HTTP_PORT"] != "80" {
+		t.Errorf("DEMO_PARAM_HTTP_PORT = %q", vars["DEMO_PARAM_HTTP_PORT"])
+	}
+}
+
 func TestHookEnvPrefixSurvivesAnAwkwardProductName(t *testing.T) {
 	cases := map[string]string{
 		"demo":   "DEMO",
