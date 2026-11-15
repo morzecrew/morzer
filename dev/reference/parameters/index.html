@@ -2937,6 +2937,10 @@ morzer<span class="w"> </span>config<span class="w"> </span><span class="nb">uns
 <td>How many of the newest <a href="../attestations/#keeping-fewer-of-them">attestations</a> this machine keeps; at least <code>1</code>. Absent keeps them all, and no release sets it. A statement a backup target does not have yet is never removed.</td>
 </tr>
 <tr>
+<td><code>secrets.allow_unencrypted_disk</code></td>
+<td>On a Mac, render secrets with FileVault off. Without it, every render and every <code>secret</code> change refuses there, exit 6. <code>true</code> is journalled, and <code>doctor</code> fails <code>secrets.disk-encryption</code> while FileVault is off either way. Linux renders to a tmpfs and does not read it.</td>
+</tr>
+<tr>
 <td><code>release.require_signature</code></td>
 <td>Refuse any release not signed by a key <a href="../release-commands/#release-trust"><code>release trust</code></a> lists. <code>true</code> needs a trusted key; <code>false</code> is refused while <code>update.auto_apply</code> is on, and is journalled. See <a href="../../operating/unattended-updates/#turning-it-on">unattended updates</a>.</td>
 </tr>

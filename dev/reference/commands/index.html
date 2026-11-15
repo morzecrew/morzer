@@ -3344,6 +3344,10 @@ run <code>apply</code> afterwards.</p>
 <td>Proceed without one. Losing this machine then loses its secrets.</td>
 </tr>
 <tr>
+<td><code>--allow-unencrypted-disk</code></td>
+<td>On a Mac, go on with FileVault off, and record <a href="../parameters/#installation-settings-are-not-parameters"><code>secrets.allow_unencrypted_disk</code></a>. Without it, <code>init</code> refuses there before it writes anything, exit 6. On Linux it records the setting, and nothing reads it.</td>
+</tr>
+<tr>
 <td><code>--generate-secrets</code></td>
 <td>Generate every secret the release declares a generator for. Default <code>true</code>.</td>
 </tr>
