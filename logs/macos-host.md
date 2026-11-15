@@ -483,3 +483,14 @@ claim: Decision 5's gate ran before the input it guards. `secret set` and `secre
 evidence: internal/cli/secret_edit.go:86-92
 action: decided
 ```
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T13:36:13Z
+attempt: 3
+claim: The wizard's gate read the installation the command was wired to, so one that allowed an unencrypted disk let the wizard write a recovery key for another product it was then told to make, which `Init` refused. The gate is asked again right before the key is written, of the installation for the product chosen, which also honours a setting withdrawn while the wizard waited. And `config apply` gated on every secret the document named, so one that withdrew the override and repeated a stored value could not apply; it gates on the secrets whose value changes, the ones it stores
+evidence: internal/lifecycle/ops/config_apply.go:205-218
+action: decided
+```
