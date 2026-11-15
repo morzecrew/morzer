@@ -783,6 +783,11 @@ func stepValidateRuntime(d *Deps, inst domain.Installation, rel domain.Release, 
 		OnFailure:   engine.Compensate,
 		Timeout:     2 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			// Every apply, update and rollback passes here before
+			// anything starts, configuration or none.
+			if err := d.refuseProfilesOffPlatform(inst, rel, opts.Profiles); err != nil {
+				return err
+			}
 			cfg, err := d.runtimeConfig(rel, inst, opts.Profiles)
 			if err != nil {
 				return err
