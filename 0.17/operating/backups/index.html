@@ -2893,8 +2893,10 @@ pushing to a target and pruning locally, or a vendor <code>exclude</code>.</p>
 <h2 id="everything-in-a-backup-is-encrypted-except-its-manifest">Everything in a backup is encrypted except its manifest<a class="headerlink" href="#everything-in-a-backup-is-encrypted-except-its-manifest" title="Permanent link">&para;</a></h2>
 <p>Each component is encrypted to the same recipients as the secret state — this
 machine's age key plus whatever offline and operator keys <code>secret recipients</code>
-knows about. So a backup you copy to another machine, upload to a bucket, or
-leave on a disk carries no credential and no data with it.</p>
+knows about. An installation that has no secret state yet, such as one whose
+release declares no secrets and that has no recovery key, backs up for this
+machine's key alone. So a backup you copy to another machine, upload to a
+bucket, or leave on a disk carries no credential and no data with it.</p>
 <p>The manifest stays readable on purpose. <code>morzer backup list</code> works on a machine
 whose key is gone, and an operator looking at a directory of ciphertext can
 still tell what it is and which installation it belongs to.</p>
