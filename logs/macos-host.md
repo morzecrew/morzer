@@ -574,3 +574,15 @@ evidence: internal/adapters/dockerdesktop/cli.go:157-180
 action: decided
 proposal: ASSUMED — on darwin every command on an installation rebuilds the manager's Docker config before any registry is reached, and runs each kept credential helper through a link first on PATH
 ```
+
+```divergence
+decision: 21
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T18:24:16Z
+attempt: 1
+claim: `ReplaceableByNonRoot` reads owners and mode bits. On a Mac an ACL can grant a named user write or delete on an entry without setting a mode bit, so a root-owned CLI on PATH, a plugin, a helper, or a directory on the way to one, passes while that user could replace it. The rule is shared with the manager's own binary; reading a Mac's ACLs needs `getattrlist`, which `golang.org/x/sys/unix` does not wrap, and is a change to the rule of its own. Docker Desktop's copies are not affected: they are checked by signature.
+evidence: internal/infra/atomicfs/atomicfs.go:505-512
+action: departed
+proposal: ASSUMED — on darwin `ReplaceableByNonRoot` also refuses an entry that carries an ACL granting anyone but root write, delete or append
+```
