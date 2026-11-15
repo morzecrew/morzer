@@ -600,6 +600,10 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 // already there, which its compensation leaves.
 const keyInstallationExisted = "installation-existed"
 
+// keyReleaseDirExisted is whether a repair's stage-release found the release's
+// directory already there, which its compensation leaves.
+const keyReleaseDirExisted = "release-dir-existed"
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -870,6 +874,10 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			}
 
 			dest := d.Paths.ReleaseDir(resolved.Version.String())
+			// On a repair, the installed release's own directory; on a
+			// first init, a directory there is a leftover to clear.
+			_, statErr := os.Stat(dest)
+			st.Set(keyReleaseDirExisted, opts.Repair && statErr == nil)
 			if _, err := d.Source.Fetch(ctx, ref, dest); err != nil {
 				return err
 			}
@@ -997,7 +1005,13 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				SignatureVerified: signed,
 			})
 		},
+		// Only a release directory this step created. A repair re-stages
+		// the installed release into the directory it already has, and
+		// removing that left the current release pointing at nothing.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			if existed, known := st.Get(keyReleaseDirExisted); !known || existed != false {
+				return nil
+			}
 			rel, ok := st.Get(engine.KeyRelease)
 			if !ok {
 				return nil
