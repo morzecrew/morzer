@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,4 +145,54 @@ func TestARestartGivesDataDirFirst(t *testing.T) {
 
 	require.NoError(t, h.Deps.RestartServices(context.Background(), cfg, []string{"app"}))
 	assert.Equal(t, [2]int{uid, gid}, ownerOf(t, left))
+}
+
+// A one-shot run, a migration's or a task's, starts its service and what that
+// depends on before services start, so DataDir is given first there too: on a
+// fresh installation a database would otherwise start on a directory it cannot
+// write.
+func TestAOneShotGivesDataDirFirst(t *testing.T) {
+	uid, gid := givableOwner(t)
+	user := func() (int, int, error) { return uid, gid, nil }
+	h := taskHarness(t, "", reindexTask)
+	h.Deps.EngineUser = user
+	h.Secrets.RenderOwner = user
+	left := filepath.Join(h.Paths.DataDir(), "left-by-a-hook")
+	require.NoError(t, os.WriteFile(left, []byte("x"), 0o640))
+	before := len(h.Runtime.OneShots)
+
+	_, err := ops.RunTask(context.Background(), h.Deps, ops.TaskOptions{Name: "reindex"})
+	require.NoError(t, err)
+	require.Len(t, h.Runtime.OneShots, before+1)
+	assert.Equal(t, [2]int{uid, gid}, ownerOf(t, left))
+}
+
+// On a Mac RunDir's entry is in a directory its group can write, and doctor
+// fails while an account other than root is in that group: it could move
+// RunDir aside and redirect where root writes decrypted secrets.
+func TestDoctorFailsWhileSomeoneElseCanWriteWhereRunDirSits(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	parent := filepath.Dir(h.Paths.RunDir)
+	var asked string
+	writers := []string{"alice"}
+	h.Deps.RunDirWriters = func(_ context.Context, dir string) ([]string, error) {
+		asked = dir
+		return writers, nil
+	}
+
+	check := doctorCheck(t, h, "storage.run-directory")
+	assert.Equal(t, parent, asked)
+	assert.Equal(t, events.CheckFail, check.Status)
+	assert.Contains(t, check.Message, "alice can write "+parent)
+	assert.Contains(t, check.Remedy, "take alice out of the group")
+
+	writers = nil
+	assert.Equal(t, events.CheckOK, doctorCheck(t, h, "storage.run-directory").Status)
+
+	h.Deps.RunDirWriters = func(context.Context, string) ([]string, error) {
+		return nil, errors.New("dscl: not permitted")
+	}
+	assert.Equal(t, events.CheckWarn, doctorCheck(t, h, "storage.run-directory").Status)
 }
