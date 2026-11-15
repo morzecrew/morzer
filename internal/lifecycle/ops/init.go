@@ -1065,7 +1065,8 @@ func stageBeside(dest string) (string, error) {
 }
 
 // placeRelease moves a checked bundle from staged to dest, replacing what is
-// there: the installed release a repair re-stages, or a first init's leftover.
+// there: the installed release a repair re-stages, or a first init's leftover,
+// which is left at staged.
 func placeRelease(staged, dest string) error {
 	// MkdirTemp creates 0700; the release store is 0755, as CopyTree and
 	// ExtractTarZst would have made dest themselves.
@@ -1073,16 +1074,13 @@ func placeRelease(staged, dest string) error {
 		return domain.Internal(err, "cannot set mode on the staged release")
 	}
 	atomicfs.SyncTree(staged)
+	// Swapped in one step, so dest names a whole release at every moment,
+	// through a crash too; what was there is left at staged, which the
+	// caller removes.
 	if _, err := os.Stat(dest); err == nil {
-		aside := staged + "-replaced"
-		if err := os.Rename(dest, aside); err != nil {
-			return domain.Internal(err, "cannot move %s aside", dest)
+		if err := atomicfs.SwapDirs(staged, dest); err != nil {
+			return domain.Internal(err, "cannot swap the staged release into place at %s", dest)
 		}
-		if err := os.Rename(staged, dest); err != nil {
-			_ = os.Rename(aside, dest)
-			return domain.Internal(err, "cannot move the staged release into place")
-		}
-		_ = atomicfs.RemoveAll(aside)
 	} else if err := os.Rename(staged, dest); err != nil {
 		return domain.Internal(err, "cannot move the staged release into place")
 	}
