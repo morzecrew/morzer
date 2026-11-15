@@ -99,3 +99,16 @@ func TestMkdirExactNoFollowRefusesALink(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o750), info.Mode().Perm())
 }
+
+// A directory someone else owns is refused, before its mode is changed.
+func TestMkdirMineNoFollowRefusesAnotherUsersDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	require.NoError(t, MkdirMineNoFollow(dir, 0o750))
+	require.NoError(t, os.Chmod(dir, 0o700))
+
+	err := mkdirExactNoFollow(dir, 0o750, os.Geteuid()+1)
+	require.ErrorContains(t, err, "belongs to uid")
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), info.Mode().Perm(), "a directory someone else owns had its mode changed")
+}

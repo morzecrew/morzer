@@ -283,3 +283,15 @@ func TestSecretEditOfOneRefusesAnEmptyValue(t *testing.T) {
 	assert.Contains(t, domain.AsError(err).Hint, "morzer secret remove db_password")
 	assert.Equal(t, "s3cret", loaded(t, store)["db_password"])
 }
+
+// An edit session is refused before it decrypts anything while an account
+// other than root could move RunDir aside, as a render is.
+func TestSecretEditRefusesWhileSomeoneElseCanWriteWhereRunDirSits(t *testing.T) {
+	app, _, root := editApp(t, map[string]string{"db_password": "the-value-to-find"})
+	app.Deps.RunDirWriters = func(context.Context, string) ([]string, error) { return []string{"alice"}, nil }
+
+	err := app.editSecretsWith(context.Background(), nil, scriptedEditor(`exit 0`))
+
+	require.ErrorContains(t, err, "alice can write")
+	assert.NoDirExists(t, domain.PathsUnder(root, "demo").EditDir())
+}

@@ -294,20 +294,47 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 }
 
 // RenderSecrets renders the release's secrets into the secrets directory,
-// recreating RunDir and the managed directories under it with their own modes
-// first. A boot clears RunDir, and the store would recreate it as the secrets
-// directory's parent at that directory's 0700, which on a Mac no container's
-// mount passes through (logs/macos-host.md). Every render goes through here.
-//
-// Without following a link: on a Mac, RunDir's own entry is in a directory its
-// group can write.
+// RunDir prepared first. Every render goes through here.
 func (d *Deps) RenderSecrets(ctx context.Context, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
-	for _, dir := range d.Paths.EphemeralDirs() {
-		if err := atomicfs.MkdirExactNoFollow(dir.Path, os.FileMode(dir.Mode)); err != nil {
-			return nil, err
-		}
+	if err := d.PrepareRunDir(ctx); err != nil {
+		return nil, err
 	}
 	return d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema)
+}
+
+// PrepareRunDir recreates RunDir and the managed directories under it with
+// their own modes. A boot clears RunDir, and the store would recreate it as the
+// secrets directory's parent at that directory's 0700, which on a Mac no
+// container's mount passes through (logs/macos-host.md).
+//
+// Without following a link, and refused while RunDir could be moved aside or
+// is someone else's: on a Mac, RunDir's own entry is in a directory its group
+// can write, and an account that could write there, or had made RunDir, could
+// redirect where root writes decrypted secrets between two of these steps.
+func (d *Deps) PrepareRunDir(ctx context.Context) error {
+	if d.RunDirWriters != nil {
+		parent := filepath.Dir(d.Paths.RunDir)
+		writers, err := d.RunDirWriters(ctx, parent)
+		if err != nil {
+			return domain.SecretsError(err, "cannot tell who can write %s, where %s sits", parent, d.Paths.RunDir)
+		}
+		if len(writers) > 0 {
+			return domain.SecretsError(nil,
+				"%s can write %s, where %s sits, and so could redirect where decrypted secrets are written",
+				strings.Join(writers, ", "), parent, d.Paths.RunDir).
+				WithHint("take %s out of the group that owns %s; `ls -ld %s` names it", strings.Join(writers, ", "), parent, parent)
+		}
+	}
+	for _, dir := range d.Paths.EphemeralDirs() {
+		mkdir := atomicfs.MkdirExactNoFollow
+		if dir.Path == d.Paths.RunDir {
+			mkdir = atomicfs.MkdirMineNoFollow
+		}
+		if err := mkdir(dir.Path, os.FileMode(dir.Mode)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // up starts services through the runtime, DataDir given to the engine's user

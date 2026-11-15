@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // otherwise swap a session for a link and redirect what root writes (RFC 0055).
 func TestAnEditSessionIsOutsideTheSecretsDirectory(t *testing.T) {
 	app, _ := restartApp(t)
-	dir, path, err := app.newEditSession()
+	dir, path, err := app.newEditSession(context.Background())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
