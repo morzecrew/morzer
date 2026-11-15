@@ -156,6 +156,12 @@ type Deps struct {
 	// render to a tmpfs.
 	DiskEncrypted func(context.Context) (bool, error)
 
+	// RunDirWriters lists who other than root can write a directory, for
+	// the one RunDir's own entry sits in where that is not root's alone: a
+	// Mac's /private/var/run, which its group can write (logs/macos-host.md).
+	// Nil where it is not checked, as on Linux, whose /run is root's.
+	RunDirWriters func(ctx context.Context, dir string) ([]string, error)
+
 	// Platform is the GOOS the platform gates compare a release with (RFC
 	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
 	// same reason again: the refusals on a Mac are tested on Linux.
@@ -363,6 +369,16 @@ func (d *Deps) RestartServices(ctx context.Context, cfg ports.RuntimeConfig, ser
 		return err
 	}
 	return d.Runtime.Restart(ctx, cfg, services)
+}
+
+// runOneShot runs a service to completion through the runtime, DataDir given to
+// the engine's user first: a migration or a task starts its service and what it
+// depends on, a database among them, before services start.
+func (d *Deps) runOneShot(ctx context.Context, cfg ports.RuntimeConfig, service string, opts ports.RunOptions) (ports.ExitResult, error) {
+	if err := d.giveDataDir(ctx); err != nil {
+		return ports.ExitResult{}, err
+	}
+	return d.Runtime.RunOneShot(ctx, cfg, service, opts)
 }
 
 // giveDataDir gives DataDir to the user the engine reads the host as, where

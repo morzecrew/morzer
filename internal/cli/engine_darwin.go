@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	"github.com/morzecrew/morzer/internal/adapters/dirservice"
 	"github.com/morzecrew/morzer/internal/adapters/dockerdesktop"
 	"github.com/morzecrew/morzer/internal/adapters/filevault"
 	"github.com/morzecrew/morzer/internal/infra/exec"
@@ -16,4 +17,11 @@ var engineUser = dockerdesktop.User
 // render to, since a Mac has no memory-backed filesystem (decision 5).
 func diskEncryption(runner exec.Runner) func(context.Context) (bool, error) {
 	return func(ctx context.Context) (bool, error) { return filevault.On(ctx, runner) }
+}
+
+// runDirWriters lists who other than root can write a directory, read from
+// Directory Services: RunDir's entry is in /private/var/run, which its group can
+// write.
+func runDirWriters(runner exec.Runner) func(context.Context, string) ([]string, error) {
+	return func(ctx context.Context, dir string) ([]string, error) { return dirservice.Writers(ctx, runner, dir) }
 }

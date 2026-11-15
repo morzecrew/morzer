@@ -1049,6 +1049,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Locker:        locker,
 		EngineUser:    engineUser,
 		DiskEncrypted: diskEncrypted,
+		RunDirWriters: runDirWriters(runner),
 		// The same constructor, for the installations this command is
 		// not pointed at. `ls` derives one layout per product it finds
 		// on the machine, so the set is not known here -- but the

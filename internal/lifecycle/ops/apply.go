@@ -1003,7 +1003,7 @@ func (d *Deps) runMigrateStep(
 		// failure from here on has services to put back, as one after
 		// start-services does.
 		st.Set(keyServicesTouched, true)
-		res, err := d.Runtime.RunOneShot(ctx, cfg, spec.Service, ports.RunOptions{
+		res, err := d.runOneShot(ctx, cfg, spec.Service, ports.RunOptions{
 			Env:     ports.ServiceEnvVars(env),
 			Timeout: spec.Timeout.Or(30 * time.Minute),
 			Remove:  true,

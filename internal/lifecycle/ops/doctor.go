@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -204,6 +205,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	)
 	if d.DiskEncrypted != nil {
 		checks = append(checks, d.checkDiskEncryption(inst))
+	}
+	if d.RunDirWriters != nil {
+		checks = append(checks, d.checkRunDirParent())
 	}
 
 	current, currentErr := d.State.CurrentRelease(ctx)
@@ -894,6 +898,36 @@ func (d *Deps) checkSecretsOnEphemeralStorage() preflight.Check {
 				fmt.Sprintf("mount a tmpfs at %s, or accept that decrypted secrets "+
 					"touch disk and are not reliably erasable there", d.Paths.RunDir),
 				"%s is %s, not tmpfs: decrypted secrets are written to disk", dir, fstype)
+		},
+	}
+}
+
+// checkRunDirParent fails while an account other than root can write the
+// directory RunDir's entry sits in. RunDir and what is under it are placed
+// without following a link, and a link swapped in for the directory above is
+// still followed, so such an account could move RunDir aside and redirect where
+// root writes decrypted secrets (logs/macos-host.md).
+func (d *Deps) checkRunDirParent() preflight.Check {
+	parent := filepath.Dir(d.Paths.RunDir)
+	return preflight.Check{
+		ID:          "storage.run-directory",
+		Category:    preflight.CategoryStorage,
+		Description: "only root can write where the run directory sits",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			writers, err := d.RunDirWriters(ctx, parent)
+			if err != nil {
+				return preflight.Warn("run `ls -ld "+parent+"` and check who is in its group",
+					"cannot tell who can write %s: %v", parent, err)
+			}
+			if len(writers) == 0 {
+				return preflight.OK("%s is root's to change", parent)
+			}
+			return preflight.Fail(
+				"take "+strings.Join(writers, ", ")+" out of the group that owns "+parent+
+					"; `ls -ld "+parent+"` names it",
+				"%s can write %s, where %s sits, and so could move it aside and redirect where "+
+					"root writes decrypted secrets", strings.Join(writers, ", "), parent, d.Paths.RunDir)
 		},
 	}
 }
