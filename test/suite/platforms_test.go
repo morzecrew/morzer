@@ -137,6 +137,7 @@ func TestARefusedRepairKeepsTheInstallation(t *testing.T) {
 	exists, err := h.Deps.State.InstallationExists(ctx)
 	require.NoError(t, err)
 	assert.True(t, exists, "a refused repair deleted the installation")
+	assert.DirExists(t, h.Release.Root, "a refused repair deleted the installed release")
 }
 
 // The remedy the refusals name works: a recorded profile this platform does
@@ -266,4 +267,22 @@ func TestStartingAProfileThisPlatformDoesNotRunIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), `profile "embedded" does not run on darwin`)
 	assert.Equal(t, domain.ExitCompensated, domain.ExitCode(err))
 	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
+	assert.Len(t, h.Runtime.UpOptions, ups, "the undo re-created the selection the step refused")
+}
+
+// The start paths refuse a release this platform does not run as well as a
+// profile: restart with no profile recorded checks the release itself.
+func TestRestartingAReleaseThisPlatformDoesNotRunIsRefused(t *testing.T) {
+	ctx := context.Background()
+	h := onDarwin(t)
+	h.Deps.Platform = "linux"
+	applyBaseline(t, h)
+	h.Deps.Platform = "darwin"
+	ups := len(h.Runtime.UpOptions)
+
+	_, err := ops.Restart(ctx, h.Deps, ops.RestartOptions{Services: []string{"app"}})
+
+	require.ErrorIs(t, err, domain.ErrIncompatible)
+	assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
+	assert.Len(t, h.Runtime.UpOptions, ups)
 }
