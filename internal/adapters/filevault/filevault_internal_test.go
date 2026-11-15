@@ -8,15 +8,20 @@ import (
 )
 
 func TestFdesetupStatusIsRead(t *testing.T) {
-	for out, want := range map[string]bool{
-		"FileVault is On.\n": true,
-		"FileVault is On.\nEncryption in progress: Percent completed = 45\n": true,
-		"FileVault is Off.\n": false,
-		"FileVault is Off.\nDecryption in progress: Percent completed = 12\n": false,
+	for _, c := range []struct {
+		name, out string
+		want      bool
+	}{
+		{"on", "FileVault is On.\n", true},
+		{"encrypting", "FileVault is On.\nEncryption in progress: Percent completed = 45\n", true},
+		{"off", "FileVault is Off.\n", false},
+		{"decrypting", "FileVault is Off.\nDecryption in progress: Percent completed = 12\n", false},
 	} {
-		got, err := parse(out)
-		require.NoError(t, err, out)
-		assert.Equal(t, want, got, out)
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parse(c.out)
+			require.NoError(t, err)
+			assert.Equal(t, c.want, got)
+		})
 	}
 	_, err := parse("fdesetup: command not permitted\n")
 	require.ErrorContains(t, err, "fdesetup status said")
