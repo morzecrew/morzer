@@ -11,6 +11,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/lifecycle/preflight"
 )
 
 // The FileVault gate (RFC 0055 decision 5): on a Mac, decrypted secrets land
@@ -61,8 +62,13 @@ func TestFileVaultOffRefusesEveryRenderUntilAllowed(t *testing.T) {
 	on := true
 	withFileVault(h, &on)
 	assert.Equal(t, events.CheckOK, doctorCheck(t, h, "secrets.disk-encryption").Status)
-	ephemeral := doctorCheck(t, h, "secrets.ephemeral-storage")
-	assert.NotContains(t, ephemeral.Remedy, "mount a tmpfs", "a Mac was told to mount a tmpfs")
+	// Where the test's own directory is memory-backed, the check passes
+	// before any wording applies.
+	if !preflight.IsEphemeralFilesystem(preflight.FilesystemType(h.Paths.SecretsRenderDir())) {
+		ephemeral := doctorCheck(t, h, "secrets.ephemeral-storage")
+		assert.NotContains(t, ephemeral.Remedy, "mount a tmpfs", "a Mac was told to mount a tmpfs")
+		assert.Contains(t, ephemeral.Remedy, "no memory-backed filesystem")
+	}
 }
 
 // init refuses before it writes anything, so no identity is created on an
@@ -84,6 +90,7 @@ func TestInitRefusesAnUnencryptedDiskBeforeItWritesAnything(t *testing.T) {
 	refused := fresh(false)
 	_, err := ops.Init(ctx, refused.Deps, opts)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "FileVault is off")
 	assert.Equal(t, domain.ExitSecrets, domain.ExitCode(err))
 	assert.NoFileExists(t, refused.Paths.AgeIdentityFile())
 	exists, err := refused.Deps.State.InstallationExists(ctx)
