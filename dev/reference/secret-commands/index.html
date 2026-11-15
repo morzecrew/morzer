@@ -2624,9 +2624,10 @@ Emptying the file changes nothing; <code>morzer secret remove</code> removes a s
 <p>This is the one place in the manager where a decrypted secret is written to a
 filesystem. What bounds it:</p>
 <ul>
-<li>The session lives in a <code>0700</code> directory <strong>inside the tmpfs render
-  directory</strong>, not <code>/tmp</code> — which is frequently not tmpfs, and where a crash
-  would leave plaintext on a disk you believe is clean.</li>
+<li>The session lives in a <code>0700</code> directory root owns, <strong>beside the render
+  directory</strong> on the same tmpfs, <code>/run/&lt;product&gt;/edit</code>, not <code>/tmp</code>, which is
+  frequently not tmpfs, and where a crash would leave plaintext on a disk you
+  believe is clean.</li>
 <li>The whole directory is overwritten and removed when the editor exits, however
   it exits: a clean save, a non-zero exit, a signal, a panic. The directory
   rather than just the file, because editors leave swap and backup files beside
