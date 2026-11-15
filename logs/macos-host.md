@@ -139,3 +139,66 @@ claim: touched the governed area; a release runs on darwin only when `requiremen
 evidence: internal/domain/manifest.go:868-889
 action: decided
 ```
+
+## The darwin layout, and who owns what
+
+On branch `rfc-0055-ownership`, stacked on `rfc-0055-manifest`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 gives the user who runs Docker Desktop the directories a container writes, which is `DataDir`. A vendor's hooks run as root and write into it, a restore's most of all, and a file root owns there is one no container can write on a Mac, since file sharing acts as that user. What a container writes already shows as that user through fakeowner. So before every `Up`, the manager walks `DataDir` and gives that user each entry another user owns.
+evidence: internal/lifecycle/ops/backup.go:1182
+action: decided
+proposal: UNLISTED — on darwin, before the runtime starts services, `DataDir` and every entry in it another user owns are given to the user who runs Docker Desktop
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 needs `RunDir` at 0755 so that user can pass through it to the secrets, and a boot clears `/private/var/run` (§13 S5). `Render` then recreates it as the parent of the secrets directory, and `MkdirExact` gives a parent the leaf's mode, 0700, which no container mount passes through. Linux has the same defect at 0700 against its 0750, which `storage.directories` warns about after every reboot. Reproduced: `MkdirExact(<root>/run/demo/secrets, 0700)` leaves `<root>/run/demo` at 0700. Rendering now recreates the managed directories under `RunDir` with their own modes first, on both platforms.
+evidence: internal/adapters/secrets/sopsage/sopsage.go:485
+action: decided
+proposal: UNLISTED — rendering recreates `RunDir` and the managed directories under it with their own modes before writing into them
+```
+
+```divergence
+decision: 17
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 17 replaces `OwnerRefusal` with a `doctor` warning and leaves P1 to settle what `apply`'s host-side check compares. The store is given the user who runs Docker Desktop when it is built and owns every rendered file and the directory by that user at each render, setting the declared owner aside, so `OwnerRefusal` is removed rather than bypassed. `apply` compares each file's owner with that same user, read again, where Linux compares the declaration.
+evidence: internal/lifecycle/ops/apply.go:446
+action: decided
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decisions 4 and 16 read a declared `render_to` under `/run/` under `/var/run/` on darwin. Nothing renders to `render_to`: it is defaulted from `DefaultPaths` and checked to be absolute, and secrets render to `Paths.SecretsRenderDir()` on every platform. With `DefaultPaths` per platform, the default follows, and a declared value has nothing to translate.
+evidence: internal/domain/manifest.go:1368-1369
+action: departed
+proposal: UNLISTED — `render_to` is not where secrets render, so no translation is built; the darwin layout's `RunDir` is what moves
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T05:38:25Z
+attempt: 1
+claim: Decision 16 says only root can change `RunDir`, and that holds for `RunDir` itself, root's at 0755. Its own entry sits in `/private/var/run`, which is `root:daemon 0775`, so a member of `daemon` could rename it away. On a default macOS that group's only member is root. The darwin `doctor` checks gain one that says so, in the pull request that adds them.
+evidence: spikes/macos-host/report.txt:40
+action: decided
+proposal: UNLISTED — `doctor` on darwin warns when the group that can write `/private/var/run` has a member other than root
+```
