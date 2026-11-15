@@ -56,6 +56,9 @@ func Restart(ctx context.Context, d *Deps, opts RestartOptions) (Result, error) 
 	if err != nil {
 		return Result{}, err
 	}
+	if err := d.refuseProfilesOffPlatform(inst, rel, nil); err != nil {
+		return Result{}, err
+	}
 	if err := d.refuseUnstartedServices(ctx, inst, rel, opts.Services); err != nil {
 		return Result{}, err
 	}

@@ -381,6 +381,9 @@ func stepRecreateServices(
 		OnFailure:   engine.Compensate,
 		Timeout:     10 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			if err := d.refuseProfilesOffPlatform(inst, rel, nil); err != nil {
+				return err
+			}
 			return d.recreate(ctx, inst, rel, services)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {

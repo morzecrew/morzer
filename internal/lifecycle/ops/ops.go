@@ -1015,6 +1015,19 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
 }
 
+// refuseProfilesOffPlatform refuses to start or re-create a selection this
+// platform does not run (RFC 0055 decision 3). runtimeConfig checks none, so
+// that what runs can be read, stopped and replaced; this is the check for the
+// paths that start services, whether or not they render configuration first.
+// Compensation and restore put back what ran, and do not ask it.
+func (d *Deps) refuseProfilesOffPlatform(inst domain.Installation, rel domain.Release, profiles []string) error {
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	_, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
+	return err
+}
+
 // refuseUndeclaredProfile refuses, before an operation begins, a release that
 // does not declare the installation's profile or the one `--profile` asks for.
 // Inside a step it would fail the render, after a backup and a staging.
