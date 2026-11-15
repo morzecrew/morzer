@@ -349,6 +349,10 @@ The floor only turns those failures into one message that names the version.
   `.Profiles` (per decision 5), with `has`.
 - The doctor checks reference: `network.ports` messages, the "not an address
   of this machine" refusal, and `machine.ports`' overlap rule.
+- The manifest schema's description of a `requirements.ports` item
+  (`internal/schema/schema.go`, regenerated into `schemas/`). It says "a
+  port number, or a `{{ .Parameters.<name> }}` reference" today, and gains
+  the grammar and its examples, for editors that read the schema.
 - An authoring note on sharing a machine with a web server the operator
   already runs, with both setups: a second address, or 127.0.0.1 behind their
   TLS passthrough.
