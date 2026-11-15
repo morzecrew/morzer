@@ -307,10 +307,11 @@ func (d *Deps) RenderSecrets(ctx context.Context, schema domain.SecretSchema) ([
 // secrets directory's parent at that directory's 0700, which on a Mac no
 // container's mount passes through (logs/macos-host.md).
 //
-// Without following a link, and refused while RunDir could be moved aside or
-// is someone else's: on a Mac, RunDir's own entry is in a directory its group
-// can write, and an account that could write there, or had made RunDir, could
-// redirect where root writes decrypted secrets between two of these steps.
+// Without following a link, and refused, where RunDir's parent is checked,
+// while RunDir could be moved aside or is someone else's: on a Mac, RunDir's
+// own entry is in a directory its group can write, and an account that could
+// write there, or had made RunDir, could redirect where root writes decrypted
+// secrets between two of these steps. Linux's /run is root's alone.
 func (d *Deps) PrepareRunDir(ctx context.Context) error {
 	if d.RunDirWriters != nil {
 		parent := filepath.Dir(d.Paths.RunDir)
@@ -327,7 +328,7 @@ func (d *Deps) PrepareRunDir(ctx context.Context) error {
 	}
 	for _, dir := range d.Paths.EphemeralDirs() {
 		mkdir := atomicfs.MkdirExactNoFollow
-		if dir.Path == d.Paths.RunDir {
+		if dir.Path == d.Paths.RunDir && d.RunDirWriters != nil {
 			mkdir = atomicfs.MkdirMineNoFollow
 		}
 		if err := mkdir(dir.Path, os.FileMode(dir.Mode)); err != nil {
