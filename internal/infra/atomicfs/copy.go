@@ -428,6 +428,35 @@ func DigestTree(dir string) (string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// MatchModes gives each file and directory under dst the permission bits of
+// its counterpart under src, in place: the bits DigestTree leaves out, on a
+// tree whose digest already matches. What dst lacks, or holds as another type,
+// is left alone.
+func MatchModes(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return domain.Internal(err, "cannot walk %s", path)
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return domain.Internal(err, "cannot relativise %s", path)
+		}
+		want, err := d.Info()
+		if err != nil {
+			return domain.Internal(err, "cannot stat %s", path)
+		}
+		target := filepath.Join(dst, rel)
+		have, err := os.Lstat(target)
+		if err != nil || have.Mode().Type() != want.Mode().Type() || have.Mode().Perm() == want.Mode().Perm() {
+			return nil
+		}
+		if err := os.Chmod(target, want.Mode().Perm()); err != nil {
+			return domain.Internal(err, "cannot set the mode of %s", target)
+		}
+		return nil
+	})
+}
+
 // DigestFile computes the SHA-256 of a single file.
 func DigestFile(path string) (string, error) {
 	f, err := os.Open(path)

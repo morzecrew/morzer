@@ -1077,9 +1077,19 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				}
 			}
 
+			// MkdirTemp creates 0700; the release store is 0755, as
+			// CopyTree and ExtractTarZst would have made dest themselves.
+			if err := os.Chmod(staged, 0o755); err != nil {
+				return domain.Internal(err, "cannot set mode on the staged release")
+			}
 			// The installed release's own bundle again replaces nothing:
-			// running containers mount files from its directory.
-			if installed, err := release.Load(dest); err != nil || !atomicfs.SameDigest(installed.Digest, rel.Digest) {
+			// running containers mount files from its directory. The
+			// modes the digest leaves out are put back on it in place.
+			if installed, err := release.Load(dest); err == nil && atomicfs.SameDigest(installed.Digest, rel.Digest) {
+				if err := atomicfs.MatchModes(staged, dest); err != nil {
+					return err
+				}
+			} else {
 				kept, err := placeRelease(staged, dest, opts.Repair)
 				if err != nil {
 					return err
@@ -1192,11 +1202,6 @@ func placeRelease(staged, dest string, keep bool) (kept string, err error) {
 // placeReleaseWith is placeRelease with the exchange given, so a test can see
 // where each tree is at the moment of it.
 func placeReleaseWith(staged, dest string, keep bool, swap func(a, b string) error) (kept string, err error) {
-	// MkdirTemp creates 0700; the release store is 0755, as CopyTree and
-	// ExtractTarZst would have made dest themselves.
-	if err := os.Chmod(staged, 0o755); err != nil {
-		return "", domain.Internal(err, "cannot set mode on the staged release")
-	}
 	atomicfs.SyncTree(staged)
 	if _, err := os.Stat(dest); err == nil {
 		from := staged

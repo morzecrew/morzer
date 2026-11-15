@@ -643,7 +643,8 @@ func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
 
 // A repair with the bundle the release was installed from replaces nothing:
 // running containers mount files from the release's directory, and the
-// directory they mount stays the one there.
+// directory they mount stays the one there. The modes its digest leaves out
+// are put back on it in place.
 func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
@@ -658,6 +659,16 @@ func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) 
 	require.NoError(t, err)
 	before, err := os.Stat(installed.Root)
 	require.NoError(t, err)
+	modeOf := func(path string) os.FileMode {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		return info.Mode().Perm()
+	}
+	dir := filepath.Join(installed.Root, "compose")
+	file := filepath.Join(dir, "compose.yaml")
+	rootMode, dirMode, fileMode := modeOf(installed.Root), modeOf(dir), modeOf(file)
+	require.NoError(t, os.Chmod(file, 0o600))
+	require.NoError(t, os.Chmod(dir, 0o700))
 
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Repair: true})
 
@@ -665,6 +676,9 @@ func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) 
 	after, err := os.Stat(installed.Root)
 	require.NoError(t, err)
 	assert.True(t, os.SameFile(before, after), "a repair with the same bundle replaced the release's directory")
+	assert.Equal(t, fileMode, modeOf(file), "a repair left a file another user's container cannot read")
+	assert.Equal(t, dirMode, modeOf(dir), "a repair left a directory another user's container cannot read")
+	assert.Equal(t, rootMode, modeOf(installed.Root), "a repair changed the mode of the release's directory")
 }
 
 // A bundle of the installed version that this manager cannot run is refused
