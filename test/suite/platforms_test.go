@@ -80,11 +80,15 @@ func TestInitRefusesAReleaseNotMadeForThisPlatform(t *testing.T) {
 		}
 	}
 
-	for _, dryRun := range []bool{true, false} {
+	// The plan refuses before it starts. The operation refuses at its stage
+	// step, once it has the release, and undoes the copy, as it does a `--set`
+	// the release does not declare (logs/macos-host.md).
+	for dryRun, exit := range map[bool]int{true: domain.ExitIncompatible, false: domain.ExitCompensated} {
 		refused, src := fresh(false)
 		_, err := ops.Init(ctx, refused.Deps, initOpts(src, dryRun))
 		require.Error(t, err, "dry run %t", dryRun)
 		require.ErrorIs(t, err, domain.ErrIncompatible)
+		assert.Equal(t, exit, domain.ExitCode(err), "dry run %t", dryRun)
 		assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
 		assert.Contains(t, domain.AsError(err).Hint, "which means linux alone")
 		exists, err := refused.Deps.State.InstallationExists(ctx)
@@ -95,6 +99,63 @@ func TestInitRefusesAReleaseNotMadeForThisPlatform(t *testing.T) {
 	made, src := fresh(true)
 	_, err := ops.Init(ctx, made.Deps, initOpts(src, false))
 	require.NoError(t, err)
+
+	// A profile the release runs on Linux alone is refused by the plan as by
+	// the operation.
+	narrowed, src := fresh(true)
+	patchManifest(t, src, "      external-db: [compose/compose.external-db.yaml]\n",
+		"      external-db: [compose/compose.external-db.yaml]\n    platforms:\n      embedded: [linux]\n")
+	for _, dryRun := range []bool{true, false} {
+		opts := initOpts(src, dryRun)
+		opts.Profiles = []string{"embedded"}
+		_, err := ops.Init(ctx, narrowed.Deps, opts)
+		require.Error(t, err, "dry run %t", dryRun)
+		assert.Contains(t, err.Error(), `profile "embedded" does not run on darwin`, "dry run %t", dryRun)
+	}
+}
+
+// A refused repair leaves the installation it was asked to repair: the step
+// that writes it undoes only what it created.
+func TestARefusedRepairKeepsTheInstallation(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", ReleasePath: src, Profiles: []string{"undeclared"}, Repair: true,
+		NoRecoveryKey: true, GenerateSecrets: true,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown deployment profile "undeclared"`)
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.True(t, exists, "a refused repair deleted the installation")
+}
+
+// The remedy the refusals name works: a recorded profile this platform does
+// not run can be replaced, since replacing it reads the old selection to see
+// what runs, and so can what runs be stopped (decision 3).
+func TestAProfileThisPlatformDoesNotRunCanBeReplaced(t *testing.T) {
+	ctx := context.Background()
+	h := onDarwin(t)
+	// `embedded` is recorded, and the installed release narrows it to Linux,
+	// as a release installed elsewhere and restored here would.
+	h.Deps.Platform = "linux"
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{
+		Ref: madeForDarwin(t, stageUpgradeSource(t, h), "embedded"),
+	})
+	require.NoError(t, err)
+	h.Deps.Platform = "darwin"
+
+	_, err = setSetting(t, h, false, map[string]string{"installation.profile": "external-db"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"external-db"}, installation(t, h).Profiles)
 }
 
 // A machine whose state names a release not made for it, as one restored
