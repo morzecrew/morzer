@@ -818,3 +818,22 @@ type ToolInfo struct {
 	Version domain.Version `json:"version"`
 	Raw     string         `json:"raw,omitempty"` // unparsed version output
 }
+
+// EngineCLI is the docker CLI a manager on a Mac runs (RFC 0055 decisions 18
+// and 21): a checked copy of Docker Desktop's, or the one on PATH that only
+// root can replace.
+type EngineCLI struct {
+	Path string
+
+	// DesktopVersion is the Docker Desktop release it was copied from, and
+	// empty for a CLI found on PATH.
+	DesktopVersion string
+
+	// Verified is the Docker Desktop releases, major.minor, the acceptance
+	// run last passed on.
+	Verified []string
+
+	// DroppedHelpers names the credential helpers of root's own config left
+	// out of the manager's, which someone other than root could replace.
+	DroppedHelpers []string
+}

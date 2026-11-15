@@ -162,6 +162,11 @@ type Deps struct {
 	// Nil where it is not checked, as on Linux, whose /run is root's.
 	RunDirWriters func(ctx context.Context, dir string) ([]string, error)
 
+	// EngineCLI settles the docker CLI root runs: on a Mac, a checked copy of
+	// Docker Desktop's, or the one on PATH only root can replace (RFC 0055
+	// decisions 18 and 21). Nil where root runs the CLI on PATH, as on Linux.
+	EngineCLI func(context.Context) (ports.EngineCLI, error)
+
 	// Platform is the GOOS the platform gates compare a release with (RFC
 	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
 	// same reason again: the refusals on a Mac are tested on Linux.

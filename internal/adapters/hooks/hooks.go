@@ -63,6 +63,7 @@ type Runner struct {
 	runner exec.Runner
 	redact []string
 	onLine func(exec.Line)
+	before func(context.Context) error
 }
 
 var _ ports.HookRunner = (*Runner)(nil)
@@ -83,6 +84,13 @@ func WithRedaction(values []string) Option {
 
 func WithOutputSink(fn func(exec.Line)) Option {
 	return func(r *Runner) { r.onLine = fn }
+}
+
+// WithBefore refuses a hook when fn does. On a Mac it settles the docker CLI a
+// hook finds first on PATH, so one is never run while none can be (RFC 0055
+// decision 22).
+func WithBefore(fn func(context.Context) error) Option {
+	return func(r *Runner) { r.before = fn }
 }
 
 // Run executes a hook from a release.
@@ -112,6 +120,11 @@ func (r *Runner) Run(ctx context.Context, rel domain.Release, command []string, 
 		return Outcome{}, domain.ValidationError(nil,
 			"hook %q is not executable (mode %04o)", command[0], info.Mode().Perm()).
 			WithHint("run `chmod +x %s` in the bundle source and rebuild it", command[0])
+	}
+	if r.before != nil {
+		if err := r.before(ctx); err != nil {
+			return Outcome{}, err
+		}
 	}
 
 	// The result pipe. The read end stays here; the write end becomes fd 3

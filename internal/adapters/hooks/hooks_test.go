@@ -713,3 +713,22 @@ echo "third"
 		}
 	}
 }
+
+// A hook is refused when what must hold before it runs does not: on a Mac, a
+// docker CLI only root can replace, found first on PATH (RFC 0055 decision 22).
+func TestAHookIsRefusedWhenWhatComesBeforeItFails(t *testing.T) {
+	rel := release(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	cmd := hook(t, rel, "migrate", "#!/bin/sh\ntouch "+marker+"\n")
+	refusal := errors.New("no docker CLI root may run")
+
+	_, err := hooks.NewRunner(exec.New(), hooks.WithBefore(func(context.Context) error { return refusal })).
+		Run(context.Background(), rel, cmd, env(), 30*time.Second)
+
+	if !errors.Is(err, refusal) {
+		t.Fatalf("the hook was not refused: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the hook ran although what comes before it failed")
+	}
+}

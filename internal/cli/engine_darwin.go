@@ -6,8 +6,24 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/dirservice"
 	"github.com/morzecrew/morzer/internal/adapters/dockerdesktop"
 	"github.com/morzecrew/morzer/internal/adapters/filevault"
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/ports"
 )
+
+// engineRunner runs every docker command with the CLI root may run, settled at
+// the first one, and gives every process the manager starts its DOCKER_CONFIG,
+// rebuilt from root's own before anything reaches a registry. Until it is, a
+// registry is reached anonymously, so root's own config is never read
+// unchecked (RFC 0055 decisions 18, 21 and 22).
+func engineRunner(runner exec.Runner, paths domain.Paths) (exec.Runner, func(context.Context) (ports.EngineCLI, error)) {
+	engine := dockerdesktop.NewEngine(runner, paths.ManagerDir())
+	// A refusal here, a command run without root say, leaves the process
+	// reaching registries anonymously, and surfaces at its first docker
+	// command.
+	_ = engine.Prepare()
+	return dockerdesktop.Runner{Runner: runner, Engine: engine}, engine.Settle
+}
 
 // engineUser is who the engine reads the host's files as: on a Mac, the user
 // who runs Docker Desktop, read at every call (RFC 0055 decision 19).

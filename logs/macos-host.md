@@ -494,3 +494,131 @@ claim: The wizard's gate read the installation the command was wired to, so one 
 evidence: internal/lifecycle/ops/config_apply.go:205-218
 action: decided
 ```
+
+## The engine
+
+On branch `rfc-0055-engine` from `main` at `faf30f7e`: decisions 18, 21 and 22,
+and the author's ruling on registry credentials, asked when this pull
+request was planned.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 gives the CLI a config of the manager's own, which replaces root's `~/.docker/config.json`, so root's registry credentials would reach neither `docker pull` nor the OCI source, which reads the same file. Docker Desktop's credential store is `docker-credential-desktop`, a binary another user owns. Ruled by the author: the manager's config carries root's `auths`, and a `credsStore` or `credHelpers` entry only when its `docker-credential-<name>` passes `ReplaceableByNonRoot`; one that does not is dropped, and `doctor` names it.
+evidence: internal/adapters/source/oci/oci.go:509-515
+action: decided
+proposal: ASSUMED — on darwin the manager's Docker config carries root's `auths`, and a credential helper only when the helper passes `ReplaceableByNonRoot`; a dropped one is named by `doctor`
+```
+
+```divergence
+decision: 18
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 has preflight make the copies. `init` loads a bundle's images with no preflight, and `doctor` and `status` ask the engine with none, so they would run Docker Desktop's own CLI or nothing. The copies are made at the first `docker` command any operation runs, once its `VarDir/manager` exists, and checked as the decision says; preflight and `doctor` report the CLI in use.
+evidence: internal/lifecycle/ops/init.go:452
+action: departed
+proposal: ASSUMED — the copies are made and checked at the first engine command of any operation, not in preflight alone
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: `init --release oci://` downloads the bundle before it knows the product, so before any `VarDir/manager` exists to hold the manager's config. On darwin `DOCKER_CONFIG` names `VarDir/manager/docker` from the start. Until that exists the OCI source finds no config and reaches the registry anonymously, so root's own config, and any helper it names, is never read before it is checked. A private registry is then reached once `init` has created the directory, or through a bundle fetched first.
+evidence: internal/cli/root.go:1024-1027
+action: decided
+proposal: ASSUMED — on darwin `DOCKER_CONFIG` is `VarDir/manager/docker` from the first command; before it exists a download is anonymous
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 22 gives every process the settled CLI's directory first on `PATH`, and says nothing of a hook run when no CLI could be settled, after a refused signature check say. A hook then would find Docker Desktop's own CLI by name. Such a hook is refused, naming why the CLI could not be settled, as every `docker` command is.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:702
+action: decided
+proposal: ASSUMED — on darwin a hook is refused while no CLI can be settled, as an engine command is
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 names `Docker.app` and not where it is. Only `/Applications/Docker.app` is read, where the installer puts it; a copy elsewhere is not Docker Desktop to the manager, and decision 21's `PATH` rule applies.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:698
+action: decided
+proposal: ASSUMED — Docker Desktop is `/Applications/Docker.app` alone; elsewhere, decision 21 applies
+```
+
+## Review of the engine
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T18:24:16Z
+attempt: 2
+claim: The earlier entry set `DOCKER_CONFIG` at the first command and wrote the config only when the CLI was settled, so on an installation an `update` downloaded its release with the config an earlier run left: stale credentials, and a helper named by a check this process never made, run by name from root's PATH. Every command on an installation now rebuilds the config from root's own before anything reaches a registry, removing the old one first. It links each kept helper into the directory first on PATH, so the name resolves to the file checked.
+evidence: internal/adapters/dockerdesktop/cli.go:157-180
+action: decided
+proposal: ASSUMED — on darwin every command on an installation rebuilds the manager's Docker config before any registry is reached, and runs each kept credential helper through a link first on PATH
+```
+
+```divergence
+decision: 21
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T18:24:16Z
+attempt: 1
+claim: `ReplaceableByNonRoot` reads owners and mode bits. On a Mac an ACL can grant a named user write or delete on an entry without setting a mode bit, so a root-owned CLI on PATH, a plugin, a helper, or a directory on the way to one, passes while that user could replace it. The rule is shared with the manager's own binary; reading a Mac's ACLs needs `getattrlist`, which `golang.org/x/sys/unix` does not wrap, and is a change to the rule of its own. Docker Desktop's copies are not affected: they are checked by signature.
+evidence: internal/infra/atomicfs/atomicfs.go:505-512
+action: departed
+proposal: ASSUMED — on darwin `ReplaceableByNonRoot` also refuses an entry that carries an ACL granting anyone but root write, delete or append
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T18:46:26Z
+attempt: 3
+claim: Attempt 2 removed the config before rebuilding it, so a command reading it meanwhile, which takes no deployment lock, reached a private registry without credentials. It also linked the helpers into the copies' `bin`, first on PATH, where an earlier copy of Docker Desktop's CLI stayed ahead of a CLI found on PATH since. The config is now replaced in one rename and removed only when it cannot be rebuilt. The links a new config names exist before it, and stale ones go after it. The helpers have a directory of their own, after the settled CLI's on PATH.
+evidence: internal/adapters/dockerdesktop/cli.go:163-178
+action: decided
+proposal: ASSUMED — on darwin the manager's Docker config is replaced atomically at every command, and removed only when it cannot be rebuilt; checked helpers are linked in a directory of their own, after the settled CLI's on PATH
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T19:14:25Z
+attempt: 4
+claim: A helper is run by name, so a name not linked resolves on root's PATH: one left out, one linked before that a command reading the earlier config still runs, and `osxkeychain`, which the CLI looks for when its config names no store and no credentials. Each now resolves, in the helpers' directory first on PATH, to a stand-in that holds no credentials. The settled CLI's directory comes after it, since it can hold a helper nobody checked. `DOCKER_CONFIG` names nowhere until the config is rebuilt. Nothing is written under a manager directory whose way down someone other than root could change. A CLI found on PATH removes Docker Desktop's earlier copies, whose plugin would load first. `Verified` is empty until the acceptance run records a release.
+evidence: internal/adapters/dockerdesktop/cli.go:471-502
+action: decided
+proposal: ASSUMED — on darwin every credential helper name the CLI may run resolves in the manager's helpers directory, to a checked helper or to a stand-in holding no credentials
+```
+
+```divergence
+decision: 18
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T19:14:25Z
+attempt: 1
+claim: Decisions 18 and 21 check the CLI and its Compose plugin. The CLI also searches its system plugin directories, `/usr/local/lib/docker/cli-plugins` among them, and a command that lists plugins, `docker info` say, runs each candidate's metadata command. The manager runs no such command, so only a hook that does would run one there, and one someone else could replace would run as root. Checking every candidate there, or saying in the authoring docs that a hook does not list plugins, as decision 22 does for a CLI named by path, is the author's to choose; which of Docker Desktop's links sit there is to be measured on a Mac.
+evidence: internal/adapters/dockerdesktop/cli.go:64-71
+action: departed
+proposal: OPEN — refuse while a candidate in the CLI's system plugin directories can be replaced by someone other than root, or document that a hook does not list plugins
+```
