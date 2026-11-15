@@ -739,6 +739,16 @@ func RunRenderGateSuite(t *testing.T, newStore GatedSecretStoreFactory) {
 		content, err := os.ReadFile(files[0].Path)
 		require.NoError(t, err)
 		assert.Equal(t, "a-value", string(content))
+
+		// Asked again at the next render, so a permission withdrawn is
+		// refused, and the files rendered before stay as they were.
+		refuse = true
+		require.NoError(t, store.Set(ctx, "plain", domain.NewSecret("a-newer-value")))
+		_, err = store.Render(ctx, targetDir, schema)
+		require.ErrorContains(t, err, "FileVault is off")
+		content, err = os.ReadFile(files[0].Path)
+		require.NoError(t, err)
+		assert.Equal(t, "a-value", string(content), "a refused render changed a file")
 	})
 }
 

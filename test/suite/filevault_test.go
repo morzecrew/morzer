@@ -127,3 +127,41 @@ func TestASecretChangeIsRefusedBeforeItStores(t *testing.T) {
 	assert.Empty(t, configRecords(t, h), "a refused change started an operation")
 	require.ErrorContains(t, h.Deps.RefuseUnencryptedDisk(context.Background()), "FileVault is off")
 }
+
+// A repair given the flag records it, over an installation that had not
+// allowed it.
+func TestARepairWithTheFlagAllowsAnUnencryptedDisk(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	realIdentity(t, h)
+	off := false
+	withFileVault(h, &off)
+	require.False(t, installation(t, h).Policy.AllowUnencryptedDisk)
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", Repair: true, AllowUnencryptedDisk: true,
+		NoRecoveryKey: true, GenerateSecrets: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, installation(t, h).Policy.AllowUnencryptedDisk, "the repair dropped the flag it was given")
+}
+
+// One document that allows an unencrypted disk and gives a secret is one
+// command: the gate reads the policy the change leaves.
+func TestOneDocumentCanAllowTheDiskAndGiveASecret(t *testing.T) {
+	h := runningHarness(t)
+	off := false
+	withFileVault(h, &off)
+
+	_, err := configApply(t, h, "settings:\n  secrets.allow_unencrypted_disk: \"true\"\n"+
+		"secrets:\n  smtp_password: a-value-on-an-unencrypted-disk\n", ops.Options{})
+
+	require.NoError(t, err)
+	assert.True(t, installation(t, h).Policy.AllowUnencryptedDisk)
+	stored, err := h.Secrets.Load(context.Background())
+	require.NoError(t, err)
+	got, _ := stored.Get("smtp_password")
+	assert.Equal(t, "a-value-on-an-unencrypted-disk", got.Reveal())
+}
