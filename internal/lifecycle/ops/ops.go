@@ -978,12 +978,15 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
 }
 
-// refuseProfilesOffPlatform refuses to start or re-create a selection this
-// platform does not run (RFC 0055 decision 3). runtimeConfig checks none, so
+// refuseProfilesOffPlatform refuses to start or re-create a release or a
+// selection this platform does not run (RFC 0055 decisions 2 and 3). runtimeConfig checks none, so
 // that what runs can be read, stopped and replaced; this is the check for the
 // paths that start services, whether or not they render configuration first.
 // Compensation and restore put back what ran, and do not ask it.
 func (d *Deps) refuseProfilesOffPlatform(inst domain.Installation, rel domain.Release, profiles []string) error {
+	if err := rel.PlatformRefusal(d.platform()); err != nil {
+		return err
+	}
 	if len(profiles) == 0 {
 		profiles = inst.Profiles
 	}

@@ -382,6 +382,7 @@ func stepRecreateServices(
 		Timeout:     10 * time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
 			if err := d.refuseProfilesOffPlatform(inst, rel, nil); err != nil {
+				st.Set(keyRecreateRefused, true)
 				return err
 			}
 			return d.recreate(ctx, inst, rel, services)
@@ -390,14 +391,23 @@ func stepRecreateServices(
 			// The engine undoes the failed step first, so neither the
 			// recorded values nor the rendered files are back yet: a
 			// forced re-create now would mount the new files. The files
-			// go back here, and the services with the old values.
+			// go back here, and the services with the old values -- unless
+			// the refusal stopped the step before it touched a service,
+			// whose re-create would start what it refused.
 			if err := restoreConfigBackups(st, false); err != nil {
 				return err
+			}
+			if _, refused := st.Get(keyRecreateRefused); refused {
+				return nil
 			}
 			return d.recreate(ctx, previous, rel, services)
 		},
 	}
 }
+
+// keyRecreateRefused is set when recreate-services refused a selection this
+// platform does not run before it re-created anything.
+const keyRecreateRefused = "recreate-refused"
 
 func (d *Deps) recreate(
 	ctx context.Context, inst domain.Installation, rel domain.Release, services []string,
