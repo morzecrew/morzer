@@ -263,3 +263,43 @@ evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:701
 action: decided
 proposal: ASSUMED — decision 21 as corrected
 ```
+
+## The FileVault gate
+
+On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: Decision 5 names four render paths and the four `secret` commands that store before they render. `config apply` (RFC 0056) is a fifth of each: it stores the values a document gives and then renders. Its render reaches the gate in the store, and like a `secret` change it would have stored first, so it checks the gate before the operation starts when the document gives a secret. The gate is one function, `RefuseUnencryptedDisk`, which the store calls first in `Render` and each of those callers calls before it stores.
+evidence: internal/lifecycle/ops/config_apply.go:668
+action: decided
+proposal: UNLISTED — `config apply` of a document that gives a secret checks the FileVault gate before it starts, as a `secret` change does
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: `secret edit` decrypts the values it shows into a file under the secrets directory for the editor, which is plaintext on the same disk before anything is stored. So its check comes before the editor opens, not before the store, and a refused edit writes nothing at all.
+evidence: internal/cli/secret_edit.go:198
+action: decided
+proposal: UNLISTED — `secret edit` checks the FileVault gate before it decrypts anything for the editor
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: Decision 5 does not say how the refusal reads. It is a secrets error, exit 6, as a render that cannot write a file is, naming FileVault and both ways out: turning it on, or setting `secrets.allow_unencrypted_disk`. `init --allow-unencrypted-disk` is accepted on Linux and records the setting, which nothing there reads, so one runbook serves both platforms.
+evidence: internal/domain/errors.go:274-276
+action: decided
+proposal: UNLISTED — the FileVault refusal is exit 6 and names both remedies; the flag and the setting are accepted on Linux and change nothing there
+```
