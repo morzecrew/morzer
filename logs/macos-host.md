@@ -598,3 +598,27 @@ evidence: internal/adapters/dockerdesktop/cli.go:163-178
 action: decided
 proposal: ASSUMED — on darwin the manager's Docker config is replaced atomically at every command, and removed only when it cannot be rebuilt; checked helpers are linked in a directory of their own, after the settled CLI's on PATH
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T19:14:25Z
+attempt: 4
+claim: A helper is run by name, so a name not linked resolves on root's PATH: one left out, one linked before that a command reading the earlier config still runs, and `osxkeychain`, which the CLI looks for when its config names no store and no credentials. Each now resolves, in the helpers' directory first on PATH, to a stand-in that holds no credentials. The settled CLI's directory comes after it, since it can hold a helper nobody checked. `DOCKER_CONFIG` names nowhere until the config is rebuilt. Nothing is written under a manager directory whose way down someone other than root could change. A CLI found on PATH removes Docker Desktop's earlier copies, whose plugin would load first. `Verified` is empty until the acceptance run records a release.
+evidence: internal/adapters/dockerdesktop/cli.go:471-502
+action: decided
+proposal: ASSUMED — on darwin every credential helper name the CLI may run resolves in the manager's helpers directory, to a checked helper or to a stand-in holding no credentials
+```
+
+```divergence
+decision: 18
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T19:14:25Z
+attempt: 1
+claim: Decisions 18 and 21 check the CLI and its Compose plugin. The CLI also searches its system plugin directories, `/usr/local/lib/docker/cli-plugins` among them, and a command that lists plugins, `docker info` say, runs each candidate's metadata command. The manager runs no such command, so only a hook that does would run one there, and one someone else could replace would run as root. Checking every candidate there, or saying in the authoring docs that a hook does not list plugins, as decision 22 does for a CLI named by path, is the author's to choose; which of Docker Desktop's links sit there is to be measured on a Mac.
+evidence: internal/adapters/dockerdesktop/cli.go:64-71
+action: departed
+proposal: OPEN — refuse while a candidate in the CLI's system plugin directories can be replaced by someone other than root, or document that a hook does not list plugins
+```
