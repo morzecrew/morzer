@@ -129,6 +129,11 @@ func (a *App) accessibleForms() bool {
 // Everything already supplied on the command line is left alone: the wizard
 // fills gaps, it does not re-ask questions the operator has answered.
 func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.InitOptions, error) {
+	// Before anything is asked: an answer can write a recovery key, and Init
+	// would refuse the disk after it (RFC 0055 decision 5).
+	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, opts); err != nil {
+		return opts, err
+	}
 	profiles := app.profilesFrom(ctx, opts.ReleasePath)
 
 	var (

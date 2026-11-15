@@ -623,6 +623,16 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 	}
 }
 
+// RefuseInitOnUnencryptedDisk is init's FileVault gate for what runs before
+// Init and writes: the wizard, which can write a recovery key.
+func RefuseInitOnUnencryptedDisk(ctx context.Context, d *Deps, opts InitOptions) error {
+	exists, err := d.State.InstallationExists(ctx)
+	if err != nil {
+		return err
+	}
+	return d.refuseInitOnUnencryptedDisk(ctx, exists, opts)
+}
+
 // refuseInitOnUnencryptedDisk is the FileVault gate for init. A repair is held
 // to what its installation set, unless the flag says otherwise; a first init has
 // only the flag.

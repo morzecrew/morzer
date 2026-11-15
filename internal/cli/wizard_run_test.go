@@ -492,3 +492,20 @@ func TestTheWizardOffersTheProfilesOfARegistryReference(t *testing.T) {
 	assert.Equal(t, []string{"xdns"}, got.Profiles)
 	assert.Contains(t, shown.String(), "Deployment profile")
 }
+
+// On a disk FileVault does not encrypt, the wizard refuses before it asks
+// anything, so no recovery key is written for an init that would be refused.
+func TestTheWizardRefusesAnUnencryptedDiskBeforeItWritesAKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "demo-recovery.key")
+	app, _ := wizardApp(t, "demo", "", "1", path)
+	app.Deps.DiskEncrypted = func(context.Context) (bool, error) { return false, nil }
+
+	_, err := runInitWizard(context.Background(), app, ops.InitOptions{})
+
+	require.ErrorContains(t, err, "FileVault is off")
+	assert.NoFileExists(t, path, "a refused init left a recovery key")
+
+	got, err := runInitWizard(context.Background(), app, ops.InitOptions{AllowUnencryptedDisk: true})
+	require.NoError(t, err)
+	assert.NotEmpty(t, got.RecoveryRecipient)
+}
