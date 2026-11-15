@@ -12,9 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
+	"github.com/morzecrew/morzer/internal/adapters/verify"
+	"github.com/morzecrew/morzer/internal/adapters/verify/checksum"
+	"github.com/morzecrew/morzer/internal/adapters/verify/minisign"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 	"github.com/morzecrew/morzer/test/fakes"
 )
 
@@ -554,4 +559,46 @@ func TestARepairKeepsTheRecordedRuntime(t *testing.T) {
 	assert.Equal(t, "quadlet", after.Runtime,
 		"the repair re-pointed the installation at the release's runtime, "+
 			"which is the transition decision 3 forbids arriving as a repair")
+}
+
+// A repair handed a bundle of the installed version that fails verification
+// leaves the installed release as it was: the bundle is staged and checked
+// beside it, and moved into place only once it passes.
+func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	h.Deps.Verifier = verify.NewChain(checksum.New(), minisign.New())
+
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	key := signBundle(t, src)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: src, SigningKeys: []string{key},
+	})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+
+	// The same version, changed after it was signed.
+	tampered := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, src, tampered)
+	compose := filepath.Join(tampered, "compose", "compose.yaml")
+	raw, err := os.ReadFile(compose)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(compose, append(raw, []byte("# changed after signing\n")...), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{key},
+	})
+
+	require.Error(t, err)
+	got, err := os.ReadFile(filepath.Join(installed.Root, "compose", "compose.yaml"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing", "a refused repair rewrote the installed release")
+	landed, err := release.Load(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "the installed release no longer matches its record")
 }
