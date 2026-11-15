@@ -112,8 +112,8 @@ func TestSecretEditLeavesNoPlaintextBehind(t *testing.T) {
 		scriptedEditor(`cp "$0" "$0~"; sed -i.orig 's/the-value-to-find/replaced/' "$0" && rm -f "$0.orig"`))
 	require.NoError(t, err)
 
-	renderDir := domain.PathsUnder(root, "demo").SecretsRenderDir()
-	assertNoPlaintext(t, renderDir, "the-value-to-find")
+	editDir := domain.PathsUnder(root, "demo").EditDir()
+	assertNoPlaintext(t, editDir, "the-value-to-find")
 }
 
 func TestSecretEditCleansUpAfterAFailedEditor(t *testing.T) {
@@ -130,9 +130,9 @@ func TestSecretEditCleansUpAfterAFailedEditor(t *testing.T) {
 	assert.Equal(t, "the-value-to-find", loaded(t, store)["db_password"],
 		"an aborted edit must change nothing")
 
-	renderDir := domain.PathsUnder(root, "demo").SecretsRenderDir()
-	assertNoPlaintext(t, renderDir, "the-value-to-find")
-	assertNoPlaintext(t, renderDir, "changed")
+	editDir := domain.PathsUnder(root, "demo").EditDir()
+	assertNoPlaintext(t, editDir, "the-value-to-find")
+	assertNoPlaintext(t, editDir, "changed")
 }
 
 // assertNoPlaintext walks a directory asserting no file contains the value,
