@@ -139,16 +139,9 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	}
 
 	// Before any step writes, so no identity is created on a disk FileVault
-	// does not encrypt (RFC 0055 decision 5). A repair is held to what its
-	// installation set, unless the flag says otherwise.
-	var unencrypted error
-	if exists && !opts.AllowUnencryptedDisk {
-		unencrypted = d.RefuseUnencryptedDisk(ctx)
-	} else {
-		unencrypted = d.refuseUnencryptedDisk(ctx, opts.AllowUnencryptedDisk)
-	}
-	if unencrypted != nil {
-		return Result{}, unencrypted
+	// does not encrypt (RFC 0055 decision 5). Again under the lock.
+	if err := d.refuseInitOnUnencryptedDisk(ctx, exists, opts); err != nil {
+		return Result{}, err
 	}
 
 	// Stored as the verifier reads them. A key with whitespace around it --
@@ -316,6 +309,17 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeInit, opts.Options, func(ctx context.Context) error {
+		// Under the lock, a repair's setting as it stands now: a `config
+		// set` that withdrew it while this waited is honoured.
+		if !opts.DryRun {
+			stillExists, err := d.State.InstallationExists(ctx)
+			if err != nil {
+				return err
+			}
+			if err := d.refuseInitOnUnencryptedDisk(ctx, stillExists, opts); err != nil {
+				return err
+			}
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, "", nil))
 		return err
@@ -619,6 +623,16 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 	}
 }
 
+// refuseInitOnUnencryptedDisk is the FileVault gate for init. A repair is held
+// to what its installation set, unless the flag says otherwise; a first init has
+// only the flag.
+func (d *Deps) refuseInitOnUnencryptedDisk(ctx context.Context, exists bool, opts InitOptions) error {
+	if exists && !opts.AllowUnencryptedDisk {
+		return d.RefuseUnencryptedDisk(ctx)
+	}
+	return d.refuseUnencryptedDisk(ctx, opts.AllowUnencryptedDisk)
+}
+
 // keyInstallationExisted is whether write-installation found an installation
 // already there, which its compensation leaves.
 const keyInstallationExisted = "installation-existed"
@@ -750,7 +764,6 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
-		inst.Policy.AllowUnencryptedDisk = inst.Policy.AllowUnencryptedDisk || existing.Policy.AllowUnencryptedDisk
 
 		// The runtime is carried, never rebuilt (RFC 0023 decision 3).
 		//
@@ -802,6 +815,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			inst.Domains = existing.Domains
 		}
 		inst.Policy = existing.Policy
+		// Carried, and the flag can only add to it: a repair that passes
+		// it means to allow what the record may not have.
+		inst.Policy.AllowUnencryptedDisk = existing.Policy.AllowUnencryptedDisk || opts.AllowUnencryptedDisk
 		if backupSchedule != "" {
 			// The one field of Policy this command can set, so it
 			// outranks the carried block when it was given -- the
