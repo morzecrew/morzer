@@ -472,3 +472,14 @@ claim: Decision 5's gate reads the policy where it acts. `config apply` reads th
 evidence: internal/lifecycle/ops/init.go:629-635
 action: decided
 ```
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T12:49:23Z
+attempt: 2
+claim: Decision 5's gate ran before the input it guards. `secret set` and `secret edit` checked it before the prompt or the editor and stored after, so an override withdrawn while either was open let a value be stored that no render would write; both check again once the input is in, before they store. `init`'s wizard could write a recovery key before `Init` refused the disk, so the wizard checks the gate before it asks anything. The secret commands take no deployment lock, as before this work, so a setting changed in the instant between the second check and the store is not excluded
+evidence: internal/cli/secret_edit.go:86-92
+action: decided
+```
