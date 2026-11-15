@@ -22,11 +22,12 @@ import (
 const Binary = "/usr/bin/dscl"
 
 // Writers lists the accounts other than root that can write dir: everyone when
-// others may, and otherwise, when its group may, that group's members, the
-// people's accounts whose primary group it is, and each group nested in it,
-// whose members are its members too. macOS's own accounts, below uid 500, are
-// left out of the second: a stock Mac's `daemon` account has the `daemon`
-// group as its own. Empty means root alone.
+// others may; its owner, who can change its mode whatever it is now; and, when
+// its group may, that group's members, the people's accounts whose primary
+// group it is, and each group nested in it, whose members are its members too.
+// macOS's own accounts, below uid 500, are left out of the primary groups' list:
+// a stock Mac's `daemon` account has the `daemon` group as its own. Empty means
+// root alone.
 func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -35,12 +36,28 @@ func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, err
 	if info.Mode().Perm()&0o002 != 0 {
 		return []string{"everyone"}, nil
 	}
-	if info.Mode().Perm()&0o020 == 0 {
-		return nil, nil
-	}
-	gid, err := groupOf(info)
+	uid, gid, err := ownerOf(info)
 	if err != nil {
 		return nil, err
+	}
+	groupWrites := info.Mode().Perm()&0o020 != 0
+	if uid == 0 && !groupWrites {
+		return nil, nil
+	}
+	uids, err := dscl(ctx, runner, "-list", "/Users", "UniqueID")
+	if err != nil {
+		return nil, err
+	}
+	var writers []string
+	if uid != 0 {
+		owner, ok := nameFor(uids, uid)
+		if !ok {
+			owner = "uid " + strconv.Itoa(uid)
+		}
+		writers = append(writers, owner)
+	}
+	if !groupWrites {
+		return others(writers), nil
 	}
 	groups, err := dscl(ctx, runner, "-list", "/Groups", "PrimaryGroupID")
 	if err != nil {
@@ -58,11 +75,8 @@ func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	uids, err := dscl(ctx, runner, "-list", "/Users", "UniqueID")
-	if err != nil {
-		return nil, err
-	}
-	writers := append(values(record, "GroupMembership"), people(namesWith(users, gid), uids)...)
+	writers = append(writers, values(record, "GroupMembership")...)
+	writers = append(writers, people(namesWith(users, gid), uids)...)
 	if nested := values(record, "NestedGroups"); len(nested) > 0 {
 		guids, err := dscl(ctx, runner, "-list", "/Groups", "GeneratedUID")
 		if err != nil {
@@ -75,12 +89,12 @@ func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, err
 	return others(writers), nil
 }
 
-func groupOf(info fs.FileInfo) (int, error) {
+func ownerOf(info fs.FileInfo) (uid, gid int, err error) {
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return 0, fmt.Errorf("%s reports no group", info.Name())
+		return 0, 0, fmt.Errorf("%s reports no owner", info.Name())
 	}
-	return int(st.Gid), nil
+	return int(st.Uid), int(st.Gid), nil
 }
 
 func dscl(ctx context.Context, runner exec.Runner, args ...string) (string, error) {
@@ -92,10 +106,10 @@ func dscl(ctx context.Context, runner exec.Runner, args ...string) (string, erro
 	return res.Stdout + res.Stderr, err
 }
 
-// nameFor finds the name whose id is gid in `dscl . -list <path> PrimaryGroupID`,
-// which prints a name and an id per line.
-func nameFor(listing string, gid int) (string, bool) {
-	names := namesWith(listing, gid)
+// nameFor finds the name whose id is id in `dscl . -list <path> <key>`, which
+// prints a name and an id per line.
+func nameFor(listing string, id int) (string, bool) {
+	names := namesWith(listing, id)
 	if len(names) == 0 {
 		return "", false
 	}
