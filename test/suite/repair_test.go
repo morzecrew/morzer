@@ -632,4 +632,37 @@ func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
 	after, err = h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
 	assert.True(t, atomicfs.SameDigest(landed.Digest, after.Digest), "the release record no longer describes its directory")
+	// What it replaced is kept, for the containers still mounting it.
+	kept, err := filepath.Glob(filepath.Join(filepath.Dir(installed.Root), ".staging-debris-*", "compose", "compose.yaml"))
+	require.NoError(t, err)
+	require.Len(t, kept, 1, "the replaced release was removed while containers may mount it")
+	got, err = os.ReadFile(kept[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing")
+}
+
+// A repair with the bundle the release was installed from replaces nothing:
+// running containers mount files from the release's directory, and the
+// directory they mount stays the one there.
+func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	before, err := os.Stat(installed.Root)
+	require.NoError(t, err)
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Repair: true})
+
+	require.NoError(t, err)
+	after, err := os.Stat(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, os.SameFile(before, after), "a repair with the same bundle replaced the release's directory")
 }

@@ -1017,8 +1017,17 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				}
 			}
 
-			if err := placeRelease(staged, dest); err != nil {
-				return err
+			// The installed release's own bundle again replaces nothing:
+			// running containers mount files from its directory.
+			if installed, err := release.Load(dest); err != nil || !atomicfs.SameDigest(installed.Digest, rel.Digest) {
+				kept, err := placeRelease(staged, dest, opts.Repair)
+				if err != nil {
+					return err
+				}
+				if kept != "" {
+					st.Warn("kept the release it replaced at %s, for the services still running from it; "+
+						"it can go once they are re-created", kept)
+				}
 			}
 			rel.Root = dest
 			st.Set(engine.KeyRelease, rel)
@@ -1105,27 +1114,39 @@ func stageBeside(dest string) (string, error) {
 }
 
 // placeRelease moves a checked bundle from staged to dest, replacing what is
-// there: the installed release a repair re-stages, or a first init's leftover,
-// which is left at staged.
-func placeRelease(staged, dest string) error {
+// there, the installed release a repair re-stages or a first init's leftover,
+// and returns where a repair's is kept.
+//
+// Swapped in one step, so dest names a whole release at every moment, through
+// a crash too. What a repair replaced is kept rather than removed: a running
+// container mounts files from the release's directory, and the one it mounts
+// is the one swapped out. Named as update names a tree it moves aside, which
+// its staging cleanup leaves. A first init's leftover runs nothing, and is
+// left at staged for the caller to remove.
+func placeRelease(staged, dest string, keep bool) (kept string, err error) {
 	// MkdirTemp creates 0700; the release store is 0755, as CopyTree and
 	// ExtractTarZst would have made dest themselves.
 	if err := os.Chmod(staged, 0o755); err != nil {
-		return domain.Internal(err, "cannot set mode on the staged release")
+		return "", domain.Internal(err, "cannot set mode on the staged release")
 	}
 	atomicfs.SyncTree(staged)
-	// Swapped in one step, so dest names a whole release at every moment,
-	// through a crash too; what was there is left at staged, which the
-	// caller removes.
 	if _, err := os.Stat(dest); err == nil {
 		if err := atomicfs.SwapDirs(staged, dest); err != nil {
-			return domain.Internal(err, "cannot swap the staged release into place at %s", dest)
+			return "", domain.Internal(err, "cannot swap the staged release into place at %s", dest)
+		}
+		if !keep {
+			atomicfs.SyncDir(filepath.Dir(dest))
+			return "", nil
+		}
+		kept = filepath.Join(filepath.Dir(dest), fmt.Sprintf(".staging-debris-%d", time.Now().UnixNano()))
+		if err := os.Rename(staged, kept); err != nil {
+			return "", domain.Internal(err, "cannot keep the release replaced at %s", dest)
 		}
 	} else if err := os.Rename(staged, dest); err != nil {
-		return domain.Internal(err, "cannot move the staged release into place")
+		return "", domain.Internal(err, "cannot move the staged release into place")
 	}
 	atomicfs.SyncDir(filepath.Dir(dest))
-	return nil
+	return kept, nil
 }
 
 // stepInitSecrets creates the encrypted secret state and generates what it
