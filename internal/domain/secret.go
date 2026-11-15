@@ -336,11 +336,17 @@ func (s SecretSchema) DeclaresOwner() bool {
 // OwnedBy is the schema with every secret given to uid:gid, its declared owner
 // set aside: what a store renders for an engine that reads the host as one user
 // (RFC 0055 decision 17).
+// An id outside what an owner may name leaves the schema as it was declared,
+// as no stat returns one.
 func (s SecretSchema) OwnedBy(uid, gid int) SecretSchema {
+	if uid < 0 || uid > maxOwnerID || gid < 0 || gid > maxOwnerID {
+		return s
+	}
+	owner := SecretOwner{UID: uint32(uid), GID: uint32(gid), HasGID: true, Set: true} //nolint:gosec // in range, checked above
 	owned := s
 	owned.Secrets = make([]SecretDeclaration, len(s.Secrets))
 	for i, d := range s.Secrets {
-		d.Owner = SecretOwner{UID: uint32(uid), GID: uint32(gid), HasGID: true, Set: true}
+		d.Owner = owner
 		owned.Secrets[i] = d
 	}
 	return owned

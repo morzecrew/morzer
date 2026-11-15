@@ -65,7 +65,8 @@ func ownerOf(t *testing.T, path string) [2]int {
 	t.Helper()
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	st := info.Sys().(*syscall.Stat_t)
+	st, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok, "this platform reports no owner")
 	return [2]int{int(st.Uid), int(st.Gid)}
 }
 
