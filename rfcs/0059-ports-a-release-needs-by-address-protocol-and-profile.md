@@ -227,9 +227,16 @@ it at once:
 | Entry | Probe |
 | --- | --- |
 | TCP, every address | `net.Listen("tcp", ":443")`, as today |
-| TCP, one address | `net.Listen("tcp", "203.0.113.11:443")` |
+| TCP, an IPv4 address, `0.0.0.0` included | `net.Listen("tcp4", "203.0.113.11:443")` |
+| TCP, an IPv6 address, `::` included | `net.Listen("tcp6", "[2001:db8::1]:443")` |
 | UDP, every address | `net.ListenPacket("udp", ":53")` |
-| UDP, one address | `net.ListenPacket("udp", "203.0.113.11:53")` |
+| UDP, one address | `udp4` or `udp6`, by the address's family |
+
+An entry with an address binds that address's family alone. `tcp6` on
+`[::]` sets `IPV6_V6ONLY`, so an IPv4 listener on 443 does not make
+`[::]:443` busy. That matches Docker 27 and later, which publish `::` on
+IPv6 alone (§9). Plain `tcp` on `[::]` would bind both families, and refuse
+the entry over a listener it never meets.
 
 The probe's errors are told apart (decision 3):
 
@@ -320,7 +327,8 @@ The floor only turns those failures into one message that names the version.
   - the same for UDP;
   - a TCP hold never makes the UDP entry busy;
   - an address the machine lacks (TEST-NET 192.0.2.1) is reported as not an
-    address of this machine, never as in use.
+    address of this machine, never as in use;
+  - an IPv4 hold on `P` leaves `[::]:P` free, where the host has IPv6.
 - **The machine check**: a table of claim pairs over §5.4's rules, with each
   side's profiles, and two installations on different addresses reported
   clear.
@@ -396,7 +404,7 @@ The floor only turns those failures into one message that names the version.
 | --- | --- | --- |
 | 1 | `ASSUMED` | An entry is `[address:]port[/protocol]`, Compose's short-syntax spelling without the container side. The address is an IP literal, IPv6 in brackets. The protocol is `tcp` or `udp`, `tcp` when absent. Ranges, `sctp`, host names, zones and unbracketed IPv6 are validation errors. |
 | 2 | `ASSUMED` | An empty address and no address both mean every address. So `"{{ .Parameters.listen }}:443"` with `listen` empty is `"443"`, as the Compose file's `${LISTEN}:443:443` is every address (#368). |
-| 3 | `ASSUMED` | `network.ports` binds the entry's protocol on the entry's address, and closes at once. `EADDRINUSE` is "already in use". `EADDRNOTAVAIL` is "not an address of this machine". Any other error is reported as itself. All three are fatal, as the check is today. |
+| 3 | `ASSUMED` | `network.ports` binds the entry's protocol on the entry's address, in that address's family alone (`tcp6` on `[::]`), and closes at once. `EADDRINUSE` is "already in use". `EADDRNOTAVAIL` is "not an address of this machine". Any other error is reported as itself. All three are fatal, as the check is today. |
 | 4 | `ASSUMED` | `machine.ports` keys claims by protocol and port. Two claims collide when either is every address, they are the same address, or one is `0.0.0.0` beside IPv4 or `::` beside IPv6. This implements RFC 0020 decision 5e. |
 | 5 | `OPEN` | Which fields see `.Profiles` and `has`. **Recommended:** both fields RFC 0007 decision 5 lets interpolate, `requirements.ports` and `health.checks[].url`, with one context, so a profile that moves a port moves its health URL with it. This supersedes RFC 0007 decision 6 in part: the context is `.Parameters` and `.Profiles`, and still no paths, secrets or installation. Alternative: `requirements.ports` alone. That is a smaller change, but `.Profiles` would then work in one manifest field and fail in the other, as an unknown field at resolution time. |
 | 6 | `ASSUMED` | `.Profiles` is the installation's effective selection in layering order, never nil, as configuration templates see it. Each caller passes the installation it checks. With none, as in `release verify`, it is empty. |
