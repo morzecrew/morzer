@@ -276,6 +276,30 @@ action: decided
 proposal: UNLISTED — starting or re-creating services refuses a selection this platform does not run, rendered or not; putting back what ran does not
 ```
 
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:10:39Z
+attempt: 1
+claim: `stage-release`'s compensation removed the release directory whatever had made it, and a repair re-stages the installed release into the directory it already has, so any failure after that step, a refused `--profile` among them, deleted the installed release and left the current record pointing at nothing. Reproduced: after a refused `init --repair --profile undeclared`, `releases/1.2.0` was gone. A repair records that the directory existed before it fetched, and the compensation leaves it; a first init still clears what it staged.
+evidence: internal/lifecycle/ops/init.go:877-880
+action: decided
+proposal: UNLISTED — a refused repair leaves the installed release's directory; only a directory init itself created is removed
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:10:39Z
+attempt: 1
+claim: The start paths' check read only the selection, so a restart or a parameter change with no profile recorded reached the runtime for a release not made for this platform, which only a state from another host can leave. They check the release first now, as init, update and rollback do. And the re-create a parameter change makes, refused before it touches a service, no longer has its undo re-create the selection it refused: the configuration backups go back, and the services stay as they were.
+evidence: internal/lifecycle/ops/config.go:384-387
+action: decided
+proposal: UNLISTED — starting or re-creating services refuses a release this platform does not run as well as a selection, and a refused re-create's undo restores files without re-creating services
+```
+
 ## Review of the ownership
 
 ```divergence

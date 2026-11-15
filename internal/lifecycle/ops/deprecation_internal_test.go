@@ -35,7 +35,8 @@ func warned(t *testing.T) (*Deps, *[]string) {
 			seen = append(seen, e.Message)
 		}
 	})
-	return &Deps{Bus: bus}, &seen
+	// Linux, which the example bundle is made for, whatever host runs this.
+	return &Deps{Bus: bus, Platform: "linux"}, &seen
 }
 
 // mentions reports whether any warning carries want. Asserted on rather than
