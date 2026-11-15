@@ -978,7 +978,9 @@ func (a *App) wire(ctx context.Context, bus *events.Bus, redactor *logging.Redac
 // rebuilding them, not just swapping a struct field.
 func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, redactor *logging.Redactor, logger *slog.Logger) error {
 
-	runner := exec.New()
+	// On a Mac every docker command runs a CLI only root can replace, and
+	// every process finds it first (RFC 0055 decisions 18, 21 and 22).
+	runner, engineCLI := engineRunner(exec.New(), paths)
 	stateStore := state.New(paths)
 	locker := lock.New(paths.LockDir())
 	toolRegistry := tools.NewRegistry(runner)
@@ -1013,10 +1015,14 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		}))
 	}
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), storeOpts...)
-	hookRunner := hooks.NewRunner(runner,
-		hooks.WithOutputSink(outputSink),
-		hooks.WithRedaction(redactor.Values()),
-	)
+	hookOpts := []hooks.Option{hooks.WithOutputSink(outputSink), hooks.WithRedaction(redactor.Values())}
+	if engineCLI != nil {
+		hookOpts = append(hookOpts, hooks.WithBefore(func(ctx context.Context) error {
+			_, err := engineCLI(ctx)
+			return err
+		}))
+	}
+	hookRunner := hooks.NewRunner(runner, hookOpts...)
 
 	// One registry, indexed by reference scheme. Adding a transport is a new
 	// adapter and one more argument here; nothing above this line changes.
@@ -1050,6 +1056,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		EngineUser:    engineUser,
 		DiskEncrypted: diskEncrypted,
 		RunDirWriters: runDirWriters(runner),
+		EngineCLI:     engineCLI,
 		// The same constructor, for the installations this command is
 		// not pointed at. `ls` derives one layout per product it finds
 		// on the machine, so the set is not known here -- but the

@@ -494,3 +494,69 @@ claim: The wizard's gate read the installation the command was wired to, so one 
 evidence: internal/lifecycle/ops/config_apply.go:205-218
 action: decided
 ```
+
+## The engine
+
+On branch `rfc-0055-engine` from `main` at `faf30f7e`: decisions 18, 21 and 22,
+and the author's ruling on registry credentials, asked when this pull
+request was planned.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 gives the CLI a config of the manager's own, which replaces root's `~/.docker/config.json`, so root's registry credentials would reach neither `docker pull` nor the OCI source, which reads the same file. Docker Desktop's credential store is `docker-credential-desktop`, a binary another user owns. Ruled by the author: the manager's config carries root's `auths`, and a `credsStore` or `credHelpers` entry only when its `docker-credential-<name>` passes `ReplaceableByNonRoot`; one that does not is dropped, and `doctor` names it.
+evidence: internal/adapters/source/oci/oci.go:509-515
+action: decided
+proposal: ASSUMED — on darwin the manager's Docker config carries root's `auths`, and a credential helper only when the helper passes `ReplaceableByNonRoot`; a dropped one is named by `doctor`
+```
+
+```divergence
+decision: 18
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 has preflight make the copies. `init` loads a bundle's images with no preflight, and `doctor` and `status` ask the engine with none, so they would run Docker Desktop's own CLI or nothing. The copies are made at the first `docker` command any operation runs, once its `VarDir/manager` exists, and checked as the decision says; preflight and `doctor` report the CLI in use.
+evidence: internal/lifecycle/ops/init.go:452
+action: departed
+proposal: ASSUMED — the copies are made and checked at the first engine command of any operation, not in preflight alone
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: `init --release oci://` downloads the bundle before it knows the product, so before any `VarDir/manager` exists to hold the manager's config. On darwin `DOCKER_CONFIG` names `VarDir/manager/docker` from the start. Until that exists the OCI source finds no config and reaches the registry anonymously, so root's own config, and any helper it names, is never read before it is checked. A private registry is then reached once `init` has created the directory, or through a bundle fetched first.
+evidence: internal/cli/root.go:1024-1027
+action: decided
+proposal: ASSUMED — on darwin `DOCKER_CONFIG` is `VarDir/manager/docker` from the first command; before it exists a download is anonymous
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 22 gives every process the settled CLI's directory first on `PATH`, and says nothing of a hook run when no CLI could be settled, after a refused signature check say. A hook then would find Docker Desktop's own CLI by name. Such a hook is refused, naming why the CLI could not be settled, as every `docker` command is.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:702
+action: decided
+proposal: ASSUMED — on darwin a hook is refused while no CLI can be settled, as an engine command is
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T17:46:17Z
+attempt: 1
+claim: Decision 18 names `Docker.app` and not where it is. Only `/Applications/Docker.app` is read, where the installer puts it; a copy elsewhere is not Docker Desktop to the manager, and decision 21's `PATH` rule applies.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:698
+action: decided
+proposal: ASSUMED — Docker Desktop is `/Applications/Docker.app` alone; elsewhere, decision 21 applies
+```

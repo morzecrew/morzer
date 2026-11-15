@@ -15,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -219,4 +220,36 @@ func TestNoSecretRendersWhileSomeoneElseCanWriteWhereRunDirSits(t *testing.T) {
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err)
 	assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"))
+}
+
+// On a Mac doctor says which docker CLI root runs, fails while none may run,
+// warns when a credential helper of root's config was left out, and warns when
+// Docker Desktop is a release the acceptance run has not passed on.
+func TestDoctorSaysWhichDockerCLIRootRuns(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	cli := ports.EngineCLI{Path: "/var/lib/demo/manager/docker/bin/docker", DesktopVersion: "4.44.1", Verified: []string{"4.44"}}
+	var settleErr error
+	h.Deps.EngineCLI = func(context.Context) (ports.EngineCLI, error) { return cli, settleErr }
+
+	check := doctorCheck(t, h, "runtime.cli")
+	assert.Equal(t, events.CheckOK, check.Status)
+	assert.Contains(t, check.Message, "Docker Desktop 4.44.1")
+	assert.Equal(t, events.CheckOK, doctorCheck(t, h, "runtime.engine-version").Status)
+
+	cli.DroppedHelpers = []string{"desktop"}
+	check = doctorCheck(t, h, "runtime.cli")
+	assert.Equal(t, events.CheckWarn, check.Status)
+	assert.Contains(t, check.Message, "without the credential helper desktop")
+
+	cli.DesktopVersion = "4.45.0"
+	check = doctorCheck(t, h, "runtime.engine-version")
+	assert.Equal(t, events.CheckWarn, check.Status)
+	assert.Contains(t, check.Message, "Docker Desktop 4.45.0 is not a release the acceptance run passed on (4.44)")
+
+	settleErr = domain.Preflight(nil, "the docker CLI at /opt/homebrew/bin/docker can be replaced by uid 501")
+	check = doctorCheck(t, h, "runtime.cli")
+	assert.Equal(t, events.CheckFail, check.Status)
+	assert.Contains(t, check.Message, "can be replaced by uid 501")
 }

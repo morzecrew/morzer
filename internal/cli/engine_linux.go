@@ -3,8 +3,16 @@ package cli
 import (
 	"context"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
+	"github.com/morzecrew/morzer/internal/ports"
 )
+
+// engineRunner is engine_darwin.go's counterpart: on Linux root runs the
+// docker CLI on PATH, as it always has.
+func engineRunner(runner exec.Runner, _ domain.Paths) (exec.Runner, func(context.Context) (ports.EngineCLI, error)) {
+	return runner, nil
+}
 
 // engineUser is engine_darwin.go's counterpart: on Linux the engine reads the
 // host as root, so a rendered secret keeps the owner its release declares.

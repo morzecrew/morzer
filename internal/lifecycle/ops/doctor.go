@@ -209,6 +209,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if d.RunDirWriters != nil {
 		checks = append(checks, d.checkRunDirParent())
 	}
+	if d.EngineCLI != nil {
+		checks = append(checks, d.checkEngineCLI(), d.checkEngineVersion())
+	}
 
 	current, currentErr := d.State.CurrentRelease(ctx)
 	if currentErr != nil {
@@ -928,6 +931,66 @@ func (d *Deps) checkRunDirParent() preflight.Check {
 					"; `ls -ld "+parent+"` names it",
 				"%s can write %s, where %s sits, and so could move it aside and redirect where "+
 					"root writes decrypted secrets", strings.Join(writers, ", "), parent, d.Paths.RunDir)
+		},
+	}
+}
+
+// checkEngineCLI says which docker CLI root runs, and fails while none passes
+// the checks that let root run it (RFC 0055 decisions 18 and 21). A credential
+// helper left out of the manager's config is a warning: a registry it served
+// is then reached without it (logs/macos-host.md).
+func (d *Deps) checkEngineCLI() preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.cli",
+		Category:    preflight.CategoryRuntime,
+		Description: "root runs a docker CLI only root can replace",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			cli, err := d.EngineCLI(ctx)
+			if err != nil {
+				e := domain.AsError(err)
+				return preflight.Fail(e.Hint, "%s", e.Message)
+			}
+			from := "the docker CLI on PATH"
+			if cli.DesktopVersion != "" {
+				from = "a copy of Docker Desktop " + cli.DesktopVersion + "'s CLI, signed by Docker"
+			}
+			if len(cli.DroppedHelpers) > 0 {
+				return preflight.Warn(
+					"remove the helper from root's ~/.docker/config.json and run `sudo docker login <registry>`, "+
+						"which then stores the credential where the manager reads it",
+					"runs %s at %s, without the credential helper %s of root's config: someone other than "+
+						"root can replace it", from, cli.Path, strings.Join(cli.DroppedHelpers, ", "))
+			}
+			return preflight.OK("runs %s at %s", from, cli.Path)
+		},
+	}
+}
+
+// checkEngineVersion warns when Docker Desktop is a release the
+// acceptance run has not passed on (RFC 0055 §5.3): how it shares the Mac's
+// files is the part of it least pinned by documentation.
+func (d *Deps) checkEngineVersion() preflight.Check {
+	return preflight.Check{
+		ID:          "runtime.engine-version",
+		Category:    preflight.CategoryRuntime,
+		Description: "Docker Desktop is a release the acceptance run passed on",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			cli, err := d.EngineCLI(ctx)
+			if err != nil || cli.DesktopVersion == "" {
+				return preflight.OK("Docker Desktop is not the engine's CLI")
+			}
+			for _, verified := range cli.Verified {
+				if cli.DesktopVersion == verified || strings.HasPrefix(cli.DesktopVersion, verified+".") {
+					return preflight.OK("Docker Desktop %s", cli.DesktopVersion)
+				}
+			}
+			return preflight.Warn(
+				"nothing to change if it works: a manager release that passed on it says so",
+				"Docker Desktop %s is not a release the acceptance run passed on (%s); how it shares "+
+					"this Mac's files is the part of it least pinned by documentation",
+				cli.DesktopVersion, strings.Join(cli.Verified, ", "))
 		},
 	}
 }
