@@ -531,7 +531,7 @@ func takeAnotherBackup(
 			return ops.ExportForBackup(ctx, m.Deps)
 		},
 		Recipients: func(ctx context.Context) ([]string, error) {
-			return recipientKeys(ctx, m)
+			return ops.BackupRecipients(ctx, m.Deps)
 		},
 	})
 
@@ -561,7 +561,7 @@ func backupEngineWithoutHook(t *testing.T, ctx context.Context, m *machine) port
 			return ops.ExportForBackup(ctx, m.Deps)
 		},
 		Recipients: func(ctx context.Context) ([]string, error) {
-			return recipientKeys(ctx, m)
+			return ops.BackupRecipients(ctx, m.Deps)
 		},
 	})
 }
@@ -580,18 +580,6 @@ func loadInstallation(t *testing.T, ctx context.Context, m *machine) domain.Inst
 	inst, err := m.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
 	return inst
-}
-
-func recipientKeys(ctx context.Context, m *machine) ([]string, error) {
-	recipients, err := m.Deps.Secrets.Recipients(ctx)
-	if err != nil {
-		return nil, err
-	}
-	keys := make([]string, 0, len(recipients))
-	for _, r := range recipients {
-		keys = append(keys, r.PublicKey)
-	}
-	return keys, nil
 }
 
 // stripExportComponent rewrites a backup as an older manager would have
@@ -990,4 +978,78 @@ func TestAnIntactReplicaIsUsedWhenTheFirstIsDamaged(t *testing.T) {
 			"next target")
 	assert.Equal(t, "demo", found.Export.Installation.Product)
 	assert.Equal(t, ref.ID, found.Backup.ID)
+}
+
+// TestAReleaseWithNoSecretsAndNoRecoveryKeyStillBacksUp.
+//
+// Such an installation has no secret state: init creates it only for a secret
+// or a recovery key. Its backups, the one before every update included, were
+// refused for having no recipients, so it could never update (#363). The
+// machine's own key is what the first write would encrypt the state for, and
+// it is what the backup is encrypted for until then.
+func TestAReleaseWithNoSecretsAndNoRecoveryKeyStillBacksUp(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+
+	origin := newMachine(t, t.TempDir())
+	_, err := ops.Init(ctx, origin.Deps, ops.InitOptions{
+		Product:       "demo",
+		ReleasePath:   bundleWithNoSecrets(t),
+		Profiles:      []string{"embedded"},
+		NoRecoveryKey: true,
+	})
+	require.NoError(t, err)
+	initialized, err := origin.Deps.Secrets.Initialized(ctx)
+	require.NoError(t, err)
+	require.False(t, initialized, "the case is an installation with no secret state")
+
+	origin.wireBackupEngine(ctx)
+	ref, err := origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "pre-update",
+	}, nil)
+	require.NoError(t, err, "an installation with no secrets could never take a backup, "+
+		"so every update failed at its pre-update backup")
+
+	manifest := filepath.Join(ref.Path, "manifest.yaml"+agecrypt.Extension)
+	require.FileExists(t, manifest)
+	in, err := os.Open(manifest)
+	require.NoError(t, err)
+	defer func() { _ = in.Close() }()
+	assert.NoError(t, agecrypt.Decrypt(&bytes.Buffer{}, in, origin.Paths.AgeIdentityFile()),
+		"the backup must be readable with the machine's own key")
+
+	initialized, err = origin.Deps.Secrets.Initialized(ctx)
+	require.NoError(t, err)
+	assert.False(t, initialized, "taking a backup created secret state")
+
+	// State that exists and names nobody is unreadable, not absent: the
+	// machine's key stands in only for state that was never created.
+	require.NoError(t, os.WriteFile(origin.Paths.SecretsFile(), []byte("sops:\n  age: []\n"), 0o600))
+	_, err = origin.Deps.Backup.Create(ctx, ports.Scope{
+		Components: ports.AllComponents, Reason: "manual",
+	}, nil)
+	require.Error(t, err, "state naming no recipients was backed up for the machine's key")
+	assert.Contains(t, err.Error(), "has no recipients")
+}
+
+// bundleWithNoSecrets is the example bundle with every secret taken out: an
+// empty schema, and a template that names none.
+func bundleWithNoSecrets(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "bundle")
+	copyBundle(t, testBundlePath(t), dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secrets.schema.yaml"),
+		[]byte("api_version: selfhost/v1alpha1\nsecrets: []\n"), 0o644))
+	tmpl := filepath.Join(dir, "templates", "application.yaml.tmpl")
+	data, err := os.ReadFile(tmpl)
+	require.NoError(t, err)
+	var kept []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "secretFile") || line == "secrets:" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	require.NoError(t, os.WriteFile(tmpl, []byte(strings.Join(kept, "\n")), 0o644))
+	return dir
 }

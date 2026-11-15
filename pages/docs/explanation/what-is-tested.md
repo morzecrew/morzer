@@ -131,6 +131,7 @@ A backup that has never been restored is a hope. These run `pg_dump` and
 | A backup altered by one bit is refused rather than decrypted into altered data | `TestAlteredCiphertextIsRefusedRatherThanDecrypted` |
 | A truncated backup — an interrupted upload — is refused | `TestTruncatedCiphertextIsRefused` |
 | A backup is never written in plaintext because the recipient list was unavailable | `TestEncryptingToNobodyIsRefused` |
+| An installation with no secret state backs up for the machine's key, and one whose state names nobody is refused | `TestAReleaseWithNoSecretsAndNoRecoveryKeyStillBacksUp` |
 | A backup taken before backups were encrypted still restores | `TestASchemaOneBackupStillRestores` |
 | Retention never removes the only copy, whatever the policy says | `TestPruneNeverRemovesTheOnlyCopy` |
 | Retention keeps the reasons it was told to keep | `TestPruneKeepsTheReasonsItWasToldTo` |

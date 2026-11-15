@@ -163,15 +163,7 @@ func (m *machine) wireBackupEngine(ctx context.Context) {
 		// the whole point of the arrangement and what makes the
 		// recovery scenario below prove anything.
 		Recipients: func(ctx context.Context) ([]string, error) {
-			recipients, err := m.Deps.Secrets.Recipients(ctx)
-			if err != nil {
-				return nil, err
-			}
-			keys := make([]string, 0, len(recipients))
-			for _, r := range recipients {
-				keys = append(keys, r.PublicKey)
-			}
-			return keys, nil
+			return ops.BackupRecipients(ctx, m.Deps)
 		},
 	})
 }

@@ -163,6 +163,43 @@ func BuildExport(ctx context.Context, d *Deps) (domain.InstallationExport, error
 	return export, nil
 }
 
+// BackupRecipients answers who a backup is encrypted for: whoever can already
+// read this deployment's secrets, read at backup time so a key added this
+// morning can read a backup taken this afternoon.
+//
+// Before any secret state exists, that is the key the first write would
+// encrypt the state for, which is the machine's own. A release that declares
+// no secrets, installed with no recovery key, never creates the state, and its
+// every backup was refused for want of a recipient, so it could never update
+// (#363). State that exists and names nobody is another matter: it is
+// unreadable, and the empty answer lets the backup engine refuse it and say so.
+//
+// Whether the state exists is read first. A first write landing between the
+// two reads then leaves either its recipients or the machine's key, both
+// right; read the other way round, it read as state naming nobody.
+func BackupRecipients(ctx context.Context, d *Deps) ([]string, error) {
+	initialized, err := d.Secrets.Initialized(ctx)
+	if err != nil {
+		return nil, err
+	}
+	recipients, err := d.Secrets.Recipients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(recipients))
+	for _, r := range recipients {
+		keys = append(keys, r.PublicKey)
+	}
+	if len(keys) > 0 || initialized {
+		return keys, nil
+	}
+	machine, err := d.Secrets.IdentityPublicKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return []string{machine}, nil
+}
+
 // ExportForBackup builds the export a backup carries, or reports that this
 // installation has none to carry.
 //

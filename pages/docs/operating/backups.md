@@ -302,8 +302,10 @@ pushing to a target and pruning locally, or a vendor `exclude`.
 
 Each component is encrypted to the same recipients as the secret state — this
 machine's age key plus whatever offline and operator keys `secret recipients`
-knows about. So a backup you copy to another machine, upload to a bucket, or
-leave on a disk carries no credential and no data with it.
+knows about. An installation that has no secret state yet, such as one whose
+release declares no secrets and that has no recovery key, backs up for this
+machine's key alone. So a backup you copy to another machine, upload to a
+bucket, or leave on a disk carries no credential and no data with it.
 
 The manifest stays readable on purpose. `morzer backup list` works on a machine
 whose key is gone, and an operator looking at a directory of ciphertext can

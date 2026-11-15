@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A release that declares no secrets, installed with
+  `--no-recovery-recipient`, can back up, so it can update. With no secret
+  state, every backup was refused for having no recipients, the one before an
+  update included. Until the state exists, a backup is encrypted for the
+  machine's own key.
+
 ## [0.17.0] - 2026-11-14
 
 An update can give values to the parameters of the release it installs, so a
