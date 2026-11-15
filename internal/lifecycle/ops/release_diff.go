@@ -125,20 +125,22 @@ func identity(s string) string { return s }
 // describeParameter is what of a parameter the comparison reads: its type and
 // its default.
 func describeParameter(p domain.ParameterSpec) string {
-	switch {
-	case p.Default == nil:
+	if p.Default == nil {
 		return string(p.Type) + ", no default"
-	case *p.Default == "":
+	}
+	// The value delivered, so a default the deployment receives empty, a
+	// text one of a lone newline say, reads as the empty one.
+	value, err := p.Parse(*p.Default)
+	if err != nil {
+		value = *p.Default
+	}
+	if value == "" {
 		return string(p.Type) + ", empty by default"
 	}
 	// A line count and a digest of the value delivered: the whole of a
 	// multi-line default does not fit a one-line row, and the digest keeps a
 	// change on any line listed (RFC 0054 decision 14).
 	if p.Type == domain.ParamText {
-		value, err := p.Parse(*p.Default)
-		if err != nil {
-			value = *p.Default
-		}
 		sum := sha256.Sum256([]byte(value))
 		return fmt.Sprintf("%s, default of %s (sha256 %x)",
 			p.Type, domain.Lines(domain.LineCount(value)), sum[:6])

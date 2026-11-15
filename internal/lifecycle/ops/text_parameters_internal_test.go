@@ -54,6 +54,8 @@ func TestADiffDescribesATextDefaultByItsLinesAndDigest(t *testing.T) {
 
 	assert.Equal(t, "text, no default", describeParameter(domain.ParameterSpec{Type: domain.ParamText}))
 	assert.Equal(t, "text, empty by default", describeParameter(text("")))
+	assert.Equal(t, "text, empty by default", describeParameter(text("\n")),
+		"a default the deployment receives empty reads as a change from an empty one")
 	described := describeParameter(text("a\nb"))
 	assert.Regexp(t, `^text, default of 2 lines \(sha256 [0-9a-f]{12}\)$`, described)
 	assert.Equal(t, described, describeParameter(text("a\nb\n")),
