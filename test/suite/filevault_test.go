@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -164,4 +165,24 @@ func TestOneDocumentCanAllowTheDiskAndGiveASecret(t *testing.T) {
 	require.NoError(t, err)
 	got, _ := stored.Get("smtp_password")
 	assert.Equal(t, "a-value-on-an-unencrypted-disk", got.Reveal())
+}
+
+// The gate reads what the change stores: a document that withdraws the
+// override and repeats a stored value stores no secret, and applies.
+func TestADocumentRepeatingAStoredSecretCanWithdrawTheOverride(t *testing.T) {
+	h := runningHarness(t)
+	off := false
+	withFileVault(h, &off)
+	_, err := setSetting(t, h, false, map[string]string{"secrets.allow_unencrypted_disk": "true"})
+	require.NoError(t, err)
+	stored, err := h.Secrets.Load(context.Background())
+	require.NoError(t, err)
+	value, ok := stored.Get("db_password")
+	require.True(t, ok)
+
+	_, err = configApply(t, h, "settings:\n  secrets.allow_unencrypted_disk: \"false\"\n"+
+		"secrets:\n  db_password: "+strconv.Quote(value.Reveal())+"\n", ops.Options{})
+
+	require.NoError(t, err)
+	assert.False(t, installation(t, h).Policy.AllowUnencryptedDisk)
 }
