@@ -30,9 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `release diff` reports a change to a profile named `combinable` and to the
   combinable list beside it. Each used to hide the other.
 
-- A parameter can default to the empty string. `init` used to ask for one
-  declared `default: ""` as if it had no default. A `port` or `enum` with
-  that default, or `required` beside it, is now refused when it loads.
+- A parameter can default to the empty string, which `init` used to ask for
+  as if it had no default, and hooks receive every parameter, an empty one
+  too. A `port` with that default, an `enum` whose `values` leave out `""`,
+  or `required` beside it, is now refused at load.
 
 ## [0.17.1] - 2026-11-15
 

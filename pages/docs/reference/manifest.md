@@ -357,7 +357,7 @@ parameters:
 | Field | Type | Required | Meaning |
 | --- | --- | :---: | --- |
 | `type` | string | ✅ | One of `port`, `int`, `bool`, `string`, `enum`, `duration`, `bytes`, `text`. `text` needs `min_manager_version` 0.15.0; see [below](#text-parameters). |
-| `default` | string | | Used when the operator sets nothing. `default: ""` is a default too, the empty string, so `init` does not ask for it; only a parameter with no `default` is asked for. Validated against `type` at `release verify`, an empty one included, so a `port` or an `enum` cannot default to empty. A manager before 0.18.0 reads `default: ""` as no default. |
+| `default` | string | | Used when the operator sets nothing. `default: ""` is a default too, the empty string, so `init` does not ask for it; only a parameter with no `default` is asked for. Validated against `type` at `release verify`, an empty one included, so a `port` cannot default to empty, and an `enum` can only when its `values` list `""`. A manager before 0.18.0 reads `default: ""` as no default. |
 | `required` | bool | | The operator must supply a value. Declaring it alongside a `default`, an empty one too, is a validation error. |
 | `description` | string | | Shown when a value is refused, so the operator learns what is accepted. |
 | `values` | list | | The permitted set. Required for `enum`, an error for anything else. |

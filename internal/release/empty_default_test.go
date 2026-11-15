@@ -33,6 +33,11 @@ func TestAnEmptyDefaultIsADefault(t *testing.T) {
 		t.Errorf("a parameter with an empty default is asked for as if it had none: %v", missing)
 	}
 
+	// An enum that lists the empty value can default to it.
+	if _, err := release.Load(withParameter(t, "    type: enum\n    values: [\"\", auto]\n    default: \"\"\n")); err != nil {
+		t.Errorf("an enum listing the empty value cannot default to it: %v", err)
+	}
+
 	absent := withParameter(t, "    type: string\n")
 	rel, err = release.Load(absent)
 	if err != nil {
