@@ -61,4 +61,18 @@ func TestADiffReportsPlatforms(t *testing.T) {
 		profileChanges(manifest(both), manifest(both, domain.PlatformLinux)))
 	assert.Equal(t, "linux, darwin", compatibility(domain.Compatibility{}, manifest(both).Requirements)["platforms"])
 	assert.NotContains(t, compatibility(domain.Compatibility{}, domain.Requirements{}), "platforms")
+
+	// Two runtimes narrowing one name: a change to the second shows too.
+	two := func(second domain.Platform) domain.Manifest {
+		narrowed := func(p domain.Platform) domain.RuntimeDecl {
+			return domain.RuntimeDecl{Files: []string{"f"}, Profiles: map[string][]string{"tun": {"t"}},
+				Platforms: map[string][]domain.Platform{"tun": {p}}}
+		}
+		return domain.Manifest{Runtimes: domain.Runtimes{
+			"compose": narrowed(domain.PlatformLinux), "second": narrowed(second),
+		}}
+	}
+	assert.Equal(t, []Change{{Name: "tun", Kind: ChangeChanged,
+		From: "on linux under compose; on linux under second", To: "on linux under compose; on darwin under second"}},
+		profileChanges(two(domain.PlatformLinux), two(domain.PlatformDarwin)))
 }

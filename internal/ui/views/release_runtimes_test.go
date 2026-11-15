@@ -97,6 +97,17 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 		assert.Contains(t, render(domain.Manifest{Metadata: base}), "platforms linux rollback safe")
 	})
 
+	t.Run("two runtimes narrowing one profile are both shown", func(t *testing.T) {
+		narrowed := func(p domain.Platform) domain.RuntimeDecl {
+			return domain.RuntimeDecl{Files: []string{"f"}, Profiles: map[string][]string{"tun": {"t"}},
+				Platforms: map[string][]domain.Platform{"tun": {p}}}
+		}
+		out := render(domain.Manifest{Metadata: base, Runtimes: domain.Runtimes{
+			"compose": narrowed(domain.PlatformLinux), "quadlet": narrowed(domain.PlatformDarwin),
+		}})
+		assert.Contains(t, out, "tun (linux only under compose, darwin only under quadlet)")
+	})
+
 	t.Run("two runtimes, sorted, one of them plain", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,

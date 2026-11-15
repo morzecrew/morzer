@@ -11,10 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `requirements.platforms` names the operating systems a release is made
   for, Linux alone when absent, and `runtimes.<runtime>.platforms` narrows a
-  profile. A release or profile not made for the machine is refused before
-  `init`, `update` or `rollback` starts. Either key needs a 0.18.0 floor.
+  profile. `init`, `update` and `rollback` refuse a release or profile not
+  made for the machine. Either key needs a 0.18.0 floor.
 
 ### Fixed
+
+- A refused `init --repair` keeps the installation it was asked to repair.
+  A `--profile` the release does not declare used to delete its state.
 
 - After a reboot, rendering secrets recreates `/run/<product>` at `0750`, as
   `init` made it, rather than at the secrets directory's `0700`. `doctor` no

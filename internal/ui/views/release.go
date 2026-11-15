@@ -123,17 +123,18 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		// A suffix, so the alternatives and the overlays read in one list
 		// (RFC 0053 decision 17).
 		combinable := m.CombinableNames()
-		declared := m.DeclaredRuntimes()
+		several := len(m.DeclaredRuntimes()) > 1
 		for i, name := range profiles {
 			var notes []string
 			if slices.Contains(combinable, name) {
 				notes = append(notes, "combinable")
 			}
-			for _, runtime := range declared.Names() {
-				if only, ok := declared[runtime].Platforms[name]; ok {
-					notes = append(notes, domain.JoinPlatforms(only)+" only")
-					break
+			for _, n := range m.ProfileNarrowing(name) {
+				note := domain.JoinPlatforms(n.Platforms) + " only"
+				if several {
+					note += " under " + n.Runtime
 				}
+				notes = append(notes, note)
 			}
 			if len(notes) > 0 {
 				profiles[i] = name + " (" + strings.Join(notes, ", ") + ")"

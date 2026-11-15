@@ -172,10 +172,21 @@ func manifestSchema() map[string]any {
 	// `files` is empty. The bounds say what `required` cannot.
 	atLeastOne(props["runtimes"], "minProperties")
 	atLeastOne(props["images"], "minProperties")
+	if req, ok := props["requirements"].(map[string]any); ok {
+		if fields, ok := req["properties"].(map[string]any); ok {
+			atLeastOne(fields["platforms"], "minItems")
+		}
+	}
 	if runtimes, ok := props["runtimes"].(map[string]any); ok {
 		if entry, ok := runtimes["additionalProperties"].(map[string]any); ok {
 			if fields, ok := entry["properties"].(map[string]any); ok {
 				atLeastOne(fields["files"], "minItems")
+				// A platforms map and each of its lists, which the
+				// loader refuses empty (RFC 0055 decision 3).
+				atLeastOne(fields["platforms"], "minProperties")
+				if narrowed, ok := fields["platforms"].(map[string]any); ok {
+					atLeastOne(narrowed["additionalProperties"], "minItems")
+				}
 			}
 		}
 	}

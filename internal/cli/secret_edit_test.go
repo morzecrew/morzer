@@ -49,6 +49,9 @@ func editApp(t *testing.T, seed map[string]string) (*App, *fakes.SecretStore, st
 	return app, store, root
 }
 
+// The scripts edit with `sed -i.orig` and remove the copy, the one in-place
+// spelling GNU and BSD sed both take, so they run on a Mac too.
+//
 // scriptedEditor returns an editor command that runs a shell script over the
 // file it is handed.
 func scriptedEditor(script string) []string {
@@ -76,7 +79,7 @@ func TestSecretEditWritesOnlyWhatChanged(t *testing.T) {
 
 	// Change one value and leave the other exactly as it was.
 	err := app.editSecretsWith(context.Background(), nil,
-		scriptedEditor(`sed -i 's/old-password/new-password/' "$0"`))
+		scriptedEditor(`sed -i.orig 's/old-password/new-password/' "$0" && rm -f "$0.orig"`))
 	require.NoError(t, err)
 
 	after := loaded(t, store)
@@ -106,7 +109,7 @@ func TestSecretEditLeavesNoPlaintextBehind(t *testing.T) {
 	// An editor that leaves a backup file beside the one it was given, the
 	// way vim and emacs do. The session directory has to take those with it.
 	err := app.editSecretsWith(context.Background(), nil,
-		scriptedEditor(`cp "$0" "$0~"; sed -i 's/the-value-to-find/replaced/' "$0"`))
+		scriptedEditor(`cp "$0" "$0~"; sed -i.orig 's/the-value-to-find/replaced/' "$0" && rm -f "$0.orig"`))
 	require.NoError(t, err)
 
 	renderDir := domain.PathsUnder(root, "demo").SecretsRenderDir()
@@ -120,7 +123,7 @@ func TestSecretEditCleansUpAfterAFailedEditor(t *testing.T) {
 	// the file before the editor runs, so the cleanup has to happen on this
 	// path too -- and it is the path least likely to be exercised by hand.
 	err := app.editSecretsWith(context.Background(), nil,
-		scriptedEditor(`sed -i 's/the-value-to-find/changed/' "$0"; exit 1`))
+		scriptedEditor(`sed -i.orig 's/the-value-to-find/changed/' "$0" && rm -f "$0.orig"; exit 1`))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no secrets were changed")
 

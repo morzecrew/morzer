@@ -105,6 +105,8 @@ func TestPlatformsAreValidated(t *testing.T) {
 		{"a profile on a platform the release is not made for", nil,
 			map[string][]Platform{"xdns": {PlatformDarwin}},
 			"runtimes.compose.platforms.xdns: lists darwin, which requirements.platforms does not"},
+		{"a runtime's empty map", both, map[string][]Platform{},
+			"runtimes.compose.platforms: must narrow at least one profile"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Contains(t, problem(manifestForPlatforms(tc.release, tc.profiles)), tc.want)
@@ -120,6 +122,20 @@ func TestPlatformsAreValidated(t *testing.T) {
 	old = manifestForPlatforms(nil, map[string][]Platform{"xdns": {PlatformLinux}})
 	old.Compatibility.MinManagerVersion = MustParseVersion("0.17.1")
 	assert.Contains(t, problem(old), "must be at least 0.18.0")
+
+	// Written empty is still written, and an older manager refuses the key.
+	old = manifestForPlatforms(nil, map[string][]Platform{})
+	old.Compatibility.MinManagerVersion = MustParseVersion("0.17.1")
+	assert.Contains(t, problem(old), "must be at least 0.18.0")
+}
+
+// `platforms: {}` under a runtime arrives as a map written empty, so the floor
+// and the refusal above see it.
+func TestAnEmptyProfilePlatformsMapIsAWrittenOne(t *testing.T) {
+	var decl RuntimeDecl
+	require.NoError(t, yaml.UnmarshalWithOptions([]byte("files: [compose.yaml]\nplatforms: {}\n"), &decl,
+		yaml.Strict(), yaml.DisallowUnknownField()))
+	assert.NotNil(t, decl.Platforms)
 }
 
 // `platforms: []` reaches validation as a list written empty, not as an

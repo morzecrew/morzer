@@ -585,6 +585,7 @@
             ],
             "type": "string"
           },
+          "minItems": 1,
           "type": "array"
         },
         "ports": {
@@ -655,8 +656,10 @@
                 ],
                 "type": "string"
               },
+              "minItems": 1,
               "type": "array"
             },
+            "minProperties": 1,
             "type": "object"
           },
           "profiles": {

@@ -412,7 +412,7 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
 func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
-	set map[string]string) (bool, error) {
+	set map[string]string, profiles []string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
 		return false, err
@@ -456,6 +456,18 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	// arriving through the parameters instead of the manifest.
 	if err := m.Requirements.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
 		return false, err
+	}
+	// And the selection, as the write-installation step checks it against the
+	// staged release, platform included.
+	if len(profiles) > 0 {
+		rel := domain.Release{Manifest: m}
+		runtime, err := runtimeForRelease(rel)
+		if err != nil {
+			return false, err
+		}
+		if _, err := rel.Selection(runtime, profiles, d.platform()); err != nil {
+			return false, err
+		}
 	}
 	if _, err := domain.ResolveParameters(m.Parameters, set); err != nil {
 		return false, err
@@ -1205,8 +1217,13 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 				"transition; a manager built for a different runtime cannot operate it")
 	}
 
-	// In layering order, which is what `<PRODUCT>_PROFILE` joins.
-	profiles, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
+	// In layering order, which is what `<PRODUCT>_PROFILE` joins. Checked
+	// against no platform: reading, stopping and removing what runs has to
+	// work whatever the selection is, and replacing a selection this platform
+	// does not run reads the old one through here. Deploying one is refused
+	// where the configuration is rendered (templateData), and at update,
+	// rollback, init and config set (RFC 0055 decision 3).
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles, "")
 	if err != nil {
 		return ports.RuntimeConfig{}, err
 	}

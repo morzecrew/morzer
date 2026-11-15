@@ -326,6 +326,26 @@ func (m Manifest) ProfileNamesOn(platform string) []string {
 	})
 }
 
+// Narrowing is one runtime narrowing a profile to some platforms.
+type Narrowing struct {
+	Runtime   string
+	Platforms []Platform
+}
+
+// ProfileNarrowing is every runtime that narrows the profile name, in sorted
+// order, for the commands that show a release: two runtimes may narrow one
+// name differently, and showing the first would hide the other.
+func (m Manifest) ProfileNarrowing(name string) []Narrowing {
+	declared := m.DeclaredRuntimes()
+	var out []Narrowing
+	for _, runtime := range declared.Names() {
+		if only, ok := declared[runtime].Platforms[name]; ok {
+			out = append(out, Narrowing{Runtime: runtime, Platforms: slices.Clone(only)})
+		}
+	}
+	return out
+}
+
 // CombinableNames is every profile a runtime of this release lets run beside
 // others, for `release show`, `release diff` and the synthetic render context.
 //
@@ -557,7 +577,7 @@ func (d RuntimeDecl) ProfileRunsOn(name, platform string) (bool, []Platform) {
 	if !narrowed || slices.Contains(only, Platform(platform)) {
 		return true, nil
 	}
-	return false, only
+	return false, slices.Clone(only)
 }
 
 // CheckProfileSelection refuses what no release accepts: an empty entry, as in
@@ -869,7 +889,7 @@ func (r Requirements) RunsOn() []Platform {
 	if len(r.Platforms) == 0 {
 		return []Platform{PlatformLinux}
 	}
-	return r.Platforms
+	return slices.Clone(r.Platforms)
 }
 
 // PlatformRefusal is why release cannot run on platform, the GOOS the manager
@@ -887,13 +907,14 @@ func (r Requirements) PlatformRefusal(platform, release string) error {
 		WithHint("%s. Its vendor adds %s to that list once the release runs there", declares, platform)
 }
 
-// declaresPlatforms reports whether the manifest uses either platforms key.
+// declaresPlatforms reports whether the manifest writes either platforms key,
+// empty included: an older manager refuses the key, not its contents.
 func (m Manifest) declaresPlatforms() bool {
-	if len(m.Requirements.Platforms) > 0 {
+	if m.Requirements.Platforms != nil {
 		return true
 	}
 	for _, decl := range m.DeclaredRuntimes() {
-		if len(decl.Platforms) > 0 {
+		if decl.Platforms != nil {
 			return true
 		}
 	}
@@ -1732,6 +1753,9 @@ func (m *Manifest) Validate() error {
 			case !declared:
 				v.add(field, "names %q, which %s.profiles does not declare", profile, base)
 			}
+		}
+		if decl.Platforms != nil && len(decl.Platforms) == 0 {
+			v.add(base+".platforms", "must narrow at least one profile")
 		}
 		for _, profile := range slices.Sorted(maps.Keys(decl.Platforms)) {
 			field := base + ".platforms." + profile
