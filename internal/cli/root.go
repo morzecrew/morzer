@@ -1542,11 +1542,22 @@ func (a *App) rewireForProduct(ctx context.Context, product string) error {
 	if err := domain.ValidateProductName(product); err != nil {
 		return err
 	}
+	return a.wireAt(ctx, a.pathsFor(product), a.bus, a.redactor, a.log)
+}
 
-	paths := domain.DefaultPaths(product)
+// pathsFor is the layout product's installation has, under --root when given.
+func (a *App) pathsFor(product string) domain.Paths {
 	if a.Flags.root != "" {
-		paths = domain.PathsUnder(a.Flags.root, product)
+		return domain.PathsUnder(a.Flags.root, product)
 	}
+	return domain.DefaultPaths(product)
+}
 
-	return a.wireAt(ctx, paths, a.bus, a.redactor, a.log)
+// stateFor is product's state: the wired one for the product wired, and the one
+// rewireForProduct would wire for another.
+func (a *App) stateFor(product string) ports.StateStore {
+	if product == a.Deps.Paths.Product {
+		return a.Deps.State
+	}
+	return state.New(a.pathsFor(product))
 }

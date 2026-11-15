@@ -509,3 +509,39 @@ func TestTheWizardRefusesAnUnencryptedDiskBeforeItWritesAKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, got.RecoveryRecipient)
 }
+
+// The gate is asked again right before the key is written: of the
+// installation for the product the wizard chose, which is not always the one
+// the command was wired to, and after whatever changed while it waited.
+func TestTheWizardAsksTheGateAgainBeforeItWritesAKey(t *testing.T) {
+	t.Run("another product than the one wired", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "demo-recovery.key")
+		app, _ := wizardApp(t, "demo", "", "1", path)
+		app.Flags.root = t.TempDir()
+		// alpha allows an unencrypted disk; demo, which the wizard is
+		// told to make, has no installation to allow it.
+		alpha := domain.PathsUnder(app.Flags.root, "alpha")
+		app.Deps.Paths, app.Deps.State = alpha, state.New(alpha)
+		inst := domain.Installation{SchemaVersion: domain.InstallationSchemaVersion, Product: "alpha",
+			ID: "inst-alpha", Policy: domain.DefaultPolicy()}
+		inst.Policy.AllowUnencryptedDisk = true
+		require.NoError(t, app.Deps.State.SaveInstallation(context.Background(), inst))
+		app.Deps.DiskEncrypted = func(context.Context) (bool, error) { return false, nil }
+
+		_, err := runInitWizard(context.Background(), app, ops.InitOptions{})
+
+		require.ErrorContains(t, err, "FileVault is off")
+		assert.NoFileExists(t, path, "a key was written for a product the disk is refused for")
+	})
+	t.Run("the disk changed while it waited", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "demo-recovery.key")
+		app, _ := wizardApp(t, "demo", "", "1", path)
+		asked := 0
+		app.Deps.DiskEncrypted = func(context.Context) (bool, error) { asked++; return asked == 1, nil }
+
+		_, err := runInitWizard(context.Background(), app, ops.InitOptions{})
+
+		require.ErrorContains(t, err, "FileVault is off")
+		assert.NoFileExists(t, path)
+	})
+}

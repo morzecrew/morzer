@@ -140,7 +140,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 
 	// Before any step writes, so no identity is created on a disk FileVault
 	// does not encrypt (RFC 0055 decision 5). Again under the lock.
-	if err := d.refuseInitOnUnencryptedDisk(ctx, exists, opts); err != nil {
+	if err := d.refuseInitOnUnencryptedDisk(ctx, d.State, exists, opts); err != nil {
 		return Result{}, err
 	}
 
@@ -316,7 +316,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			if err != nil {
 				return err
 			}
-			if err := d.refuseInitOnUnencryptedDisk(ctx, stillExists, opts); err != nil {
+			if err := d.refuseInitOnUnencryptedDisk(ctx, d.State, stillExists, opts); err != nil {
 				return err
 			}
 		}
@@ -624,23 +624,31 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 }
 
 // RefuseInitOnUnencryptedDisk is init's FileVault gate for what runs before
-// Init and writes: the wizard, which can write a recovery key.
-func RefuseInitOnUnencryptedDisk(ctx context.Context, d *Deps, opts InitOptions) error {
-	exists, err := d.State.InstallationExists(ctx)
+// Init and writes: the wizard, which can write a recovery key. It reads the
+// installation in st, which is the one for the product the wizard chose, and
+// not always d.State's.
+func RefuseInitOnUnencryptedDisk(ctx context.Context, d *Deps, st ports.StateStore, opts InitOptions) error {
+	if d.DiskEncrypted == nil {
+		return nil
+	}
+	exists, err := st.InstallationExists(ctx)
 	if err != nil {
 		return err
 	}
-	return d.refuseInitOnUnencryptedDisk(ctx, exists, opts)
+	return d.refuseInitOnUnencryptedDisk(ctx, st, exists, opts)
 }
 
 // refuseInitOnUnencryptedDisk is the FileVault gate for init. A repair is held
 // to what its installation set, unless the flag says otherwise; a first init has
 // only the flag.
-func (d *Deps) refuseInitOnUnencryptedDisk(ctx context.Context, exists bool, opts InitOptions) error {
-	if exists && !opts.AllowUnencryptedDisk {
-		return d.RefuseUnencryptedDisk(ctx)
+func (d *Deps) refuseInitOnUnencryptedDisk(ctx context.Context, st ports.StateStore, exists bool, opts InitOptions) error {
+	allowed := opts.AllowUnencryptedDisk
+	if exists && !allowed {
+		if inst, err := st.LoadInstallation(ctx); err == nil {
+			allowed = inst.Policy.AllowUnencryptedDisk
+		}
 	}
-	return d.refuseUnencryptedDisk(ctx, opts.AllowUnencryptedDisk)
+	return d.refuseUnencryptedDisk(ctx, allowed)
 }
 
 // keyInstallationExisted is whether write-installation found an installation

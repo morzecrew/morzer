@@ -131,7 +131,7 @@ func (a *App) accessibleForms() bool {
 func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.InitOptions, error) {
 	// Before anything is asked: an answer can write a recovery key, and Init
 	// would refuse the disk after it (RFC 0055 decision 5).
-	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, opts); err != nil {
+	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, app.Deps.State, opts); err != nil {
 		return opts, err
 	}
 	profiles := app.profilesFrom(ctx, opts.ReleasePath)
@@ -327,6 +327,12 @@ func generateRecoveryKey(ctx context.Context, app *App, opts ops.InitOptions) (o
 		return opts, formError(err)
 	}
 
+	// Again, right before the key is written: for the product chosen, whose
+	// installation is not always the one wired, and after whatever changed
+	// while the wizard waited.
+	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, app.stateFor(opts.Product), opts); err != nil {
+		return opts, err
+	}
 	public, err := sopsage.GenerateIdentity(path)
 	if err != nil {
 		return opts, err
