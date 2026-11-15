@@ -605,8 +605,8 @@ const keyInstallationExisted = "installation-existed"
 // directory already there, which its compensation leaves.
 const keyReleaseDirExisted = "release-dir-existed"
 
-// keyReplacedRelease is the current release a repair's stage-release replaced,
-// which its compensation makes current again.
+// keyReplacedRelease is the current release, in another directory, that a
+// repair's stage-release replaced, which its compensation makes current again.
 const keyReplacedRelease = "replaced-release"
 
 // keyReplacedInstallation is the installation a repair's write-installation
@@ -1023,7 +1023,10 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			rel.Root = dest
 			st.Set(engine.KeyRelease, rel)
 
-			if current, err := d.State.CurrentRelease(ctx); err == nil && opts.Repair {
+			// Another release's directory is untouched and can be made
+			// current again; the installed one's now holds this bundle,
+			// which the record has to go on describing.
+			if current, err := d.State.CurrentRelease(ctx); err == nil && opts.Repair && current.Root != dest {
 				st.Set(keyReplacedRelease, current)
 			}
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {

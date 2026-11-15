@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -617,4 +618,18 @@ func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
 	after, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
 	assert.True(t, atomicfs.SameDigest(installed.Digest, after.Digest), "a refused selection changed the release record")
+
+	// Passing every check, it is swapped in; a step after that fails, and
+	// the record still describes the files the release's directory holds.
+	h.Secrets.Fail["Load"] = errors.New("the secret store cannot be read")
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{resigned},
+	})
+
+	require.ErrorContains(t, err, "the secret store cannot be read")
+	landed, err = release.Load(installed.Root)
+	require.NoError(t, err)
+	after, err = h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(landed.Digest, after.Digest), "the release record no longer describes its directory")
 }
