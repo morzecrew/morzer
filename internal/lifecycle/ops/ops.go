@@ -1168,8 +1168,13 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 				"transition; a manager built for a different runtime cannot operate it")
 	}
 
-	// In layering order, which is what `<PRODUCT>_PROFILE` joins.
-	profiles, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
+	// In layering order, which is what `<PRODUCT>_PROFILE` joins. Checked
+	// against no platform: reading, stopping and removing what runs has to
+	// work whatever the selection is, and replacing a selection this platform
+	// does not run reads the old one through here. Deploying one is refused
+	// where the configuration is rendered (templateData), and at update,
+	// rollback, init and config set (RFC 0055 decision 3).
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles, "")
 	if err != nil {
 		return ports.RuntimeConfig{}, err
 	}
