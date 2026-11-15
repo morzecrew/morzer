@@ -209,8 +209,10 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 	// Before anything is stored, as a `secret` change asks it: the render
 	// after the store would refuse, leaving a value stored that nothing runs
 	// with (RFC 0055 decision 5).
+	// The policy the change leaves, so one that allows an unencrypted disk
+	// and gives a secret together is one command. Again under the lock.
 	if len(change.Secrets) > 0 {
-		if err := d.RefuseUnencryptedDisk(ctx); err != nil {
+		if err := d.refuseUnencryptedDisk(ctx, planned.after.Policy.AllowUnencryptedDisk); err != nil {
 			return run, err
 		}
 	}
@@ -241,6 +243,11 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		}
 		if planned, err = d.planChange(ctx, inst, rel, hasRel, staged, change, opts.Force); err != nil {
 			return err
+		}
+		if len(change.Secrets) > 0 {
+			if err := d.refuseUnencryptedDisk(ctx, planned.after.Policy.AllowUnencryptedDisk); err != nil {
+				return err
+			}
 		}
 		if extras.record != nil {
 			if err := extras.record(&planned.after); err != nil {
