@@ -22,10 +22,11 @@ import (
 const Binary = "/usr/bin/dscl"
 
 // Writers lists the accounts other than root that can write dir: everyone when
-// others may, and otherwise, when its group may, that group's members and the
-// people's accounts whose primary group it is. macOS's own accounts, below uid
-// 500, are left out of the second: a stock Mac's `daemon` account has the
-// `daemon` group as its own. Empty means root alone.
+// others may, and otherwise, when its group may, that group's members, the
+// people's accounts whose primary group it is, and each group nested in it,
+// whose members are its members too. macOS's own accounts, below uid 500, are
+// left out of the second: a stock Mac's `daemon` account has the `daemon`
+// group as its own. Empty means root alone.
 func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -49,8 +50,8 @@ func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, err
 	if !ok {
 		return nil, fmt.Errorf("no group has id %d", gid)
 	}
-	membership, err := dscl(ctx, runner, "-read", "/Groups/"+name, "GroupMembership")
-	if err != nil && !strings.Contains(membership, "No such key") {
+	record, err := dscl(ctx, runner, "-read", "/Groups/"+name, "GroupMembership", "NestedGroups")
+	if err != nil && !strings.Contains(record, "No such key") {
 		return nil, err
 	}
 	users, err := dscl(ctx, runner, "-list", "/Users", "PrimaryGroupID")
@@ -61,7 +62,17 @@ func Writers(ctx context.Context, runner exec.Runner, dir string) ([]string, err
 	if err != nil {
 		return nil, err
 	}
-	return others(append(members(membership), people(namesWith(users, gid), uids)...)), nil
+	writers := append(values(record, "GroupMembership"), people(namesWith(users, gid), uids)...)
+	if nested := values(record, "NestedGroups"); len(nested) > 0 {
+		guids, err := dscl(ctx, runner, "-list", "/Groups", "GeneratedUID")
+		if err != nil {
+			return nil, err
+		}
+		for _, guid := range nested {
+			writers = append(writers, "group "+groupNamed(guids, guid))
+		}
+	}
+	return others(writers), nil
 }
 
 func groupOf(info fs.FileInfo) (int, error) {
@@ -126,14 +137,36 @@ func people(names []string, uids string) []string {
 	})
 }
 
-// members reads `GroupMembership: a b` from `dscl . -read`; a group with no
-// members has no such key.
-func members(read string) []string {
-	_, rest, ok := strings.Cut(read, "GroupMembership:")
-	if !ok {
-		return nil
+// values reads key's values from `dscl . -read`, which prints `Key: a b` per
+// key, or the key alone with its values indented on the lines after; a key the
+// record lacks is printed as `No such key: Key`.
+func values(read, key string) []string {
+	var out []string
+	in := false
+	for _, line := range strings.Split(read, "\n") {
+		if strings.HasPrefix(line, " ") {
+			if in {
+				out = append(out, strings.Fields(line)...)
+			}
+			continue
+		}
+		k, rest, _ := strings.Cut(line, ":")
+		if in = k == key; in {
+			out = append(out, strings.Fields(rest)...)
+		}
 	}
-	return strings.Fields(rest)
+	return out
+}
+
+// groupNamed is the name `dscl . -list /Groups GeneratedUID` gives guid, or
+// guid itself where none does.
+func groupNamed(listing, guid string) string {
+	for _, line := range strings.Split(listing, "\n") {
+		if fields := strings.Fields(line); len(fields) == 2 && fields[1] == guid {
+			return fields[0]
+		}
+	}
+	return guid
 }
 
 // others is names less root, sorted and once each.
