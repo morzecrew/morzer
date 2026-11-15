@@ -23,7 +23,8 @@ func TestASecretChangeWithFileVaultOffStoresNothing(t *testing.T) {
 		t.Run(args[0], func(t *testing.T) {
 			app, _ := restartApp(t)
 			app.Deps.DiskEncrypted = func(context.Context) (bool, error) { return false, nil }
-			store := app.Deps.Secrets.(*fakes.SecretStore)
+			store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+			require.True(t, ok)
 			before, err := store.Load(context.Background())
 			require.NoError(t, err)
 
