@@ -82,6 +82,12 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			value, err := app.readSecretValue(cmd.Context(), fmt.Sprintf("value for %s: ", name))
 			if err != nil {
 				return err
@@ -89,6 +95,10 @@ func newSecretSetCommand(app *App) *cobra.Command {
 			if value.IsEmpty() {
 				return domain.Usage("the value is empty").
 					WithHint("use `morzer secret remove %s` to delete a secret", name)
+			}
+			// And again: the prompt may have been open while it changed.
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
 			}
 
 			if err := app.Deps.Secrets.Set(cmd.Context(), name, value); err != nil {
@@ -130,6 +140,12 @@ func newSecretGenerateCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			gen, err := app.generatorFor(cmd.Context(), name, kind, length, alphabet)
 			if err != nil {
 				return err
@@ -168,6 +184,12 @@ func newSecretRotateCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			gen, err := app.generatorFor(cmd.Context(), name, "", 0, "")
 			if err != nil {
 				return err

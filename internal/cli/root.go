@@ -999,9 +999,18 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// that without regenerating a unit or migrating any state.
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
+	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
 	if engineUser != nil {
 		storeOpts = append(storeOpts, sopsage.WithRenderOwner(engineUser))
+	}
+	diskEncrypted := diskEncryption(runner)
+	if diskEncrypted != nil {
+		// The installation's setting is read at each render, through the
+		// deps built below.
+		storeOpts = append(storeOpts, sopsage.WithRenderGate(func(ctx context.Context) error {
+			return deps.RefuseUnencryptedDisk(ctx)
+		}))
 	}
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), storeOpts...)
 	hookRunner := hooks.NewRunner(runner,
@@ -1034,11 +1043,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		return err
 	}
 
-	deps := &ops.Deps{
+	deps = &ops.Deps{
 		Paths:         paths,
 		State:         stateStore,
 		Locker:        locker,
 		EngineUser:    engineUser,
+		DiskEncrypted: diskEncrypted,
 		RunDirWriters: runDirWriters(runner),
 		// The same constructor, for the installations this command is
 		// not pointed at. `ls` derives one layout per product it finds
@@ -1532,11 +1542,22 @@ func (a *App) rewireForProduct(ctx context.Context, product string) error {
 	if err := domain.ValidateProductName(product); err != nil {
 		return err
 	}
+	return a.wireAt(ctx, a.pathsFor(product), a.bus, a.redactor, a.log)
+}
 
-	paths := domain.DefaultPaths(product)
+// pathsFor is the layout product's installation has, under --root when given.
+func (a *App) pathsFor(product string) domain.Paths {
 	if a.Flags.root != "" {
-		paths = domain.PathsUnder(a.Flags.root, product)
+		return domain.PathsUnder(a.Flags.root, product)
 	}
+	return domain.DefaultPaths(product)
+}
 
-	return a.wireAt(ctx, paths, a.bus, a.redactor, a.log)
+// stateFor is product's state: the wired one for the product wired, and the one
+// rewireForProduct would wire for another.
+func (a *App) stateFor(product string) ports.StateStore {
+	if product == a.Deps.Paths.Product {
+		return a.Deps.State
+	}
+	return state.New(a.pathsFor(product))
 }

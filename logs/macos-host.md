@@ -419,3 +419,78 @@ evidence: internal/lifecycle/ops/init.go:612-645
 action: decided
 proposal: UNLISTED — a repair's compensation puts back the installation and the release it replaced together; RunDir's owner is checked where RunDirWriters is, the Mac
 ```
+
+## The FileVault gate
+
+On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: Decision 5 names four render paths and the four `secret` commands that store before they render. `config apply` (RFC 0056) is a fifth of each: it stores the values a document gives and then renders. Its render reaches the gate in the store, and like a `secret` change it would have stored first, so it checks the gate before the operation starts when the document gives a secret. The gate is one function, `RefuseUnencryptedDisk`, which the store calls first in `Render` and each of those callers calls before it stores.
+evidence: internal/lifecycle/ops/config_apply.go:668
+action: decided
+proposal: UNLISTED — `config apply` of a document that gives a secret checks the FileVault gate before it starts, as a `secret` change does
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: `secret edit` decrypts the values it shows into a file under the secrets directory for the editor, which is plaintext on the same disk before anything is stored. So its check comes before the editor opens, not before the store, and a refused edit writes nothing at all.
+evidence: internal/cli/secret_edit.go:198
+action: decided
+proposal: UNLISTED — `secret edit` checks the FileVault gate before it decrypts anything for the editor
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T06:28:54Z
+attempt: 1
+claim: Decision 5 does not say how the refusal reads. It is a secrets error, exit 6, as a render that cannot write a file is, naming FileVault and both ways out: turning it on, or setting `secrets.allow_unencrypted_disk`. `init --allow-unencrypted-disk` is accepted on Linux and records the setting, which nothing there reads, so one runbook serves both platforms.
+evidence: internal/domain/errors.go:274-276
+action: decided
+proposal: UNLISTED — the FileVault refusal is exit 6 and names both remedies; the flag and the setting are accepted on Linux and change nothing there
+```
+
+## Review of the FileVault gate
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T08:06:18Z
+attempt: 1
+claim: Decision 5's gate reads the policy where it acts. `config apply` reads the policy the change leaves, so one document can allow an unencrypted disk and give a secret, and reads it again under the lock. `init` asks again under its lock, so a `config set` that withdrew the setting while a repair waited is honoured. A repair given `--allow-unencrypted-disk` keeps it over the policy it carries, which had dropped it.
+evidence: internal/lifecycle/ops/init.go:629-635
+action: decided
+```
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T12:49:23Z
+attempt: 2
+claim: Decision 5's gate ran before the input it guards. `secret set` and `secret edit` checked it before the prompt or the editor and stored after, so an override withdrawn while either was open let a value be stored that no render would write; both check again once the input is in, before they store. `init`'s wizard could write a recovery key before `Init` refused the disk, so the wizard checks the gate before it asks anything. The secret commands take no deployment lock, as before this work, so a setting changed in the instant between the second check and the store is not excluded
+evidence: internal/cli/secret_edit.go:86-92
+action: decided
+```
+
+```divergence
+decision: 5
+grade: ASSUMED
+kind: resolved
+at: 2026-11-15T13:36:13Z
+attempt: 3
+claim: The wizard's gate read the installation the command was wired to, so one that allowed an unencrypted disk let the wizard write a recovery key for another product it was then told to make, which `Init` refused. The gate is asked again right before the key is written, of the installation for the product chosen, which also honours a setting withdrawn while the wizard waited. And `config apply` gated on every secret the document named, so one that withdrew the override and repeated a stored value could not apply; it gates on the secrets whose value changes, the ones it stores
+evidence: internal/lifecycle/ops/config_apply.go:205-218
+action: decided
+```

@@ -413,6 +413,10 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// 20 -> 21 added `pending` (RFC 0058). Nothing to convert:
 			// absent holds no values for a staged release.
 			i.SchemaVersion = 21
+		case 21:
+			// 21 -> 22 added `policy.allow_unencrypted_disk` (RFC 0055).
+			// Nothing to convert: absent allows no unencrypted disk.
+			i.SchemaVersion = 22
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:
