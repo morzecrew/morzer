@@ -218,18 +218,22 @@ func profileChanges(a, b domain.Manifest) []Change {
 	return changes(from, to, identity)
 }
 
-// profilePlatforms is the declared profile names, each with the platforms
-// `runtimes.<name>.platforms` narrows it to, or "" where it runs wherever the
-// release does.
+// profilePlatforms is the declared profile names, each with the platforms the
+// runtimes narrow it to, or "" where it runs wherever the release does. Each
+// runtime is named once a release declares two, so a change to either shows.
 func profilePlatforms(m domain.Manifest) map[string]string {
 	out := nameSet(m.ProfileNames())
-	declared := m.DeclaredRuntimes()
-	for _, runtime := range declared.Names() {
-		for profile, only := range declared[runtime].Platforms {
-			if out[profile] == "" {
-				out[profile] = "on " + domain.JoinPlatforms(only)
+	several := len(m.DeclaredRuntimes()) > 1
+	for name := range out {
+		var parts []string
+		for _, n := range m.ProfileNarrowing(name) {
+			part := "on " + domain.JoinPlatforms(n.Platforms)
+			if several {
+				part += " under " + n.Runtime
 			}
+			parts = append(parts, part)
 		}
+		out[name] = strings.Join(parts, "; ")
 	}
 	return out
 }
