@@ -336,3 +336,17 @@ func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 	require.NoError(t, r.engine().Prepare())
 	assert.NoDirExists(t, r.managerDir)
 }
+
+// A config that cannot be rebuilt is not left for a command to read, so none
+// is read that this process did not check.
+func TestAConfigThatCannotBeRebuiltIsNotLeft(t *testing.T) {
+	r := newRig(t)
+	dir := filepath.Join(r.managerDir, "docker")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"credsStore": "stale"}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bin"), nil, 0o600))
+
+	require.Error(t, r.engine().Prepare())
+
+	assert.NoFileExists(t, filepath.Join(dir, "config.json"))
+}

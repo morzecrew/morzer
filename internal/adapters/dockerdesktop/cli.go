@@ -166,14 +166,14 @@ func (e *Engine) Prepare() error {
 	if _, err := os.Stat(filepath.Dir(e.dir)); err != nil {
 		return nil
 	}
-	// First, so a refusal below leaves no config to read.
-	if err := os.Remove(filepath.Join(e.dir, "config.json")); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return domain.Internal(err, "cannot replace the docker CLI's config in %s", e.dir)
-	}
 	if err := atomicfs.MkdirMineNoFollow(e.dir, 0o700); err != nil {
 		return err
 	}
+	// Replaced in one rename, so a command reading it meanwhile reads a
+	// whole config; removed when it cannot be rebuilt, so none is read that
+	// this process did not check.
 	if _, err := e.writeConfig(filepath.Join(e.dir, "cli-plugins")); err != nil {
+		_ = os.Remove(filepath.Join(e.dir, "config.json"))
 		return err
 	}
 	return e.putFirstOnPath("")
@@ -390,6 +390,9 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 			}
 		}
 	}
+	// The links a new config names exist before it does, and the ones only
+	// the old config named stay until it is gone, so no config a command reads
+	// names a helper its PATH would find elsewhere.
 	if err := e.linkHelpers(linked); err != nil {
 		return nil, err
 	}
@@ -397,8 +400,12 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 	if err != nil {
 		return nil, domain.Internal(err, "cannot encode the docker CLI's config")
 	}
+	if err := atomicfs.WriteFile(filepath.Join(e.dir, "config.json"), data, 0o600); err != nil {
+		return nil, err
+	}
+	e.unlinkHelpers(linked)
 	slices.Sort(dropped)
-	return dropped, atomicfs.WriteFile(filepath.Join(e.dir, "config.json"), data, 0o600)
+	return dropped, nil
 }
 
 // checkedHelper is where docker-credential-<name> is on root's PATH, when
@@ -412,27 +419,30 @@ func (e *Engine) checkedHelper(name string) (string, bool) {
 	return path, err == nil && who == ""
 }
 
-// linkHelpers links each kept helper into the directory first on PATH, and
-// removes the links to ones no longer kept: a helper is run by name, and a
-// directory earlier on root's PATH that someone else can write could
-// otherwise gain one of the same name after it was checked.
+// linkHelpers links each kept helper into the directory first on PATH: a helper is run by name, and a directory earlier on root's
+// PATH that someone else can write could otherwise gain one of the same name
+// after it was checked.
 func (e *Engine) linkHelpers(linked map[string]string) error {
-	bin := filepath.Join(e.dir, "bin")
-	if err := atomicfs.MkdirMineNoFollow(bin, 0o700); err != nil {
+	dir := filepath.Join(e.dir, "bin")
+	if err := atomicfs.MkdirMineNoFollow(dir, 0o700); err != nil {
 		return err
 	}
-	old, _ := filepath.Glob(filepath.Join(bin, "docker-credential-*"))
+	for name, target := range linked {
+		if err := atomicfs.ReplaceSymlink(target, filepath.Join(dir, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// unlinkHelpers removes the links to helpers no longer kept.
+func (e *Engine) unlinkHelpers(linked map[string]string) {
+	old, _ := filepath.Glob(filepath.Join(e.dir, "bin", "docker-credential-*"))
 	for _, path := range old {
 		if _, ok := linked[filepath.Base(path)]; !ok {
 			_ = os.Remove(path)
 		}
 	}
-	for name, target := range linked {
-		if err := atomicfs.ReplaceSymlink(target, filepath.Join(bin, name)); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // rootConfigField reads one key of root's own config.json; an absent file or
@@ -464,6 +474,7 @@ func exists(path string) bool {
 func lookIn(path, name string) (string, error) {
 	for _, dir := range filepath.SplitList(path) {
 		candidate := filepath.Join(dir, name)
+		//nolint:gosec // a lookup on root's own PATH, as exec.LookPath makes
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode().Perm()&0o111 != 0 {
 			return candidate, nil
 		}
