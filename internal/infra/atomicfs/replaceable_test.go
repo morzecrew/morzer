@@ -30,7 +30,7 @@ func TestReplaceableByNonRoot(t *testing.T) {
 		if os.Geteuid() == 0 {
 			t.Skip("root owns every directory it creates")
 		}
-		dir := t.TempDir()
+		dir := resolvedTempDir(t)
 		link := filepath.Join(dir, "morzer")
 		require.NoError(t, os.Symlink(system, link))
 		who, err := atomicfs.ReplaceableByNonRoot(link)
@@ -53,7 +53,7 @@ func TestReplaceableByNonRoot(t *testing.T) {
 		if os.Geteuid() == 0 {
 			t.Skip("root owns every file it creates")
 		}
-		path := filepath.Join(t.TempDir(), "morzer")
+		path := filepath.Join(resolvedTempDir(t), "morzer")
 		require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755)) //nolint:gosec // a stand-in binary
 		who, err := atomicfs.ReplaceableByNonRoot(path)
 		require.NoError(t, err)
@@ -65,4 +65,14 @@ func TestReplaceableByNonRoot(t *testing.T) {
 		_, err := atomicfs.ReplaceableByNonRoot(filepath.Join(filepath.Dir(system), "morzer-absent-"+filepath.Base(t.TempDir())))
 		assert.Error(t, err)
 	})
+}
+
+// resolvedTempDir is t.TempDir with its links resolved, since the walk names
+// an entry by the path it resolved: on a Mac the temporary directory is under
+// /var, a link to /private/var.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	return dir
 }
