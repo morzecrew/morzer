@@ -203,6 +203,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		d.checkStagedInputs(),
 		d.checkSync(inst),
 	)
+	if d.DiskEncrypted != nil {
+		checks = append(checks, d.checkDiskEncryption(inst))
+	}
 	if d.RunDirWriters != nil {
 		checks = append(checks, d.checkRunDirParent())
 	}
@@ -427,6 +430,7 @@ func installationDifferences(onDisk, recorded domain.Installation) []string {
 // fails when the next one is added without a line here.
 func policyEqual(a, b domain.Policy) bool {
 	return a.RequireSignature == b.RequireSignature &&
+		a.AllowUnencryptedDisk == b.AllowUnencryptedDisk &&
 		a.RetainReleases == b.RetainReleases &&
 		a.RetainBackups == b.RetainBackups &&
 		a.RetainPreUpdateBackups == b.RetainPreUpdateBackups &&
@@ -880,6 +884,15 @@ func (d *Deps) checkSecretsOnEphemeralStorage() preflight.Check {
 			if preflight.IsEphemeralFilesystem(fstype) {
 				return preflight.OK("%s is %s", dir, fstype)
 			}
+			// A platform with no memory-backed filesystem: nothing to
+			// mount, and secrets.disk-encryption says what protects them
+			// instead (RFC 0055 §5.4).
+			if d.DiskEncrypted != nil {
+				return preflight.Warn(
+					"nothing to mount: this platform has no memory-backed filesystem, and "+
+						"secrets.disk-encryption reports what protects the disk",
+					"%s is %s: decrypted secrets are written to disk", dir, fstype)
+			}
 
 			return preflight.Warn(
 				fmt.Sprintf("mount a tmpfs at %s, or accept that decrypted secrets "+
@@ -942,6 +955,39 @@ func (d *Deps) checkSecretOwners(rel domain.Release) preflight.Check {
 				"nothing to change here: the owner a release declares is enforced on Linux",
 				"owner is not enforced on this host: the engine reads the rendered secrets as "+
 					"the user who runs it, so every container that mounts one can read it")
+		},
+	}
+}
+
+// checkDiskEncryption fails while the disk under the rendered secrets and the
+// age identity is not encrypted, whether or not secrets.allow_unencrypted_disk
+// lets them render there (RFC 0055 decision 5): whoever has the disk and the
+// identity beside the state reads every secret, rendered or not.
+func (d *Deps) checkDiskEncryption(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.disk-encryption",
+		Category:    preflight.CategorySecrets,
+		Description: "the disk under decrypted secrets and the age identity is encrypted",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			on, err := d.DiskEncrypted(ctx)
+			if err != nil {
+				return preflight.Fail("run `fdesetup status` to see what it reports",
+					"cannot tell whether FileVault is on: %v", err)
+			}
+			if on {
+				return preflight.OK("FileVault is on")
+			}
+			remedy := "turn FileVault on in System Settings, Privacy & Security: it encrypts the volume " +
+				"in place. If this disk left your hands while it was off, treat the age identity and " +
+				"every secret as exposed, and rotate them"
+			if inst.Policy.AllowUnencryptedDisk {
+				return preflight.Fail(remedy, "FileVault is off, and secrets.allow_unencrypted_disk lets "+
+					"secrets render on it: the age identity and the decrypted secrets are readable by "+
+					"anyone with the disk")
+			}
+			return preflight.Fail(remedy, "FileVault is off: the age identity is readable by anyone with "+
+				"the disk, and secrets do not render until it is on")
 		},
 	}
 }

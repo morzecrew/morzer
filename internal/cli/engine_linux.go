@@ -10,5 +10,8 @@ import (
 // host as root, so a rendered secret keeps the owner its release declares.
 var engineUser func() (uid, gid int, err error)
 
+// diskEncryption is nil on Linux, whose secrets render to a tmpfs.
+func diskEncryption(exec.Runner) func(context.Context) (bool, error) { return nil }
+
 // runDirWriters is nil on Linux, whose /run only root can write.
 func runDirWriters(exec.Runner) func(context.Context, string) ([]string, error) { return nil }

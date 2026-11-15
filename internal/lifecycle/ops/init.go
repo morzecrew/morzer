@@ -30,6 +30,12 @@ type InitOptions struct {
 	// later.
 	ReleasePath string
 
+	// AllowUnencryptedDisk lets `init` go on where the disk is checked and
+	// found unencrypted, and records `secrets.allow_unencrypted_disk` (RFC
+	// 0055 decision 5). The one flag form of that setting: there is no
+	// installation yet to hold it.
+	AllowUnencryptedDisk bool
+
 	// Profiles is the selection of deployment profiles to record, checked
 	// against the release when one is staged (RFC 0053 decision 15).
 	Profiles []string
@@ -130,6 +136,12 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			"an installation already exists at %s", d.Paths.EtcDir).
 			WithHint("use `morzer init --repair` to restore missing directories, " +
 				"or `morzer update` to install a new release")
+	}
+
+	// Before any step writes, so no identity is created on a disk FileVault
+	// does not encrypt (RFC 0055 decision 5). Again under the lock.
+	if err := d.refuseInitOnUnencryptedDisk(ctx, d.State, exists, opts); err != nil {
+		return Result{}, err
 	}
 
 	// Stored as the verifier reads them. A key with whitespace around it --
@@ -297,6 +309,17 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeInit, opts.Options, func(ctx context.Context) error {
+		// Under the lock, a repair's setting as it stands now: a `config
+		// set` that withdrew it while this waited is honoured.
+		if !opts.DryRun {
+			stillExists, err := d.State.InstallationExists(ctx)
+			if err != nil {
+				return err
+			}
+			if err := d.refuseInitOnUnencryptedDisk(ctx, d.State, stillExists, opts); err != nil {
+				return err
+			}
+		}
 		var err error
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, "", nil))
 		return err
@@ -379,6 +402,10 @@ func initFlags(opts InitOptions) map[string]string {
 	}
 	if opts.Repair {
 		flags["repair"] = "true"
+	}
+	if opts.AllowUnencryptedDisk {
+		// A downgrade, journalled as `config set` journals it.
+		flags["allow_unencrypted_disk"] = "true"
 	}
 	if len(flags) == 0 {
 		return nil
@@ -596,6 +623,34 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 	}
 }
 
+// RefuseInitOnUnencryptedDisk is init's FileVault gate for what runs before
+// Init and writes: the wizard, which can write a recovery key. It reads the
+// installation in st, which is the one for the product the wizard chose, and
+// not always d.State's.
+func RefuseInitOnUnencryptedDisk(ctx context.Context, d *Deps, st ports.StateStore, opts InitOptions) error {
+	if d.DiskEncrypted == nil {
+		return nil
+	}
+	exists, err := st.InstallationExists(ctx)
+	if err != nil {
+		return err
+	}
+	return d.refuseInitOnUnencryptedDisk(ctx, st, exists, opts)
+}
+
+// refuseInitOnUnencryptedDisk is the FileVault gate for init. A repair is held
+// to what its installation set, unless the flag says otherwise; a first init has
+// only the flag.
+func (d *Deps) refuseInitOnUnencryptedDisk(ctx context.Context, st ports.StateStore, exists bool, opts InitOptions) error {
+	allowed := opts.AllowUnencryptedDisk
+	if exists && !allowed {
+		if inst, err := st.LoadInstallation(ctx); err == nil {
+			allowed = inst.Policy.AllowUnencryptedDisk
+		}
+	}
+	return d.refuseUnencryptedDisk(ctx, allowed)
+}
+
 // keyInstallationExisted is whether write-installation found an installation
 // already there, which its compensation leaves.
 const keyInstallationExisted = "installation-existed"
@@ -744,6 +799,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	}
 	inst.AttestationSalt = salt
 
+	inst.Policy.AllowUnencryptedDisk = opts.AllowUnencryptedDisk
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
@@ -798,6 +854,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			inst.Domains = existing.Domains
 		}
 		inst.Policy = existing.Policy
+		// Carried, and the flag can only add to it: a repair that passes
+		// it means to allow what the record may not have.
+		inst.Policy.AllowUnencryptedDisk = existing.Policy.AllowUnencryptedDisk || opts.AllowUnencryptedDisk
 		if backupSchedule != "" {
 			// The one field of Policy this command can set, so it
 			// outranks the carried block when it was given -- the

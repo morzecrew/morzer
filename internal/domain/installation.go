@@ -122,7 +122,9 @@ import (
 // Bumped to 21 for `pending` (RFC 0058 decision 11). An older manager would
 // drop the values on its next write, and the update they wait for would then
 // stay refused for want of them.
-const InstallationSchemaVersion = 21
+// Bumped to 22 for `policy.allow_unencrypted_disk` (RFC 0055 decision 5), for
+// the write path, as every field added to the state has been.
+const InstallationSchemaVersion = 22
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18
@@ -770,6 +772,12 @@ type Policy struct {
 	// RequireSignature refuses any bundle that is not signed. Checksum
 	// verification always happens; this raises the bar.
 	RequireSignature bool `yaml:"require_signature" json:"require_signature"`
+
+	// AllowUnencryptedDisk lets secrets render where the disk is checked and
+	// found unencrypted: a Mac with FileVault off (RFC 0055 decision 5). A
+	// setting, not a flag, because the renders that matter run with nobody
+	// there to pass one; setting it is a journalled downgrade.
+	AllowUnencryptedDisk bool `yaml:"allow_unencrypted_disk,omitempty" json:"allow_unencrypted_disk,omitempty"`
 
 	// SigningKeys are the minisign public keys a bundle's signature must
 	// verify against.

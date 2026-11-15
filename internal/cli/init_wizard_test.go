@@ -154,6 +154,22 @@ func TestEquivalentCommandPrintsTheChoicesThatDifferFromDefaults(t *testing.T) {
 	assert.Contains(t, got, "--generate-secrets=false")
 }
 
+// The mode, a plan and the FileVault override each change what the command
+// does, so the printed line carries them: without them a dev installation
+// would come back as production, a plan would install, and a Mac with
+// FileVault off would be refused.
+func TestEquivalentCommandCarriesModeDryRunAndTheDiskOverride(t *testing.T) {
+	got := EquivalentCommand(ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true,
+		Mode:                 domain.ModeDev,
+		AllowUnencryptedDisk: true,
+		Options:              ops.Options{DryRun: true},
+	})
+	assert.Contains(t, got, "--mode dev")
+	assert.Contains(t, got, "--allow-unencrypted-disk")
+	assert.Contains(t, got, "--dry-run")
+}
+
 // TestEquivalentCommandCarriesTheParametersAndTheRepairFlag.
 //
 // Both were dropped, and both change what the command does: a --set the line

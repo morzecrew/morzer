@@ -129,6 +129,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--domain` | Public domain. Repeat for several; the first is canonical. |
 | `--recovery-recipient` | Offline age public key that can also decrypt the secret state. |
 | `--no-recovery-recipient` | Proceed without one. Losing this machine then loses its secrets. |
+| `--allow-unencrypted-disk` | On a Mac, go on with FileVault off, and record [`secrets.allow_unencrypted_disk`](parameters.md#installation-settings-are-not-parameters). Without it, `init` refuses there before it writes anything, exit 6. On Linux it records the setting, and nothing reads it. |
 | `--generate-secrets` | Generate every secret the release declares a generator for. Default `true`. |
 | `--install-units` | Install systemd units when systemd is available. Default `true`. |
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |

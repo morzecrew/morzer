@@ -37,6 +37,14 @@ func TestSecretStoreContract_Fake(t *testing.T) {
 	})
 }
 
+func TestSecretStoreRenderGateContract_Fake(t *testing.T) {
+	contract.RunRenderGateSuite(t, func(t *testing.T, gate func(context.Context) error) ports.SecretStore {
+		store := fakes.NewSecretStore()
+		store.RenderGate = gate
+		return store
+	})
+}
+
 func TestSecretStoreRenderOwnerContract_Fake(t *testing.T) {
 	contract.RunRenderOwnerSuite(t, func(t *testing.T, owner func() (int, int, error)) ports.SecretStore {
 		store := fakes.NewSecretStore()
@@ -64,6 +72,23 @@ func TestSecretStoreContract_SOPSAge(t *testing.T) {
 		locker := lock.New(filepath.Join(dir, "locks")).WithPollInterval(10 * time.Millisecond)
 		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity,
 			sopsage.WithLocker(locker))
+	})
+}
+
+func TestSecretStoreRenderGateContract_SOPSAge(t *testing.T) {
+	if _, err := exec.LookPath("sops"); err != nil {
+		t.Skip("sops is not installed; skipping the real SecretStore contract suite")
+	}
+
+	contract.RunRenderGateSuite(t, func(t *testing.T, gate func(context.Context) error) ports.SecretStore {
+		dir := t.TempDir()
+		identity := filepath.Join(dir, "age", "identity")
+
+		_, err := sopsage.GenerateIdentity(identity)
+		require.NoError(t, err)
+
+		return sopsage.New(infraexec.New(), filepath.Join(dir, "secrets.sops.yaml"), identity,
+			sopsage.WithRenderGate(gate))
 	})
 }
 

@@ -129,6 +129,11 @@ func (a *App) accessibleForms() bool {
 // Everything already supplied on the command line is left alone: the wizard
 // fills gaps, it does not re-ask questions the operator has answered.
 func runInitWizard(ctx context.Context, app *App, opts ops.InitOptions) (ops.InitOptions, error) {
+	// Before anything is asked: an answer can write a recovery key, and Init
+	// would refuse the disk after it (RFC 0055 decision 5).
+	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, app.Deps.State, opts); err != nil {
+		return opts, err
+	}
 	profiles := app.profilesFrom(ctx, opts.ReleasePath)
 
 	var (
@@ -322,6 +327,12 @@ func generateRecoveryKey(ctx context.Context, app *App, opts ops.InitOptions) (o
 		return opts, formError(err)
 	}
 
+	// Again, right before the key is written: for the product chosen, whose
+	// installation is not always the one wired, and after whatever changed
+	// while the wizard waited.
+	if err := ops.RefuseInitOnUnencryptedDisk(ctx, app.Deps, app.stateFor(opts.Product), opts); err != nil {
+		return opts, err
+	}
 	public, err := sopsage.GenerateIdentity(path)
 	if err != nil {
 		return opts, err
@@ -458,6 +469,15 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	}
 	if opts.Repair {
 		args = append(args, "--repair")
+	}
+	if opts.Mode != "" {
+		add("mode", string(opts.Mode))
+	}
+	if opts.AllowUnencryptedDisk {
+		args = append(args, "--allow-unencrypted-disk")
+	}
+	if opts.DryRun {
+		args = append(args, "--dry-run")
 	}
 
 	return strings.Join(args, " \\\n    ")

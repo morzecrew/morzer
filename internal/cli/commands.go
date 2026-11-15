@@ -23,24 +23,25 @@ import (
 
 func newInitCommand(app *App) *cobra.Command {
 	var (
-		product        string
-		releasePath    string
-		profiles       []string
-		domains        []string
-		recoveryKey    string
-		noRecoveryKey  bool
-		installUnits   bool
-		backupSchedule string
-		generate       bool
-		repair         bool
-		requireSig     bool
-		signingKeys    []string
-		syncTarget     string
-		syncAuthority  string
-		syncRecipient  string
-		set            []string
-		setFiles       []string
-		mode           string
+		product          string
+		releasePath      string
+		profiles         []string
+		domains          []string
+		recoveryKey      string
+		noRecoveryKey    bool
+		allowUnencrypted bool
+		installUnits     bool
+		backupSchedule   string
+		generate         bool
+		repair           bool
+		requireSig       bool
+		signingKeys      []string
+		syncTarget       string
+		syncAuthority    string
+		syncRecipient    string
+		set              []string
+		setFiles         []string
+		mode             string
 	)
 
 	cmd := &cobra.Command{
@@ -128,23 +129,24 @@ func newInitCommand(app *App) *cobra.Command {
 			}
 
 			opts := ops.InitOptions{
-				Options:           app.operationOptions(),
-				Mode:              parsedMode,
-				Product:           product,
-				ReleasePath:       releasePath,
-				Profiles:          profileFlag(profiles),
-				Domains:           domains,
-				RecoveryRecipient: recoveryKey,
-				NoRecoveryKey:     noRecoveryKey,
-				InstallUnits:      installUnits,
-				BackupSchedule:    backupSchedule,
-				GenerateSecrets:   generate,
-				RequireSignature:  requireSig,
-				SigningKeys:       signingKeys,
-				SyncTarget:        syncTarget,
-				SyncAuthority:     syncAuthority,
-				SyncRecipient:     syncRecipient,
-				Repair:            repair,
+				Options:              app.operationOptions(),
+				Mode:                 parsedMode,
+				Product:              product,
+				ReleasePath:          releasePath,
+				Profiles:             profileFlag(profiles),
+				Domains:              domains,
+				RecoveryRecipient:    recoveryKey,
+				NoRecoveryKey:        noRecoveryKey,
+				AllowUnencryptedDisk: allowUnencrypted,
+				InstallUnits:         installUnits,
+				BackupSchedule:       backupSchedule,
+				GenerateSecrets:      generate,
+				RequireSignature:     requireSig,
+				SigningKeys:          signingKeys,
+				SyncTarget:           syncTarget,
+				SyncAuthority:        syncAuthority,
+				SyncRecipient:        syncRecipient,
+				Repair:               repair,
 				// Unset and false differ: unset requires a signature
 				// whenever a key is trusted, false says not to.
 				SignatureNotRequired: cmd.Flags().Changed("require-signature") && !requireSig,
@@ -245,6 +247,9 @@ func newInitCommand(app *App) *cobra.Command {
 	f.StringVar(&recoveryKey, "recovery-recipient", "", "offline age public key that can decrypt the secret state")
 	f.BoolVar(&noRecoveryKey, "no-recovery-recipient", false,
 		"proceed without an offline recovery key (losing this machine then loses its secrets)")
+	f.BoolVar(&allowUnencrypted, "allow-unencrypted-disk", false,
+		"on a Mac, go on with FileVault off, recording secrets.allow_unencrypted_disk: "+
+			"anyone with the disk can then read every secret")
 	f.BoolVar(&installUnits, "install-units", true, "install systemd units when systemd is available")
 	f.StringVar(&backupSchedule, "backup-schedule", "", "systemd OnCalendar expression for scheduled backups")
 	f.BoolVar(&generate, "generate-secrets", true, "generate every secret the release declares a generator for")
