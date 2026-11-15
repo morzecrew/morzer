@@ -28,6 +28,18 @@ func TestADiffReportsCombinableAsOneEntry(t *testing.T) {
 		profileChanges(manifest("xdns", "xhttp-reality"), manifest("xhttp-reality", "xdns")))
 	assert.Equal(t, []Change{{Name: "combinable", Kind: ChangeRemoved, From: "xdns"}},
 		profileChanges(manifest("xdns"), manifest()))
+
+	// A profile may be named `combinable` too, and neither entry hides the
+	// other.
+	named := func(combinable ...string) domain.Manifest {
+		m := manifest(combinable...)
+		m.Runtimes["compose"].Profiles["combinable"] = []string{"c.yaml"}
+		return m
+	}
+	assert.Equal(t, []Change{{Name: "combinable", Kind: ChangeAdded}},
+		profileChanges(manifest("xdns"), named("xdns")), "a profile named combinable was hidden by the list")
+	assert.Equal(t, []Change{{Name: "combinable", Kind: ChangeRemoved, From: "xdns"}},
+		profileChanges(named("xdns"), named()), "the list was hidden by a profile named combinable")
 }
 
 // `doctor` compares the report's selection with the state's as sets, and a
