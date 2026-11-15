@@ -41,9 +41,29 @@ const (
 // newer one. File sharing and ownership are the least documented part of it.
 var Verified = []string{"4.44"}
 
-// pluginDirs is where the docker CLI looks for a plugin after the config's
-// own directories, in its order, with Homebrew's, which its formula asks to be
-// named in a config, before them.
+// defaultStore is the credential helper the docker CLI looks for on PATH when
+// its config names no store and no credentials, on a Mac.
+const defaultStore = "osxkeychain"
+
+// nowhere is DOCKER_CONFIG while the manager's config is not rebuilt: a
+// directory that cannot exist, so a registry is reached anonymously.
+var nowhere = filepath.Join(os.DevNull, "docker")
+
+// noneHelper stands in, in the helpers' directory, for every credential helper
+// root does not run: it holds no credentials, so a registry is reached without
+// any rather than through a helper someone else could replace.
+const noneHelper = `#!/bin/sh
+# A credential helper root does not run: it holds no credentials.
+case "$1" in
+get) echo "credentials not found in native keychain"; exit 1 ;;
+list) echo "{}" ;;
+*) echo "this helper stores nothing" >&2; exit 1 ;;
+esac
+`
+
+// pluginDirs is where a Compose plugin for a CLI on PATH is looked for after
+// root's own config's: Homebrew's, which its formula asks to be named in a
+// config, then the docker CLI's system directories, in its order.
 var pluginDirs = []string{
 	"/opt/homebrew/lib/docker/cli-plugins",
 	"/usr/local/lib/docker/cli-plugins", "/usr/local/libexec/docker/cli-plugins",
@@ -72,9 +92,10 @@ type Engine struct {
 	look        func(string) (string, error)
 	replaceable func(string) (string, error)
 
-	// setPath puts the settled CLI's directory first on the process's
-	// PATH, so every process the manager starts finds it (decision 22).
-	setPath bool
+	// setEnv gives the process, and so every process the manager starts,
+	// the settled CLI's directory first on PATH and the manager's
+	// DOCKER_CONFIG (decision 22).
+	setEnv bool
 
 	mu  sync.Mutex
 	cli *ports.EngineCLI
@@ -103,13 +124,9 @@ func NewEngine(runner exec.Runner, managerDir string) *Engine {
 		rootConfig:  rootConfig,
 		look:        func(name string) (string, error) { return lookIn(start["PATH"], name) },
 		replaceable: atomicfs.ReplaceableByNonRoot,
-		setPath:     true,
+		setEnv:      true,
 	}
 }
-
-// ConfigDir is the manager's DOCKER_CONFIG, for every process it starts
-// (decision 22), whether or not it exists yet.
-func (e *Engine) ConfigDir() string { return e.dir }
 
 // Settle returns the CLI to run, copying and checking it the first time, and
 // again when Docker Desktop's version changes. A refusal is not kept, so a
@@ -125,7 +142,7 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		return ports.EngineCLI{}, domain.Preflight(err,
 			"the docker CLI root runs is kept in %s, which `init` creates", managerDir)
 	}
-	if err := atomicfs.MkdirMineNoFollow(e.dir, 0o700); err != nil {
+	if err := e.ready(); err != nil {
 		return ports.EngineCLI{}, err
 	}
 
@@ -137,8 +154,12 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 	if _, statErr := os.Stat(filepath.Join(e.app, "Contents", "Info.plist")); statErr == nil {
 		cli, err = e.copyDesktop(ctx)
 		pluginDir = filepath.Join(e.dir, "cli-plugins")
-	} else {
-		cli, pluginDir, err = e.fromPath()
+	} else if cli, pluginDir, err = e.fromPath(); err == nil {
+		// Docker Desktop's earlier copies go: the CLI loads a plugin from
+		// its config's directory before any other.
+		_ = os.Remove(filepath.Join(e.dir, "bin", "docker"))
+		_ = os.RemoveAll(filepath.Join(e.dir, "cli-plugins"))
+		_ = os.Remove(filepath.Join(e.dir, "version"))
 	}
 	if err != nil {
 		return ports.EngineCLI{}, err
@@ -147,11 +168,25 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		return ports.EngineCLI{}, err
 	}
 	cli.Verified = Verified
-	if err := e.putFirstOnPath(filepath.Dir(cli.Path)); err != nil {
+	if err := e.useConfig(filepath.Dir(cli.Path)); err != nil {
 		return ports.EngineCLI{}, err
 	}
 	e.cli = &cli
 	return cli, nil
+}
+
+// ready makes the manager's directory for the CLI, refusing one whose way down
+// someone other than root could change, since what root runs is put there.
+func (e *Engine) ready() error {
+	managerDir := filepath.Dir(e.dir)
+	who, err := e.replaceable(managerDir)
+	if err != nil {
+		return err
+	}
+	if who != "" {
+		return domain.Preflight(nil, "%s can be changed by %s, so root keeps no docker CLI under it", managerDir, who)
+	}
+	return atomicfs.MkdirMineNoFollow(e.dir, 0o700)
 }
 
 // Prepare rebuilds the manager's config from root's own, and puts its CLI
@@ -163,10 +198,16 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 func (e *Engine) Prepare() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	// Until it is rebuilt, a registry is reached anonymously.
+	if e.setEnv {
+		if err := os.Setenv("DOCKER_CONFIG", nowhere); err != nil {
+			return domain.Internal(err, "cannot set DOCKER_CONFIG")
+		}
+	}
 	if _, err := os.Stat(filepath.Dir(e.dir)); err != nil {
 		return nil
 	}
-	if err := atomicfs.MkdirMineNoFollow(e.dir, 0o700); err != nil {
+	if err := e.ready(); err != nil {
 		return err
 	}
 	// Replaced in one rename, so a command reading it meanwhile reads a
@@ -176,25 +217,28 @@ func (e *Engine) Prepare() error {
 		_ = os.Remove(filepath.Join(e.dir, "config.json"))
 		return err
 	}
-	return e.putFirstOnPath("")
+	return e.useConfig("")
 }
 
-// putFirstOnPath puts the settled CLI's directory, then the checked helpers',
-// first on the process's PATH, so every process the manager starts finds those
-// by name (decision 22). The helpers have a directory of their own: one shared
-// with Docker Desktop's copies would put an earlier copy ahead of a CLI found
-// on PATH since.
-func (e *Engine) putFirstOnPath(cliDir string) error {
-	if !e.setPath {
+// useConfig gives the process the manager's DOCKER_CONFIG, and its PATH the
+// checked helpers' directory first, then the settled CLI's, so every process
+// the manager starts finds those by name (decision 22). The helpers come first:
+// that directory holds nothing else, and a CLI's own directory can hold a
+// helper of the same name nobody checked.
+func (e *Engine) useConfig(cliDir string) error {
+	if !e.setEnv {
 		return nil
 	}
 	dirs := []string{filepath.Join(e.dir, "helpers")}
 	if cliDir != "" {
-		dirs = append([]string{cliDir}, dirs...)
+		dirs = append(dirs, cliDir)
 	}
 	path := strings.Join(append(dirs, startEnv()["PATH"]), string(os.PathListSeparator))
 	if err := os.Setenv("PATH", path); err != nil {
 		return domain.Internal(err, "cannot put %s first on PATH", strings.Join(dirs, ", "))
+	}
+	if err := os.Setenv("DOCKER_CONFIG", e.dir); err != nil {
+		return domain.Internal(err, "cannot set DOCKER_CONFIG")
 	}
 	return nil
 }
@@ -392,10 +436,8 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 			}
 		}
 	}
-	// The links a new config names exist before it does, and the ones only
-	// the old config named stay until it is gone, so no config a command reads
-	// names a helper its PATH would find elsewhere.
-	if err := e.linkHelpers(linked); err != nil {
+	// Before the config, so every helper it names resolves to its link.
+	if err := e.linkHelpers(linked, append(slices.Clone(dropped), defaultStore)); err != nil {
 		return nil, err
 	}
 	data, err := json.MarshalIndent(out, "", "  ")
@@ -405,7 +447,6 @@ func (e *Engine) writeConfig(pluginDir string) ([]string, error) {
 	if err := atomicfs.WriteFile(filepath.Join(e.dir, "config.json"), data, 0o600); err != nil {
 		return nil, err
 	}
-	e.unlinkHelpers(linked)
 	slices.Sort(dropped)
 	return dropped, nil
 }
@@ -421,13 +462,19 @@ func (e *Engine) checkedHelper(name string) (string, bool) {
 	return path, err == nil && who == ""
 }
 
-// linkHelpers links each kept helper into the helpers' directory, on PATH
-// before root's own: a helper is run by name, and a directory earlier on root's
-// PATH that someone else can write could otherwise gain one of the same name
-// after it was checked.
-func (e *Engine) linkHelpers(linked map[string]string) error {
+// linkHelpers links each kept helper into the helpers' directory, first on
+// PATH, and points every other name the CLI may run there at noneHelper: the
+// ones left out, the store the CLI looks for when its config names none, and
+// any linked before, which a command that read an earlier config may still run.
+// A helper is run by name, and a directory on root's PATH that someone else can
+// write, or a link into Docker Desktop, would otherwise answer to it.
+func (e *Engine) linkHelpers(linked map[string]string, shadowed []string) error {
 	dir := filepath.Join(e.dir, "helpers")
 	if err := atomicfs.MkdirMineNoFollow(dir, 0o700); err != nil {
+		return err
+	}
+	none := filepath.Join(dir, ".none")
+	if err := atomicfs.WriteFile(none, []byte(noneHelper), 0o700); err != nil {
 		return err
 	}
 	for name, target := range linked {
@@ -435,17 +482,23 @@ func (e *Engine) linkHelpers(linked map[string]string) error {
 			return err
 		}
 	}
-	return nil
-}
-
-// unlinkHelpers removes the links to helpers no longer kept.
-func (e *Engine) unlinkHelpers(linked map[string]string) {
-	old, _ := filepath.Glob(filepath.Join(e.dir, "helpers", "docker-credential-*"))
-	for _, path := range old {
-		if _, ok := linked[filepath.Base(path)]; !ok {
-			_ = os.Remove(path)
+	names := map[string]bool{}
+	for _, name := range shadowed {
+		names["docker-credential-"+name] = true
+	}
+	earlier, _ := filepath.Glob(filepath.Join(dir, "docker-credential-*"))
+	for _, path := range earlier {
+		names[filepath.Base(path)] = true
+	}
+	for name := range names {
+		if _, kept := linked[name]; kept {
+			continue
+		}
+		if err := atomicfs.ReplaceSymlink(none, filepath.Join(dir, name)); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 // rootConfigField reads one key of root's own config.json; an absent file or

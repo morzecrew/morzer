@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"os"
 
 	"github.com/morzecrew/morzer/internal/adapters/dirservice"
 	"github.com/morzecrew/morzer/internal/adapters/dockerdesktop"
@@ -13,15 +12,15 @@ import (
 )
 
 // engineRunner runs every docker command with the CLI root may run, settled at
-// the first one, and gives every process the manager starts its DOCKER_CONFIG
-// from now on, rebuilt from root's own before anything reaches a registry.
-// Before it exists, a registry is reached anonymously, so root's own config is
-// never read unchecked (RFC 0055 decisions 18, 21 and 22).
+// the first one, and gives every process the manager starts its DOCKER_CONFIG,
+// rebuilt from root's own before anything reaches a registry. Until it is, a
+// registry is reached anonymously, so root's own config is never read
+// unchecked (RFC 0055 decisions 18, 21 and 22).
 func engineRunner(runner exec.Runner, paths domain.Paths) (exec.Runner, func(context.Context) (ports.EngineCLI, error)) {
 	engine := dockerdesktop.NewEngine(runner, paths.ManagerDir())
-	_ = os.Setenv("DOCKER_CONFIG", engine.ConfigDir())
-	// A refusal here, a command run without root say, leaves no config this
-	// process can read, and surfaces at its first docker command.
+	// A refusal here, a command run without root say, leaves the process
+	// reaching registries anonymously, and surfaces at its first docker
+	// command.
 	_ = engine.Prepare()
 	return dockerdesktop.Runner{Runner: runner, Engine: engine}, engine.Settle
 }

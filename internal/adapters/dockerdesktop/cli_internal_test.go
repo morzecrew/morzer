@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -239,15 +240,17 @@ func TestTheRunnerRunsDockerCommandsWithTheSettledCLI(t *testing.T) {
 // (decision 22).
 func TestTheSettledCLIIsFirstOnPATH(t *testing.T) {
 	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
 	r := newRig(t)
 	engine := r.engine()
-	engine.setPath = true
+	engine.setEnv = true
 
 	cli, err := engine.Settle(context.Background())
 
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Dir(cli.Path)+string(os.PathListSeparator)),
-		"PATH is %s", os.Getenv("PATH"))
+	found, err := lookIn(os.Getenv("PATH"), "docker")
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, found, "PATH is %s", os.Getenv("PATH"))
 }
 
 // racingRunner checks a copy's signature as codesign would, then does what a
@@ -307,6 +310,7 @@ func TestARefusedPluginKeepsThePairCheckedBefore(t *testing.T) {
 // one is linked first on PATH, where its name resolves to the file checked.
 func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
 	r := newRig(t)
 	dir := filepath.Join(r.managerDir, "docker")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
@@ -318,7 +322,7 @@ func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 	r.replaceable["/usr/local/bin/docker-credential-desktop"] = "uid 501"
 	r.onPath["docker-credential-vault"] = "/usr/local/sbin/docker-credential-vault"
 	engine := r.engine()
-	engine.setPath = true
+	engine.setEnv = true
 
 	require.NoError(t, engine.Prepare())
 
@@ -329,6 +333,25 @@ func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/usr/local/sbin/docker-credential-vault", link)
 	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Join(dir, "helpers")+string(os.PathListSeparator)))
+	assert.Equal(t, dir, os.Getenv("DOCKER_CONFIG"))
+
+	// A helper left out, and the store the CLI looks for when a config names
+	// none, answer by name with one that holds no credentials, as does one
+	// linked before for a command that read the earlier config.
+	none := filepath.Join(dir, "helpers", ".none")
+	for _, name := range []string{"desktop", "osxkeychain"} {
+		target, err := os.Readlink(filepath.Join(dir, "helpers", "docker-credential-"+name))
+		require.NoError(t, err)
+		assert.Equal(t, none, target, name)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), []byte(`{"auths": {}}`), 0o600))
+	require.NoError(t, engine.Prepare())
+	target, err := os.Readlink(filepath.Join(dir, "helpers", "docker-credential-vault"))
+	require.NoError(t, err)
+	assert.Equal(t, none, target, "a helper no longer checked kept its link for a command still reading the old config")
+	out, err := osexec.Command(none, "get").Output()
+	assert.Error(t, err)
+	assert.Equal(t, "credentials not found in native keychain\n", string(out))
 
 	// Before `init` creates the manager directory there is nothing to read,
 	// and nothing is made.
@@ -341,19 +364,28 @@ func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 // after Docker Desktop is gone and its earlier copies are still there.
 func TestDockerByNameIsTheSettledCLI(t *testing.T) {
 	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
 	r := newRig(t)
 	_, err := r.engine().Settle(context.Background())
 	require.NoError(t, err)
 
 	require.NoError(t, os.RemoveAll(r.app))
-	onPath := filepath.Join(t.TempDir(), "docker")
+	cliDir := t.TempDir()
+	onPath := filepath.Join(cliDir, "docker")
 	require.NoError(t, os.WriteFile(onPath, nil, 0o755))
 	r.onPath["docker"] = onPath
+	// A helper beside that CLI nobody checked, and the one checked elsewhere.
+	require.NoError(t, os.WriteFile(filepath.Join(cliDir, "docker-credential-vault"), nil, 0o755))
+	checked := filepath.Join(t.TempDir(), "docker-credential-vault")
+	require.NoError(t, os.WriteFile(checked, nil, 0o755))
+	r.onPath["docker-credential-vault"] = checked
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"),
+		[]byte(`{"credHelpers": {"b.example": "vault"}}`), 0o600))
 	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
 	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
 	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
 	engine := r.engine()
-	engine.setPath = true
+	engine.setEnv = true
 
 	cli, err := engine.Settle(context.Background())
 
@@ -361,6 +393,29 @@ func TestDockerByNameIsTheSettledCLI(t *testing.T) {
 	found, err := lookIn(os.Getenv("PATH"), "docker")
 	require.NoError(t, err)
 	assert.Equal(t, cli.Path, found, "a hook running docker by name finds another CLI than the one settled")
+	helper, err := lookIn(os.Getenv("PATH"), "docker-credential-vault")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers", "docker-credential-vault"), helper,
+		"a helper beside the CLI answers before the one checked")
+	assert.NoFileExists(t, filepath.Join(r.managerDir, "docker", "cli-plugins", "docker-compose"),
+		"Docker Desktop's earlier plugin would load before the one checked")
+}
+
+// Nothing root runs is put under a manager directory whose way down someone
+// other than root could change.
+func TestTheManagerDirectoryMustBeRootsAllTheWayDown(t *testing.T) {
+	r := newRig(t)
+	r.replaceable[r.managerDir] = "uid 501"
+
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	_, err := r.engine().Settle(context.Background())
+	require.ErrorContains(t, err, "can be changed by uid 501")
+	engine := r.engine()
+	engine.setEnv = true
+	require.Error(t, engine.Prepare())
+	assert.NoDirExists(t, filepath.Join(r.managerDir, "docker"))
+	assert.Equal(t, nowhere, os.Getenv("DOCKER_CONFIG"), "a refused config left a registry reached through another")
 }
 
 // A config that cannot be rebuilt is not left for a command to read, so none
