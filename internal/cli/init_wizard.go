@@ -459,6 +459,15 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	if opts.Repair {
 		args = append(args, "--repair")
 	}
+	if opts.Mode != "" {
+		add("mode", string(opts.Mode))
+	}
+	if opts.AllowUnencryptedDisk {
+		args = append(args, "--allow-unencrypted-disk")
+	}
+	if opts.DryRun {
+		args = append(args, "--dry-run")
+	}
 
 	return strings.Join(args, " \\\n    ")
 }
