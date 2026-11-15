@@ -546,7 +546,7 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 		return nil, validateErr
 	}
 
-	if err := a.Deps.Runtime.Restart(ctx, cfg, services); err != nil {
+	if err := a.Deps.RestartServices(ctx, cfg, services); err != nil {
 		return nil, err
 	}
 	return services, nil

@@ -1,6 +1,7 @@
 package atomicfs
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,13 +31,45 @@ func TestGiveTreeChangesOnlyWhatIsInsideAndNamedOnce(t *testing.T) {
 
 	// Everything here is the test's, so another uid makes every entry
 	// "someone else's".
-	require.NoError(t, giveTree(dir, os.Getuid()+1, os.Getgid(), record))
+	require.NoError(t, giveTree(context.Background(), dir, os.Getuid()+1, os.Getgid(), record))
 	assert.ElementsMatch(t, []string{".", "once", "sub", "deep"}, given,
 		"a link was followed, or a file with a second name was changed")
 
 	given = nil
-	require.NoError(t, giveTree(dir, os.Getuid(), os.Getgid(), record))
+	require.NoError(t, giveTree(context.Background(), dir, os.Getuid(), os.Getgid(), record))
 	assert.Empty(t, given, "an entry its owner already owns was changed")
 
-	require.NoError(t, giveTree(filepath.Join(dir, "missing"), 0, 0, record))
+	require.NoError(t, giveTree(context.Background(), filepath.Join(dir, "missing"), 0, 0, record))
+}
+
+// A cancelled walk stops rather than going on changing owners.
+func TestGiveTreeStopsWhenCancelled(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a"), []byte("x"), 0o600))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	err := giveTree(ctx, dir, os.Getuid()+1, os.Getgid(), func(*os.File) error { called = true; return nil })
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, called)
+}
+
+// A link put where a directory belongs is refused, and what it names keeps
+// its mode, rather than root changing the mode of whatever the link names.
+func TestMkdirExactNoFollowRefusesALink(t *testing.T) {
+	elsewhere := t.TempDir()
+	require.NoError(t, os.Chmod(elsewhere, 0o755))
+	link := filepath.Join(t.TempDir(), "demo")
+	require.NoError(t, os.Symlink(elsewhere, link))
+
+	require.Error(t, MkdirExactNoFollow(link, 0o700))
+	info, err := os.Stat(elsewhere)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm(), "the link's target was changed")
+
+	dir := filepath.Join(t.TempDir(), "run", "demo")
+	require.NoError(t, MkdirExactNoFollow(dir, 0o750))
+	info, err = os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o750), info.Mode().Perm())
 }

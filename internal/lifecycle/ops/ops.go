@@ -292,29 +292,49 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 // first. A boot clears RunDir, and the store would recreate it as the secrets
 // directory's parent at that directory's 0700, which on a Mac no container's
 // mount passes through (logs/macos-host.md). Every render goes through here.
+//
+// Without following a link: on a Mac, RunDir's own entry is in a directory its
+// group can write.
 func (d *Deps) RenderSecrets(ctx context.Context, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
 	for _, dir := range d.Paths.EphemeralDirs() {
-		if err := atomicfs.MkdirExact(dir.Path, os.FileMode(dir.Mode)); err != nil {
+		if err := atomicfs.MkdirExactNoFollow(dir.Path, os.FileMode(dir.Mode)); err != nil {
 			return nil, err
 		}
 	}
 	return d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema)
 }
 
-// up starts services through the runtime. Where the engine reads the host as
-// one user, DataDir is that user's first, so a container can write what a hook
-// running as root left there (logs/macos-host.md).
+// up starts services through the runtime, DataDir given to the engine's user
+// first.
 func (d *Deps) up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
-	if d.EngineUser != nil {
-		uid, gid, err := d.EngineUser()
-		if err != nil {
-			return err
-		}
-		if err := atomicfs.GiveTree(d.Paths.DataDir(), uid, gid); err != nil {
-			return err
-		}
+	if err := d.giveDataDir(ctx); err != nil {
+		return err
 	}
 	return d.Runtime.Up(ctx, cfg, opts)
+}
+
+// RestartServices restarts services through the runtime, DataDir given to the
+// engine's user first, as up gives it: a restart starts processes that write
+// there too.
+func (d *Deps) RestartServices(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+	if err := d.giveDataDir(ctx); err != nil {
+		return err
+	}
+	return d.Runtime.Restart(ctx, cfg, services)
+}
+
+// giveDataDir gives DataDir to the user the engine reads the host as, where
+// that is not root, so a container can write what a hook running as root left
+// there (logs/macos-host.md).
+func (d *Deps) giveDataDir(ctx context.Context) error {
+	if d.EngineUser == nil {
+		return nil
+	}
+	uid, gid, err := d.EngineUser()
+	if err != nil {
+		return err
+	}
+	return atomicfs.GiveTree(ctx, d.Paths.DataDir(), uid, gid)
 }
 
 // platform is the GOOS the platform gates compare a release with.

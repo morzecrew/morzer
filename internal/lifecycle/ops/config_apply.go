@@ -775,7 +775,7 @@ func stepRestartForSecrets(
 		if err != nil {
 			return err
 		}
-		return d.Runtime.Restart(ctx, cfg, services)
+		return d.RestartServices(ctx, cfg, services)
 	}
 	return engine.Step{
 		ID:          "restart-services",

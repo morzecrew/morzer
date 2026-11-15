@@ -1,6 +1,7 @@
 package atomicfs
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -22,11 +23,15 @@ import (
 // changed. And a file with a second link is left alone, since its other name
 // may be outside dir: root handing over /etc/sudoers because someone
 // hard-linked it into a data directory is the old attack on `chown -R`.
-func GiveTree(dir string, uid, gid int) error {
-	return giveTree(dir, uid, gid, func(f *os.File) error { return f.Chown(uid, gid) })
+//
+// A walk of a large tree stops when ctx is done. An entry that vanished, or
+// was swapped for something else, while the walk reached it is skipped; any
+// other failure is returned, so a tree left half given is not reported given.
+func GiveTree(ctx context.Context, dir string, uid, gid int) error {
+	return giveTree(ctx, dir, uid, gid, func(f *os.File) error { return f.Chown(uid, gid) })
 }
 
-func giveTree(dir string, uid, gid int, chown func(*os.File) error) error {
+func giveTree(ctx context.Context, dir string, uid, gid int, chown func(*os.File) error) error {
 	root, err := os.OpenRoot(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -40,16 +45,27 @@ func giveTree(dir string, uid, gid int, chown func(*os.File) error) error {
 		if err != nil {
 			return domain.Internal(err, "cannot read %s", filepath.Join(dir, name))
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !entry.IsDir() && !entry.Type().IsRegular() {
 			return nil
 		}
 		seen, err := entry.Info()
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil // gone since the directory was read
+		}
+		if err != nil {
+			return domain.Internal(err, "cannot stat %s", filepath.Join(dir, name))
 		}
 		f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 		if err != nil {
-			return nil
+			// Gone, or swapped for a link, perhaps one out of the tree,
+			// since it was read; anything else is a failure.
+			if now, statErr := root.Lstat(name); statErr != nil || (!now.IsDir() && !now.Mode().IsRegular()) {
+				return nil
+			}
+			return domain.Internal(err, "cannot open %s", filepath.Join(dir, name))
 		}
 		defer func() { _ = f.Close() }()
 		opened, err := f.Stat()
