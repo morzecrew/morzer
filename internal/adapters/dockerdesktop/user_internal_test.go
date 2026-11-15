@@ -19,7 +19,11 @@ import (
 // and a link that names nothing, a file, or a socket root owns is refused
 // (decision 19).
 func TestTheEngineUserIsTheSocketsOwner(t *testing.T) {
-	dir := t.TempDir()
+	// Not t.TempDir(): the test's name in it takes a socket's path past the
+	// 104 bytes a Mac allows, under a Mac's long TMPDIR.
+	dir, err := os.MkdirTemp("", "dd")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "docker.sock")
 	ln, err := net.Listen("unix", sock)
 	require.NoError(t, err)
