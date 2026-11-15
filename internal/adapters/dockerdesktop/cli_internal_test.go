@@ -249,3 +249,54 @@ func TestTheSettledCLIIsFirstOnPATH(t *testing.T) {
 	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Dir(cli.Path)+string(os.PathListSeparator)),
 		"PATH is %s", os.Getenv("PATH"))
 }
+
+// racingRunner checks a copy's signature as codesign would, then does what a
+// second root process copying the same release concurrently does: writes its
+// own copy beside the file being placed, under the name a shared copy would
+// have.
+type racingRunner struct {
+	*fakes.Scripted
+	tamper func(checked string)
+}
+
+func (r racingRunner) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
+	res, err := r.Scripted.Run(ctx, cmd)
+	if cmd.Argv[0] == "/usr/bin/codesign" {
+		r.tamper(cmd.Argv[len(cmd.Argv)-1])
+	}
+	return res, err
+}
+
+// Bytes another process writes after a copy is checked never reach the file
+// root runs: each copy is checked under a name of its own.
+func TestACheckedCopyCannotBeSwappedBeforeItIsPlaced(t *testing.T) {
+	r := newRig(t)
+	engine := r.engine()
+	bin := filepath.Join(r.managerDir, "docker", "bin", "docker")
+	engine.runner = racingRunner{Scripted: r.runner, tamper: func(string) {
+		_ = os.WriteFile(bin+".new", []byte("unchecked"), 0o755)
+	}}
+
+	cli, err := engine.Settle(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "cli 1", read(t, cli.Path), "bytes written after the check were placed")
+}
+
+// A refusal of either copy keeps the pair checked before: a CLI never runs
+// beside a plugin from another release because the second check failed.
+func TestARefusedPluginKeepsThePairCheckedBefore(t *testing.T) {
+	r := newRig(t)
+	cli, err := r.engine().Settle(context.Background())
+	require.NoError(t, err)
+
+	r.desktop(t, "4.45.0", "cli 2", "compose 2")
+	r.runner.OnExit("docker-compose", 3, "code object is not signed at all")
+	_, err = r.engine().Settle(context.Background())
+
+	require.ErrorContains(t, err, "not signed by Docker")
+	assert.Equal(t, "cli 1", read(t, cli.Path), "the CLI was replaced although its plugin was refused")
+	assert.Equal(t, "compose 1", read(t, filepath.Join(r.managerDir, "docker", "cli-plugins", "docker-compose")))
+	leftovers, _ := filepath.Glob(filepath.Join(r.managerDir, "docker", "*", "*.new"))
+	assert.Empty(t, leftovers)
+}

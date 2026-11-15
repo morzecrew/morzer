@@ -207,41 +207,61 @@ func (e *Engine) copyDesktop(ctx context.Context) (ports.EngineCLI, error) {
 		!slices.ContainsFunc(copies, func(c struct{ from, to string }) bool { return !exists(c.to) }) {
 		return cli, nil
 	}
+	// Both are checked before either is placed, so a refusal keeps the pair
+	// checked before rather than a CLI beside another release's plugin.
+	var checked []string
+	defer func() {
+		for _, path := range checked {
+			_ = os.Remove(path)
+		}
+	}()
 	for _, c := range copies {
-		if err := e.copyChecked(ctx, c.from, c.to); err != nil {
+		path, err := e.checkedCopy(ctx, c.from, filepath.Dir(c.to))
+		if path != "" {
+			checked = append(checked, path)
+		}
+		if err != nil {
 			return ports.EngineCLI{}, err
 		}
 	}
+	for i, c := range copies {
+		if err := os.Rename(checked[i], c.to); err != nil {
+			return ports.EngineCLI{}, domain.Internal(err, "cannot put the checked copy of %s in place", c.from)
+		}
+		atomicfs.SyncDir(filepath.Dir(c.to))
+	}
+	checked = nil
 	if err := atomicfs.WriteFile(stamp, []byte(version), 0o600); err != nil {
 		return ports.EngineCLI{}, err
 	}
 	return cli, nil
 }
 
-// copyChecked copies from beside to, checks the copy's signature, and only
-// then moves it over to. The original is never run, so it cannot be swapped
-// between the check and the run.
-func (e *Engine) copyChecked(ctx context.Context, from, to string) error {
-	if err := atomicfs.MkdirMineNoFollow(filepath.Dir(to), 0o700); err != nil {
-		return err
+// checkedCopy copies from into dir under a name of its own and checks the
+// copy's signature, returning where it is. The original is never run, so it
+// cannot be swapped between the check and the run; and no other process, root
+// copying the same release at once, writes to that name, so it cannot be
+// swapped between the check and the rename either.
+func (e *Engine) checkedCopy(ctx context.Context, from, dir string) (string, error) {
+	if err := atomicfs.MkdirMineNoFollow(dir, 0o700); err != nil {
+		return "", err
 	}
-	next := to + ".new"
-	defer func() { _ = os.Remove(next) }()
-	if err := copyFile(from, next); err != nil {
-		return err
+	out, err := os.CreateTemp(dir, "."+filepath.Base(from)+"-*.new")
+	if err != nil {
+		return "", domain.Internal(err, "cannot create a copy of %s", from)
+	}
+	path := out.Name()
+	if err := copyTo(from, out); err != nil {
+		return path, err
 	}
 	requirement := `anchor apple generic and certificate leaf[subject.OU] = "` + TeamID + `"`
 	if _, err := e.runner.Run(ctx, exec.Command{
-		Argv: []string{"/usr/bin/codesign", "--verify", "--strict", "-R=" + requirement, next},
+		Argv: []string{"/usr/bin/codesign", "--verify", "--strict", "-R=" + requirement, path},
 	}); err != nil {
-		return domain.Preflight(err, "the copy of %s is not signed by Docker (team %s), so root does not run it", from, TeamID).
+		return path, domain.Preflight(err, "the copy of %s is not signed by Docker (team %s), so root does not run it", from, TeamID).
 			WithHint("reinstall Docker Desktop from docker.com; the copies made before stay in use until one passes")
 	}
-	if err := os.Rename(next, to); err != nil {
-		return domain.Internal(err, "cannot put the checked copy of %s in place", from)
-	}
-	atomicfs.SyncDir(filepath.Dir(to))
-	return nil
+	return path, nil
 }
 
 // fromPath is decision 21: the CLI on PATH, and the Compose plugin it would
@@ -379,23 +399,22 @@ func lookIn(path, name string) (string, error) {
 	return "", domain.Preflight(nil, "%s was not found on PATH", name)
 }
 
-func copyFile(from, to string) error {
+// copyTo copies from into out, executable, and closes out.
+func copyTo(from string, out *os.File) error {
+	defer func() { _ = out.Close() }()
 	in, err := os.Open(from)
 	if err != nil {
 		return domain.Preflight(err, "cannot read %s", from)
 	}
 	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
-	if err != nil {
-		return domain.Internal(err, "cannot create %s", to)
-	}
 	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
 		return domain.Internal(err, "cannot copy %s", from)
 	}
+	if err := out.Chmod(0o755); err != nil {
+		return domain.Internal(err, "cannot set the mode of %s", out.Name())
+	}
 	if err := out.Sync(); err != nil {
-		_ = out.Close()
-		return domain.Internal(err, "cannot write %s", to)
+		return domain.Internal(err, "cannot write %s", out.Name())
 	}
 	return out.Close()
 }
