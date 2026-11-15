@@ -601,4 +601,20 @@ func TestARefusedRepairLeavesTheInstalledReleaseUntouched(t *testing.T) {
 	landed, err := release.Load(installed.Root)
 	require.NoError(t, err)
 	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "the installed release no longer matches its record")
+
+	// Signed again, it passes verification, and a selection the release
+	// does not declare refuses the repair before the release is replaced.
+	resigned := signBundle(t, tampered)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", NoRecoveryKey: true, ReleasePath: tampered, Repair: true, SigningKeys: []string{resigned},
+		Profiles: []string{"undeclared"},
+	})
+
+	require.ErrorContains(t, err, `unknown deployment profile "undeclared"`)
+	got, err = os.ReadFile(filepath.Join(installed.Root, "compose", "compose.yaml"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "changed after signing", "a refused selection replaced the installed release")
+	after, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, after.Digest), "a refused selection changed the release record")
 }
