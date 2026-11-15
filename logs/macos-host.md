@@ -275,3 +275,41 @@ evidence: internal/lifecycle/ops/ops.go:986-992
 action: decided
 proposal: UNLISTED — starting or re-creating services refuses a selection this platform does not run, rendered or not; putting back what ran does not
 ```
+
+## Review of the ownership
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: Decision 16 gives the secrets directory to the user who runs Docker Desktop, and `secret edit` made its plaintext session directories inside it and wrote them by path, so that user could swap a session for a link and redirect what root writes or read back. Sessions now live in `RunDir/edit`, root's at 0700 on the same tmpfs, created without following a link.
+evidence: internal/domain/paths.go:195-200
+action: departed
+proposal: ASSUMED — `secret edit` sessions live in a root-only directory under RunDir, beside the secrets directory rather than in it
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: RunDir's own entry is in `/private/var/run`, which its `daemon` group can write, and `MkdirExact` sets a mode through `chmod(2)`, which follows a link. So a member of that group could put a link where RunDir or the secrets directory belongs and have root change the mode of what it names. Those directories, and the edit sessions', are now created, and their modes set, through a descriptor opened with `O_NOFOLLOW`, which refuses a link in their place. A link swapped in for a directory above them is still followed, so the guarantee rests on that group having no member but root, which the darwin `doctor` checks will report.
+evidence: internal/infra/atomicfs/atomicfs.go:302-318
+action: departed
+proposal: ASSUMED — RunDir and the directories under it are created and given their modes without following a link; a group writing /private/var/run with a member other than root is reported by doctor
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: The restart after a secret change, and `config apply`'s, start processes through the runtime's restart rather than `up`, so they skipped the hand-over of `DataDir` every start makes. Both go through `RestartServices`, which hands it over first. The walk also stops when its context does, and fails on an entry it cannot read rather than reporting a half-given tree.
+evidence: internal/lifecycle/ops/ops.go:316-324
+action: decided
+proposal: UNLISTED — every restart through the runtime gives DataDir to the engine's user first, as every start does
+```
