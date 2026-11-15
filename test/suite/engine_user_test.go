@@ -196,3 +196,27 @@ func TestDoctorFailsWhileSomeoneElseCanWriteWhereRunDirSits(t *testing.T) {
 	}
 	assert.Equal(t, events.CheckWarn, doctorCheck(t, h, "storage.run-directory").Status)
 }
+
+// And nothing renders while one can: the render refuses before it creates
+// anything under RunDir, rather than leaving it to doctor.
+func TestNoSecretRendersWhileSomeoneElseCanWriteWhereRunDirSits(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	writers := []string{"alice"}
+	h.Deps.RunDirWriters = func(context.Context, string) ([]string, error) { return writers, nil }
+	require.NoError(t, os.RemoveAll(h.Paths.RunDir), "a boot clears RunDir")
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "alice can write "+filepath.Dir(h.Paths.RunDir))
+	assert.NoDirExists(t, h.Paths.RunDir)
+	assert.Empty(t, h.Runtime.UpOptions)
+
+	writers = nil
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(h.Paths.SecretsRenderDir(), "db_password"))
+}

@@ -300,6 +300,19 @@ func MkdirExact(path string, mode fs.FileMode) error {
 //
 // Missing parents are created at 0755, as a layout under --root needs.
 func MkdirExactNoFollow(path string, mode fs.FileMode) error {
+	return mkdirExactNoFollow(path, mode, -1)
+}
+
+// MkdirMineNoFollow is MkdirExactNoFollow refusing a directory this process's
+// user does not own, read through the same descriptor: whoever made it could
+// change what is under it.
+func MkdirMineNoFollow(path string, mode fs.FileMode) error {
+	return mkdirExactNoFollow(path, mode, os.Geteuid())
+}
+
+// mkdirExactNoFollow refuses a directory owner does not own, unless owner is
+// negative.
+func mkdirExactNoFollow(path string, mode fs.FileMode, owner int) error {
 	//nolint:gosec // on the way to a bind, which a Mac's Docker Desktop user passes through (RFC 0055 decision 16)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return domain.Internal(err, "cannot create directory %s", filepath.Dir(path))
@@ -313,6 +326,15 @@ func MkdirExactNoFollow(path string, mode fs.FileMode) error {
 	}
 	f := os.NewFile(uintptr(fd), path)
 	defer func() { _ = f.Close() }()
+	if owner >= 0 {
+		var st unix.Stat_t
+		if err := unix.Fstat(fd, &st); err != nil {
+			return domain.Internal(err, "cannot stat %s", path)
+		}
+		if int(st.Uid) != owner {
+			return domain.Internal(nil, "%s belongs to uid %d, not to uid %d, which writes under it", path, st.Uid, owner)
+		}
+	}
 	if err := f.Chmod(mode); err != nil {
 		return domain.Internal(err, "cannot set mode %04o on %s", mode.Perm(), path)
 	}

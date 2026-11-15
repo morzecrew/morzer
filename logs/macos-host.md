@@ -372,6 +372,42 @@ evidence: internal/adapters/dirservice/dirservice.go:53-75
 action: decided
 ```
 
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: The earlier entry left a link swapped in for RunDir's entry to `doctor` alone, and only `doctor` ran `storage.run-directory`, so `apply` and the edit session rendered on a Mac where another account could move RunDir aside between two of its steps, or had made RunDir itself. Every render and every edit session now refuses while an account other than root can write where RunDir's entry sits, or while RunDir is not root's, before it creates anything under RunDir; `doctor` reports the same condition
+evidence: internal/lifecycle/ops/ops.go:304-312
+action: decided
+proposal: UNLISTED — RunDir is prepared only while root alone can write where its entry sits and RunDir is root's, refused otherwise at every render and edit session, not reported by doctor alone
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: A refused `init --repair` to another release left the current link and the current-release record naming the release it had staged, whose directory its compensation then removed, so the installation pointed at nothing. Reproduced with an undeclared `--profile` against the 1.3.0 fixture; the platform refusal of a Linux-only profile reaches the same step. The stage step now records the release it replaced and its compensation puts back the link and the record before it removes what it created
+evidence: internal/lifecycle/ops/init.go:1007-1021
+action: decided
+proposal: UNLISTED — a stage step that makes a release current records the one it replaced, and its compensation makes that one current again
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T11:40:33Z
+attempt: 1
+claim: The release diff listed `platforms` only where a release declared them, so a release dropping `[linux, darwin]` read as a declaration removed rather than as a release that runs on Linux alone, and an explicit `[linux]` beside none read as a change. It lists the platforms the release runs on, `linux` where none are declared, as the gates read them
+evidence: internal/lifecycle/ops/release_diff.go:166-171
+action: decided
+proposal: UNLISTED — the release diff compares the platforms each release runs on, not the ones it declares
+```
+
 ## The FileVault gate
 
 On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.

@@ -41,28 +41,38 @@ func TestTheGroupsWritersAreRead(t *testing.T) {
 
 // A group nested in the one that owns the directory gives its members that
 // group's access, so it is a writer too, named; a stock Mac's daemon group
-// nests none (logs/macos-host.md).
-func TestAGroupNestedInTheOwningGroupWritesToo(t *testing.T) {
+// nests none (logs/macos-host.md). And the directory's owner can change its
+// mode, so an owner other than root is one, whatever the mode is now.
+func TestWritersCountsNestedGroupsAndTheOwner(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.Chmod(dir, 0o775))
 	info, err := os.Stat(dir)
 	require.NoError(t, err)
-	gid, err := groupOf(info)
+	uid, gid, err := ownerOf(info)
 	require.NoError(t, err)
+	var owner []string // the test's own account owns dir, unless it is root
+	if uid != 0 {
+		owner = []string{"tester"}
+	}
 	listings := func(read string) *fakes.Scripted {
 		return fakes.NewScripted().
 			OnOutput("-list /Groups PrimaryGroupID", fmt.Sprintf("staff 20\ndaemon %d\n", gid)).
 			OnOutput("-read /Groups/daemon", read).
 			OnOutput("-list /Groups GeneratedUID", "daemon 1111-AAAA\nadmins 2222-BBBB\n").
 			OnOutput("-list /Users PrimaryGroupID", "root 0\n").
-			OnOutput("-list /Users UniqueID", "root 0\n")
+			OnOutput("-list /Users UniqueID", fmt.Sprintf("root 0\ntester %d\n", uid))
 	}
 
 	writers, err := Writers(context.Background(), listings("GroupMembership: root\nNo such key: NestedGroups\n"), dir)
 	require.NoError(t, err)
-	assert.Empty(t, writers)
+	assert.Equal(t, owner, writers)
 
 	writers, err = Writers(context.Background(), listings("GroupMembership: root\nNestedGroups: 2222-BBBB 3333-CCCC\n"), dir)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"group 3333-CCCC", "group admins"}, writers)
+	assert.Equal(t, append([]string{"group 3333-CCCC", "group admins"}, owner...), writers)
+
+	require.NoError(t, os.Chmod(dir, 0o755))
+	writers, err = Writers(context.Background(), listings(""), dir)
+	require.NoError(t, err)
+	assert.Equal(t, owner, writers, "an owner other than root was not counted")
 }
