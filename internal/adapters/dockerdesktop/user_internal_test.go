@@ -27,9 +27,17 @@ func TestTheEngineUserIsTheSocketsOwner(t *testing.T) {
 	link := filepath.Join(dir, "default.sock")
 	require.NoError(t, os.Symlink(sock, link))
 
-	uid, gid, err := socketOwner(link, os.Stat)
+	// The socket's owner, through the link. Run as root, the socket is
+	// root's and refused below, so the owner is stood in for.
+	if os.Getuid() != 0 {
+		uid, gid, err := socketOwner(link, os.Stat)
+		require.NoError(t, err)
+		assert.Equal(t, [2]int{os.Getuid(), os.Getgid()}, [2]int{uid, gid})
+	}
+	userOwned := func(string) (fs.FileInfo, error) { return socketOf{uid: 501, gid: 20}, nil }
+	uid, gid, err := socketOwner(link, userOwned)
 	require.NoError(t, err)
-	assert.Equal(t, [2]int{os.Getuid(), os.Getgid()}, [2]int{uid, gid})
+	assert.Equal(t, [2]int{501, 20}, [2]int{uid, gid})
 
 	_, _, err = socketOwner(filepath.Join(dir, "missing"), os.Stat)
 	require.ErrorIs(t, err, domain.ErrRuntime)
@@ -40,19 +48,17 @@ func TestTheEngineUserIsTheSocketsOwner(t *testing.T) {
 	_, _, err = socketOwner(file, os.Stat)
 	require.ErrorContains(t, err, "names no socket")
 
-	if os.Getuid() != 0 {
-		rootOwned := func(string) (fs.FileInfo, error) { return rootSocket{}, nil }
-		_, _, err = socketOwner(link, rootOwned)
-		require.ErrorContains(t, err, "names a socket root owns")
-	}
+	rootOwned := func(string) (fs.FileInfo, error) { return socketOf{}, nil }
+	_, _, err = socketOwner(link, rootOwned)
+	require.ErrorContains(t, err, "names a socket root owns")
 }
 
-// rootSocket is a socket root owns.
-type rootSocket struct{}
+// socketOf is a socket uid:gid owns.
+type socketOf struct{ uid, gid uint32 }
 
-func (rootSocket) Name() string       { return "docker.sock" }
-func (rootSocket) Size() int64        { return 0 }
-func (rootSocket) Mode() fs.FileMode  { return fs.ModeSocket | 0o660 }
-func (rootSocket) ModTime() time.Time { return time.Time{} }
-func (rootSocket) IsDir() bool        { return false }
-func (rootSocket) Sys() any           { return &syscall.Stat_t{Uid: 0, Gid: 0} }
+func (socketOf) Name() string       { return "docker.sock" }
+func (socketOf) Size() int64        { return 0 }
+func (socketOf) Mode() fs.FileMode  { return fs.ModeSocket | 0o660 }
+func (socketOf) ModTime() time.Time { return time.Time{} }
+func (socketOf) IsDir() bool        { return false }
+func (s socketOf) Sys() any         { return &syscall.Stat_t{Uid: s.uid, Gid: s.gid} }
