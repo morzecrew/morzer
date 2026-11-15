@@ -265,15 +265,21 @@ carries what it names.
 Validation requires it when the manifest:
 
 - has a literal entry with an address or a protocol;
-- has a templated entry that refers to `.Profiles` or calls `has`;
-- has a templated entry with text outside its actions, other than
-  whitespace, such as `"{{ .Parameters.address }}:443"`.
+- has a templated entry that refers to `.Profiles` or calls `has`, in
+  `requirements.ports` or, per decision 5, in `health.checks[].url`;
+- has a templated `requirements.ports` entry with `:`, `/` or `[` outside
+  its actions, such as `"{{ .Parameters.address }}:443"`.
 
-A templated entry that is exactly one `{{ .Parameters.<name> }}` needs no
-floor, since it means what it meant before. A string parameter that holds
-`1.2.3.4:443` gets past this rule. An older manager then refuses it at
-preflight with `is not a port number`. It fails closed, but later than
-`release verify`, as §9 says.
+A templated entry whose text outside its actions is digits and whitespace
+needs no floor, since it resolves today as it will then: a lone
+`{{ .Parameters.<name> }}`, or `8{{ .Parameters.suffix }}`. A string
+parameter that holds `1.2.3.4:443` gets past this rule. An older manager
+refuses it with `is not a port number` wherever it resolves the ports: at
+preflight while the project is not running, and in `doctor`, whose
+`machine.ports` names the installation as one it could not read. On a
+running project, preflight skips the port check (`apply.go:303`), so the
+apply converges with that entry unchecked, as it would with any port
+today (§9).
 
 An older manager fails closed on every new form even without the floor:
 - a literal address or protocol is refused at load;
@@ -318,9 +324,10 @@ The floor only turns those failures into one message that names the version.
 - **The machine check**: a table of claim pairs over §5.4's rules, with each
   side's profiles, and two installations on different addresses reported
   clear.
-- **The floor**: each form in §5.5 below the floor refused, the single
-  parameter reference accepted, and a fixture manifest in today's grammar
-  unchanged.
+- **The floor**: each form in §5.5 below the floor refused, a health URL
+  alone using `.Profiles` included. A lone parameter reference and
+  `8{{ .Parameters.suffix }}` are accepted, and a fixture manifest in today's
+  grammar is unchanged.
 - **Suite**: an installation whose profile adds a UDP port. Its apply is
   refused while a socket holds that port, and an installation without the
   profile is not.
@@ -366,7 +373,9 @@ The floor only turns those failures into one message that names the version.
   options, and this has not been measured (§10). Mitigation: measure before
   building, and match the probe to Docker's result.
 - **A string parameter that holds a whole entry** gets past the floor rule
-  (§5.5). An older manager then fails at preflight, closed but late.
+  (§5.5). An older manager refuses it only where it resolves the ports. On
+  a running project the apply converges with that entry unchecked, and
+  `doctor` names the installation.
   Accepted: the alternative is rendering every entry at load with invented
   values, which RFC 0007 kept out of load-time validation.
 - **The `0.0.0.0` and `::` rules** follow Docker 27 and later, where `0.0.0.0`
@@ -392,7 +401,7 @@ The floor only turns those failures into one message that names the version.
 | 5 | `OPEN` | Which fields see `.Profiles` and `has`. **Recommended:** both fields RFC 0007 decision 5 lets interpolate, `requirements.ports` and `health.checks[].url`, with one context, so a profile that moves a port moves its health URL with it. This supersedes RFC 0007 decision 6 in part: the context is `.Parameters` and `.Profiles`, and still no paths, secrets or installation. Alternative: `requirements.ports` alone. That is a smaller change, but `.Profiles` would then work in one manifest field and fail in the other, as an unknown field at resolution time. |
 | 6 | `ASSUMED` | `.Profiles` is the installation's effective selection in layering order, never nil, as configuration templates see it. Each caller passes the installation it checks. With none, as in `release verify`, it is empty. |
 | 7 | `ASSUMED` | A templated entry that renders empty after trimming requires nothing. A literal empty entry is still a validation error. |
-| 8 | `ASSUMED` | `PortsMinManagerVersion` is required when an entry uses an address or a protocol literally, refers to `.Profiles` or `has`, or has text outside its template actions. A lone `{{ .Parameters.<name> }}` needs no floor. Older managers fail closed on every new form anyway, and the floor names the version at `release verify`. |
+| 8 | `ASSUMED` | `PortsMinManagerVersion` is required when a port entry uses an address or a protocol literally, when either templated field refers to `.Profiles` or `has`, or when a templated port entry has `:`, `/` or `[` outside its actions. An entry whose text outside its actions is digits needs no floor, a lone `{{ .Parameters.<name> }}` or `8{{ .Parameters.suffix }}`, since it resolves today as it will then. The floor names the version at `release verify`. Older managers refuse every new form where they resolve it anyway. |
 | 9 | `OPEN` | The floor's value. **Recommended:** 0.18.0 if this ships before 0.18.0 is cut, the minor that already carries `PlatformsMinManagerVersion`, and the next minor otherwise. |
 | 10 | `ASSUMED` | The probe is a socket bind, never Docker. If §10's measurement shows that the two disagree for UDP/53, the probe is changed to agree with Docker, and the change is recorded here. |
 
