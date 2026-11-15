@@ -42,6 +42,32 @@ func TestGiveTreeChangesOnlyWhatIsInsideAndNamedOnce(t *testing.T) {
 	require.NoError(t, giveTree(context.Background(), filepath.Join(dir, "missing"), 0, 0, record))
 }
 
+// A directory that vanishes once its parent was read is skipped, not
+// descended into and reported unreadable.
+func TestGiveTreeSkipsADirectoryThatVanished(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a"), []byte("x"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "b", "c"), 0o755))
+	removeB := func(f *os.File) error {
+		if filepath.Base(f.Name()) == "a" {
+			return os.RemoveAll(filepath.Join(dir, "b"))
+		}
+		return nil
+	}
+
+	require.NoError(t, giveTree(context.Background(), dir, os.Getuid()+1, os.Getgid(), removeB))
+
+	// Gone after it was given and before it was read.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "b", "c"), 0o755))
+	removeSelf := func(f *os.File) error {
+		if filepath.Base(f.Name()) == "b" {
+			return os.RemoveAll(filepath.Join(dir, "b"))
+		}
+		return nil
+	}
+	require.NoError(t, giveTree(context.Background(), dir, os.Getuid()+1, os.Getgid(), removeSelf))
+}
+
 // A cancelled walk stops rather than going on changing owners.
 func TestGiveTreeStopsWhenCancelled(t *testing.T) {
 	dir := t.TempDir()

@@ -42,6 +42,9 @@ func giveTree(ctx context.Context, dir string, uid, gid int, chown func(*os.File
 	defer func() { _ = root.Close() }()
 
 	return fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil // a directory gone before it was read
+		}
 		if err != nil {
 			return domain.Internal(err, "cannot read %s", filepath.Join(dir, name))
 		}
@@ -51,9 +54,17 @@ func giveTree(ctx context.Context, dir string, uid, gid int, chown func(*os.File
 		if !entry.IsDir() && !entry.Type().IsRegular() {
 			return nil
 		}
+		// What is skipped is not descended into: the walk would read a
+		// directory that is gone, or another one, next.
+		skip := func() error {
+			if entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 		seen, err := entry.Info()
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil // gone since the directory was read
+			return skip() // gone since the directory was read
 		}
 		if err != nil {
 			return domain.Internal(err, "cannot stat %s", filepath.Join(dir, name))
@@ -62,8 +73,9 @@ func giveTree(ctx context.Context, dir string, uid, gid int, chown func(*os.File
 		if err != nil {
 			// Gone, or swapped for a link, perhaps one out of the tree,
 			// since it was read; anything else is a failure.
-			if now, statErr := root.Lstat(name); statErr != nil || (!now.IsDir() && !now.Mode().IsRegular()) {
-				return nil
+			now, statErr := root.Lstat(name)
+			if errors.Is(statErr, fs.ErrNotExist) || (statErr == nil && !now.IsDir() && !now.Mode().IsRegular()) {
+				return skip()
 			}
 			return domain.Internal(err, "cannot open %s", filepath.Join(dir, name))
 		}
@@ -74,7 +86,7 @@ func giveTree(ctx context.Context, dir string, uid, gid int, chown func(*os.File
 		}
 		st, ok := opened.Sys().(*syscall.Stat_t)
 		if !ok || !os.SameFile(seen, opened) || (!opened.IsDir() && !opened.Mode().IsRegular()) {
-			return nil
+			return skip()
 		}
 		if (int(st.Uid) == uid && int(st.Gid) == gid) || (!opened.IsDir() && st.Nlink > 1) {
 			return nil
