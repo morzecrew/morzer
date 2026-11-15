@@ -408,6 +408,18 @@ action: decided
 proposal: UNLISTED — the release diff compares the platforms each release runs on, not the ones it declares
 ```
 
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T12:14:43Z
+attempt: 2
+claim: The earlier entry made a failed repair put back the release it replaced, and `write-installation` kept the installation it had written for the other release, so a repair that failed at `init-secrets` left settings for one release beside another; reproduced with a domain changed by a repair to the 1.3.0 fixture. The step now records the installation it replaced, and its compensation saves that one back. On Linux, where `/run` is root's alone, RunDir's owner is no longer checked: only the Mac's shared parent makes a RunDir someone else made possible, and the acceptance run's `--root` layout, made as its user and driven as root, was refused by it
+evidence: internal/lifecycle/ops/init.go:612-645
+action: decided
+proposal: UNLISTED — a repair's compensation puts back the installation and the release it replaced together; RunDir's owner is checked where RunDirWriters is, the Mac
+```
+
 ## The FileVault gate
 
 On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.
