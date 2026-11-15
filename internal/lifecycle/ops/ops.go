@@ -150,6 +150,12 @@ type Deps struct {
 	// rendered secrets. Nil where the engine reads as root, as on Linux.
 	EngineUser func() (uid, gid int, err error)
 
+	// DiskEncrypted reports whether the disk under the rendered secrets and
+	// the age identity is encrypted: FileVault, on a Mac (RFC 0055 decision
+	// 5). Nil where the disk is not checked, as on Linux, whose secrets
+	// render to a tmpfs.
+	DiskEncrypted func(context.Context) (bool, error)
+
 	// Platform is the GOOS the platform gates compare a release with (RFC
 	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
 	// same reason again: the refusals on a Mac are tested on Linux.
@@ -285,6 +291,42 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 		return d.FreeSpace(path)
 	}
 	return atomicfs.FreeSpace(path)
+}
+
+// RefuseUnencryptedDisk is the FileVault gate (RFC 0055 decision 5): where the
+// disk is checked and found unencrypted, plaintext is refused unless this
+// installation set `secrets.allow_unencrypted_disk`. The store asks it first in
+// every render, and every command that stores a secret before it renders asks
+// it before it stores, so a refused change leaves the stored value as it was.
+func (d *Deps) RefuseUnencryptedDisk(ctx context.Context) error {
+	if d.DiskEncrypted == nil {
+		return nil
+	}
+	allowed := false
+	if inst, err := d.State.LoadInstallation(ctx); err == nil {
+		allowed = inst.Policy.AllowUnencryptedDisk
+	}
+	return d.refuseUnencryptedDisk(ctx, allowed)
+}
+
+// refuseUnencryptedDisk is RefuseUnencryptedDisk with the override given, for
+// `init`, which has no installation yet to hold it.
+func (d *Deps) refuseUnencryptedDisk(ctx context.Context, allowed bool) error {
+	if d.DiskEncrypted == nil || allowed {
+		return nil
+	}
+	on, err := d.DiskEncrypted(ctx)
+	if err != nil {
+		return domain.SecretsError(err, "cannot tell whether FileVault is on, so no secret is decrypted to disk").
+			WithHint("run `fdesetup status` to see what it reports")
+	}
+	if on {
+		return nil
+	}
+	return domain.SecretsError(nil,
+		"FileVault is off, and decrypted secrets would be written to an unencrypted disk").
+		WithHint("turn FileVault on in System Settings, Privacy & Security; or, accepting that anyone " +
+			"with this disk can read every secret, run `morzer config set secrets.allow_unencrypted_disk=true`")
 }
 
 // RenderSecrets renders the release's secrets into the secrets directory,

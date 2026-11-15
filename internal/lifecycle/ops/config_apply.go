@@ -206,6 +206,14 @@ func (d *Deps) runChange(ctx context.Context, opts Options, change ConfigChange,
 		run.noChange = true
 		return run, nil
 	}
+	// Before anything is stored, as a `secret` change asks it: the render
+	// after the store would refuse, leaving a value stored that nothing runs
+	// with (RFC 0055 decision 5).
+	if len(change.Secrets) > 0 {
+		if err := d.RefuseUnencryptedDisk(ctx); err != nil {
+			return run, err
+		}
+	}
 	// Before anything runs that could print them: the values are only in
 	// the store once the change is staged.
 	if d.Redactor != nil && len(change.Secrets) > 0 {

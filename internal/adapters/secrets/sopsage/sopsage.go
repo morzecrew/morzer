@@ -53,6 +53,10 @@ type Store struct {
 	// WithRenderOwner.
 	renderOwner func() (uid, gid int, err error)
 
+	// renderGate, when set, may refuse a render before anything is read.
+	// See WithRenderGate.
+	renderGate func(context.Context) error
+
 	// now is injectable so metadata timestamps are deterministic in tests.
 	now func() time.Time
 }
@@ -82,6 +86,14 @@ func WithLocker(l ports.Locker) Option {
 // container uid can (RFC 0055 decisions 17 and 19).
 func WithRenderOwner(owner func() (uid, gid int, err error)) Option {
 	return func(s *Store) { s.renderOwner = owner }
+}
+
+// WithRenderGate asks gate first in every render, before the state is read or
+// a file is written: the FileVault gate on a Mac, where decrypted secrets land
+// on a disk (RFC 0055 decision 5). The store is the one place every render
+// passes through, so no path that writes plaintext can miss it.
+func WithRenderGate(gate func(context.Context) error) Option {
+	return func(s *Store) { s.renderGate = gate }
 }
 
 // lockName is the lock a write to the state holds. Not the deployment lock:
@@ -487,6 +499,11 @@ func (s *Store) Metadata(ctx context.Context) ([]ports.SecretMetadata, error) {
 // declaration are deleted. A stale secret file left behind after a schema
 // change is a credential on disk with nobody responsible for rotating it.
 func (s *Store) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
+	if s.renderGate != nil {
+		if err := s.renderGate(ctx); err != nil {
+			return nil, err
+		}
+	}
 	owner := [2]int{-1, -1}
 	if s.renderOwner != nil {
 		uid, gid, err := s.renderOwner()

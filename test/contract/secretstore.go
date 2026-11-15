@@ -705,6 +705,43 @@ func RunRenderOwnerSuite(t *testing.T, newStore OwnedSecretStoreFactory) {
 	})
 }
 
+// GatedSecretStoreFactory builds a store given a render gate, as the real one
+// takes WithRenderGate.
+type GatedSecretStoreFactory func(t *testing.T, gate func(context.Context) error) ports.SecretStore
+
+// RunRenderGateSuite is the contract of the FileVault gate's place in the
+// store (RFC 0055 decision 5): asked at every render, and a refusal writes
+// nothing and changes nothing stored.
+func RunRenderGateSuite(t *testing.T, newStore GatedSecretStoreFactory) {
+	t.Helper()
+
+	t.Run("a refusing gate renders nothing, and the stored values stay", func(t *testing.T) {
+		refuse := true
+		store := newStore(t, func(context.Context) error {
+			if refuse {
+				return domain.SecretsError(nil, "FileVault is off")
+			}
+			return nil
+		})
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "plain", domain.NewSecret("a-value")))
+		schema := domain.SecretSchema{Secrets: []domain.SecretDeclaration{{Name: "plain", Required: true}}}
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+
+		_, err := store.Render(ctx, targetDir, schema)
+		require.ErrorContains(t, err, "FileVault is off")
+		assert.NoDirExists(t, targetDir)
+
+		refuse = false
+		files, err := store.Render(ctx, targetDir, schema)
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		content, err := os.ReadFile(files[0].Path)
+		require.NoError(t, err)
+		assert.Equal(t, "a-value", string(content))
+	})
+}
+
 // ownerThisProcessCanGive is an owner a chown by this process succeeds for,
 // and whether a store that ignored it would be seen to: root may give a file
 // to anyone, and anybody else to their own uid and a group of theirs that is

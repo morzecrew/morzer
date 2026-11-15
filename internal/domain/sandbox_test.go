@@ -76,6 +76,7 @@ func sandboxClassification() map[string]sandboxVerdict {
 
 		"Policy":                        keep("how this machine behaves, all of it local"),
 		"Policy.RequireSignature":       keep("whether to refuse unsigned bundles; local"),
+		"Policy.AllowUnencryptedDisk":   keep("whether secrets may render on an unencrypted disk; local"),
 		"Policy.SigningKeys":            keep("whose releases this machine will install -- public keys, and a sandbox testing an update needs the same set"),
 		"Policy.RetainReleases":         keep("local disk retention"),
 		"Policy.RetainBackups":          keep("local disk retention"),

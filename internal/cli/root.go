@@ -999,9 +999,18 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// that without regenerating a unit or migrating any state.
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
+	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
 	if engineUser != nil {
 		storeOpts = append(storeOpts, sopsage.WithRenderOwner(engineUser))
+	}
+	diskEncrypted := diskEncryption(runner)
+	if diskEncrypted != nil {
+		// The installation's setting is read at each render, through the
+		// deps built below.
+		storeOpts = append(storeOpts, sopsage.WithRenderGate(func(ctx context.Context) error {
+			return deps.RefuseUnencryptedDisk(ctx)
+		}))
 	}
 	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), storeOpts...)
 	hookRunner := hooks.NewRunner(runner,
@@ -1034,11 +1043,12 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		return err
 	}
 
-	deps := &ops.Deps{
-		Paths:      paths,
-		State:      stateStore,
-		Locker:     locker,
-		EngineUser: engineUser,
+	deps = &ops.Deps{
+		Paths:         paths,
+		State:         stateStore,
+		Locker:        locker,
+		EngineUser:    engineUser,
+		DiskEncrypted: diskEncrypted,
 		// The same constructor, for the installations this command is
 		// not pointed at. `ls` derives one layout per product it finds
 		// on the machine, so the set is not known here -- but the

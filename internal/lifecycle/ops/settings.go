@@ -299,6 +299,22 @@ var settings = map[string]setting{
 		},
 		Clear: func(i *domain.Installation) { i.Policy.SkipBackupBeforeUpdate = false },
 	},
+	"secrets.allow_unencrypted_disk": {
+		Description: "render secrets where the disk is checked and found unencrypted, a Mac with FileVault off",
+		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Policy.AllowUnencryptedDisk) },
+		// On, which is the less safe state, so it runs as a journalled
+		// operation (RFC 0055 decision 5), and `doctor` keeps failing
+		// while FileVault is off either way.
+		Apply: func(_ context.Context, _ *Deps, i *domain.Installation, raw string) error {
+			v, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return domain.Usage("%q is not a boolean (true or false)", raw)
+			}
+			i.Policy.AllowUnencryptedDisk = v
+			return nil
+		},
+		Clear: func(i *domain.Installation) { i.Policy.AllowUnencryptedDisk = false },
+	},
 	"release.require_signature": {
 		Description: "refuse any release not signed by a key `morzer release trust` lists",
 		Read:        func(i domain.Installation) string { return strconv.FormatBool(i.Policy.RequireSignature) },
@@ -960,7 +976,12 @@ func SetSettings(ctx context.Context, d *Deps, opts SetSettingsOptions) (Result,
 // write: see SetSettings.
 func journalled(before, after domain.Installation) bool {
 	return !slices.Equal(before.Domains, after.Domains) || !sameProfiles(before.Profiles, after.Profiles) ||
-		signatureDropped(before, after) || before.Sync.Authority != after.Sync.Authority
+		signatureDropped(before, after) || unencryptedDiskAllowed(before, after) ||
+		before.Sync.Authority != after.Sync.Authority
+}
+
+func unencryptedDiskAllowed(before, after domain.Installation) bool {
+	return !before.Policy.AllowUnencryptedDisk && after.Policy.AllowUnencryptedDisk
 }
 
 func signatureDropped(before, after domain.Installation) bool {
@@ -974,6 +995,9 @@ func settingsFlags(before, after domain.Installation) map[string]string {
 	flags := map[string]string{}
 	if signatureDropped(before, after) {
 		flags["release.require_signature"] = "false"
+	}
+	if unencryptedDiskAllowed(before, after) {
+		flags["secrets.allow_unencrypted_disk"] = "true"
 	}
 	if before.Sync.Authority != after.Sync.Authority {
 		flags["sync.authority"] = after.Sync.Authority

@@ -84,6 +84,11 @@ func (a *App) editSecrets(ctx context.Context, names []string) error {
 // is gone afterwards -- is about what happens around the editor rather than
 // about finding one.
 func (a *App) editSecretsWith(ctx context.Context, names, editor []string) error {
+	// Before anything is decrypted: the file the editor opens is plaintext
+	// on the same disk the gate is about (RFC 0055 decision 5).
+	if err := a.Deps.RefuseUnencryptedDisk(ctx); err != nil {
+		return err
+	}
 	before, err := a.secretsToEdit(ctx, names)
 	if err != nil {
 		return err

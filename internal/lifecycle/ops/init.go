@@ -30,6 +30,12 @@ type InitOptions struct {
 	// later.
 	ReleasePath string
 
+	// AllowUnencryptedDisk lets `init` go on where the disk is checked and
+	// found unencrypted, and records `secrets.allow_unencrypted_disk` (RFC
+	// 0055 decision 5). The one flag form of that setting: there is no
+	// installation yet to hold it.
+	AllowUnencryptedDisk bool
+
 	// Profiles is the selection of deployment profiles to record, checked
 	// against the release when one is staged (RFC 0053 decision 15).
 	Profiles []string
@@ -130,6 +136,19 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			"an installation already exists at %s", d.Paths.EtcDir).
 			WithHint("use `morzer init --repair` to restore missing directories, " +
 				"or `morzer update` to install a new release")
+	}
+
+	// Before any step writes, so no identity is created on a disk FileVault
+	// does not encrypt (RFC 0055 decision 5). A repair is held to what its
+	// installation set, unless the flag says otherwise.
+	var unencrypted error
+	if exists && !opts.AllowUnencryptedDisk {
+		unencrypted = d.RefuseUnencryptedDisk(ctx)
+	} else {
+		unencrypted = d.refuseUnencryptedDisk(ctx, opts.AllowUnencryptedDisk)
+	}
+	if unencrypted != nil {
+		return Result{}, unencrypted
 	}
 
 	// Stored as the verifier reads them. A key with whitespace around it --
@@ -379,6 +398,10 @@ func initFlags(opts InitOptions) map[string]string {
 	}
 	if opts.Repair {
 		flags["repair"] = "true"
+	}
+	if opts.AllowUnencryptedDisk {
+		// A downgrade, journalled as `config set` journals it.
+		flags["allow_unencrypted_disk"] = "true"
 	}
 	if len(flags) == 0 {
 		return nil
@@ -719,9 +742,11 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	}
 	inst.AttestationSalt = salt
 
+	inst.Policy.AllowUnencryptedDisk = opts.AllowUnencryptedDisk
 	if existing, err := d.State.LoadInstallation(ctx); err == nil && existing.ID != "" {
 		inst.ID = existing.ID
 		inst.CreatedAt = existing.CreatedAt
+		inst.Policy.AllowUnencryptedDisk = inst.Policy.AllowUnencryptedDisk || existing.Policy.AllowUnencryptedDisk
 
 		// The runtime is carried, never rebuilt (RFC 0023 decision 3).
 		//

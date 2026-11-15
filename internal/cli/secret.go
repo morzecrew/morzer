@@ -82,6 +82,12 @@ func newSecretSetCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			value, err := app.readSecretValue(cmd.Context(), fmt.Sprintf("value for %s: ", name))
 			if err != nil {
 				return err
@@ -130,6 +136,12 @@ func newSecretGenerateCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			gen, err := app.generatorFor(cmd.Context(), name, kind, length, alphabet)
 			if err != nil {
 				return err
@@ -168,6 +180,12 @@ func newSecretRotateCommand(app *App) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Before the value is asked for or stored: the render after
+			// would refuse, leaving the stored value changed and the
+			// services on the old one (RFC 0055 decision 5).
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 			gen, err := app.generatorFor(cmd.Context(), name, "", 0, "")
 			if err != nil {
 				return err

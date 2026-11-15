@@ -856,6 +856,10 @@ type SecretStore struct {
 	// file belongs to, read at each render.
 	RenderOwner func() (uid, gid int, err error)
 
+	// RenderGate is the real store's WithRenderGate: asked first in every
+	// render.
+	RenderGate func(context.Context) error
+
 	// RenderFailsAfterWriting makes the next Render write its files and
 	// then return this error, once: a render cut off part way, which leaves
 	// some files new.
@@ -1018,6 +1022,11 @@ func (s *SecretStore) Metadata(ctx context.Context) ([]ports.SecretMetadata, err
 func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
 	if err := s.fail("Render"); err != nil {
 		return nil, err
+	}
+	if s.RenderGate != nil {
+		if err := s.RenderGate(ctx); err != nil {
+			return nil, err
+		}
 	}
 	// Read at every render, before anything is, as the real store reads it.
 	owner := [2]int{-1, -1}
