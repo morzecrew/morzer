@@ -77,6 +77,26 @@ func TestReleaseShowNamesEveryRuntimeAndItsOptions(t *testing.T) {
 		assert.Contains(t, out, "embedded, xdns (combinable), xhttp-reality (combinable)")
 	})
 
+	// A profile narrowed to some platforms says which, beside its other note,
+	// and the release says what it runs on, Linux alone when undeclared (RFC
+	// 0055 decisions 2 and 3).
+	t.Run("platforms are shown", func(t *testing.T) {
+		out := render(domain.Manifest{
+			Metadata: base,
+			Runtimes: domain.Runtimes{"compose": {Files: []string{"compose.yaml"},
+				Profiles:   map[string][]string{"embedded": {"a.yaml"}, "tun": {"t.yaml"}, "xdns": {"x.yaml"}},
+				Combinable: []string{"xdns"},
+				Platforms: map[string][]domain.Platform{
+					"tun": {domain.PlatformLinux}, "xdns": {domain.PlatformLinux},
+				},
+			}},
+			Requirements: domain.Requirements{Platforms: []domain.Platform{domain.PlatformLinux, domain.PlatformDarwin}},
+		})
+		assert.Contains(t, out, "embedded, tun (linux only), xdns (combinable, linux only)")
+		assert.Contains(t, out, "platforms linux, darwin rollback safe")
+		assert.Contains(t, render(domain.Manifest{Metadata: base}), "platforms linux rollback safe")
+	})
+
 	t.Run("two runtimes, sorted, one of them plain", func(t *testing.T) {
 		out := render(domain.Manifest{
 			Metadata: base,

@@ -42,3 +42,23 @@ func TestTheReportsSelectionIsComparedAsASet(t *testing.T) {
 	assert.Empty(t, installationDifferences(domain.Installation{Profile: "embedded"},
 		domain.Installation{Profiles: []string{"embedded"}}), "a report from before schema 18 is not drift")
 }
+
+// A profile's platforms are its value in a diff, and the release's are a
+// compatibility entry, since an update and a rollback gate on both (RFC 0055
+// decisions 2 and 3).
+func TestADiffReportsPlatforms(t *testing.T) {
+	manifest := func(release []domain.Platform, tun ...domain.Platform) domain.Manifest {
+		decl := domain.RuntimeDecl{Files: []string{"compose.yaml"}, Profiles: map[string][]string{"tun": {"t.yaml"}}}
+		if len(tun) > 0 {
+			decl.Platforms = map[string][]domain.Platform{"tun": tun}
+		}
+		return domain.Manifest{Runtimes: domain.Runtimes{"compose": decl},
+			Requirements: domain.Requirements{Platforms: release}}
+	}
+	both := []domain.Platform{domain.PlatformLinux, domain.PlatformDarwin}
+
+	assert.Equal(t, []Change{{Name: "tun", Kind: ChangeChanged, From: "", To: "on linux"}},
+		profileChanges(manifest(both), manifest(both, domain.PlatformLinux)))
+	assert.Equal(t, "linux, darwin", compatibility(domain.Compatibility{}, manifest(both).Requirements)["platforms"])
+	assert.NotContains(t, compatibility(domain.Compatibility{}, domain.Requirements{}), "platforms")
+}
