@@ -200,3 +200,15 @@ evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:701
 action: decided
 proposal: ASSUMED — decision 21 as corrected
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:41:56Z
+attempt: 1
+claim: With the runtime's configuration checking no platform, the render was the only place a deploy met the profile refusal, and a release with no configuration entries skips it, while `restart` and a parameter change re-create services without rendering at all. Reproduced: on darwin, `restart` of a recorded profile narrowed to Linux started it. The paths that start or re-create services now check the selection: every apply, update and rollback at the runtime's validation, `restart` before it starts, and the re-create after a parameter change. Compensation and restore put back what ran and do not ask.
+evidence: internal/lifecycle/ops/ops.go:986-992
+action: decided
+proposal: UNLISTED — starting or re-creating services refuses a selection this platform does not run, rendered or not; putting back what ran does not
+```
