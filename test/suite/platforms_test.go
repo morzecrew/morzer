@@ -140,6 +140,35 @@ func TestARefusedRepairKeepsTheInstallation(t *testing.T) {
 	assert.DirExists(t, h.Release.Root, "a refused repair deleted the installed release")
 }
 
+// A refused repair to another release leaves the installed one current: the
+// step that staged the other puts back the link and the record it replaced.
+func TestARefusedRepairToAnotherReleaseKeepsTheCurrentOne(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	realIdentity(t, h)
+	before, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{
+		Product: "demo", ReleasePath: stageUpgradeSource(t, h), Profiles: []string{"undeclared"}, Repair: true,
+		NoRecoveryKey: true, GenerateSecrets: true,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown deployment profile "undeclared"`)
+	after, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, before.Version, after.Version, "a refused repair left another release recorded current")
+	assert.Equal(t, before.Root, after.Root)
+	target, err := filepath.EvalSymlinks(h.Paths.CurrentLink())
+	require.NoError(t, err, "a refused repair left the current link naming nothing")
+	root, err := filepath.EvalSymlinks(before.Root)
+	require.NoError(t, err)
+	assert.Equal(t, root, target)
+}
+
 // The remedy the refusals name works: a recorded profile this platform does
 // not run can be replaced, since replacing it reads the old selection to see
 // what runs, and so can what runs be stopped (decision 3).

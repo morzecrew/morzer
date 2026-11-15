@@ -604,6 +604,10 @@ const keyInstallationExisted = "installation-existed"
 // directory already there, which its compensation leaves.
 const keyReleaseDirExisted = "release-dir-existed"
 
+// keyReplacedRelease is the current release a repair's stage-release replaced,
+// which its compensation makes current again.
+const keyReplacedRelease = "replaced-release"
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -976,6 +980,9 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 
 			st.Set(engine.KeyRelease, rel)
 
+			if current, err := d.State.CurrentRelease(ctx); err == nil && opts.Repair {
+				st.Set(keyReplacedRelease, current)
+			}
 			if err := atomicfs.ReplaceSymlink(dest, d.Paths.CurrentLink()); err != nil {
 				return err
 			}
@@ -1005,10 +1012,23 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				SignatureVerified: signed,
 			})
 		},
-		// Only a release directory this step created. A repair re-stages
-		// the installed release into the directory it already has, and
-		// removing that left the current release pointing at nothing.
+		// The release a repair replaced is made current again, and only a
+		// release directory this step created is removed. A repair
+		// re-stages the installed release into the directory it already
+		// has, and removing that, or leaving the link on another release
+		// whose directory goes, left the current release pointing at
+		// nothing.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			if replaced, ok := st.Get(keyReplacedRelease); ok {
+				if r, ok := replaced.(domain.ReleaseRecord); ok {
+					if err := atomicfs.ReplaceSymlink(r.Root, d.Paths.CurrentLink()); err != nil {
+						return err
+					}
+					if err := d.State.SetCurrentRelease(ctx, r); err != nil {
+						return err
+					}
+				}
+			}
 			if existed, known := st.Get(keyReleaseDirExisted); !known || existed != false {
 				return nil
 			}
