@@ -517,11 +517,11 @@ func (s *Store) Render(ctx context.Context, targetDir string, schema domain.Secr
 		return nil, err
 	}
 
-	if err := atomicfs.MkdirExact(targetDir, 0o700); err != nil {
+	if err := atomicfs.MkdirExactNoFollow(targetDir, 0o700); err != nil {
 		return nil, err
 	}
-	// Its entry is in RunDir, which only root can change, so the directory
-	// cannot have been swapped for a link (decision 16).
+	// Its entry is in RunDir, which only root can change: it may be given
+	// away, and stays root's to place (decision 16).
 	if s.renderOwner != nil {
 		if err := os.Lchown(targetDir, owner[0], owner[1]); err != nil {
 			return nil, domain.SecretsError(err, "cannot give %s to %d:%d", targetDir, owner[0], owner[1])

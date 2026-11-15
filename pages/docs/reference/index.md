@@ -38,7 +38,7 @@ here. The reference column points at the section that documents it; the
 | `morzer secret remove` | Delete a secret | [secret-commands](secret-commands.md#secret-remove) |
 | `morzer secret rotate` | Replace a secret with a freshly generated value | [secret-commands](secret-commands.md#secret-rotate) |
 | `morzer secret edit` | Edit several secrets in one editor session | [secret-commands](secret-commands.md#secret-edit) |
-| `morzer secret render` | Render secrets to the tmpfs directory the product reads | [secret-commands](secret-commands.md#secret-render) |
+| `morzer secret render` | Render secrets to the directory the product reads | [secret-commands](secret-commands.md#secret-render) |
 | `morzer secret recipients` | Manage who can decrypt the secret state | [secret-commands](secret-commands.md#secret-recipients) |
 | `morzer secret recipients list` | List recipients | [secret-commands](secret-commands.md#secret-recipients-list) |
 | `morzer secret recipients add` | Add a recipient and re-encrypt the state for it | [secret-commands](secret-commands.md#secret-recipients-add) |

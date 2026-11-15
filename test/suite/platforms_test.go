@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -136,6 +137,7 @@ func TestARefusedRepairKeepsTheInstallation(t *testing.T) {
 	exists, err := h.Deps.State.InstallationExists(ctx)
 	require.NoError(t, err)
 	assert.True(t, exists, "a refused repair deleted the installation")
+	assert.DirExists(t, h.Release.Root, "a refused repair deleted the installed release")
 }
 
 // The remedy the refusals name works: a recorded profile this platform does
@@ -225,4 +227,62 @@ func TestUpdateAndRollbackRefuseWhatThisPlatformCannotRun(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrIncompatible)
 	assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
 	assert.Equal(t, "1.3.1", current())
+}
+
+// Starting a selection this platform does not run is refused whether or not
+// the release renders configuration first, and so is re-creating it
+// (decision 3): the render is not the only way services start.
+func TestStartingAProfileThisPlatformDoesNotRunIsRefused(t *testing.T) {
+	ctx := context.Background()
+	h := onDarwin(t)
+	src := madeForDarwin(t, stageUpgradeSource(t, h), "embedded", "external-db")
+	path := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	bare := regexp.MustCompile(`(?ms)^configuration:\n.*?\n\n`).ReplaceAllString(string(raw), "configuration: []\n\n")
+	require.NotEqual(t, string(raw), bare)
+	require.NoError(t, os.WriteFile(path, []byte(bare), 0o644))
+	// The smoke test reads the file a configuration entry would render.
+	require.NoError(t, os.WriteFile(h.Paths.ApplicationFile(), []byte("app: {}\n"), 0o640))
+	// Installed as on Linux, then run here, as a restore would leave it.
+	h.Deps.Platform = "linux"
+	_, err = ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.NoError(t, err)
+	h.Deps.Platform = "darwin"
+	ups := len(h.Runtime.UpOptions)
+
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{Profiles: []string{"external-db"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `profile "external-db" does not run on darwin`)
+
+	_, err = ops.Restart(ctx, h.Deps, ops.RestartOptions{Services: []string{"app"}})
+	require.ErrorIs(t, err, domain.ErrValidation)
+	assert.Contains(t, err.Error(), `profile "embedded" does not run on darwin`)
+	assert.Len(t, h.Runtime.UpOptions, ups, "a profile this platform does not run was started")
+
+	// A parameter change re-creates what reads it, and its step refuses the
+	// same way; the change is undone, and what ran is put back.
+	_, err = ops.ConfigSet(ctx, h.Deps, ops.ConfigSetOptions{Set: map[string]string{"log_level": "debug"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `profile "embedded" does not run on darwin`)
+	assert.Equal(t, domain.ExitCompensated, domain.ExitCode(err))
+	assert.NotEqual(t, "debug", installation(t, h).Parameters["log_level"])
+	assert.Len(t, h.Runtime.UpOptions, ups, "the undo re-created the selection the step refused")
+}
+
+// The start paths refuse a release this platform does not run as well as a
+// profile: restart with no profile recorded checks the release itself.
+func TestRestartingAReleaseThisPlatformDoesNotRunIsRefused(t *testing.T) {
+	ctx := context.Background()
+	h := onDarwin(t)
+	h.Deps.Platform = "linux"
+	applyBaseline(t, h)
+	h.Deps.Platform = "darwin"
+	ups := len(h.Runtime.UpOptions)
+
+	_, err := ops.Restart(ctx, h.Deps, ops.RestartOptions{Services: []string{"app"}})
+
+	require.ErrorIs(t, err, domain.ErrIncompatible)
+	assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
+	assert.Len(t, h.Runtime.UpOptions, ups)
 }

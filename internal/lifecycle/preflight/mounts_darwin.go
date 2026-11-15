@@ -1,6 +1,7 @@
 package preflight
 
 import (
+	"errors"
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
@@ -18,8 +19,14 @@ func FilesystemType(path string) string {
 	}
 	for {
 		var st unix.Statfs_t
-		if err := unix.Statfs(abs, &st); err == nil {
+		err := unix.Statfs(abs, &st)
+		if err == nil {
 			return unix.ByteSliceToString(st.Fstypename[:])
+		}
+		// Only a path that does not exist answers for its parent; any
+		// other failure is "cannot tell", as /proc missing is on Linux.
+		if !errors.Is(err, unix.ENOENT) {
+			return ""
 		}
 		parent := filepath.Dir(abs)
 		if parent == abs {

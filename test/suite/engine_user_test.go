@@ -75,6 +75,10 @@ func ownerOf(t *testing.T, path string) [2]int {
 func TestTheEngineUserOwnsWhatAContainerReadsAndWrites(t *testing.T) {
 	uid, gid := givableOwner(t)
 	h := onEngineAsUser(t, func() (int, int, error) { return uid, gid, nil })
+	// A file a hook left in DataDir, as one that runs as root would.
+	left := filepath.Join(h.Paths.DataDir(), "dump", "left-by-a-hook")
+	require.NoError(t, os.MkdirAll(filepath.Dir(left), 0o750))
+	require.NoError(t, os.WriteFile(left, []byte("x"), 0o640))
 
 	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
 	require.NoError(t, err)
@@ -85,6 +89,8 @@ func TestTheEngineUserOwnsWhatAContainerReadsAndWrites(t *testing.T) {
 		assert.Equal(t, want, ownerOf(t, filepath.Join(h.Paths.SecretsRenderDir(), name)), name)
 	}
 	assert.Equal(t, want, ownerOf(t, h.Paths.DataDir()))
+	assert.Equal(t, want, ownerOf(t, filepath.Dir(left)))
+	assert.Equal(t, want, ownerOf(t, left), "an entry inside DataDir was not given")
 
 	check := doctorCheck(t, h, "secrets.owner")
 	assert.Equal(t, events.CheckWarn, check.Status)
@@ -124,4 +130,18 @@ func TestARenderRecreatesRunDirWithItsOwnMode(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(dir.Mode), info.Mode().Perm(), dir.Path)
 	}
+}
+
+// A restart starts processes that write DataDir, so it gives DataDir first,
+// as a start does: the restart after a secret change goes through it.
+func TestARestartGivesDataDirFirst(t *testing.T) {
+	uid, gid := givableOwner(t)
+	h := onEngineAsUser(t, func() (int, int, error) { return uid, gid, nil })
+	left := filepath.Join(h.Paths.DataDir(), "left-by-a-hook")
+	require.NoError(t, os.WriteFile(left, []byte("x"), 0o640))
+	cfg, err := h.Deps.RuntimeConfigFor(h.Release, installation(t, h))
+	require.NoError(t, err)
+
+	require.NoError(t, h.Deps.RestartServices(context.Background(), cfg, []string{"app"}))
+	assert.Equal(t, [2]int{uid, gid}, ownerOf(t, left))
 }

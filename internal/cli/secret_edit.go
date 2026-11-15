@@ -195,20 +195,34 @@ func (a *App) registerSecretValues(values map[string]string) {
 // believes is clean. A directory of its own rather than a bare file, because an
 // editor writes more than the file it was handed.
 func (a *App) newEditSession() (dir, path string, err error) {
-	renderDir := a.Deps.Paths.SecretsRenderDir()
-	if err := atomicfs.MkdirExact(renderDir, 0o700); err != nil {
+	editDir := a.Deps.Paths.EditDir()
+	if err := atomicfs.MkdirExactNoFollow(a.Deps.Paths.RunDir, os.FileMode(a.runDirMode())); err != nil {
+		return "", "", err
+	}
+	if err := atomicfs.MkdirExactNoFollow(editDir, 0o700); err != nil {
 		return "", "", err
 	}
 
-	dir, err = os.MkdirTemp(renderDir, ".edit-")
+	dir, err = os.MkdirTemp(editDir, ".edit-")
 	if err != nil {
 		return "", "", domain.SecretsError(err,
-			"cannot create an edit session under %s", renderDir)
+			"cannot create an edit session under %s", editDir)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", "", domain.SecretsError(err, "cannot secure the edit session directory")
 	}
 	return dir, filepath.Join(dir, "secrets.yaml"), nil
+}
+
+// runDirMode is the mode RunDir is managed at, so a session that recreates it
+// after a boot leaves it as `init` made it.
+func (a *App) runDirMode() uint32 {
+	for _, dir := range a.Deps.Paths.ManagedDirs() {
+		if dir.Path == a.Deps.Paths.RunDir {
+			return dir.Mode
+		}
+	}
+	return 0o750
 }
 
 // writeEditFile renders the values as a plain mapping.

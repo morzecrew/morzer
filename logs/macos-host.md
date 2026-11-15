@@ -264,6 +264,80 @@ action: decided
 proposal: ASSUMED — decision 21 as corrected
 ```
 
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:41:56Z
+attempt: 1
+claim: With the runtime's configuration checking no platform, the render was the only place a deploy met the profile refusal, and a release with no configuration entries skips it, while `restart` and a parameter change re-create services without rendering at all. Reproduced: on darwin, `restart` of a recorded profile narrowed to Linux started it. The paths that start or re-create services now check the selection: every apply, update and rollback at the runtime's validation, `restart` before it starts, and the re-create after a parameter change. Compensation and restore put back what ran and do not ask.
+evidence: internal/lifecycle/ops/ops.go:986-992
+action: decided
+proposal: UNLISTED — starting or re-creating services refuses a selection this platform does not run, rendered or not; putting back what ran does not
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:10:39Z
+attempt: 1
+claim: `stage-release`'s compensation removed the release directory whatever had made it, and a repair re-stages the installed release into the directory it already has, so any failure after that step, a refused `--profile` among them, deleted the installed release and left the current record pointing at nothing. Reproduced: after a refused `init --repair --profile undeclared`, `releases/1.2.0` was gone. A repair records that the directory existed before it fetched, and the compensation leaves it; a first init still clears what it staged.
+evidence: internal/lifecycle/ops/init.go:877-880
+action: decided
+proposal: UNLISTED — a refused repair leaves the installed release's directory; only a directory init itself created is removed
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T07:10:39Z
+attempt: 1
+claim: The start paths' check read only the selection, so a restart or a parameter change with no profile recorded reached the runtime for a release not made for this platform, which only a state from another host can leave. They check the release first now, as init, update and rollback do. And the re-create a parameter change makes, refused before it touches a service, no longer has its undo re-create the selection it refused: the configuration backups go back, and the services stay as they were.
+evidence: internal/lifecycle/ops/config.go:384-387
+action: decided
+proposal: UNLISTED — starting or re-creating services refuses a release this platform does not run as well as a selection, and a refused re-create's undo restores files without re-creating services
+```
+
+## Review of the ownership
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: Decision 16 gives the secrets directory to the user who runs Docker Desktop, and `secret edit` made its plaintext session directories inside it and wrote them by path, so that user could swap a session for a link and redirect what root writes or read back. Sessions now live in `RunDir/edit`, root's at 0700 on the same tmpfs, created without following a link.
+evidence: internal/domain/paths.go:195-200
+action: departed
+proposal: ASSUMED — `secret edit` sessions live in a root-only directory under RunDir, beside the secrets directory rather than in it
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: RunDir's own entry is in `/private/var/run`, which its `daemon` group can write, and `MkdirExact` sets a mode through `chmod(2)`, which follows a link. So a member of that group could put a link where RunDir or the secrets directory belongs and have root change the mode of what it names. Those directories, and the edit sessions', are now created, and their modes set, through a descriptor opened with `O_NOFOLLOW`, which refuses a link in their place. A link swapped in for a directory above them is still followed, so the guarantee rests on that group having no member but root, which the darwin `doctor` checks will report.
+evidence: internal/infra/atomicfs/atomicfs.go:302-318
+action: departed
+proposal: ASSUMED — RunDir and the directories under it are created and given their modes without following a link; a group writing /private/var/run with a member other than root is reported by doctor
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-15T06:55:20Z
+attempt: 1
+claim: The restart after a secret change, and `config apply`'s, start processes through the runtime's restart rather than `up`, so they skipped the hand-over of `DataDir` every start makes. Both go through `RestartServices`, which hands it over first. The walk also stops when its context does, and fails on an entry it cannot read rather than reporting a half-given tree.
+evidence: internal/lifecycle/ops/ops.go:316-324
+action: decided
+proposal: UNLISTED — every restart through the runtime gives DataDir to the engine's user first, as every start does
+```
+
 ## The FileVault gate
 
 On branch `rfc-0055-filevault`, stacked on `rfc-0055-ownership`.

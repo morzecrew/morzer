@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/morzecrew/morzer/internal/domain"
 )
 
@@ -283,6 +285,35 @@ func MkdirExact(path string, mode fs.FileMode) error {
 		return domain.Internal(err, "cannot create directory %s", path)
 	}
 	if err := os.Chmod(path, mode); err != nil {
+		return domain.Internal(err, "cannot set mode %04o on %s", mode.Perm(), path)
+	}
+	return nil
+}
+
+// MkdirExactNoFollow is MkdirExact for a directory whose own entry sits where
+// someone other than root may be able to write: on a Mac, RunDir is in
+// /private/var/run, which its group can write (logs/macos-host.md). It creates
+// path if it is missing and sets the mode through a descriptor opened without
+// following a link, so a link put in its place is refused rather than having
+// root change the mode of whatever it names. A link swapped in for a directory
+// above path is still followed: that is left to the parent's own owner.
+//
+// Missing parents are created at 0755, as a layout under --root needs.
+func MkdirExactNoFollow(path string, mode fs.FileMode) error {
+	//nolint:gosec // on the way to a bind, which a Mac's Docker Desktop user passes through (RFC 0055 decision 16)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return domain.Internal(err, "cannot create directory %s", filepath.Dir(path))
+	}
+	if err := os.Mkdir(path, mode); err != nil && !errors.Is(err, fs.ErrExist) {
+		return domain.Internal(err, "cannot create directory %s", path)
+	}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return domain.Internal(err, "%s is not a directory, or is a link", path)
+	}
+	f := os.NewFile(uintptr(fd), path)
+	defer func() { _ = f.Close() }()
+	if err := f.Chmod(mode); err != nil {
 		return domain.Internal(err, "cannot set mode %04o on %s", mode.Perm(), path)
 	}
 	return nil
