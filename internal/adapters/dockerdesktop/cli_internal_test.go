@@ -325,16 +325,42 @@ func TestTheConfigIsRebuiltBeforeAnyRegistryIsReached(t *testing.T) {
 	config := read(t, filepath.Join(dir, "config.json"))
 	assert.NotContains(t, config, "stale")
 	assert.NotContains(t, config, `"credsStore"`)
-	link, err := os.Readlink(filepath.Join(dir, "bin", "docker-credential-vault"))
+	link, err := os.Readlink(filepath.Join(dir, "helpers", "docker-credential-vault"))
 	require.NoError(t, err)
 	assert.Equal(t, "/usr/local/sbin/docker-credential-vault", link)
-	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Join(dir, "bin")+string(os.PathListSeparator)))
+	assert.True(t, strings.HasPrefix(os.Getenv("PATH"), filepath.Join(dir, "helpers")+string(os.PathListSeparator)))
 
 	// Before `init` creates the manager directory there is nothing to read,
 	// and nothing is made.
 	r.managerDir = filepath.Join(r.managerDir, "missing")
 	require.NoError(t, r.engine().Prepare())
 	assert.NoDirExists(t, r.managerDir)
+}
+
+// `docker` by name, as a hook runs it, is the CLI the engine settled on, even
+// after Docker Desktop is gone and its earlier copies are still there.
+func TestDockerByNameIsTheSettledCLI(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	r := newRig(t)
+	_, err := r.engine().Settle(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, os.RemoveAll(r.app))
+	onPath := filepath.Join(t.TempDir(), "docker")
+	require.NoError(t, os.WriteFile(onPath, nil, 0o755))
+	r.onPath["docker"] = onPath
+	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
+	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
+	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+	engine := r.engine()
+	engine.setPath = true
+
+	cli, err := engine.Settle(context.Background())
+
+	require.NoError(t, err)
+	found, err := lookIn(os.Getenv("PATH"), "docker")
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, found, "a hook running docker by name finds another CLI than the one settled")
 }
 
 // A config that cannot be rebuilt is not left for a command to read, so none
@@ -344,7 +370,7 @@ func TestAConfigThatCannotBeRebuiltIsNotLeft(t *testing.T) {
 	dir := filepath.Join(r.managerDir, "docker")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"credsStore": "stale"}`), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "bin"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "helpers"), nil, 0o600))
 
 	require.Error(t, r.engine().Prepare())
 

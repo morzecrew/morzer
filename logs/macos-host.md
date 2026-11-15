@@ -586,3 +586,15 @@ evidence: internal/infra/atomicfs/atomicfs.go:505-512
 action: departed
 proposal: ASSUMED — on darwin `ReplaceableByNonRoot` also refuses an entry that carries an ACL granting anyone but root write, delete or append
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-15T18:46:26Z
+attempt: 3
+claim: Attempt 2 removed the config before rebuilding it, so a command reading it meanwhile, which takes no deployment lock, reached a private registry without credentials. It also linked the helpers into the copies' `bin`, first on PATH, where an earlier copy of Docker Desktop's CLI stayed ahead of a CLI found on PATH since. The config is now replaced in one rename and removed only when it cannot be rebuilt. The links a new config names exist before it, and stale ones go after it. The helpers have a directory of their own, after the settled CLI's on PATH.
+evidence: internal/adapters/dockerdesktop/cli.go:163-178
+action: decided
+proposal: ASSUMED — on darwin the manager's Docker config is replaced atomically at every command, and removed only when it cannot be rebuilt; checked helpers are linked in a directory of their own, after the settled CLI's on PATH
+```

@@ -179,16 +179,18 @@ func (e *Engine) Prepare() error {
 	return e.putFirstOnPath("")
 }
 
-// putFirstOnPath puts the directory of the checked helpers, and the settled
-// CLI's when it is elsewhere, first on the process's PATH, so every process the
-// manager starts finds those by name (decision 22).
+// putFirstOnPath puts the settled CLI's directory, then the checked helpers',
+// first on the process's PATH, so every process the manager starts finds those
+// by name (decision 22). The helpers have a directory of their own: one shared
+// with Docker Desktop's copies would put an earlier copy ahead of a CLI found
+// on PATH since.
 func (e *Engine) putFirstOnPath(cliDir string) error {
 	if !e.setPath {
 		return nil
 	}
-	dirs := []string{filepath.Join(e.dir, "bin")}
-	if cliDir != "" && cliDir != dirs[0] {
-		dirs = append(dirs, cliDir)
+	dirs := []string{filepath.Join(e.dir, "helpers")}
+	if cliDir != "" {
+		dirs = append([]string{cliDir}, dirs...)
 	}
 	path := strings.Join(append(dirs, startEnv()["PATH"]), string(os.PathListSeparator))
 	if err := os.Setenv("PATH", path); err != nil {
@@ -419,11 +421,12 @@ func (e *Engine) checkedHelper(name string) (string, bool) {
 	return path, err == nil && who == ""
 }
 
-// linkHelpers links each kept helper into the directory first on PATH: a helper is run by name, and a directory earlier on root's
+// linkHelpers links each kept helper into the helpers' directory, on PATH
+// before root's own: a helper is run by name, and a directory earlier on root's
 // PATH that someone else can write could otherwise gain one of the same name
 // after it was checked.
 func (e *Engine) linkHelpers(linked map[string]string) error {
-	dir := filepath.Join(e.dir, "bin")
+	dir := filepath.Join(e.dir, "helpers")
 	if err := atomicfs.MkdirMineNoFollow(dir, 0o700); err != nil {
 		return err
 	}
@@ -437,7 +440,7 @@ func (e *Engine) linkHelpers(linked map[string]string) error {
 
 // unlinkHelpers removes the links to helpers no longer kept.
 func (e *Engine) unlinkHelpers(linked map[string]string) {
-	old, _ := filepath.Glob(filepath.Join(e.dir, "bin", "docker-credential-*"))
+	old, _ := filepath.Glob(filepath.Join(e.dir, "helpers", "docker-credential-*"))
 	for _, path := range old {
 		if _, ok := linked[filepath.Base(path)]; !ok {
 			_ = os.Remove(path)
