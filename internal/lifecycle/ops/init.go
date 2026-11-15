@@ -1063,14 +1063,15 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 					WithHint("pass --set %s=<value> (repeat --set for several)", missing[0])
 			}
 
-			// The selection too, as buildInstallation checks it, so
-			// one this release will not run refuses a repair before
-			// the installed release is replaced.
+			// The runtime and the selection too, as buildInstallation
+			// checks them, so a release this manager will not run
+			// refuses a repair before the installed release is
+			// replaced.
+			runtime, err := runtimeForRelease(rel)
+			if err != nil {
+				return err
+			}
 			if len(opts.Profiles) > 0 {
-				runtime, err := runtimeForRelease(rel)
-				if err != nil {
-					return err
-				}
 				if _, err := rel.Selection(domain.Installation{Runtime: runtime}.RuntimeName(), opts.Profiles, d.platform()); err != nil {
 					return err
 				}

@@ -666,3 +666,34 @@ func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) 
 	require.NoError(t, err)
 	assert.True(t, os.SameFile(before, after), "a repair with the same bundle replaced the release's directory")
 }
+
+// A bundle of the installed version that this manager cannot run is refused
+// before it replaces the installed release, whether or not a profile is named.
+func TestARepairWithABundleDeclaringTwoRuntimesLeavesTheInstalledReleaseUntouched(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.NoError(t, err)
+	installed, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+
+	two := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, src, two)
+	manifest := filepath.Join(two, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
+		"runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: two, Repair: true})
+
+	require.ErrorContains(t, err, "cannot yet choose between them")
+	landed, err := release.Load(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a bundle this manager cannot run replaced the installed release")
+}
