@@ -238,8 +238,7 @@ func newSecretRenderCommand(app *App) *cobra.Command {
 				return err
 			}
 
-			files, err := app.Deps.Secrets.Render(cmd.Context(),
-				app.Deps.Paths.SecretsRenderDir(), schema)
+			files, err := app.Deps.RenderSecrets(cmd.Context(), schema)
 			if err != nil {
 				return err
 			}
@@ -487,7 +486,7 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 	// services would come back holding the old value. Rendered whether or
 	// not a service declares the secret: a template or a container may read
 	// the file without the release saying so (#238).
-	files, err := a.Deps.Secrets.Render(ctx, a.Deps.Paths.SecretsRenderDir(), schema)
+	files, err := a.Deps.RenderSecrets(ctx, schema)
 	if err != nil {
 		return nil, err
 	}

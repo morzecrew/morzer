@@ -15,7 +15,6 @@ import (
 	"io"
 	"maps"
 	"os"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -853,6 +852,10 @@ type SecretStore struct {
 	// Fail maps a method name to the error it should return.
 	Fail map[string]error
 
+	// RenderOwner is the real store's WithRenderOwner: who every rendered
+	// file belongs to, read at each render.
+	RenderOwner func() (uid, gid int, err error)
+
 	// RenderFailsAfterWriting makes the next Render write its files and
 	// then return this error, once: a render cut off part way, which leaves
 	// some files new.
@@ -1016,9 +1019,14 @@ func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domai
 	if err := s.fail("Render"); err != nil {
 		return nil, err
 	}
-	// Before anything is read, as the real store refuses.
-	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
-		return nil, err
+	// Read at every render, before anything is, as the real store reads it.
+	owner := [2]int{-1, -1}
+	if s.RenderOwner != nil {
+		uid, gid, err := s.RenderOwner()
+		if err != nil {
+			return nil, err
+		}
+		schema, owner = schema.OwnedBy(uid, gid), [2]int{uid, gid}
 	}
 
 	set, err := s.Load(ctx)
@@ -1033,6 +1041,11 @@ func (s *SecretStore) Render(ctx context.Context, targetDir string, schema domai
 	files, err := renderToDisk(targetDir, schema, set)
 	if err != nil {
 		return files, err
+	}
+	if s.RenderOwner != nil {
+		if err := os.Lchown(targetDir, owner[0], owner[1]); err != nil {
+			return nil, err
+		}
 	}
 	s.mu.Lock()
 	failure := s.RenderFailsAfterWriting

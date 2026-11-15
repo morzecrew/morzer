@@ -999,7 +999,11 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// that without regenerating a unit or migrating any state.
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 	)
-	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), sopsage.WithLocker(locker))
+	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
+	if engineUser != nil {
+		storeOpts = append(storeOpts, sopsage.WithRenderOwner(engineUser))
+	}
+	secrets := sopsage.New(runner, paths.SecretsFile(), paths.AgeIdentityFile(), storeOpts...)
 	hookRunner := hooks.NewRunner(runner,
 		hooks.WithOutputSink(outputSink),
 		hooks.WithRedaction(redactor.Values()),
@@ -1031,9 +1035,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	}
 
 	deps := &ops.Deps{
-		Paths:  paths,
-		State:  stateStore,
-		Locker: locker,
+		Paths:      paths,
+		State:      stateStore,
+		Locker:     locker,
+		EngineUser: engineUser,
 		// The same constructor, for the installations this command is
 		// not pointed at. `ls` derives one layout per product it finds
 		// on the machine, so the set is not known here -- but the

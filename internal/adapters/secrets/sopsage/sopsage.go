@@ -21,7 +21,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +49,10 @@ type Store struct {
 	// locker serialises writes to file; nil takes no lock. See exclusive.
 	locker ports.Locker
 
+	// renderOwner, when set, is who every rendered file belongs to. See
+	// WithRenderOwner.
+	renderOwner func() (uid, gid int, err error)
+
 	// now is injectable so metadata timestamps are deterministic in tests.
 	now func() time.Time
 }
@@ -69,6 +72,16 @@ func withClock(now func() time.Time) Option {
 // nothing.
 func WithLocker(l ports.Locker) Option {
 	return func(s *Store) { s.locker = l }
+}
+
+// WithRenderOwner gives every rendered file, and the directory they are
+// rendered into, to the user owner answers with at each render, setting each
+// declared owner aside. It is for an engine that reads the host's files as one
+// user whatever uid a container runs as: Docker Desktop on a Mac, where a
+// container reads a secret only when the user who runs it can, and then every
+// container uid can (RFC 0055 decisions 17 and 19).
+func WithRenderOwner(owner func() (uid, gid int, err error)) Option {
+	return func(s *Store) { s.renderOwner = owner }
 }
 
 // lockName is the lock a write to the state holds. Not the deployment lock:
@@ -474,8 +487,13 @@ func (s *Store) Metadata(ctx context.Context) ([]ports.SecretMetadata, error) {
 // declaration are deleted. A stale secret file left behind after a schema
 // change is a credential on disk with nobody responsible for rotating it.
 func (s *Store) Render(ctx context.Context, targetDir string, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
-	if err := schema.OwnerRefusal(runtime.GOOS); err != nil {
-		return nil, err
+	owner := [2]int{-1, -1}
+	if s.renderOwner != nil {
+		uid, gid, err := s.renderOwner()
+		if err != nil {
+			return nil, err
+		}
+		schema, owner = schema.OwnedBy(uid, gid), [2]int{uid, gid}
 	}
 	set, err := s.Load(ctx)
 	if err != nil {
@@ -484,6 +502,13 @@ func (s *Store) Render(ctx context.Context, targetDir string, schema domain.Secr
 
 	if err := atomicfs.MkdirExact(targetDir, 0o700); err != nil {
 		return nil, err
+	}
+	// Its entry is in RunDir, which only root can change, so the directory
+	// cannot have been swapped for a link (decision 16).
+	if s.renderOwner != nil {
+		if err := os.Lchown(targetDir, owner[0], owner[1]); err != nil {
+			return nil, domain.SecretsError(err, "cannot give %s to %d:%d", targetDir, owner[0], owner[1])
+		}
 	}
 
 	root, err := atomicfs.OpenRoot(targetDir)

@@ -228,6 +228,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			preflight.RequiredParameters(rel.Manifest.Parameters, inst.Parameters),
 			d.checkRequiredSecrets(rel),
 			d.checkSecretRotation(rel),
+			d.checkSecretOwners(rel),
 			d.checkConfigDrift(inst, rel, ""),
 			d.checkRegistryReachable(rel),
 			d.checkImagesLocal(rel),
@@ -880,6 +881,33 @@ func (d *Deps) checkSecretsOnEphemeralStorage() preflight.Check {
 				fmt.Sprintf("mount a tmpfs at %s, or accept that decrypted secrets "+
 					"touch disk and are not reliably erasable there", d.Paths.RunDir),
 				"%s is %s, not tmpfs: decrypted secrets are written to disk", dir, fstype)
+		},
+	}
+}
+
+// checkSecretOwners says when a declared owner is set aside: an engine that
+// reads the host as one user, a Mac's Docker Desktop, lets a container read a
+// secret only when that user can, and then every container uid can (RFC 0055
+// decision 17). A warning that asks nothing of the operator, as the weaker
+// guarantees on a Mac are stated on every run (decision 1).
+func (d *Deps) checkSecretOwners(rel domain.Release) preflight.Check {
+	return preflight.Check{
+		ID:          "secrets.owner",
+		Category:    preflight.CategorySecrets,
+		Description: "each rendered secret is readable only as its declared owner",
+		Fatal:       false,
+		Run: func(context.Context) events.CheckResult {
+			schema, err := release.LoadSecretSchema(rel)
+			if err != nil || !schema.DeclaresOwner() {
+				return preflight.OK("no secret declares an owner")
+			}
+			if d.EngineUser == nil {
+				return preflight.OK("each declared owner is the one user its file is given to")
+			}
+			return preflight.Warn(
+				"nothing to change here: the owner a release declares is enforced on Linux",
+				"owner is not enforced on this host: the engine reads the rendered secrets as "+
+					"the user who runs it, so every container that mounts one can read it")
 		},
 	}
 }

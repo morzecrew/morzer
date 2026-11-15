@@ -143,6 +143,13 @@ type Deps struct {
 	// Injectable for the same reason: a test cannot make a file root's.
 	ReplaceableByNonRoot func(string) (string, error)
 
+	// EngineUser is who the engine reads the host's files as, where that is
+	// one user rather than root: on a Mac, the user who runs Docker Desktop
+	// (RFC 0055 decision 19). That user is given DataDir before services
+	// start, and the store, built with the same function, gives it the
+	// rendered secrets. Nil where the engine reads as root, as on Linux.
+	EngineUser func() (uid, gid int, err error)
+
 	// Platform is the GOOS the platform gates compare a release with (RFC
 	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
 	// same reason again: the refusals on a Mac are tested on Linux.
@@ -278,6 +285,36 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 		return d.FreeSpace(path)
 	}
 	return atomicfs.FreeSpace(path)
+}
+
+// RenderSecrets renders the release's secrets into the secrets directory,
+// recreating RunDir and the managed directories under it with their own modes
+// first. A boot clears RunDir, and the store would recreate it as the secrets
+// directory's parent at that directory's 0700, which on a Mac no container's
+// mount passes through (logs/macos-host.md). Every render goes through here.
+func (d *Deps) RenderSecrets(ctx context.Context, schema domain.SecretSchema) ([]ports.RenderedFile, error) {
+	for _, dir := range d.Paths.EphemeralDirs() {
+		if err := atomicfs.MkdirExact(dir.Path, os.FileMode(dir.Mode)); err != nil {
+			return nil, err
+		}
+	}
+	return d.Secrets.Render(ctx, d.Paths.SecretsRenderDir(), schema)
+}
+
+// up starts services through the runtime. Where the engine reads the host as
+// one user, DataDir is that user's first, so a container can write what a hook
+// running as root left there (logs/macos-host.md).
+func (d *Deps) up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
+	if d.EngineUser != nil {
+		uid, gid, err := d.EngineUser()
+		if err != nil {
+			return err
+		}
+		if err := atomicfs.GiveTree(d.Paths.DataDir(), uid, gid); err != nil {
+			return err
+		}
+	}
+	return d.Runtime.Up(ctx, cfg, opts)
 }
 
 // platform is the GOOS the platform gates compare a release with.
