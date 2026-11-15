@@ -512,6 +512,12 @@ func stringSchema(t reflect.Type) map[string]any {
 			values[i] = string(pt)
 		}
 		out["enum"] = values
+	case reflect.TypeOf(domain.PlatformLinux):
+		values := make([]string, len(domain.KnownPlatforms))
+		for i, p := range domain.KnownPlatforms {
+			values[i] = string(p)
+		}
+		out["enum"] = values
 	case reflect.TypeOf(domain.FactsRefreshPublish):
 		out["enum"] = []string{string(domain.FactsRefreshPublish)}
 		out["description"] = "When else the facts task runs. `publish` runs it " +

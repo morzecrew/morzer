@@ -660,7 +660,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	// refused here, no installation state is written.
 	if rel, ok := st.Get(engine.KeyRelease); ok && len(inst.Profiles) > 0 {
 		if r, ok := rel.(domain.Release); ok {
-			if inst.Profiles, err = r.Selection(inst.RuntimeName(), inst.Profiles); err != nil {
+			if inst.Profiles, err = r.Selection(inst.RuntimeName(), inst.Profiles, d.platform()); err != nil {
 				return domain.Installation{}, err
 			}
 		}
@@ -919,6 +919,13 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				return err
 			}
 			d.warnDeprecations(rel.Manifest)
+
+			// Before the release is adopted, as the parameter checks
+			// below are: nothing is configured yet for a release this
+			// machine cannot run (RFC 0055 decision 2).
+			if err := rel.PlatformRefusal(d.platform()); err != nil {
+				return err
+			}
 
 			// Before the release is adopted: a `--set` the manifest
 			// does not declare fails here, and no installation has

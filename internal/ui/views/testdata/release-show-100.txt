@@ -23,5 +23,6 @@ demo 1.4.0
       remedy       run `sysctl -w vm.max_map_count=262144` and persist it in /etc/sysctl.d
 
   compatibility
+    platforms      linux
     rollback safe  true
     min manager    0.12.0

@@ -220,7 +220,8 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkConfigDrift(inst, domain.Release{}, "the installed release cannot be read"),
 			d.checkDefinitionDrift(inst, domain.Release{}, "the installed release cannot be read"))
 	} else {
-		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements))
+		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements),
+			preflight.Platform(rel.Manifest.Requirements, d.platform()))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 		checks = append(checks,
 			preflight.CPUs(rel.Manifest.Requirements.CPUs),

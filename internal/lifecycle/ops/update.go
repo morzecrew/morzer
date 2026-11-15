@@ -143,7 +143,10 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err := d.refuseRuntimeOptionChange(inst, staged); err != nil {
 		return Result{}, err
 	}
-	if err := refuseUndeclaredProfile(inst, staged, opts.Profiles); err != nil {
+	if err := staged.PlatformRefusal(d.platform()); err != nil {
+		return Result{}, err
+	}
+	if err := refuseUndeclaredProfile(inst, staged, opts.Profiles, d.platform()); err != nil {
 		return Result{}, err
 	}
 	d.warnOneRunProfile(inst, opts.Profiles)

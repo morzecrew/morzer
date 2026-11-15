@@ -25,5 +25,6 @@ demo 1.4.0
                    /etc/sysctl.d
 
   compatibility
+    platforms      linux
     rollback safe  true
     min manager    0.12.0

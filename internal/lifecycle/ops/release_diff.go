@@ -90,7 +90,7 @@ func DiffReleases(from, to domain.Release) (ReleaseDiff, error) {
 		Images:        changes(a.Images, b.Images, func(i domain.ImageSpec) string { return i.Ref }),
 		Parameters:    changes(a.Parameters, b.Parameters, describeParameter),
 		Secrets:       changes(fromSecrets, toSecrets, identity),
-		Compatibility: changes(compatibility(a.Compatibility), compatibility(b.Compatibility), identity),
+		Compatibility: changes(compatibility(a.Compatibility, a.Requirements), compatibility(b.Compatibility, b.Requirements), identity),
 		Tasks:         changes(a.Tasks, b.Tasks, func(domain.TaskSpec) string { return "" }),
 		Preflight:     changes(a.Preflight, b.Preflight, describePreflight),
 		Profiles:      profileChanges(a, b),
@@ -164,8 +164,11 @@ func describePreflight(c domain.PreflightCheck) string {
 // compatibility is the declarations an update and a rollback gate on, keyed by
 // their manifest names, each only when declared. rollback_safe always is: unset
 // reads as false, which the rollback gate acts on.
-func compatibility(c domain.Compatibility) map[string]string {
+func compatibility(c domain.Compatibility, req domain.Requirements) map[string]string {
 	out := map[string]string{"rollback_safe": strconv.FormatBool(c.RollbackSafe)}
+	if len(req.Platforms) > 0 {
+		out["platforms"] = domain.JoinPlatforms(req.Platforms)
+	}
 	if !c.UpgradeFrom.IsZero() {
 		out["upgrade_from"] = c.UpgradeFrom.String()
 	}
@@ -201,11 +204,11 @@ func schemaSecretNames(rel domain.Release) (map[string]string, error) {
 	return out, nil
 }
 
-// profileChanges is the declared names, and `combinable` as one entry beside
-// them in layering order, since reordering it changes which overlay wins
-// (RFC 0053 decision 17).
+// profileChanges is the declared names, each with the platforms it is narrowed
+// to, and `combinable` as one entry beside them in layering order, since
+// reordering it changes which overlay wins (RFC 0053 decision 17).
 func profileChanges(a, b domain.Manifest) []Change {
-	from, to := nameSet(a.ProfileNames()), nameSet(b.ProfileNames())
+	from, to := profilePlatforms(a), profilePlatforms(b)
 	if names := a.CombinableNames(); len(names) > 0 {
 		from["combinable"] = strings.Join(names, ", ")
 	}
@@ -213,6 +216,22 @@ func profileChanges(a, b domain.Manifest) []Change {
 		to["combinable"] = strings.Join(names, ", ")
 	}
 	return changes(from, to, identity)
+}
+
+// profilePlatforms is the declared profile names, each with the platforms
+// `runtimes.<name>.platforms` narrows it to, or "" where it runs wherever the
+// release does.
+func profilePlatforms(m domain.Manifest) map[string]string {
+	out := nameSet(m.ProfileNames())
+	declared := m.DeclaredRuntimes()
+	for _, runtime := range declared.Names() {
+		for profile, only := range declared[runtime].Platforms {
+			if out[profile] == "" {
+				out[profile] = "on " + domain.JoinPlatforms(only)
+			}
+		}
+	}
+	return out
 }
 
 func nameSet(names []string) map[string]string {

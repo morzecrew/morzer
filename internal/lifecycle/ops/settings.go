@@ -631,7 +631,7 @@ func (d *Deps) checkProfileDeclared(ctx context.Context, inst domain.Installatio
 	if err != nil {
 		return nil, err
 	}
-	return rel.Selection(inst.RuntimeName(), profiles)
+	return rel.Selection(inst.RuntimeName(), profiles, d.platform())
 }
 
 // checkChannelIsFollowable refuses a reference this manager could never watch.

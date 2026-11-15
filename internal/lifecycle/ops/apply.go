@@ -283,6 +283,7 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 		Execute: func(ctx context.Context, st *engine.State) error {
 			checks := []preflight.Check{
 				preflight.Architecture(rel.Manifest.Requirements),
+				preflight.Platform(rel.Manifest.Requirements, d.platform()),
 				preflight.OperatingSystem(rel.Manifest.Requirements),
 			}
 			checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
