@@ -15,6 +15,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -141,6 +142,11 @@ type Deps struct {
 	// ReplaceableByNonRoot says who other than root could replace a file.
 	// Injectable for the same reason: a test cannot make a file root's.
 	ReplaceableByNonRoot func(string) (string, error)
+
+	// Platform is the GOOS the platform gates compare a release with (RFC
+	// 0055 decisions 2 and 3). Empty is this binary's own. Injectable for the
+	// same reason again: the refusals on a Mac are tested on Linux.
+	Platform string
 
 	// ManagerPath is the absolute path of this binary, embedded in the
 	// supervisor units so they do not depend on PATH.
@@ -274,6 +280,14 @@ func (d *Deps) freeSpace(path string) (int64, error) {
 	return atomicfs.FreeSpace(path)
 }
 
+// platform is the GOOS the platform gates compare a release with.
+func (d *Deps) platform() string {
+	if d.Platform != "" {
+		return d.Platform
+	}
+	return runtime.GOOS
+}
+
 // replaceableByNonRoot says who other than root could replace the file at path,
 // or "" when nobody could.
 func (d *Deps) replaceableByNonRoot(path string) (string, error) {
@@ -361,7 +375,7 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
 func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
-	set map[string]string) (bool, error) {
+	set map[string]string, profiles []string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
 		return false, err
@@ -398,11 +412,26 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	}
 	d.warnDeprecations(m)
 
-	// The same two checks `stage-release` makes before the release is
-	// adopted, and both are pure functions over the manifest just loaded and
-	// the flags already in hand -- so a plan makes them for free, and one
-	// that skipped them approved an invocation the operation refuses. That is
-	// D-055 arriving through the parameters instead of the manifest.
+	// The same checks `stage-release` makes before the release is adopted,
+	// and all are pure functions over the manifest just loaded and the flags
+	// already in hand -- so a plan makes them for free, and one that skipped
+	// them approved an invocation the operation refuses. That is D-055
+	// arriving through the parameters instead of the manifest.
+	if err := m.Requirements.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
+		return false, err
+	}
+	// And the selection, as the write-installation step checks it against the
+	// staged release, platform included.
+	if len(profiles) > 0 {
+		rel := domain.Release{Manifest: m}
+		runtime, err := runtimeForRelease(rel)
+		if err != nil {
+			return false, err
+		}
+		if _, err := rel.Selection(runtime, profiles, d.platform()); err != nil {
+			return false, err
+		}
+	}
 	if _, err := domain.ResolveParameters(m.Parameters, set); err != nil {
 		return false, err
 	}
@@ -949,6 +978,22 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 	return d.checkRuntimeOptions(inst, declared[inst.RuntimeName()].Options)
 }
 
+// refuseProfilesOffPlatform refuses to start or re-create a release or a
+// selection this platform does not run (RFC 0055 decisions 2 and 3). runtimeConfig checks none, so
+// that what runs can be read, stopped and replaced; this is the check for the
+// paths that start services, whether or not they render configuration first.
+// Compensation and restore put back what ran, and do not ask it.
+func (d *Deps) refuseProfilesOffPlatform(inst domain.Installation, rel domain.Release, profiles []string) error {
+	if err := rel.PlatformRefusal(d.platform()); err != nil {
+		return err
+	}
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	_, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
+	return err
+}
+
 // refuseUndeclaredProfile refuses, before an operation begins, a release that
 // does not declare the installation's profile or the one `--profile` asks for.
 // Inside a step it would fail the render, after a backup and a staging.
@@ -960,8 +1005,9 @@ func (d *Deps) refuseRuntimeOptionChange(inst domain.Installation, rel domain.Re
 // A recorded selection the release declares and will not run together is
 // refused the same way (RFC 0053 decision 10), with no fallback, so a topology
 // never changes as a side effect of an update: RFC 0042 decision 17 applied to
-// a set.
-func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, override []string) error {
+// a set. So is a recorded profile the release does not run on platform (RFC
+// 0055 decision 3).
+func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, override []string, platform string) error {
 	decl, ok := rel.Manifest.DeclaredRuntimes()[inst.RuntimeName()]
 	if !ok {
 		return nil // runtimeConfig refuses an undeclared runtime with its own error
@@ -979,7 +1025,16 @@ func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, overr
 					declares)
 		}
 	}
-	if _, err := decl.Selection(inst.Profiles); err != nil {
+	for _, name := range inst.Profiles {
+		if runs, only := decl.ProfileRunsOn(name, platform); !runs {
+			return domain.IncompatibleError(nil,
+				"release %s does not run the profile %q this installation uses on %s", rel.Version(), name, platform).
+				WithHint("it runs it on %s only. Change the installation's first, with `morzer config set "+
+					"installation.profile=<names>` to a selection without it, or `morzer config unset "+
+					"installation.profile` for the base files", domain.JoinPlatforms(only))
+		}
+	}
+	if _, err := decl.Selection(inst.Profiles, platform); err != nil {
 		together := "it runs one of them at a time"
 		if len(decl.Combinable) > 0 {
 			together = "of those, only " + strings.Join(decl.Combinable, ", ") + " run beside one other"
@@ -997,7 +1052,7 @@ func refuseUndeclaredProfile(inst domain.Installation, rel domain.Release, overr
 				WithHint("%s", declares)
 		}
 	}
-	_, err := rel.Selection(inst.RuntimeName(), override)
+	_, err := rel.Selection(inst.RuntimeName(), override, platform)
 	return err
 }
 
@@ -1141,8 +1196,13 @@ func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profi
 				"transition; a manager built for a different runtime cannot operate it")
 	}
 
-	// In layering order, which is what `<PRODUCT>_PROFILE` joins.
-	profiles, err := rel.Selection(inst.RuntimeName(), profiles)
+	// In layering order, which is what `<PRODUCT>_PROFILE` joins. Checked
+	// against no platform: reading, stopping and removing what runs has to
+	// work whatever the selection is, and replacing a selection this platform
+	// does not run reads the old one through here. Deploying one is refused
+	// where the configuration is rendered (templateData), and at update,
+	// rollback, init and config set (RFC 0055 decision 3).
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles, "")
 	if err != nil {
 		return ports.RuntimeConfig{}, err
 	}
@@ -1284,7 +1344,7 @@ func (d *Deps) templateData(
 	if len(profiles) == 0 {
 		profiles = inst.Profiles
 	}
-	profiles, err := rel.Selection(inst.RuntimeName(), profiles)
+	profiles, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
 	if err != nil {
 		return ports.TemplateData{}, err
 	}

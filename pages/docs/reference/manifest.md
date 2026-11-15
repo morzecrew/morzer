@@ -111,6 +111,7 @@ runtimes:
 | `files` | list | ✅ | The files this runtime is declared with, release-relative. |
 | `profiles` | map | | Named deployment topologies; each is a list of *additional* files. |
 | `combinable` | list | | The profiles that may run together, in the order their files are layered. See [Combinable profiles](#combinable-profiles). |
+| `platforms` | map | | Profiles narrowed to some platforms, each a list. See [Platforms](#platforms). |
 | `options` | map | | Settings this runtime understands and the manager does not. Keys are lower-case identifiers, values one short line. |
 
 One `files` field for every runtime, rather than a differently named key per
@@ -253,12 +254,61 @@ Checked in preflight and reported by `doctor`.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `architectures` | list | Accepted machine architectures, e.g. `[amd64, arm64]`. |
-| `os` | list | Accepted distributions. Each entry has an `id` and a `version` constraint. |
+| `platforms` | list | The operating systems the release is made for: `linux`, `darwin`. Absent, `[linux]`. See [Platforms](#platforms). |
+| `os` | list | The distributions the release was tested on. Each entry has an `id` and a `version` constraint. A mismatch warns. |
 | `tools` | map | Version constraints for external tools, e.g. `docker: ">=24"`. |
 | `memory` | size | Minimum RAM, e.g. `2GiB`. |
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
 | `cpus` | int | Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has. |
 | `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
+
+### Platforms
+
+A release runs only on the platforms `requirements.platforms` lists:
+
+```yaml
+requirements:
+  platforms: [linux, darwin]
+runtimes:
+  compose:
+    files: [compose/compose.yaml]
+    profiles:
+      tun: [compose/tun.yaml]
+    platforms:
+      tun: [linux]
+compatibility:
+  min_manager_version: "0.18.0"
+```
+
+- **Absent, the list is `[linux]`.** A release that does not declare it is
+  refused on a Mac. Add `darwin` once the release runs there.
+- **A release not made for the machine is refused.** `init --dry-run`,
+  `update` and `rollback` refuse it before they start, exit 9. `init` refuses
+  it once it has fetched the release, and leaves nothing installed, exit 11.
+  The `system.platform` check in `apply` and `doctor` covers a machine whose
+  state arrived another way, such as a Linux backup restored on a Mac.
+- **`runtimes.<runtime>.platforms` narrows single profiles.** A profile listed
+  there is refused on a platform it does not name, wherever a selection is
+  deployed or recorded: `init --profile`, `--profile`, `config set
+  installation.profile`, and a recorded selection at `update` and `rollback`.
+  Reading, stopping and removing what runs still work, and so does
+  `config set installation.profile` to a selection this platform runs. A
+  profile not listed runs wherever the release does.
+- **Mark a profile `[linux]` when a container on a Mac cannot do what it
+  promises.** On a Mac, containers run in the engine's Linux VM, so a
+  container's host network and `/dev/net/tun` are the VM's. A TUN profile
+  there would route the VM and look like success.
+
+Each list names `linux` or `darwin`, at least one, each once. A profile's
+list stays within the release's, and names a profile the runtime declares.
+Either key needs `compatibility.min_manager_version` of at least `0.18.0`,
+because an older manager refuses it as unknown. `release verify` checks the
+shape. It cannot check that a release works on a Mac.
+
+`platforms` is not `os`. `os` lists the Linux distributions a release was
+tested on. It only warns, and passes when empty. On a Mac it passes, saying the
+list names Linux distributions. `os: [darwin]` fails to decode, because each
+`os` entry is a mapping with an `id`.
 
 ## bundle
 

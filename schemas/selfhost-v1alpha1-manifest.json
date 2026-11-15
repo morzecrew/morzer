@@ -577,6 +577,17 @@
           },
           "type": "array"
         },
+        "platforms": {
+          "items": {
+            "enum": [
+              "linux",
+              "darwin"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "ports": {
           "items": {
             "description": "A port number, or a {{ .Parameters.\u003cname\u003e }} reference.",
@@ -634,6 +645,21 @@
             "additionalProperties": {
               "type": "string"
             },
+            "type": "object"
+          },
+          "platforms": {
+            "additionalProperties": {
+              "items": {
+                "enum": [
+                  "linux",
+                  "darwin"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "minProperties": 1,
             "type": "object"
           },
           "profiles": {

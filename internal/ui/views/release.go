@@ -123,9 +123,21 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 		// A suffix, so the alternatives and the overlays read in one list
 		// (RFC 0053 decision 17).
 		combinable := m.CombinableNames()
+		several := len(m.DeclaredRuntimes()) > 1
 		for i, name := range profiles {
+			var notes []string
 			if slices.Contains(combinable, name) {
-				profiles[i] = name + " (combinable)"
+				notes = append(notes, "combinable")
+			}
+			for _, n := range m.ProfileNarrowing(name) {
+				note := domain.JoinPlatforms(n.Platforms) + " only"
+				if several {
+					note += " under " + n.Runtime
+				}
+				notes = append(notes, note)
+			}
+			if len(notes) > 0 {
+				profiles[i] = name + " (" + strings.Join(notes, ", ") + ")"
 			}
 		}
 		d.Heading("profiles")
@@ -152,6 +164,7 @@ func releaseDoc(d *ui.Doc, r Release) *ui.Doc {
 
 	d.Heading("compatibility")
 	fields := []ui.Field{
+		{Label: "platforms", Value: domain.JoinPlatforms(m.Requirements.RunsOn())},
 		{Label: "rollback safe", Value: fmt.Sprintf("%t", m.Compatibility.RollbackSafe)},
 	}
 	if !m.Compatibility.UpgradeFrom.IsZero() {

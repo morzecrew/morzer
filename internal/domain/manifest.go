@@ -311,6 +311,41 @@ func (m Manifest) ProfileNames() []string {
 	return out
 }
 
+// ProfileNamesOn is ProfileNames less the profiles a runtime narrows away from
+// platform, for a question that should offer only what it will accept (RFC
+// 0055 decision 3).
+func (m Manifest) ProfileNamesOn(platform string) []string {
+	declared := m.DeclaredRuntimes()
+	return slices.DeleteFunc(m.ProfileNames(), func(name string) bool {
+		for _, decl := range declared {
+			if runs, _ := decl.ProfileRunsOn(name, platform); !runs {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// Narrowing is one runtime narrowing a profile to some platforms.
+type Narrowing struct {
+	Runtime   string
+	Platforms []Platform
+}
+
+// ProfileNarrowing is every runtime that narrows the profile name, in sorted
+// order, for the commands that show a release: two runtimes may narrow one
+// name differently, and showing the first would hide the other.
+func (m Manifest) ProfileNarrowing(name string) []Narrowing {
+	declared := m.DeclaredRuntimes()
+	var out []Narrowing
+	for _, runtime := range declared.Names() {
+		if only, ok := declared[runtime].Platforms[name]; ok {
+			out = append(out, Narrowing{Runtime: runtime, Platforms: slices.Clone(only)})
+		}
+	}
+	return out
+}
+
 // CombinableNames is every profile a runtime of this release lets run beside
 // others, for `release show`, `release diff` and the synthetic render context.
 //
@@ -426,6 +461,14 @@ type RuntimeDecl struct {
 	// should win a scalar two of them set.
 	Combinable []string `yaml:"combinable,omitempty" json:"combinable,omitempty"`
 
+	// Platforms narrows single profiles to the platforms they run on (RFC
+	// 0055 decision 3). A profile listed here is refused on a platform it
+	// does not name, wherever a selection is made or checked; one not listed
+	// runs wherever the release does. It is for a profile such as a TUN one,
+	// which on a Mac would route the engine's VM and look like success
+	// (decision 10).
+	Platforms map[string][]Platform `yaml:"platforms,omitempty" json:"platforms,omitempty"`
+
 	// Options are settings this runtime understands and the manager does
 	// not. They are carried, bounded and compared here, and never
 	// interpreted: what `project` means is Compose's business, and a
@@ -458,7 +501,10 @@ func (d RuntimeDecl) FilesFor(profiles []string) ([]string, error) {
 }
 
 func (d RuntimeDecl) filesFor(profiles []string, release string) ([]string, error) {
-	selected, err := d.selection(profiles, release)
+	// No platform: which files a selection layers does not depend on where
+	// it runs, and `release verify --render-check` renders every profile on
+	// whatever machine it runs on.
+	selected, err := d.selection(profiles, "", release)
 	if err != nil {
 		return nil, err
 	}
@@ -476,14 +522,16 @@ func (d RuntimeDecl) filesFor(profiles []string, release string) ([]string, erro
 // Selection checks names against this declaration and returns them in the
 // order FilesFor layers them (RFC 0053 decisions 3 and 4). The order names
 // are given in does not count: two installations with the same parts deploy
-// the same merge.
-func (d RuntimeDecl) Selection(names []string) ([]string, error) {
-	return d.selection(names, "this release")
+// the same merge. A profile not made for platform, the GOOS the manager runs
+// on, is refused here too (RFC 0055 decision 3); an empty platform checks
+// none.
+func (d RuntimeDecl) Selection(names []string, platform string) ([]string, error) {
+	return d.selection(names, platform, "this release")
 }
 
 // selection is Selection with the release named in the hint on names that
 // cannot run together, as `release 1.4.0` where the caller knows the version.
-func (d RuntimeDecl) selection(names []string, release string) ([]string, error) {
+func (d RuntimeDecl) selection(names []string, platform, release string) ([]string, error) {
 	if err := CheckProfileSelection(names); err != nil {
 		return nil, err
 	}
@@ -496,6 +544,10 @@ func (d RuntimeDecl) selection(names []string, release string) ([]string, error)
 			known := slices.Sorted(maps.Keys(d.Profiles))
 			return nil, ValidationError(nil, "unknown deployment profile %q", name).
 				WithHint("profiles declared by this release: %s", strings.Join(known, ", "))
+		}
+		if runs, only := d.ProfileRunsOn(name, platform); platform != "" && !runs {
+			return nil, ValidationError(nil, "profile %q does not run on %s", name, platform).
+				WithHint("%s runs it on %s only", release, JoinPlatforms(only))
 		}
 		if !slices.Contains(d.Combinable, name) {
 			outside = append(outside, name)
@@ -516,6 +568,16 @@ func (d RuntimeDecl) selection(names []string, release string) ([]string, error)
 		}
 	}
 	return out, nil
+}
+
+// ProfileRunsOn reports whether the profile name runs on platform, and when it
+// does not, the platforms runtimes.<name>.platforms narrows it to.
+func (d RuntimeDecl) ProfileRunsOn(name, platform string) (bool, []Platform) {
+	only, narrowed := d.Platforms[name]
+	if !narrowed || slices.Contains(only, Platform(platform)) {
+		return true, nil
+	}
+	return false, slices.Clone(only)
 }
 
 // CheckProfileSelection refuses what no release accepts: an empty entry, as in
@@ -594,11 +656,20 @@ type OSRequirement struct {
 }
 
 type Requirements struct {
-	Architectures []string              `yaml:"architectures" json:"architectures,omitempty"`
-	OS            []OSRequirement       `yaml:"os" json:"os,omitempty"`
-	Tools         map[string]Constraint `yaml:"tools" json:"tools,omitempty"`
-	Memory        ByteSize              `yaml:"memory" json:"memory,omitempty"`
-	Disk          ByteSize              `yaml:"disk" json:"disk,omitempty"`
+	Architectures []string `yaml:"architectures" json:"architectures,omitempty"`
+
+	// Platforms are the operating systems the release has been made for
+	// (RFC 0055 decision 2). Absent means Linux alone, so a release published
+	// before the key existed is refused on a Mac until its vendor opts in:
+	// the permissive side is the one enumerated (RFC 0010). A key of its own
+	// rather than a value of OS, which lists the distributions a release was
+	// tested on, only warns, and passes when empty.
+	Platforms []Platform `yaml:"platforms" json:"platforms,omitempty"`
+
+	OS     []OSRequirement       `yaml:"os" json:"os,omitempty"`
+	Tools  map[string]Constraint `yaml:"tools" json:"tools,omitempty"`
+	Memory ByteSize              `yaml:"memory" json:"memory,omitempty"`
+	Disk   ByteSize              `yaml:"disk" json:"disk,omitempty"`
 
 	// CPUs is the number of logical CPUs the release wants.
 	//
@@ -783,6 +854,72 @@ const DesiredStateMinManagerVersion = "0.16.0"
 // FactsRefreshMinManagerVersion is the manager release that reads
 // `published.refresh`, which an older one refuses as an unknown field (#353).
 const FactsRefreshMinManagerVersion = "0.17.0"
+
+// Platform is an operating system a release can be made for, by the name Go
+// gives it, which is what a manager compares it with.
+type Platform string
+
+const (
+	PlatformLinux  Platform = "linux"
+	PlatformDarwin Platform = "darwin"
+)
+
+// KnownPlatforms is every value `platforms` takes. Windows has none until a
+// design gives it one (RFC 0055 §4).
+var KnownPlatforms = []Platform{PlatformLinux, PlatformDarwin}
+
+// PlatformsMinManagerVersion is the manager release that reads
+// `requirements.platforms` and `runtimes.<name>.platforms`, which an older one
+// refuses as unknown fields. RFC 0055 decision 15 named 0.16.0, the next minor
+// then; 0.16 and 0.17 shipped first (logs/macos-host.md).
+const PlatformsMinManagerVersion = "0.18.0"
+
+// JoinPlatforms names platforms in a sentence, in the order given.
+func JoinPlatforms(platforms []Platform) string {
+	names := make([]string, len(platforms))
+	for i, p := range platforms {
+		names[i] = string(p)
+	}
+	return strings.Join(names, ", ")
+}
+
+// RunsOn is the platforms the release has been made for: what it declares, or
+// Linux alone when it declares none.
+func (r Requirements) RunsOn() []Platform {
+	if len(r.Platforms) == 0 {
+		return []Platform{PlatformLinux}
+	}
+	return slices.Clone(r.Platforms)
+}
+
+// PlatformRefusal is why release cannot run on platform, the GOOS the manager
+// runs on, or nil. Its hint names the vendor's step, so a release nobody has
+// opted in does not read as the manager's bug (RFC 0055 §9).
+func (r Requirements) PlatformRefusal(platform, release string) error {
+	if slices.Contains(r.RunsOn(), Platform(platform)) {
+		return nil
+	}
+	declares := "it declares no requirements.platforms, which means linux alone"
+	if len(r.Platforms) > 0 {
+		declares = "its requirements.platforms lists " + JoinPlatforms(r.Platforms)
+	}
+	return IncompatibleError(nil, "%s is not made for %s", release, platform).
+		WithHint("%s. Its vendor adds %s to that list once the release runs there", declares, platform)
+}
+
+// declaresPlatforms reports whether the manifest writes either platforms key,
+// empty included: an older manager refuses the key, not its contents.
+func (m Manifest) declaresPlatforms() bool {
+	if m.Requirements.Platforms != nil {
+		return true
+	}
+	for _, decl := range m.DeclaredRuntimes() {
+		if decl.Platforms != nil {
+			return true
+		}
+	}
+	return false
+}
 
 // PublishedSpec is what a machine tells the authority it follows.
 type PublishedSpec struct {
@@ -1617,6 +1754,22 @@ func (m *Manifest) Validate() error {
 				v.add(field, "names %q, which %s.profiles does not declare", profile, base)
 			}
 		}
+		if decl.Platforms != nil && len(decl.Platforms) == 0 {
+			v.add(base+".platforms", "must narrow at least one profile")
+		}
+		for _, profile := range slices.Sorted(maps.Keys(decl.Platforms)) {
+			field := base + ".platforms." + profile
+			if _, declared := decl.Profiles[profile]; !declared {
+				v.add(field, "names %q, which %s.profiles does not declare", profile, base)
+				continue
+			}
+			v.checkPlatforms(field, decl.Platforms[profile])
+			for _, p := range decl.Platforms[profile] {
+				if slices.Contains(KnownPlatforms, p) && !slices.Contains(m.Requirements.RunsOn(), p) {
+					v.add(field, "lists %s, which requirements.platforms does not", p)
+				}
+			}
+		}
 		for _, key := range sortedStringKeys(decl.Options) {
 			field := base + ".options." + key
 			if !optionName.MatchString(key) {
@@ -1642,6 +1795,15 @@ func (m *Manifest) Validate() error {
 		m.Compatibility.MinManagerVersion.LessThan(minimum) {
 		v.add("compatibility.min_manager_version",
 			"must be at least %s, because a runtime declares combinable profiles, which an older "+
+				"manager refuses as an unknown field", minimum)
+	}
+	if m.Requirements.Platforms != nil {
+		v.checkPlatforms("requirements.platforms", m.Requirements.Platforms)
+	}
+	if minimum := MustParseVersion(PlatformsMinManagerVersion); m.declaresPlatforms() &&
+		m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		v.add("compatibility.min_manager_version",
+			"must be at least %s, because the release declares platforms, which an older "+
 				"manager refuses as an unknown field", minimum)
 	}
 
@@ -2203,6 +2365,23 @@ func (v *validationErrors) checkRelPath(field, p string) {
 		v.add(field, "must be a clean path, got %q (did you mean %q?)", p, path.Clean(p))
 	case p == ".." || strings.HasPrefix(p, "../"):
 		v.add(field, "must not escape the release root, got %q", p)
+	}
+}
+
+// checkPlatforms checks one platforms list. Written empty, it would name a
+// release or profile that runs nowhere, or read as absent and mean Linux
+// alone, so it is refused (logs/macos-host.md).
+func (v *validationErrors) checkPlatforms(field string, platforms []Platform) {
+	if len(platforms) == 0 {
+		v.add(field, "must list at least one platform")
+	}
+	for i, p := range platforms {
+		switch {
+		case !slices.Contains(KnownPlatforms, p):
+			v.add(field, "%q is not a platform: it takes %s", p, JoinPlatforms(KnownPlatforms))
+		case slices.Contains(platforms[:i], p):
+			v.add(field, "lists %s twice", p)
+		}
 	}
 }
 

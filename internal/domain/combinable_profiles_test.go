@@ -59,7 +59,7 @@ func TestASelectionIsCheckedAgainstTheDeclaration(t *testing.T) {
 			"this release lets these run beside one other profile: xdns, xhttp-reality"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := overlays().Selection(tc.selected)
+			got, err := overlays().Selection(tc.selected, "linux")
 			if tc.refusal == "" {
 				require.NoError(t, err)
 				assert.Equal(t, tc.want, got)
@@ -85,7 +85,7 @@ func TestWithNothingCombinableASecondProfileIsRefused(t *testing.T) {
 	m.Runtimes[LegacyRuntimeName] = decl
 	rel := Release{Manifest: m, Root: "/opt/demo/releases/1.2.0"}
 
-	_, err := rel.Selection(LegacyRuntimeName, []string{"xdns", "xhttp-reality"})
+	_, err := rel.Selection(LegacyRuntimeName, []string{"xdns", "xhttp-reality"}, "linux")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "profiles xdns and xhttp-reality cannot be deployed together")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -365,8 +366,8 @@ func (a *App) profilesFrom(ctx context.Context, releasePath string) []string {
 	// One implementation, in the manifest. `release show` and the
 	// render-check's synthetic profile ask the same question, and all three
 	// read the deprecated block directly until decision 23 made that answer
-	// "none" everywhere at once.
-	return manifest.ProfileNames()
+	// "none" everywhere at once. Less those `init` would refuse here.
+	return manifest.ProfileNamesOn(runtime.GOOS)
 }
 
 // shippedKeyQuestion reads what the trust question shows: the key a local

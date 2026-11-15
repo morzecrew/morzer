@@ -81,13 +81,18 @@ func (r Release) RuntimeFilePaths(runtime string, profiles []string) ([]string, 
 
 // Selection checks a selection of profiles against one runtime of this release
 // and returns it in layering order (RuntimeDecl.Selection), naming the release
-// in its hints.
-func (r Release) Selection(runtime string, names []string) ([]string, error) {
+// in its hints, refusing a profile not made for platform.
+func (r Release) Selection(runtime string, names []string, platform string) ([]string, error) {
 	decl, err := r.runtimeDecl(runtime)
 	if err != nil {
 		return nil, err
 	}
-	return decl.selection(names, "release "+r.Version().String())
+	return decl.selection(names, platform, "release "+r.Version().String())
+}
+
+// PlatformRefusal is why this release cannot run on platform, or nil.
+func (r Release) PlatformRefusal(platform string) error {
+	return r.Manifest.Requirements.PlatformRefusal(platform, "release "+r.Version().String())
 }
 
 func (r Release) runtimeDecl(runtime string) (RuntimeDecl, error) {

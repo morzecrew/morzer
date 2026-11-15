@@ -191,6 +191,6 @@ func TestADiffListsAChangeToAnyFieldOfACheck(t *testing.T) {
 // A release that keeps no database says so in a diff, as any compatibility
 // declaration does, and one that declares nothing shows nothing.
 func TestADiffShowsADeclarationOfNoDatabase(t *testing.T) {
-	assert.Equal(t, "none", compatibility(domain.Compatibility{Database: domain.DatabaseNone})["database"])
-	assert.NotContains(t, compatibility(domain.Compatibility{}), "database")
+	assert.Equal(t, "none", compatibility(domain.Compatibility{Database: domain.DatabaseNone}, domain.Requirements{})["database"])
+	assert.NotContains(t, compatibility(domain.Compatibility{}, domain.Requirements{}), "database")
 }

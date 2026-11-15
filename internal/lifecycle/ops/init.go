@@ -249,7 +249,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	validated := false
 	if opts.DryRun && opts.ReleasePath != "" {
 		var err error
-		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters); err != nil {
+		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters, opts.Profiles); err != nil {
 			return Result{}, err
 		}
 	}
@@ -596,6 +596,14 @@ func stepCreateSigningKey(d *Deps) engine.Step {
 	}
 }
 
+// keyInstallationExisted is whether write-installation found an installation
+// already there, which its compensation leaves.
+const keyInstallationExisted = "installation-existed"
+
+// keyReleaseDirExisted is whether a repair's stage-release found the release's
+// directory already there, which its compensation leaves.
+const keyReleaseDirExisted = "release-dir-existed"
+
 // stepWriteInstallation writes installation.yaml and the state file.
 func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 	return engine.Step{
@@ -605,6 +613,11 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 		OnFailure:   engine.Compensate,
 		Timeout:     time.Minute,
 		Execute: func(ctx context.Context, st *engine.State) error {
+			existed, err := d.State.InstallationExists(ctx)
+			if err != nil {
+				return err
+			}
+			st.Set(keyInstallationExisted, existed)
 			inst, err := d.buildInstallation(ctx, st, opts)
 			if err != nil {
 				return err
@@ -613,7 +626,14 @@ func stepWriteInstallation(d *Deps, opts InitOptions) engine.Step {
 
 			return d.saveInstallation(ctx, inst)
 		},
+		// Only what this step created. A repair finds the installation
+		// there, and one it refused, a selection the release will not run
+		// included, removed the installation it was asked to repair.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			existed, known := st.Get(keyInstallationExisted)
+			if was, ok := existed.(bool); !known || !ok || was {
+				return nil
+			}
 			_ = os.Remove(d.Paths.InstallationFile())
 			_ = os.Remove(d.Paths.InstallationState())
 			return nil
@@ -660,7 +680,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	// refused here, no installation state is written.
 	if rel, ok := st.Get(engine.KeyRelease); ok && len(inst.Profiles) > 0 {
 		if r, ok := rel.(domain.Release); ok {
-			if inst.Profiles, err = r.Selection(inst.RuntimeName(), inst.Profiles); err != nil {
+			if inst.Profiles, err = r.Selection(inst.RuntimeName(), inst.Profiles, d.platform()); err != nil {
 				return domain.Installation{}, err
 			}
 		}
@@ -854,6 +874,10 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			}
 
 			dest := d.Paths.ReleaseDir(resolved.Version.String())
+			// On a repair, the installed release's own directory; on a
+			// first init, a directory there is a leftover to clear.
+			_, statErr := os.Stat(dest)
+			st.Set(keyReleaseDirExisted, opts.Repair && statErr == nil)
 			if _, err := d.Source.Fetch(ctx, ref, dest); err != nil {
 				return err
 			}
@@ -920,6 +944,13 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			}
 			d.warnDeprecations(rel.Manifest)
 
+			// Before the release is adopted, as the parameter checks
+			// below are: nothing is configured yet for a release this
+			// machine cannot run (RFC 0055 decision 2).
+			if err := rel.PlatformRefusal(d.platform()); err != nil {
+				return err
+			}
+
 			// Before the release is adopted: a `--set` the manifest
 			// does not declare fails here, and no installation has
 			// been written yet -- so there is nothing configured
@@ -974,7 +1005,13 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				SignatureVerified: signed,
 			})
 		},
+		// Only a release directory this step created. A repair re-stages
+		// the installed release into the directory it already has, and
+		// removing that left the current release pointing at nothing.
 		Compensate: func(ctx context.Context, st *engine.State) error {
+			if existed, known := st.Get(keyReleaseDirExisted); !known || existed != false {
+				return nil
+			}
 			rel, ok := st.Get(engine.KeyRelease)
 			if !ok {
 				return nil
