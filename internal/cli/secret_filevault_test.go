@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,6 +49,41 @@ func TestASecretChangeWithFileVaultOffStoresNothing(t *testing.T) {
 			was, _ := before.Get("db_password")
 			now, _ := after.Get("db_password")
 			assert.Equal(t, was.Reveal(), now.Reveal(), "a refused change stored a value")
+		})
+	}
+}
+
+// The gate is asked again once the value or the edit is in, before it is
+// stored: what changed while the prompt or the editor was open is honoured.
+func TestASecretChangeIsCheckedAgainOnceItsInputIsIn(t *testing.T) {
+	for _, command := range []string{"set", "edit"} {
+		t.Run(command, func(t *testing.T) {
+			app, _ := restartApp(t)
+			asked := 0
+			app.Deps.DiskEncrypted = func(context.Context) (bool, error) { asked++; return asked == 1, nil }
+			store, ok := app.Deps.Secrets.(*fakes.SecretStore)
+			require.True(t, ok)
+			before, err := store.Load(context.Background())
+			require.NoError(t, err)
+
+			if command == "edit" {
+				err = app.editSecretsWith(context.Background(), []string{"db_password"},
+					scriptedEditor(`echo changed > "$0"`))
+			} else {
+				app.Stream.In = strings.NewReader("changed\n")
+				cmd := newSecretCommand(app)
+				cmd.SetArgs([]string{"set", "db_password"})
+				cmd.SilenceUsage, cmd.SilenceErrors = true, true
+				cmd.SetContext(context.Background())
+				err = cmd.Execute()
+			}
+
+			require.ErrorContains(t, err, "FileVault is off")
+			after, err := store.Load(context.Background())
+			require.NoError(t, err)
+			was, _ := before.Get("db_password")
+			now, _ := after.Get("db_password")
+			assert.Equal(t, was.Reveal(), now.Reveal(), "a change was stored after the gate closed")
 		})
 	}
 }

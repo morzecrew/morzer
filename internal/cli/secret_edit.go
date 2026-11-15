@@ -324,6 +324,10 @@ func (a *App) applySecretEdits(ctx context.Context, before, after map[string]str
 	if err := a.checkRemovals(ctx, removed); err != nil {
 		return err
 	}
+	// Asked again: the editor may have been open while it changed.
+	if err := a.Deps.RefuseUnencryptedDisk(ctx); err != nil {
+		return err
+	}
 
 	// Writes first, removals second. A failure partway leaves more secrets
 	// set than the operator asked for rather than fewer, and a surplus

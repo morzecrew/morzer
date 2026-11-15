@@ -96,6 +96,10 @@ func newSecretSetCommand(app *App) *cobra.Command {
 				return domain.Usage("the value is empty").
 					WithHint("use `morzer secret remove %s` to delete a secret", name)
 			}
+			// And again: the prompt may have been open while it changed.
+			if err := app.Deps.RefuseUnencryptedDisk(cmd.Context()); err != nil {
+				return err
+			}
 
 			if err := app.Deps.Secrets.Set(cmd.Context(), name, value); err != nil {
 				return err
