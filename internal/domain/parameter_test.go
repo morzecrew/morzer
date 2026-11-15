@@ -71,8 +71,8 @@ func TestPortZeroIsRefused(t *testing.T) {
 
 func TestResolveParametersFillsDefaults(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
-		"http_port": {Type: domain.ParamPort, Default: "18080"},
-		"log_level": {Type: domain.ParamEnum, Values: []string{"info", "debug"}, Default: "info"},
+		"http_port": {Type: domain.ParamPort, Default: new("18080")},
+		"log_level": {Type: domain.ParamEnum, Values: []string{"info", "debug"}, Default: new("info")},
 	}
 
 	params, err := domain.ResolveParameters(declared, map[string]string{"log_level": "debug"})
@@ -98,7 +98,7 @@ func TestResolveParametersFillsDefaults(t *testing.T) {
 func TestADeclarationWithNoDefaultIsPresentAndEmpty(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"admin_email": {Type: domain.ParamString},
-		"http_port":   {Type: domain.ParamPort, Default: "18080"},
+		"http_port":   {Type: domain.ParamPort, Default: new("18080")},
 	}
 
 	params, err := domain.ResolveParameters(declared, nil)
@@ -127,8 +127,8 @@ func TestADeclarationWithNoDefaultIsPresentAndEmpty(t *testing.T) {
 
 func TestAnUndeclaredParameterIsRefusedByName(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
-		"http_port": {Type: domain.ParamPort, Default: "18080"},
-		"log_level": {Type: domain.ParamEnum, Values: []string{"info"}, Default: "info"},
+		"http_port": {Type: domain.ParamPort, Default: new("18080")},
+		"log_level": {Type: domain.ParamEnum, Values: []string{"info"}, Default: new("info")},
 	}
 
 	_, err := domain.ResolveParameters(declared, map[string]string{"htpp_port": "9000"})
@@ -145,7 +145,7 @@ func TestARefusedValueNamesWhatIsAccepted(t *testing.T) {
 	declared := map[string]domain.ParameterSpec{
 		"log_level": {
 			Type: domain.ParamEnum, Values: []string{"debug", "info", "warn"},
-			Default: "info", Description: "Application log verbosity",
+			Default: new("info"), Description: "Application log verbosity",
 		},
 	}
 
@@ -156,6 +156,11 @@ func TestARefusedValueNamesWhatIsAccepted(t *testing.T) {
 	for _, want := range []string{"debug", "info", "warn", "Application log verbosity"} {
 		assert.Contains(t, hint, want)
 	}
+
+	assert.Equal(t, "listen takes a string value; empty by default",
+		domain.DescribeParameter("listen", domain.ParameterSpec{Type: domain.ParamString, Default: new("")}))
+	assert.Equal(t, "listen takes a string value",
+		domain.DescribeParameter("listen", domain.ParameterSpec{Type: domain.ParamString}))
 }
 
 // TestAnInvalidDefaultIsTheVendorsBug catches the manifest error that would
@@ -163,7 +168,7 @@ func TestARefusedValueNamesWhatIsAccepted(t *testing.T) {
 // in: a default that does not satisfy its own declaration.
 func TestAnInvalidDefaultIsTheVendorsBug(t *testing.T) {
 	m := validManifestWithParameters(map[string]domain.ParameterSpec{
-		"http_port": {Type: domain.ParamPort, Default: "not-a-port"},
+		"http_port": {Type: domain.ParamPort, Default: new("not-a-port")},
 	})
 
 	err := m.Validate()
@@ -177,7 +182,7 @@ func TestParameterDeclarationsAreValidated(t *testing.T) {
 		field  string
 	}{
 		"a missing type": {
-			map[string]domain.ParameterSpec{"x": {Default: "1"}}, "parameters.x.type",
+			map[string]domain.ParameterSpec{"x": {Default: new("1")}}, "parameters.x.type",
 		},
 		"an unknown type": {
 			map[string]domain.ParameterSpec{"x": {Type: "colour"}}, "parameters.x.type",

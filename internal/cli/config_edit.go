@@ -129,7 +129,7 @@ func (a *App) editParameterWith(
 	// A declaration with no default refuses an empty value as missing.
 	case "":
 		refusal := domain.Usage("%s was left empty, so %s", name, parameterUnchanged)
-		if entry.Default == "" {
+		if entry.Default == nil {
 			return refusal.WithHint("the release declares no default for %s, so it cannot be left empty", name)
 		}
 		return refusal.WithHint("`morzer config set %[1]s=` records an empty value, and "+

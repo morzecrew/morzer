@@ -125,13 +125,13 @@ func syntheticVendor(rel domain.Release) string {
 func syntheticParameters(declared map[string]domain.ParameterSpec) domain.Parameters {
 	out := make(domain.Parameters, len(declared))
 	for name, spec := range declared {
-		if spec.Default != "" {
+		if spec.Default != nil {
 			// Parsed rather than copied, so the synthetic value is
 			// normalised exactly as the real one is: a default of
 			// `08` reaches a template as `8` at install time, and a
 			// check that rendered `08` would be checking something
 			// no installation produces.
-			if value, err := spec.Parse(spec.Default); err == nil {
+			if value, err := spec.Parse(*spec.Default); err == nil {
 				out[name] = value
 				continue
 			}

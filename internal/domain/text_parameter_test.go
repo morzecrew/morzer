@@ -123,7 +123,7 @@ func TestATextParameterNeedsTheFloor(t *testing.T) {
 		assert.NotContains(t, err.Error(), "parameters.rules")
 	}
 
-	m.Parameters["rules"] = domain.ParameterSpec{Type: domain.ParamText, Default: "a\x00b"}
+	m.Parameters["rules"] = domain.ParameterSpec{Type: domain.ParamText, Default: new("a\x00b")}
 	err = m.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parameters.rules.default")
