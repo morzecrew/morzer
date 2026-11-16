@@ -508,7 +508,9 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 // and put back, and a link they own is one they can repoint. A group bit counts
 // whatever the group, root's included, since a group can have other members,
 // and a POSIX ACL granting a named user write shows as one. A sticky directory
-// does not count, since there only an entry's owner may rename it.
+// does not count, since there only an entry's owner may rename it. A Mac's ACL
+// counts too: an entry in it that lets anyone but root replace the entry, or
+// give themselves a right that does (RFC 0055 decision 23).
 func ReplaceableByNonRoot(path string) (string, error) {
 	wd := "/"
 	if !filepath.IsAbs(path) {
@@ -517,7 +519,7 @@ func ReplaceableByNonRoot(path string) (string, error) {
 			return "", domain.Internal(err, "cannot resolve %s", path)
 		}
 	}
-	return replaceableByNonRoot(absolute(path, wd), os.Lstat, os.Readlink)
+	return replaceableByNonRoot(absolute(path, wd), os.Lstat, os.Readlink, aclOf)
 }
 
 // absolute makes path absolute against wd without cleaning it. `..` after a
@@ -536,16 +538,23 @@ const maxLinks = 40
 
 // replaceableByNonRoot resolves an absolute path one entry at a time, from the
 // root down as the kernel does, and judges every entry it meets: each
-// directory, each link and each link's target, and the file. lstat and
-// readlink are the filesystem, so a test can stand one in.
-func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), readlink func(string) (string, error)) (string, error) {
+// directory, each link and each link's target, and the file. lstat, readlink
+// and acl are the filesystem, so a test can stand one in.
+func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), readlink func(string) (string, error),
+	acl func(p string, dir bool) (string, error)) (string, error) {
+	judge := func(p string, info fs.FileInfo) (string, error) {
+		if who := replaceableEntry(p, info); who != "" {
+			return who, nil
+		}
+		return acl(p, info.IsDir())
+	}
 	cur := "/"
 	info, err := lstat(cur)
 	if err != nil {
 		return "", domain.Internal(err, "cannot stat %s", cur)
 	}
-	if who := replaceableEntry(cur, info); who != "" {
-		return who, nil
+	if who, err := judge(cur, info); who != "" || err != nil {
+		return who, err
 	}
 	rest := strings.Split(path, "/")
 	for links := 0; len(rest) > 0; {
@@ -563,8 +572,8 @@ func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), 
 		if err != nil {
 			return "", domain.Internal(err, "cannot stat %s", next)
 		}
-		if who := replaceableEntry(next, info); who != "" {
-			return who, nil
+		if who, err := judge(next, info); who != "" || err != nil {
+			return who, err
 		}
 		if info.Mode()&os.ModeSymlink == 0 {
 			cur = next
