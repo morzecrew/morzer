@@ -750,6 +750,21 @@ type VolumeCapturer interface {
 	HelperImage() string
 }
 
+// FileSharingProber checks, from a container, that the engine reaches the
+// host's directories as services need them, where it reaches them through file
+// sharing as one user: a Mac's Docker Desktop (RFC 0055 §5.3 and decision 16).
+// A listing passes there where a write fails, so each is tried.
+//
+// Optional like the capabilities around it: an engine that reads the host as
+// root has nothing to probe.
+type FileSharingProber interface {
+	// ProbeFileSharing lists each directory in read and writes, then
+	// removes, a file in each in write. An error wrapping
+	// domain.ErrPreflight refuses, naming the directory a container cannot
+	// reach; any other error is a probe that did not run.
+	ProbeFileSharing(ctx context.Context, read, write []string) error
+}
+
 // ProjectStorage is everything a project's resolved configuration mounts.
 type ProjectStorage struct {
 	// Volumes are the named volumes, sorted by name so plans and manifests

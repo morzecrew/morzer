@@ -295,6 +295,9 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 				preflight.Directories(d.Paths),
 				preflight.BundledImages(rel.Manifest.BundledImageRefs(), d.imagePresence()),
 			)
+			if prober, ok := d.Runtime.(ports.FileSharingProber); ok && d.EngineUser != nil {
+				checks = append(checks, d.checkFileSharing(prober, true))
+			}
 
 			// The port check only makes sense when the project is not
 			// already running: on a converged system the product's

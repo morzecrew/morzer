@@ -722,15 +722,7 @@ func (r *Runtime) requireHelper(ctx context.Context) error {
 	// through an image the operator did not choose, and the operator would
 	// go on believing their own was in use.
 	if !digestPinned.MatchString(ref) {
-		return domain.ValidationError(nil,
-			"the volume helper image %q is not pinned by digest", ref).
-			WithHint("volumes are read through this image with the product's "+
-				"data mounted, so it must name a digest: set %s to a "+
-				"`name@sha256:...` reference. `docker image inspect "+
-				"--format '{{index .RepoDigests 0}}' %s` prints the digest "+
-				"of the tag you have; leaving the variable unset uses the "+
-				"pinned busybox this manager ships with",
-				helperImageEnv, ref)
+		return unpinnedHelper(ref)
 	}
 
 	present, err := r.HasImage(ctx, ref)
@@ -745,4 +737,17 @@ func (r *Runtime) requireHelper(ctx context.Context) error {
 				"capture them without it", ref)
 	}
 	return nil
+}
+
+// unpinnedHelper refuses a helper image that names no digest.
+func unpinnedHelper(ref string) error {
+	return domain.ValidationError(nil,
+		"the volume helper image %q is not pinned by digest", ref).
+		WithHint("volumes are read through this image with the product's "+
+			"data mounted, so it must name a digest: set %s to a "+
+			"`name@sha256:...` reference. `docker image inspect "+
+			"--format '{{index .RepoDigests 0}}' %s` prints the digest "+
+			"of the tag you have; leaving the variable unset uses the "+
+			"pinned busybox this manager ships with",
+			helperImageEnv, ref)
 }

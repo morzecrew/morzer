@@ -255,3 +255,64 @@ func TestDoctorSaysWhichDockerCLIRootRuns(t *testing.T) {
 	assert.Equal(t, events.CheckFail, check.Status)
 	assert.Contains(t, check.Message, "can be replaced by uid 501")
 }
+
+// A directory a container cannot reach refuses apply before anything starts,
+// and the probe writes DataDir as services will find it, given to the engine's
+// user (RFC 0055 §5.3 and decision 16).
+func TestApplyRefusesADirectoryTheEnginesFileSharingCannotReach(t *testing.T) {
+	uid, gid := givableOwner(t)
+	h := onEngineAsUser(t, func() (int, int, error) { return uid, gid, nil })
+	h.Runtime.Fail["ProbeFileSharing"] = domain.Preflight(nil, "the engine does not share %s with containers",
+		h.Paths.OptDir).WithHint("add it to the engine's file sharing")
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err))
+	assert.Empty(t, h.Runtime.UpOptions)
+	assert.Equal(t, []string{h.Paths.DataDir()}, h.Runtime.SharingWrite)
+	assert.Equal(t, []string{h.Paths.EtcDir, h.Paths.VarDir, h.Paths.OptDir, h.Paths.RunDir}, h.Runtime.SharingRead)
+	assert.Equal(t, [2]int{uid, gid}, ownerOf(t, h.Paths.DataDir()), "DataDir was probed before it was given")
+}
+
+// doctor changes nothing: it writes DataDir only once the engine's user owns
+// it. A probe that did not run warns, and a host whose engine reads as root
+// has no such check.
+func TestDoctorProbesTheEnginesFileSharing(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	assert.NotContains(t, doctorIDs(t, h), "runtime.file-sharing")
+
+	h.Deps.EngineUser = func() (int, int, error) { return os.Geteuid() + 1, os.Getegid(), nil }
+	check := doctorCheck(t, h, "runtime.file-sharing")
+	assert.Equal(t, events.CheckOK, check.Status)
+	assert.Empty(t, h.Runtime.SharingWrite)
+	assert.Contains(t, h.Runtime.SharingRead, h.Paths.DataDir())
+
+	h.Deps.EngineUser = func() (int, int, error) { return os.Geteuid(), os.Getegid(), nil }
+	check = doctorCheck(t, h, "runtime.file-sharing")
+	assert.Equal(t, events.CheckOK, check.Status)
+	assert.Contains(t, check.Message, "and writes "+h.Paths.DataDir())
+
+	h.Runtime.Fail["ProbeFileSharing"] = domain.RuntimeError(nil, "cannot run the file-sharing probe through busybox")
+	check = doctorCheck(t, h, "runtime.file-sharing")
+	assert.Equal(t, events.CheckWarn, check.Status)
+	assert.Contains(t, check.Message, "nothing was probed")
+
+	h.Runtime.Fail["ProbeFileSharing"] = domain.Preflight(nil, "a container cannot write %s", h.Paths.DataDir())
+	check = doctorCheck(t, h, "runtime.file-sharing")
+	assert.Equal(t, events.CheckFail, check.Status)
+	assert.Contains(t, check.Message, "a container cannot write")
+}
+
+func doctorIDs(t *testing.T, h *harness) []string {
+	t.Helper()
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	var ids []string
+	for _, r := range report.Results {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}

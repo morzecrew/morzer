@@ -212,6 +212,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if d.EngineCLI != nil {
 		checks = append(checks, d.checkEngineCLI(), d.checkEngineVersion())
 	}
+	if prober, ok := d.Runtime.(ports.FileSharingProber); ok && d.EngineUser != nil {
+		checks = append(checks, d.checkFileSharing(prober, false))
+	}
 
 	current, currentErr := d.State.CurrentRelease(ctx)
 	if currentErr != nil {
