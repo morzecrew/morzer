@@ -718,3 +718,57 @@ evidence: .goreleaser.yaml:21-28
 action: decided
 proposal: ASSUMED — `just acceptance-record <version>` writes the record from a passing run, headed by the macOS and Docker Desktop versions and the commit; the release run checks only that it exists
 ```
+
+## A Mac's ACLs
+
+On branch `rfc-0055-acl` from `main` at `c8af9465`, building decision 23.
+The plan found questions the row does not settle, and the author ruled them on
+2026-11-17 as the plan leaned.
+
+```divergence
+decision: 23
+grade: ASSUMED
+class: discovery
+at: 2026-11-16T22:06:50Z
+attempt: 1
+claim: Decision 23 says reading a Mac's ACLs needs a call x/sys does not wrap. `golang.org/x/sys` v0.50.0 has no `Getattrlist`, only `Setattrlist` and the `ATTR_CMN_EXTENDED_SECURITY` constant, and the build has cgo off. Ruled by the author: the ACL is read with `getattrlist(ATTR_CMN_EXTENDED_SECURITY)` through a libSystem trampoline, as x/sys calls `setattrlist`, and the filesec it returns is parsed in Go. The compiler permits that `//go:cgo_import_dynamic` form outside cgo-generated code. Refused: the raw system call, which Apple does not keep stable, and libSystem's `acl_*` calls, which take several trampolines and opaque handles. A reply the parser cannot read is an error, so the entry is not passed.
+evidence: internal/infra/atomicfs/atomicfs.go:541-588
+action: departed
+proposal: ASSUMED — on darwin `ReplaceableByNonRoot` reads each entry's ACL with getattrlist through a libSystem trampoline, and an ACL it cannot read is an error
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T22:06:50Z
+attempt: 1
+claim: An ACL entry names a GUID, not a uid, and decision 23 says only "anyone but root". Ruled by the author: only the GUID of uid 0, `FFFFEEEE-DDDD-CCCC-BBBB-AAAA00000000`, is root, with no lookup of group membership. An entry naming a group counts whatever the group, everyone and wheel included, as a group bit does. An unknown GUID counts as someone other than root, and the refusal prints it.
+evidence: internal/infra/atomicfs/atomicfs.go:504-511
+action: decided
+proposal: ASSUMED — of an ACL's entries only uid 0's GUID is root's; a group's, everyone's or an unknown GUID counts as someone else's
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T22:06:50Z
+attempt: 1
+claim: Decision 23 lists the rights and not which entries carry them. Ruled by the author: every allow entry counts, inherit-only ones and inherited ones included, since root creates files in the directories it checks, the CLI's copies among them, and they would inherit the grant. Deny entries grant nothing and are passed, as are audit and alarm entries. `generic_all` and `generic_write` count, since the kernel expands them to the rights listed. `readsecurity`, `readattr`, `writeattr` and `writeextattr` do not, since the list is closed.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:704
+action: decided
+proposal: ASSUMED — every allow entry counts whatever its inheritance flags, generic_all and generic_write among its rights; deny, audit and alarm entries do not
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-16T22:06:50Z
+attempt: 1
+claim: A process that is not root may be refused an entry's ACL, which reads as `EACCES`. Ruled by the author: the entry cannot be checked, which is an error as an `lstat` that fails is, so a caller that passes what it cannot check now refuses there.
+evidence: internal/infra/atomicfs/atomicfs.go:562-565
+action: decided
+proposal: ASSUMED — an ACL that cannot be read makes the entry one that cannot be checked
+```
