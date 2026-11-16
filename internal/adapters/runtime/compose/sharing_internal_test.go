@@ -21,7 +21,8 @@ import (
 
 // shellContainer runs the probe's script with /bin/sh, each bind's target
 // replaced by its source, so the script that reaches a container is the one
-// tested. It reads a --mount as docker does, as one CSV record.
+// tested. It reads a --mount as docker does, as one CSV record, and quotes
+// each source for the shell, as a container's own path needs none.
 type shellContainer struct{ fakes.Scripted }
 
 func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
@@ -39,7 +40,7 @@ func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result
 			k, v, _ := strings.Cut(kv, "=")
 			fields[k] = v
 		}
-		pairs = append(pairs, fields["target"], fields["source"])
+		pairs = append(pairs, fields["target"], "'"+strings.ReplaceAll(fields["source"], "'", `'\''`)+"'")
 	}
 	script := strings.NewReplacer(pairs...).Replace(cmd.Argv[len(cmd.Argv)-1])
 	out, err := osexec.CommandContext(ctx, "/bin/sh", "-c", script).Output()
@@ -51,9 +52,10 @@ func TestTheProbeListsWhatItReadsAndWritesWhatItWrites(t *testing.T) {
 		t.Skip("root lists and writes a directory whatever its mode")
 	}
 	dir := t.TempDir()
-	// A comma in a name, which docker reads a --mount's fields apart by.
+	// A comma in a name, which docker reads a --mount's fields apart by, and
+	// a space, which a shell splits words at.
 	etc, sealed, data, locked := filepath.Join(dir, "etc,local"), filepath.Join(dir, "sealed"),
-		filepath.Join(dir, "data"), filepath.Join(dir, "locked")
+		filepath.Join(dir, "data dir"), filepath.Join(dir, "locked")
 	for _, d := range []string{etc, sealed, data, locked} {
 		require.NoError(t, os.Mkdir(d, 0o755))
 	}
