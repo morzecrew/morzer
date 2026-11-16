@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -43,14 +44,18 @@ func (d *Deps) checkFileSharing(prober ports.FileSharingProber, give bool) prefl
 			var read, write []string
 			for _, dir := range []string{d.Paths.EtcDir, d.Paths.VarDir, d.Paths.OptDir, d.Paths.RunDir, d.Paths.DataDir()} {
 				info, err := os.Stat(dir)
-				if err != nil || !info.IsDir() {
+				if errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir() {
 					continue // storage.directories reports it
 				}
-				if owner, _ := atomicfs.Owner(info); dir == d.Paths.DataDir() && owner == uid {
-					write = append(write, dir)
-				} else {
-					read = append(read, dir)
+				// One this process cannot stat is listed still, for the
+				// engine to say why a container cannot reach it.
+				if err == nil && dir == d.Paths.DataDir() {
+					if owner, _ := atomicfs.Owner(info); owner == uid {
+						write = append(write, dir)
+						continue
+					}
 				}
+				read = append(read, dir)
 			}
 
 			err = prober.ProbeFileSharing(ctx, read, write)

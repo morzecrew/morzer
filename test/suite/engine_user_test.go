@@ -295,6 +295,17 @@ func TestDoctorProbesTheEnginesFileSharing(t *testing.T) {
 	assert.Equal(t, events.CheckOK, check.Status)
 	assert.Contains(t, check.Message, "and writes "+h.Paths.DataDir())
 
+	// One this process cannot stat is still probed, for the engine to say
+	// why a container cannot reach it.
+	if os.Geteuid() != 0 {
+		above := filepath.Dir(h.Paths.OptDir)
+		require.NoError(t, os.Chmod(above, 0o600))
+		t.Cleanup(func() { _ = os.Chmod(above, 0o755) })
+		doctorCheck(t, h, "runtime.file-sharing")
+		assert.Contains(t, h.Runtime.SharingRead, h.Paths.OptDir)
+		require.NoError(t, os.Chmod(above, 0o755))
+	}
+
 	h.Runtime.Fail["ProbeFileSharing"] = domain.RuntimeError(nil, "cannot run the file-sharing probe through busybox")
 	check = doctorCheck(t, h, "runtime.file-sharing")
 	assert.Equal(t, events.CheckWarn, check.Status)
