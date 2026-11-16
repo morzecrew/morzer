@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"os"
 	osexec "os/exec"
@@ -19,7 +20,7 @@ import (
 
 // shellContainer runs the probe's script with /bin/sh, each bind's target
 // replaced by its source, so the script that reaches a container is the one
-// tested.
+// tested. It reads a --mount as docker does, as one CSV record.
 type shellContainer struct{ fakes.Scripted }
 
 func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
@@ -28,8 +29,12 @@ func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result
 		if arg != "--mount" {
 			continue
 		}
+		record, err := csv.NewReader(strings.NewReader(cmd.Argv[i+1])).Read()
+		if err != nil {
+			return exec.Result{}, err
+		}
 		fields := map[string]string{}
-		for _, kv := range strings.Split(cmd.Argv[i+1], ",") {
+		for _, kv := range record {
 			k, v, _ := strings.Cut(kv, "=")
 			fields[k] = v
 		}
@@ -45,7 +50,8 @@ func TestTheProbeListsWhatItReadsAndWritesWhatItWrites(t *testing.T) {
 		t.Skip("root lists and writes a directory whatever its mode")
 	}
 	dir := t.TempDir()
-	etc, sealed, data, locked := filepath.Join(dir, "etc"), filepath.Join(dir, "sealed"),
+	// A comma in a name, which docker reads a --mount's fields apart by.
+	etc, sealed, data, locked := filepath.Join(dir, "etc,local"), filepath.Join(dir, "sealed"),
 		filepath.Join(dir, "data"), filepath.Join(dir, "locked")
 	for _, d := range []string{etc, sealed, data, locked} {
 		require.NoError(t, os.Mkdir(d, 0o755))

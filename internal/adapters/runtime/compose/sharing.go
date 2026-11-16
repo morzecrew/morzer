@@ -2,6 +2,7 @@ package compose
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"regexp"
@@ -53,12 +54,12 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	var script strings.Builder
 	for i, dir := range read {
 		target := fmt.Sprintf("/probe/read/%d", i)
-		argv = append(argv, "--mount", "type=bind,source="+dir+",target="+target+",readonly")
+		argv = append(argv, "--mount", bindMount(dir, target, "readonly"))
 		fmt.Fprintf(&script, "ls -a %s >/dev/null 2>&1 || echo unlistable %d\n", target, i)
 	}
 	for i, dir := range write {
 		target := fmt.Sprintf("/probe/write/%d", i)
-		argv = append(argv, "--mount", "type=bind,source="+dir+",target="+target)
+		argv = append(argv, "--mount", bindMount(dir, target))
 		// touch, not `: >`: a redirection that fails on a special
 		// built-in ends a POSIX shell, and the probe with it.
 		fmt.Fprintf(&script, "{ touch %[1]s/%[3]s && rm %[1]s/%[3]s; } 2>/dev/null || echo unwritable %[2]d\n",
@@ -105,6 +106,16 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 				"to list each managed directory and own the ones a container writes; `ls -ld` shows who can")
 	}
 	return nil
+}
+
+// bindMount is a --mount's value: docker reads it as one CSV record, so a
+// directory with a comma in its name is quoted rather than split.
+func bindMount(source, target string, options ...string) string {
+	var b strings.Builder
+	w := csv.NewWriter(&b)
+	_ = w.Write(append([]string{"type=bind", "source=" + source, "target=" + target}, options...))
+	w.Flush()
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // sharingRefusal reads why the probe's container did not run: a bind the
