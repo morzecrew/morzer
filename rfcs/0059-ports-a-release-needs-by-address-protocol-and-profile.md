@@ -1,7 +1,7 @@
 # RFC 0059 — Ports a release needs, by address, protocol and profile
 
-- **Status:** 📝 Draft — proposed 2026-11-15. Decisions 5 and 9 are `OPEN`
-  for the author. Nothing is built.
+- **Status:** 📝 Draft — proposed 2026-11-15, and ruled by the author
+  2026-11-16: decisions 5 and 9 as recommended. Nothing is built.
 - **Scope:** Lets a `requirements.ports` entry say what a release really
   publishes: on which host address, over TCP or UDP, and under which
   profile. The entry is written as Compose writes a published port,
@@ -410,11 +410,11 @@ The floor only turns those failures into one message that names the version.
 | 2 | `ASSUMED` | An empty address and no address both mean every address. So `"{{ .Parameters.listen }}:443"` with `listen` empty is `"443"`, as the Compose file's `${LISTEN}:443:443` is every address (#368). |
 | 3 | `ASSUMED` | `network.ports` binds the entry's protocol on the entry's address, in that address's family alone (`tcp6` on `[::]`), and closes at once. `EADDRINUSE` is "already in use". `EADDRNOTAVAIL` is "not an address of this machine". Any other error is reported as itself. All three are fatal, as the check is today. |
 | 4 | `ASSUMED` | `machine.ports` keys claims by protocol and port. Two claims collide when either is every address, they are the same address, or one is `0.0.0.0` beside IPv4 or `::` beside IPv6. This implements RFC 0020 decision 5e. |
-| 5 | `OPEN` | Which fields see `.Profiles` and `has`. **Recommended:** both fields RFC 0007 decision 5 lets interpolate, `requirements.ports` and `health.checks[].url`, with one context, so a profile that moves a port moves its health URL with it. This supersedes RFC 0007 decision 6 in part: the context is `.Parameters` and `.Profiles`, and still no paths, secrets or installation. Alternative: `requirements.ports` alone. That is a smaller change, but `.Profiles` would then work in one manifest field and fail in the other, as an unknown field at resolution time. |
+| 5 | `ASSUMED` | Which fields see `.Profiles` and `has`. **Recommended:** both fields RFC 0007 decision 5 lets interpolate, `requirements.ports` and `health.checks[].url`, with one context, so a profile that moves a port moves its health URL with it. This supersedes RFC 0007 decision 6 in part: the context is `.Parameters` and `.Profiles`, and still no paths, secrets or installation. Alternative: `requirements.ports` alone. That is a smaller change, but `.Profiles` would then work in one manifest field and fail in the other, as an unknown field at resolution time. Was `OPEN`; ruled by the author 2026-11-16: as recommended. |
 | 6 | `ASSUMED` | `.Profiles` is the installation's effective selection in layering order, never nil, as configuration templates see it. Each caller passes the installation it checks. With none, as in `release verify`, it is empty. |
 | 7 | `ASSUMED` | A templated entry that renders empty after trimming requires nothing. A literal empty entry is still a validation error. |
 | 8 | `ASSUMED` | `PortsMinManagerVersion` is required when a port entry uses an address or a protocol literally, when either templated field refers to `.Profiles` or `has`, or when a templated port entry has `:`, `/` or `[` outside its actions. An entry whose text outside its actions is digits needs no floor, a lone `{{ .Parameters.<name> }}` or `8{{ .Parameters.suffix }}`, since it resolves today as it will then. The floor names the version at `release verify`. Older managers refuse every new form where they resolve it anyway. |
-| 9 | `OPEN` | The floor's value. **Recommended:** 0.18.0 if this ships before 0.18.0 is cut, the minor that already carries `PlatformsMinManagerVersion`, and the next minor otherwise. |
+| 9 | `ASSUMED` | The floor's value. **Recommended:** 0.18.0 if this ships before 0.18.0 is cut, the minor that already carries `PlatformsMinManagerVersion`, and the next minor otherwise. Was `OPEN`; ruled by the author 2026-11-16: as recommended. |
 | 10 | `ASSUMED` | The probe is a socket bind, never Docker. If §10's measurement shows that the two disagree for UDP/53, the probe is changed to agree with Docker, and the change is recorded here. |
 
 ## 12. Phasing
