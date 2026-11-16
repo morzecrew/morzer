@@ -325,6 +325,32 @@ verify-bundle:
 acceptance: build
     .github/scripts/acceptance.sh
 
+# The release PR commits a run on a Mac, and the release builds its darwin
+# archive only beside it (RFC 0055 decisions 9 and 20). So only a run that
+# passes writes the record, and only from a tree with nothing uncommitted,
+# since the record names the commit it ran at (logs/macos-host.md).
+
+# Run the acceptance on this Mac, under sudo, and record it for a release.
+acceptance-record version: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "$(uname -s)" = Darwin ] || { echo "the record is of a run on a Mac"; exit 1; }
+    [ -z "$(git status --porcelain)" ] || { echo "commit first: the record names the commit it ran at"; exit 1; }
+    record=".github/macos-acceptance/v{{version}}.txt"
+    run="$(mktemp)"
+    trap 'rm -f "$run"' EXIT
+    {
+        echo "morzer {{version}}, the acceptance run on macOS"
+        echo "commit $(git rev-parse HEAD)"
+        sw_vers
+        docker version --format 'engine {{{{.Server.Platform.Name}}, server {{{{.Server.Version}}'
+        echo
+    } >"$run"
+    sudo .github/scripts/acceptance.sh 2>&1 | tee -a "$run"
+    mkdir -p .github/macos-acceptance
+    cp "$run" "$record"
+    echo "recorded ${record}; commit it in the release PR"
+
 # A bundle author validates against the published schema in their own CI,
 # without running the manager. It is generated from the types that enforce the
 # contract, so it cannot drift -- a test fails when the checked-in copy is stale.
