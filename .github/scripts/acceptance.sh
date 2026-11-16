@@ -45,7 +45,8 @@ if [ "${OS}" = Darwin ]; then
 		printf 'error: on macOS, run it with sudo, as the user who runs Docker Desktop\n' >&2
 		exit 1
 	fi
-	docker() { sudo -u "${SUDO_USER}" -H docker "$@"; }
+	# The caller's PATH, which sudo replaces where sudoers sets secure_path.
+	docker() { sudo -u "${SUDO_USER}" -H env PATH="${PATH}" docker "$@"; }
 	if [ -z "${ACCEPTANCE_WORK:-}" ]; then
 		ACCEPTANCE_WORK="$(mktemp -d /private/var/morzer-acceptance.XXXXXX)"
 		chmod 0755 "${ACCEPTANCE_WORK}"

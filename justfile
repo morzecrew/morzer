@@ -346,7 +346,9 @@ acceptance-record version: build
         docker version --format 'engine {{{{.Server.Platform.Name}}, server {{{{.Server.Version}}'
         echo
     } >"$run"
-    sudo .github/scripts/acceptance.sh 2>&1 | tee -a "$run"
+    # The caller's PATH, which sudo replaces where sudoers sets secure_path:
+    # Homebrew's sops and jq are on it, and root's may not have them.
+    sudo env PATH="$PATH" .github/scripts/acceptance.sh 2>&1 | tee -a "$run"
     mkdir -p .github/macos-acceptance
     cp "$run" "$record"
     echo "recorded ${record}; commit it in the release PR"
