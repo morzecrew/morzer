@@ -79,6 +79,21 @@ jobs:
           printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
           echo "MINISIGN_KEY_FILE=${key}" >> "$GITHUB_ENV"
 
+      # macOS is verified by hand on a Mac before a release, and the release
+      # PR commits that run's output. Without it the release is Linux alone,
+      # so a release nobody ran on a Mac cannot ship a macOS archive by
+      # oversight (RFC 0055 decisions 9 and 20).
+      - name: Build macOS only beside its acceptance record
+        run: |
+          set -euo pipefail
+          record=".github/macos-acceptance/${GITHUB_REF_NAME}.txt"
+          if [ -f "$record" ]; then
+            echo "MORZER_DARWIN=true" >> "$GITHUB_ENV"
+            echo "building darwin/arm64: ${record} is in the tagged tree"
+          else
+            echo "building Linux alone: the tagged tree has no ${record}"
+          fi
+
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7
         with:
           version: '~> v2'

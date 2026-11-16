@@ -19,7 +19,8 @@ before:
     - go mod verify
 
 builds:
-  - id: morzer
+  - &build
+    id: morzer
     main: ./cmd/morzer
     binary: morzer
     env:
@@ -36,6 +37,15 @@ builds:
     # The commit's timestamp rather than the build's, so two builds of one tag
     # produce identical bytes.
     mod_timestamp: "{{ .CommitTimestamp }}"
+
+  # Apple silicon alone, since Intel Macs are not supported, and only when the
+  # release run finds the record of the acceptance run on a Mac in the tagged
+  # tree (RFC 0055 decisions 12 and 20).
+  - <<: *build
+    id: morzer-darwin
+    goos: [darwin]
+    goarch: [arm64]
+    skip: '{{ ne (index .Env "MORZER_DARWIN") "true" }}'
 
 archives:
   - id: morzer
