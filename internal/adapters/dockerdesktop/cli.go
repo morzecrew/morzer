@@ -464,13 +464,16 @@ func (e *Engine) fromPath() (ports.EngineCLI, string, error) {
 	dirs = append(dirs, pluginDirs...)
 	for _, dir := range dirs {
 		// A relative one names a different directory for every process,
-		// a hook's among them, which runs from its release. One with a
-		// `..` the kernel reads past a link and a lexical join does not,
-		// so the CLI would list one directory and run plugins named
-		// from another; one clean and absolute is the same to both.
-		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+		// a hook's among them, which runs from its release. A `..` the
+		// kernel reads past a link and a lexical join does not, so the
+		// CLI would list one directory and run plugins named from
+		// another. A slash or a `.` means the same to both, so such a
+		// spelling is cleaned, and the clean one is what is checked and
+		// named in the manager's config.
+		if !filepath.IsAbs(dir) || slices.Contains(strings.Split(dir, "/"), "..") {
 			continue
 		}
+		dir = filepath.Clean(dir)
 		plugin := filepath.Join(dir, "docker-compose")
 		if !exists(plugin) {
 			continue

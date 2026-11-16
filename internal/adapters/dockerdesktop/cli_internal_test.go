@@ -3,6 +3,7 @@ package dockerdesktop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -242,6 +243,32 @@ func TestAPluginDirectoryThatIsNotCleanIsNotSearched(t *testing.T) {
 	_, err = r.engine().Settle(context.Background())
 
 	require.ErrorContains(t, err, "has no Compose plugin")
+}
+
+// A trailing slash or a `.` names the same directory to the kernel and to a
+// join, so such a directory is searched, and named in the manager's config
+// clean.
+func TestAPluginDirectorySpelledWithASlashOrADotIsSearchedClean(t *testing.T) {
+	for name, spelling := range map[string]string{"a trailing slash": "%s/extra/", "a dot": "%s/./extra", "a doubled slash": "%s//extra"} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			require.NoError(t, os.RemoveAll(r.app))
+			r.onPath["docker"] = "/opt/homebrew/bin/docker"
+			base := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(base, "extra"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(base, "extra", "docker-compose"), nil, 0o755))
+			config, err := json.Marshal(map[string][]string{"cliPluginsExtraDirs": {fmt.Sprintf(spelling, base)}})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), config, 0o600))
+
+			_, err = r.engine().Settle(context.Background())
+
+			require.NoError(t, err)
+			var written map[string]any
+			require.NoError(t, json.Unmarshal([]byte(read(t, filepath.Join(r.managerDir, "docker", "config.json"))), &written))
+			assert.Equal(t, []any{filepath.Join(base, "extra")}, written["cliPluginsExtraDirs"])
+		})
+	}
 }
 
 // A copy that fails the check is never put in place: the copies checked before
