@@ -719,6 +719,60 @@ action: decided
 proposal: ASSUMED — `just acceptance-record <version>` writes the record from a passing run, headed by the macOS and Docker Desktop versions and the commit; the release run checks only that it exists
 ```
 
+## The acceptance run on a Mac
+
+On branch `rfc-0055-acceptance` from `main` at `c8af9465`. The plan found
+three questions the RFC does not settle, and the author ruled them on
+2026-11-17 as the plan leaned.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T21:32:47Z
+attempt: 1
+claim: The run under `sudo` needs a directory root alone can change, for `storage.run-directory` and the engine, that the user who runs Docker Desktop can list and that Docker Desktop shares. The user's `TMPDIR` under `/var/folders` is that user's, so it is refused. Ruled by the author: on darwin the work directory is `mktemp -d /private/var/morzer-acceptance.XXXXXX`, made 0755 by root. `/private/var` is root's, and Docker Desktop shares `/private` by default (§13 S1).
+evidence: internal/lifecycle/ops/doctor.go:916-935
+action: decided
+proposal: ASSUMED — on darwin the acceptance run works in `/private/var/morzer-acceptance.XXXXXX`, root's and 0755
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T21:32:47Z
+attempt: 1
+claim: §5.10 gives the acceptance script a darwin path and does not say what becomes of its Linux-only steps. Ruled by the author: they are ported, and a step that cannot be is reported as skipped with the reason, never dropped. The restore killed while it writes a volume reads how far the docker CLI has read its stdin from `lsof -o` where Linux reads `/proc/<pid>/fdinfo/0`; if `lsof` gives no offset on the Mac, the step prints SKIPPED. The terminal session runs under BSD `script -q /dev/null`, and the signalled session gets a process group of its own from bash's job control, since macOS has no `setsid`.
+evidence: .github/scripts/acceptance.sh:730-745
+action: decided
+proposal: ASSUMED — on darwin the acceptance script ports its Linux-only steps, and reports one it cannot port as skipped with the reason
+```
+
+```divergence
+decision: 17
+grade: ASSUMED
+class: discovery
+at: 2026-11-16T21:32:47Z
+attempt: 1
+claim: The step where a container that is not root reads the secret given to its user runs this machine's binary inside a Linux container and asserts RFC 0032's owners, which Docker Desktop does not carry into a container (§13 S2). Ruled by the author: on darwin it is skipped, and a step of its own checks decision 17 instead: the rendered secrets directory and each file are the engine user's, the owner of the socket `/var/run/docker.sock` names, at 0700 and 0400, and a service reads its secret.
+evidence: .github/scripts/acceptance.sh:1269-1365
+action: departed
+proposal: ASSUMED — on darwin the acceptance run checks decision 17's owner and modes, and that a service reads its secret, in place of RFC 0032's owner step
+```
+
+```divergence
+decision: 20
+grade: ASSUMED
+class: discovery
+at: 2026-11-16T21:32:47Z
+attempt: 1
+claim: Ruled by the author with the plan: `just acceptance-record <version>` refuses a tree with anything uncommitted, since the record names the commit it ran at, and a record from a tree that differs from that commit would vouch for code nobody tagged.
+evidence: logs/macos-host.md:716
+action: departed
+proposal: ASSUMED — `just acceptance-record` refuses a tree with uncommitted changes
+```
+
 ## The rendered configuration on a Mac
 
 On branch `rfc-0055-config-readable` from `main` at `c8af9465`, found in

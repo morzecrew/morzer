@@ -22,6 +22,7 @@
 # It runs under `--root`, so it never touches the host's /etc, /var or /run.
 #
 #   just acceptance          # locally, needs docker and sops
+#   just acceptance-record V # on a Mac, under sudo, recorded for release V
 #
 set -euo pipefail
 
@@ -31,6 +32,26 @@ MORZER="${MORZER:-${ROOT_DIR}/morzer}"
 MORZER="$(cd "$(dirname "${MORZER}")" && pwd)/$(basename "${MORZER}")"
 REGISTRY="${ACCEPTANCE_REGISTRY:-localhost:5000}"
 REGISTRY_NAME="morzer-acceptance-registry"
+OS="$(uname -s)"
+
+# On a Mac the manager refuses a run directory, or a docker CLI of its own,
+# under a directory anyone but root could change, so the run is root's, under
+# sudo from the user who runs Docker Desktop. This script's own docker calls
+# run as that user, since root has no Compose plugin (RFC 0055 §13 S3). It
+# works under /private/var, which is root's and which Docker Desktop shares by
+# default (§13 S1), at 0755 so that user can list what is bound from it.
+if [ "${OS}" = Darwin ]; then
+	if [ "$(id -u)" != 0 ] || [ -z "${SUDO_USER:-}" ]; then
+		printf 'error: on macOS, run it with sudo, as the user who runs Docker Desktop\n' >&2
+		exit 1
+	fi
+	# The caller's PATH, which sudo replaces where sudoers sets secure_path.
+	docker() { sudo -u "${SUDO_USER}" -H env PATH="${PATH}" docker "$@"; }
+	if [ -z "${ACCEPTANCE_WORK:-}" ]; then
+		ACCEPTANCE_WORK="$(mktemp -d /private/var/morzer-acceptance.XXXXXX)"
+		chmod 0755 "${ACCEPTANCE_WORK}"
+	fi
+fi
 WORK="${ACCEPTANCE_WORK:-$(mktemp -d -t morzer-acceptance-XXXXXX)}"
 mkdir -p "${WORK}"
 # Absolute from here on, the same way ROOT_DIR is resolved above.
@@ -43,6 +64,10 @@ mkdir -p "${WORK}"
 # time against the new directory, so the run looked for ${WORK}/${WORK}/root.
 WORK="$(cd "${WORK}" && pwd)"
 ROOT="${WORK}/root"
+# The demo's run directory under --root: /run on Linux, /var/run on a Mac
+# (RFC 0055 §5.2).
+RUN_DIR="${ROOT}/run/demo"
+[ "${OS}" != Darwin ] || RUN_DIR="${ROOT}/var/run/demo"
 
 # Deliberately not the bundle's default of 18080. The whole point of the
 # parameter stages below is that a port the operator chose is the one that gets
@@ -81,6 +106,17 @@ fail() {
 	printf '\n\033[31merror: %s\033[0m\n' "$*" >&2
 	exit 1
 }
+
+# sed_in_place edits a file as `sed -i` does, in the one form GNU's and BSD's
+# sed both read: the backup's suffix attached to -i, and the backup removed.
+sed_in_place() {
+	local file="${*: -1}"
+	sed -i.bak "$@" && rm -f -- "${file}.bak"
+}
+
+# nl is a backslash before a newline, which GNU's and BSD's sed both read as
+# a newline in a replacement.
+nl=$'\\\n'
 
 # cleanup runs on every exit path, including a failure mid-scenario. A leaked
 # Compose project would break the next run with a name conflict, which is a
@@ -250,13 +286,32 @@ prepare_bundle() {
 
 	# Only the two image lines change. They are the one thing that cannot be
 	# checked in, because a digest does not exist until a registry issues it.
-	sed -i \
+	sed_in_place \
 		-e "s|^  app: .*|  app: ${REGISTRY}/demo/app@${APP_DIGEST}|" \
 		-e "s|^  db: .*|  db: ${REGISTRY}/demo/db@${DB_DIGEST}|" \
 		"${dest}/manifest.yaml"
 
 	grep -q "@sha256:" "${dest}/manifest.yaml" ||
 		fail "the manifest in ${dest} was not rewritten with real digests"
+	declare_darwin "${dest}"
+}
+
+# declare_darwin makes a bundle one a Mac installs. A release runs there only
+# once it lists darwin, from the manager version that reads the key (RFC 0055
+# §5.1), and the fixtures declare Linux alone.
+declare_darwin() {
+	[ "${OS}" = Darwin ] || return 0
+	local floor
+	floor="$(sed -n 's/^const PlatformsMinManagerVersion = "\(.*\)"$/\1/p' "${ROOT_DIR}/internal/domain/manifest.go")"
+	[ -n "${floor}" ] || fail "cannot read PlatformsMinManagerVersion from the source"
+	sed_in_place \
+		-e "s|^requirements:$|requirements:${nl}  platforms: [linux, darwin]|" \
+		-e "s|^  min_manager_version: \"0.0.0\"$|  min_manager_version: \"${floor}\"|" \
+		"$1/manifest.yaml"
+	if ! grep -q '^  platforms: \[linux, darwin\]$' "$1/manifest.yaml" ||
+		! grep -q "^  min_manager_version: \"${floor}\"$" "$1/manifest.yaml"; then
+		fail "the manifest in $1 was not rewritten to declare darwin"
+	fi
 }
 
 # prepare_web_bundle does the same for the three-tier example, which pins three.
@@ -264,7 +319,7 @@ prepare_web_bundle() {
 	local dest=$1
 
 	cp -r "${ROOT_DIR}/testdata/bundle-web" "${dest}"
-	sed -i \
+	sed_in_place \
 		-e "s|^  frontend: .*|  frontend: ${REGISTRY}/web/frontend@${FRONTEND_DIGEST}|" \
 		-e "s|^  backend: .*|  backend: ${REGISTRY}/web/backend@${BACKEND_DIGEST}|" \
 		-e "s|^  db: .*|  db: ${REGISTRY}/web/db@${WEB_DB_DIGEST}|" \
@@ -272,6 +327,7 @@ prepare_web_bundle() {
 
 	grep -c "@sha256:" "${dest}/manifest.yaml" | grep -qx 3 ||
 		fail "the three-tier manifest was not rewritten with three real digests"
+	declare_darwin "${dest}"
 }
 
 # web_port reads a published host port out of the three-tier project.
@@ -315,7 +371,8 @@ assert_running() {
 	local running deadline
 	deadline=$(( $(date +%s) + 30 ))
 	while :; do
-		running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
+		# Arithmetic, since BSD's wc pads its count with spaces.
+		running=$(($(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)))
 		if [ "${running}" = "${expected}" ]; then
 			break
 		fi
@@ -419,7 +476,7 @@ info "config unset restored the release default and re-created the service"
 
 step "a hand edit to installation.yaml is reported, not obeyed"
 # The report lists the selection under `profiles` (RFC 0053), one name a line.
-sed -i '/^profiles:/,/^[a-z]/ s/^- embedded$/- external-db/' "${ROOT}/etc/demo/installation.yaml"
+sed_in_place '/^profiles:/,/^[a-z]/ s/^- embedded$/- external-db/' "${ROOT}/etc/demo/installation.yaml"
 grep -A1 '^profiles:' "${ROOT}/etc/demo/installation.yaml" | grep -q '^- external-db$' ||
 	fail "the hand edit did not land in installation.yaml"
 "${MORZER}" --root "${ROOT}" doctor 2>&1 | grep -q 'installation.yaml' ||
@@ -461,7 +518,7 @@ info "update.check toggles, and mixing a setting with a parameter is refused"
 step "the rendered configuration holds paths, never values"
 config="${ROOT}/etc/demo/application.yaml"
 [ -f "${config}" ] || fail "no rendered configuration at ${config}"
-secret=$(cat "${ROOT}/run/demo/secrets/db_password")
+secret=$(cat "${RUN_DIR}/secrets/db_password")
 if grep -qF "${secret}" "${config}"; then
 	fail "the rendered configuration contains a secret value"
 fi
@@ -559,7 +616,7 @@ grep '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl" |
 # And the argv is redacted before it is written, which is what a password in a
 # connection string depends on. The value is this installation's real generated
 # secret, read off the tmpfs the manager rendered it to.
-db_password=$(cat "${ROOT}/run/demo/secrets/db_password")
+db_password=$(cat "${RUN_DIR}/secrets/db_password")
 [ -n "${db_password}" ] || fail "no rendered db_password to test the redaction with"
 "${MORZER}" --root "${ROOT}" exec app -- echo "postgres://demo:${db_password}@db/demo" >/dev/null
 if grep -qF "${db_password}" "${ROOT}/var/lib/demo/manager/operations.jsonl"; then
@@ -585,7 +642,12 @@ fi
 	fail "exec -i refused a session whose stdin is /dev/null"
 # `|| true`: without a TTY the inner test fails and exits 1, and the case
 # below is what says so.
-at_terminal=$(script -q -e -c "'${MORZER}' --root '${ROOT}' exec -i app -- sh -c 'test -t 0 && test -t 1 && echo has-a-tty'" /dev/null </dev/null) || true
+# BSD's `script` takes the command as its arguments, and GNU's as -c.
+if [ "${OS}" = Darwin ]; then
+	at_terminal=$(script -q /dev/null "${MORZER}" --root "${ROOT}" exec -i app -- sh -c 'test -t 0 && test -t 1 && echo has-a-tty' </dev/null) || true
+else
+	at_terminal=$(script -q -e -c "'${MORZER}' --root '${ROOT}' exec -i app -- sh -c 'test -t 0 && test -t 1 && echo has-a-tty'" /dev/null </dev/null) || true
+fi
 case "${at_terminal}" in
 *has-a-tty*) info "a session at a terminal got a TTY" ;;
 *) fail "a session at a terminal did not get a TTY: ${at_terminal}" ;;
@@ -601,8 +663,17 @@ signal_session() {
 	local target=$1 argv=$2
 	local before session status=0
 	before=$(grep -c '"type":"exec"' "${ROOT}/var/lib/demo/manager/operations.jsonl")
-	setsid "${MORZER}" --root "${ROOT}" exec -i app -- sleep "${argv}" </dev/null >/dev/null 2>&1 &
-	session=$!
+	# macOS has no setsid, and job control gives a background job a process
+	# group of its own, which is what the group signal needs.
+	if [ "${OS}" = Darwin ]; then
+		set -m
+		"${MORZER}" --root "${ROOT}" exec -i app -- sleep "${argv}" </dev/null >/dev/null 2>&1 &
+		session=$!
+		set +m
+	else
+		setsid "${MORZER}" --root "${ROOT}" exec -i app -- sleep "${argv}" </dev/null >/dev/null 2>&1 &
+		session=$!
+	fi
 	sleep 2
 	case "${target}" in
 	group) kill -INT -- "-${session}" ;;
@@ -709,6 +780,28 @@ expect_exit 2 "${MORZER}" --root "${ROOT}" restore --force --confirm wrong-id
 # for the volumes: --resume stops the writer the killed run left behind, wipes
 # the volume and writes it again from the start, and everything the backup held
 # reads back.
+# stream_progress sets streamed and size: how far a stopped process has read
+# its stdin, and how large that file is, or nothing when this machine cannot
+# say. Linux keeps the offset in /proc; on a Mac lsof reads it, in decimal as
+# 0t<n> or, past its digits, in hex as 0x<n>.
+stream_progress() {
+	local fields offset name
+	if [ "${OS}" = Darwin ]; then
+		fields=$(lsof -nP -a -p "$1" -d 0 -o -F on 2>/dev/null || true)
+		offset=$(printf '%s\n' "${fields}" | sed -n 's/^o//p')
+		name=$(printf '%s\n' "${fields}" | sed -n 's/^n//p')
+		case "${offset}" in
+		0t*) streamed=${offset#0t} ;;
+		0x*) streamed=$((offset)) ;;
+		*) streamed="" ;;
+		esac
+		size=$(stat -f %z "${name}" 2>/dev/null || true)
+	else
+		streamed=$(awk '/^pos:/ {print $2}' "/proc/$1/fdinfo/0" 2>/dev/null || true)
+		size=$(stat -L -c %s "/proc/$1/fd/0" 2>/dev/null || true)
+	fi
+}
+
 step "a restore killed while it writes a volume is finished with --resume"
 "${MORZER}" --root "${ROOT}" exec app -- sh -c \
 	'echo resume-marker > /var/lib/demo/uploads/resume-marker &&
@@ -726,12 +819,13 @@ restore_pid=$!
 # The services are down by now, so whatever mounts the volume is the helper.
 # The pattern is anchored to the docker CLI, so no shell whose command line
 # names the volume is stopped in its place.
-orphan="" helper=""
+orphan="" helper="" cli_seen="" offset_seen=""
 for _ in $(seq 1 3000); do
 	cli=$(pgrep -f -- '^[^ ]*docker run .*demo_uploads:/dst' | head -1 || true)
 	if [ -n "${cli}" ] && kill -STOP "${cli}" 2>/dev/null; then
-		streamed=$(awk '/^pos:/ {print $2}' "/proc/${cli}/fdinfo/0" 2>/dev/null || true)
-		size=$(stat -L -c %s "/proc/${cli}/fd/0" 2>/dev/null || true)
+		cli_seen=yes
+		stream_progress "${cli}"
+		[ -z "${streamed}" ] || offset_seen=yes
 		running=$(docker ps -q --filter volume=demo_uploads | head -1)
 		if [ -n "${running}" ] && [ "${streamed:-0}" -gt 0 ] && [ "$((${streamed:-0} * 2))" -lt "${size:-0}" ]; then
 			orphan=${cli} helper=${running}
@@ -741,35 +835,44 @@ for _ in $(seq 1 3000); do
 	fi
 	sleep 0.01
 done
-[ -n "${orphan}" ] ||
-	fail "the restore never stopped part-way through writing a volume, so the kill had nowhere to land"
-# Let go while the manager dies, and stopped again once it is gone: the kill
-# orphans the CLI's process group, and the kernel hangs up on a stopped member
-# of an orphaned group, which the CLI does not survive.
-kill -CONT "${orphan}"
-kill -9 "${restore_pid}" 2>/dev/null || true
-wait "${restore_pid}" 2>/dev/null || true
-kill -STOP "${orphan}" 2>/dev/null ||
-	fail "the docker CLI ended with the manager, so the resume has no earlier writer to meet"
-[ -n "$(docker ps -q --filter id="${helper}")" ] ||
-	fail "the helper did not outlive the manager, so the resume has no earlier writer to meet"
-tail -1 "${journal}" | jq -e '.type == "restore" and .status == "running" and
-	(.steps[] | select(.id == "restore-volumes") | .status == "running")' >/dev/null ||
-	fail "the killed restore did not leave restore-volumes running in the journal"
-info "killed mid-volume; the journal holds the wreck"
+# Only once the CLI was caught: one never found is a failure, whatever lsof can
+# say, and is reported as one below.
+if [ -z "${orphan}" ] && [ "${OS}" = Darwin ] && [ -n "${cli_seen}" ] && [ -z "${offset_seen}" ]; then
+	# Said rather than dropped: with no offset nothing tells where the stream
+	# is, so there is no part-way to stop it at (logs/macos-host.md).
+	info "SKIPPED: lsof gave no offset for the docker CLI's stdin, so the restore could not be stopped part-way"
+	wait "${restore_pid}" || fail "the restore failed"
+else
+	[ -n "${orphan}" ] ||
+		fail "the restore never stopped part-way through writing a volume, so the kill had nowhere to land"
+	# Let go while the manager dies, and stopped again once it is gone: the kill
+	# orphans the CLI's process group, and the kernel hangs up on a stopped member
+	# of an orphaned group, which the CLI does not survive.
+	kill -CONT "${orphan}"
+	kill -9 "${restore_pid}" 2>/dev/null || true
+	wait "${restore_pid}" 2>/dev/null || true
+	kill -STOP "${orphan}" 2>/dev/null ||
+		fail "the docker CLI ended with the manager, so the resume has no earlier writer to meet"
+	[ -n "$(docker ps -q --filter id="${helper}")" ] ||
+		fail "the helper did not outlive the manager, so the resume has no earlier writer to meet"
+	tail -1 "${journal}" | jq -e '.type == "restore" and .status == "running" and
+		(.steps[] | select(.id == "restore-volumes") | .status == "running")' >/dev/null ||
+		fail "the killed restore did not leave restore-volumes running in the journal"
+	info "killed mid-volume; the journal holds the wreck"
 
-"${MORZER}" --root "${ROOT}" restore --resume --force --confirm "${installation}"
-running_on=$(docker ps -q --filter id="${helper}")
-kill -9 "${orphan}" 2>/dev/null || true
-[ -z "${running_on}" ] ||
-	fail "the resumed restore wrote the volume beside the writer the killed run left behind"
-assert_running 2
-[ "$("${MORZER}" --root "${ROOT}" exec app -- cat /var/lib/demo/uploads/resume-marker)" = "resume-marker" ] ||
-	fail "the resumed restore did not bring the volume's file back"
-[ "$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)" = "${filler_sum}" ] ||
-	fail "the resumed restore left the half-written volume behind"
+	"${MORZER}" --root "${ROOT}" restore --resume --force --confirm "${installation}"
+	running_on=$(docker ps -q --filter id="${helper}")
+	kill -9 "${orphan}" 2>/dev/null || true
+	[ -z "${running_on}" ] ||
+		fail "the resumed restore wrote the volume beside the writer the killed run left behind"
+	assert_running 2
+	[ "$("${MORZER}" --root "${ROOT}" exec app -- cat /var/lib/demo/uploads/resume-marker)" = "resume-marker" ] ||
+		fail "the resumed restore did not bring the volume's file back"
+	[ "$("${MORZER}" --root "${ROOT}" exec app -- sha256sum /var/lib/demo/uploads/filler | cut -d' ' -f1)" = "${filler_sum}" ] ||
+		fail "the resumed restore left the half-written volume behind"
+	info "resumed; the volume reads back whole"
+fi
 "${MORZER}" --root "${ROOT}" exec app -- rm -f /var/lib/demo/uploads/filler /var/lib/demo/uploads/resume-marker
-info "resumed; the volume reads back whole"
 
 # ----------------------------------------------------------------------------
 # A crash mid-update: SIGKILL, the artifact every other test tier only
@@ -879,9 +982,10 @@ BUNDLE=$(jq -r '.data.path' "${WORK}/support.json")
 [ -f "${BUNDLE}" ] || fail "support bundle reported ${BUNDLE}, which does not exist"
 
 # With `tar`, not with the manager: the recipient of this file has neither
-# morzer nor a reason to install it.
-tar --zstd -tf "${BUNDLE}" >"${WORK}/support-entries.txt" 2>/dev/null ||
-	fail "the archive does not open with tar --zstd"
+# morzer nor a reason to install it. GNU's is told it is zstd, and a Mac's
+# reads it unasked.
+{ tar --zstd -tf "${BUNDLE}" 2>/dev/null || tar -tf "${BUNDLE}" 2>/dev/null; } >"${WORK}/support-entries.txt" ||
+	fail "the archive does not open with tar"
 grep -qx 'meta.json' "${WORK}/support-entries.txt" ||
 	fail "the archive has no meta.json: $(cat "${WORK}/support-entries.txt")"
 
@@ -895,7 +999,7 @@ step "the same run, as an operator sees it"
 (cd "${WORK}" && "${MORZER}" --root "${ROOT}" support bundle) ||
 	fail "support bundle failed in plain mode"
 
-BUNDLE_BYTES=$(stat -c%s "${BUNDLE}")
+BUNDLE_BYTES=$(($(wc -c <"${BUNDLE}")))
 JOURNAL_BYTES=$(jq -r '[.data.entries[] | select(.name == "journal.jsonl") | .bytes] | first // 0' "${WORK}/support.json")
 LOG_BYTES=$(jq -r '[.data.entries[] | select(.name | startswith("logs/")) | .bytes] | add // 0' "${WORK}/support.json")
 info "archive ${BUNDLE_BYTES} B compressed; journal ${JOURNAL_BYTES} B; logs ${LOG_BYTES} B uncompressed"
@@ -1018,7 +1122,7 @@ step "the same listing, as an operator sees it"
 "${MORZER}" --root "${ROOT}" fleet ls "file://${FLEET_TARGET}" ||
 	fail "fleet ls failed in plain mode"
 
-FLEET_BYTES=$(stat -c%s "${FLEET_TARGET}/${FLEET_KEY}")
+FLEET_BYTES=$(($(wc -c <"${FLEET_TARGET}/${FLEET_KEY}")))
 info "the published row is ${FLEET_BYTES} B"
 
 # ----------------------------------------------------------------------------
@@ -1276,8 +1380,14 @@ step "a container that is not root reads the secret given to its user"
 # sops is mounted from the host, so it has to run in a busybox container. CI
 # installs the static release binary; a distribution's build is usually linked
 # against the host's libc, and ACCEPTANCE_SOPS names a static one instead.
+#
+# A Mac's binary does not run in a Linux container, and Docker Desktop carries
+# no owner into one (RFC 0055 §13 S2), so a Mac checks decision 17 in the step
+# after this one instead.
 OWNER_SOPS="${ACCEPTANCE_SOPS:-$(command -v sops)}"
-if ! docker run --rm --volume "${OWNER_SOPS}:/usr/local/bin/sops:ro" "${HELPER_IMAGE}" \
+if [ "${OS}" = Darwin ]; then
+	info "SKIPPED on macOS: the next step checks the owner a Mac gives secrets"
+elif ! docker run --rm --volume "${OWNER_SOPS}:/usr/local/bin/sops:ro" "${HELPER_IMAGE}" \
 	sops --version --disable-version-check >/dev/null 2>&1; then
 	[ -z "${CI:-}" ] ||
 		fail "${OWNER_SOPS} does not run in a busybox container; CI installs a static sops"
@@ -1364,6 +1474,26 @@ EOF
 	info "after a rotation, 65532 reads the new value"
 fi
 
+if [ "${OS}" = Darwin ]; then
+	step "a service reads a secret rendered for the user who runs the engine"
+	# RFC 0055 decision 17: Docker Desktop reads the host as that user, the
+	# owner of the socket /var/run/docker.sock names, so every rendered
+	# secret is theirs at 0400, in a directory of theirs at 0700, and any
+	# service reads it.
+	engine_user=$(stat -L -f %Su /var/run/docker.sock)
+	for path in "${RUN_DIR}/secrets" "${RUN_DIR}/secrets/db_password"; do
+		[ "$(stat -f %Su "${path}")" = "${engine_user}" ] ||
+			fail "${path} is $(stat -f %Su "${path}")'s, not ${engine_user}'s, who runs the engine"
+	done
+	[ "$(stat -f %Lp "${RUN_DIR}/secrets")" = 700 ] ||
+		fail "the secrets directory is $(stat -f %Lp "${RUN_DIR}/secrets"), not 700"
+	[ "$(stat -f %Lp "${RUN_DIR}/secrets/db_password")" = 400 ] ||
+		fail "db_password is $(stat -f %Lp "${RUN_DIR}/secrets/db_password"), not 400"
+	[ "$("${MORZER}" --root "${ROOT}" exec app -- cat /run/secrets/db_password)" = "$(cat "${RUN_DIR}/secrets/db_password")" ] ||
+		fail "the app does not read the db_password rendered for ${engine_user}"
+	info "the secrets are ${engine_user}'s, 0700 and 0400, and the app reads db_password"
+fi
+
 step "the journal recorded every operation"
 status_field '.data.last_operation.type'
 for op in init apply backup restore update; do
@@ -1398,8 +1528,8 @@ prepare_bundle testdata/bundle "${BUNDLED}"
 # Only `app` travels. The mixed case is the design -- a vendor ships their two
 # private images and keeps pulling postgres -- and it is the one that neither a
 # bundle-everything nor a bundle-nothing scenario can show.
-sed -i \
-	-e "s|^  app: .*|  app:\n    ref: ${REGISTRY}/demo/app@${APP_DIGEST}\n    from: bundle|" \
+sed_in_place \
+	-e "s|^  app: .*|  app:${nl}    ref: ${REGISTRY}/demo/app@${APP_DIGEST}${nl}    from: bundle|" \
 	"${BUNDLED}/manifest.yaml"
 grep -q '    from: bundle' "${BUNDLED}/manifest.yaml" ||
 	fail "the manifest rewrite did not take; nothing below would be testing bundling"
@@ -1439,7 +1569,7 @@ AIR_ROOT="${WORK}/airgapped-root"
 
 "${MORZER}" --root "${AIR_ROOT}" apply
 
-running=$(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)
+running=$(($(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)))
 [ "${running}" = "2" ] ||
 	fail "expected 2 running container(s) after the air-gapped install, found ${running}"
 info "2 container(s) running, with no registry in existence"
