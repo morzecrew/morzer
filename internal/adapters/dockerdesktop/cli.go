@@ -463,6 +463,11 @@ func (e *Engine) fromPath() (ports.EngineCLI, string, error) {
 	}
 	dirs = append(dirs, pluginDirs...)
 	for _, dir := range dirs {
+		// A relative one names a different directory for every process,
+		// a hook's among them, which runs from its release.
+		if !filepath.IsAbs(dir) {
+			continue
+		}
 		plugin := filepath.Join(dir, "docker-compose")
 		if !exists(plugin) {
 			continue

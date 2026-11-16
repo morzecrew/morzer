@@ -195,6 +195,24 @@ func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
 	}
 }
 
+// A relative plugin directory in root's config names a different directory
+// for every process, a hook's among them, which runs from its release, so it
+// is never the one the manager's config names.
+func TestARelativePluginDirectoryIsNotSearched(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	r.onPath["docker"] = "/opt/homebrew/bin/docker"
+	here := t.TempDir()
+	t.Chdir(here)
+	require.NoError(t, os.MkdirAll(filepath.Join(here, "plugins"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(here, "plugins", "docker-compose"), nil, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), []byte(`{"cliPluginsExtraDirs": ["plugins"]}`), 0o600))
+
+	_, err := r.engine().Settle(context.Background())
+
+	require.ErrorContains(t, err, "has no Compose plugin")
+}
+
 // A copy that fails the check is never put in place: the copies checked before
 // stay the ones root runs.
 func TestACopyThatFailsItsSignatureCheckIsNotRun(t *testing.T) {
