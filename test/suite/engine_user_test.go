@@ -99,6 +99,41 @@ func TestTheEngineUserOwnsWhatAContainerReadsAndWrites(t *testing.T) {
 	assert.Contains(t, check.Message, "owner is not enforced on this host")
 }
 
+// A container reads a file only when that user can, and no group holds that
+// user alone, so the rendered configuration stays root's and every account may
+// read it (RFC 0055 decision 16). On an engine that reads as root, its mode is
+// the release's.
+func TestTheEngineUserReadsTheRenderedConfiguration(t *testing.T) {
+	uid, gid := givableOwner(t)
+	h := onEngineAsUser(t, func() (int, int, error) { return uid, gid, nil })
+	config := filepath.Join(h.Root, "etc", "demo", "application.yaml")
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	info, err := os.Stat(config)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "the release declares 0640")
+	assert.Equal(t, [2]int{os.Geteuid(), os.Getegid()}, ownerOf(t, config), "the configuration was given away")
+
+	// The same bytes at a mode that user cannot read, as a build before this
+	// one rendered them, or a hand left them, are not converged.
+	require.NoError(t, os.Chmod(config, 0o640))
+	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	info, err = os.Stat(config)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "a file with the same bytes kept a mode that user cannot read")
+
+	h = newHarness(t)
+	h.install()
+	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	info, err = os.Stat(filepath.Join(h.Root, "etc", "demo", "application.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm(), "an engine that reads as root got another mode")
+}
+
 // Who runs the engine is read before anything is rendered or started, and not
 // knowing fails the render, with nothing written or started to undo.
 func TestAnUnknownEngineUserRefusesBeforeAnythingStarts(t *testing.T) {
