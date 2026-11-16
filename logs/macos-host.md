@@ -718,3 +718,23 @@ evidence: .goreleaser.yaml:21-28
 action: decided
 proposal: ASSUMED — `just acceptance-record <version>` writes the record from a passing run, headed by the macOS and Docker Desktop versions and the commit; the release run checks only that it exists
 ```
+
+## The rendered configuration on a Mac
+
+On branch `rfc-0055-config-readable` from `main` at `c8af9465`, found in
+review of the acceptance run's darwin path.
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: drift
+at: 2026-11-16T21:58:31Z
+attempt: 1
+claim: Decision 16 says a file a container reads has to be readable by more than root, since no group holds the user who runs Docker Desktop alone, and accepts that other accounts can read it. The darwin layout rendered configuration as Linux does, root's at the release's mode, `0640` in the demo, which that user cannot read, so a bind of it fails as a `0400` file in a `0755` directory did (§13, the third run). Where the engine reads the host as one user, each rendered configuration file now adds read for others to the release's mode, and stays root's. No released manager rendered one on a Mac, so no installation holds a file at the old mode.
+evidence: internal/lifecycle/ops/apply.go:691-697
+action: departed
+proposal: ASSUMED — on darwin rendered configuration is root's, at the release's mode with read for others added, since a container reads it as the user who runs Docker Desktop
+```
+
+**Drift count: 1.** The darwin layout built the rendered configuration's mode
+otherwise than decision 16 said, above.
