@@ -34,7 +34,7 @@ type ManagerRelease struct {
 // ManagerArchive is the name the release pipeline gives release v's archive
 // for the platform this binary was built for.
 func ManagerArchive(v domain.Version) string {
-	return fmt.Sprintf("morzer_%s_linux_%s.tar.zst", v, runtime.GOARCH)
+	return fmt.Sprintf("morzer_%s_%s_%s.tar.zst", v, runtime.GOOS, runtime.GOARCH)
 }
 
 // ManagerUnpacker turns a manager release's files into a binary this machine

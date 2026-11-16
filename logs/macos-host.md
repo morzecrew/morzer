@@ -662,3 +662,59 @@ evidence: internal/adapters/runtime/compose/volumes.go:715-745
 action: decided
 proposal: UNLISTED — the probe pulls the pinned helper image when it is absent, and a probe that cannot run warns rather than refuses
 ```
+
+## The binary
+
+On branch `rfc-0055-release` from `main` at `5e072bc0`. It lands as two pull
+requests: `pidStart`, the darwin archive, `install.sh` and `self-update`
+first, then the acceptance run's darwin path and its record. The plan found
+four questions the RFC does not settle, and the author ruled them on
+2026-11-16 as the plan leaned.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T20:01:35Z
+attempt: 1
+claim: §5.8 has `pidStart` convert `p_starttime` to the unit the record stores, which on Linux is clock ticks since boot. On darwin that conversion needs `kern.boottime`, which the kernel moves when the clock is stepped, so a start converted after a step no longer equals the one recorded before it: a live holder reads as a contradiction and its lock is taken while it runs. Ruled by the author: on darwin the record stores `p_starttime` itself, in microseconds since the epoch, which is fixed for a process's life. A record is read only on the host that wrote it, and the field's contract is the kernel's start time for the PID, not a unit (`internal/ports/state.go:111-122`).
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:453-454
+action: decided
+proposal: ASSUMED — on darwin `pidStart` is `p_starttime` in microseconds since the epoch, compared only on the host that recorded it
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T20:01:35Z
+attempt: 1
+claim: Decision 20 leaves the darwin archive out of a release with no acceptance record, so the newest release may have none. `self-update` and `install.sh` take the newest release, and nothing says what they do on a Mac then. Ruled by the author: they refuse, naming the release and saying it publishes no darwin/arm64 archive, and point at `--to` and `--version` for one that does. Refused: taking the newest release that has one, which would make "latest" a different version on each platform.
+evidence: internal/adapters/managerfeed/github/github.go:82-95
+action: decided
+proposal: ASSUMED — when the release `self-update` or `install.sh` would take has no archive for the machine, they refuse, naming the release and pointing at `--to` or `--version`
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-16T20:01:35Z
+attempt: 1
+claim: Decision 9 has the acceptance run on the author's Mac, and §5.10 gives the script a darwin path for its tmpfs and ownership checks. On Linux the script runs as its user under a `--root` it creates. On darwin two of P1's checks refuse that: `storage.run-directory`, since that user can write where `RunDir` sits (`internal/lifecycle/ops/doctor.go:916-935`), and the engine, which keeps no CLI under a manager directory another user can change. Ruled by the author: on darwin the script requires `sudo` and creates its root under directories only root can change. Its own `docker`, `docker compose` and registry calls run as `$SUDO_USER`, since root has no Compose plugin until the manager copies one (S3).
+evidence: internal/adapters/dockerdesktop/cli.go:180-190
+action: decided
+proposal: ASSUMED — on darwin the acceptance run requires `sudo`, keeps its root under directories only root can change, and makes its own engine calls as `$SUDO_USER`
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T20:01:35Z
+attempt: 1
+claim: Decision 20 names the record, the output of decision 9's run, and not how it is made. Ruled by the author: `just acceptance-record <version>` runs the acceptance and writes its output to `.github/macos-acceptance/v<version>.txt`, headed by `sw_vers`, Docker Desktop's version and the commit it ran at. Only a run that passes writes it, since the file's presence is what builds the archive. The release run checks only that the file exists, as decision 20 says.
+evidence: .goreleaser.yaml:21-28
+action: decided
+proposal: ASSUMED — `just acceptance-record <version>` writes the record from a passing run, headed by the macOS and Docker Desktop versions and the commit; the release run checks only that it exists
+```

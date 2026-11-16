@@ -7,6 +7,7 @@
 package github
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -99,12 +101,41 @@ func (f *Feed) Newest(ctx context.Context) (ports.ManagerRelease, error) {
 func (f *Feed) Download(ctx context.Context, v domain.Version, dir string) error {
 	ctx, cancel := context.WithTimeout(ctx, DownloadTimeout)
 	defer cancel()
-	for _, name := range []string{ports.ManagerArchive(v), ports.SumsFileName, ports.SignatureFileName} {
+	archive := ports.ManagerArchive(v)
+	for _, name := range []string{ports.SumsFileName, ports.SignatureFileName, archive} {
+		// The sums list every archive the release carries, so one that
+		// carries none for this machine, as a release without macOS's
+		// acceptance record does, is told from one not published
+		// (logs/macos-host.md). Unpack checks them against the signature.
+		if name == archive && !lists(filepath.Join(dir, ports.SumsFileName), archive) {
+			return domain.ValidationError(nil, "release %s publishes no archive for %s/%s", v, runtime.GOOS, runtime.GOARCH).
+				WithHint("name a release that does with --to; the releases are listed at https://github.com/morzecrew/morzer/releases")
+		}
 		if err := f.download(ctx, f.downloads+"/v"+v.String()+"/"+name, filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// lists reports whether a sums file has a line for name, read as the signed
+// unpacker reads it.
+func lists(sums, name string) bool {
+	f, err := os.Open(sums) //nolint:gosec // a file Download wrote, in a directory its caller made
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	// Line by line: the file may be as large as any download, where the
+	// unpacker reads no more than a megabyte of it.
+	lines := bufio.NewScanner(f)
+	for lines.Scan() {
+		// "<hash>  <name>" in text mode, "<hash> *<name>" in binary mode.
+		if fields := strings.Fields(lines.Text()); len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Feed) download(ctx context.Context, url, dst string) error {

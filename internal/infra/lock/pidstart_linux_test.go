@@ -1,8 +1,8 @@
 package lock
 
 // The /proc/<pid>/stat parser, which is Linux by subject and not only by
-// plumbing: `pidstart_darwin.go` answers "cannot determine" and has nothing to
-// parse. Named for the file under test so the build constraint is the filename
+// plumbing: `pidstart_darwin.go` reads a struct from `sysctl` and has nothing
+// to parse. Named for the file under test so the build constraint is the filename
 // rather than a tag somebody has to notice (RFC 0029 decision 8).
 
 import (
@@ -112,7 +112,7 @@ func TestParsePIDStartAgreesWithProcfs(t *testing.T) {
 // A PID with no /proc entry is unknown, not an answer.
 //
 // This is the read half's only branch, and it is the same fail-safe direction
-// `pidstart_darwin.go` takes by construction: zero reaches
+// `pidstart_darwin.go` takes for a PID that has gone: zero reaches
 // `startTimeContradicts` as silence, so the holder is assumed live and the lock
 // is not stolen. Anything else here -- a sentinel, a panic, a partial read
 // returned as a number -- would make a departed process contradict a live

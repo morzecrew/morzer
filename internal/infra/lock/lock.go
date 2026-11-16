@@ -328,8 +328,8 @@ func ownerAlive(o ports.LockOwner) bool {
 // recorded holder is gone.
 //
 // Split from the call so the branch can be driven directly, which RFC 0029 §8
-// requires of P1: on darwin `pidStart` cannot answer, and "cannot determine"
-// has to mean "assume the holder is live". That is the direction the whole
+// requires of P1: when `pidStart` cannot answer, "cannot determine" has to
+// mean "assume the holder is live". That is the direction the whole
 // guard is asymmetric in -- a stale lock costs an operator a wait, a stolen one
 // costs two deployments running against one installation -- and it is not
 // reachable from a Linux test any other way, because provoking a `/proc` read
