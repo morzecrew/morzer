@@ -177,8 +177,12 @@ aarch64 | arm64) arch=arm64 ;;
 esac
 
 # Apple silicon alone: Intel Macs are not supported (RFC 0055 decision 12).
+# Rosetta tells a shell on Apple silicon that it runs on x86_64, so the
+# hardware is asked, and the arm64 build runs natively beside the shell.
 if [ "$goos" = darwin ] && [ "$arch" = amd64 ]; then
-	die "Intel Macs are not supported: the macOS build is darwin/arm64 only"
+	[ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] ||
+		die "Intel Macs are not supported: the macOS build is darwin/arm64 only"
+	arch=arm64
 fi
 
 # Refused by name rather than guessed: guessing downloads an archive whose

@@ -356,14 +356,21 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 
 	for _, tc := range []struct {
 		name, os, machine string
-		wantRefusal       bool
-		wantSays          []string
+		// sysctl is what `sysctl -n hw.optional.arm64` prints, and exits 1
+		// as an Intel Mac does when it is empty.
+		sysctl      string
+		wantRefusal bool
+		wantSays    []string
 	}{
 		{name: "macOS on Apple silicon", os: "Darwin", machine: "arm64",
 			wantSays: []string{"morzer_" + fixtureVersion + "_darwin_arm64.tar.zst"}},
 		// RFC 0055 decision 12: Intel Macs are not supported.
 		{name: "an Intel Mac", os: "Darwin", machine: "x86_64", wantRefusal: true,
 			wantSays: []string{"Intel Macs are not supported", "darwin/arm64"}},
+		// Rosetta tells a shell it runs on x86_64, and the arm64 build
+		// runs natively beside it.
+		{name: "a shell under Rosetta on Apple silicon", os: "Darwin", machine: "x86_64", sysctl: "1",
+			wantSays: []string{"morzer_" + fixtureVersion + "_darwin_arm64.tar.zst"}},
 		{name: "FreeBSD", os: "FreeBSD", machine: "amd64", wantRefusal: true,
 			wantSays: []string{"FreeBSD"}},
 		{name: "32-bit arm", os: "Linux", machine: "armv7l", wantRefusal: true,
@@ -383,6 +390,8 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 					"-s) printf '" + tc.os + "\\n' ;;\n" +
 					"-m) printf '" + tc.machine + "\\n' ;;\n" +
 					"-r) printf '6.6.0\\n' ;;\nesac\n",
+				"sysctl": "#!/bin/sh\n[ \"$*\" = '-n hw.optional.arm64' ] && [ -n '" + tc.sysctl + "' ] || exit 1\n" +
+					"printf '" + tc.sysctl + "\\n'\n",
 			})
 
 			out := run(t, script(t, rel),
