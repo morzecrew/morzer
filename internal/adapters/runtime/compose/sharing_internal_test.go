@@ -22,8 +22,12 @@ import (
 // shellContainer runs the probe's script with /bin/sh, each bind's target
 // replaced by its source, so the script that reaches a container is the one
 // tested. It reads a --mount as docker does, as one CSV record, and quotes
-// each source for the shell, as a container's own path needs none.
-type shellContainer struct{ fakes.Scripted }
+// each source for the shell, as a container's own path needs none. A path
+// stands for an image's PATH.
+type shellContainer struct {
+	fakes.Scripted
+	path string
+}
 
 func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
 	var pairs []string
@@ -43,7 +47,11 @@ func (s *shellContainer) Run(ctx context.Context, cmd exec.Command) (exec.Result
 		pairs = append(pairs, fields["target"], "'"+strings.ReplaceAll(fields["source"], "'", `'\''`)+"'")
 	}
 	script := strings.NewReplacer(pairs...).Replace(cmd.Argv[len(cmd.Argv)-1])
-	out, err := osexec.CommandContext(ctx, "/bin/sh", "-c", script).Output()
+	sh := osexec.CommandContext(ctx, "/bin/sh", "-c", script)
+	if s.path != "" {
+		sh.Env = []string{"PATH=" + s.path}
+	}
+	out, err := sh.Output()
 	return exec.Result{Stdout: string(out)}, err
 }
 
@@ -162,6 +170,25 @@ func TestAProbeThatDidNotRunIsNotARefusal(t *testing.T) {
 			assert.Contains(t, domain.AsError(err).Message, tc.says)
 		})
 	}
+}
+
+// An image with a shell and no mktemp, which is not POSIX's, is a probe that
+// did not run rather than a directory a container cannot write.
+func TestAHelperWithoutTheProbesToolsIsNotARefusal(t *testing.T) {
+	bin := t.TempDir()
+	for _, tool := range []string{"ls", "rm"} {
+		found, err := osexec.LookPath(tool)
+		require.NoError(t, err)
+		require.NoError(t, os.Symlink(found, filepath.Join(bin, tool)))
+	}
+	r := New(&shellContainer{path: bin})
+
+	err := r.ProbeFileSharing(context.Background(), []string{t.TempDir()}, []string{t.TempDir()})
+
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, domain.ErrPreflight), "a probe that did not run refused: %v", err)
+	assert.Contains(t, domain.AsError(err).Message, "has no mktemp")
+	assert.Contains(t, domain.AsError(err).Hint, "`ls`, `mktemp` and `rm`")
 }
 
 // An override that names no digest runs nothing with the data directory bound.

@@ -47,7 +47,10 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	}
 
 	argv := []string{r.docker, "run", "--rm", "--network", "none"}
+	// First, so an override with a shell and no mktemp, which is not
+	// POSIX's, is a probe that did not run rather than a directory refused.
 	var script strings.Builder
+	script.WriteString("for t in ls mktemp rm; do command -v $t >/dev/null || echo lacks $t; done\n")
 	for i, dir := range read {
 		target := fmt.Sprintf("/probe/read/%d", i)
 		argv = append(argv, "--mount", bindMount(dir, target, "readonly"))
@@ -82,7 +85,7 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 		dirs []string
 		verb string
 	}{"unlistable": {read, "list"}, "unwritable": {write, "write"}}
-	var found []string
+	var found, lacking []string
 	probed := false
 	for _, line := range strings.Split(res.Stdout, "\n") {
 		word, index, _ := strings.Cut(strings.TrimSpace(line), " ")
@@ -90,13 +93,20 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 		if i, err := strconv.Atoi(index); err == nil && i >= 0 && i < len(f.dirs) {
 			found = append(found, f.verb+" "+f.dirs[i])
 		}
+		if word == "lacks" {
+			lacking = append(lacking, index)
+		}
 		probed = probed || word == "probed"
 	}
+	hint := fmt.Sprintf("the probe runs `sh`, `ls`, `mktemp` and `rm` in the helper image; set %s to an "+
+		"image with them, or leave it unset", helperImageEnv)
 	if !probed {
 		return domain.RuntimeError(nil, "the file-sharing probe through %s printed no result",
-			domain.ShortImageRef(ref)).
-			WithHint("the probe runs `sh` in the helper image; set %s to an image with a POSIX shell, "+
-				"or leave it unset", helperImageEnv)
+			domain.ShortImageRef(ref)).WithHint("%s", hint)
+	}
+	if len(lacking) > 0 {
+		return domain.RuntimeError(nil, "the helper image %s has no %s, which the file-sharing probe runs",
+			domain.ShortImageRef(ref), strings.Join(lacking, ", ")).WithHint("%s", hint)
 	}
 	if len(found) > 0 {
 		return domain.Preflight(nil, "a container cannot %s", strings.Join(found, ", or ")).
