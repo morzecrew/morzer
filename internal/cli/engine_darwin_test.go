@@ -19,10 +19,13 @@ func TestOnAMacNoEngineCommandRunsUnsettled(t *testing.T) {
 	t.Setenv("PATH", os.Getenv("PATH"))
 	paths := domain.Paths{VarDir: t.TempDir() + "/missing"}
 
-	runner, settle := engineRunner(exec.New(), paths)
+	runner, settle, beforeHook := engineRunner(exec.New(), paths)
 
-	if settle == nil {
+	if settle == nil || beforeHook == nil {
 		t.Fatal("no engine was wired")
+	}
+	if err := beforeHook(context.Background()); err == nil || !strings.Contains(err.Error(), "which `init` creates") {
+		t.Errorf("a hook would run with no CLI settled: %v", err)
 	}
 	_, err := runner.Run(context.Background(), exec.Command{Argv: []string{"docker", "version"}})
 	if err == nil || !strings.Contains(err.Error(), "which `init` creates") {

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -32,9 +33,11 @@ func newRig(t *testing.T) *rig {
 		runner: fakes.NewScripted(), onPath: map[string]string{}, replaceable: map[string]string{},
 	}
 	r.desktop(t, "4.44.1", "cli 1", "compose 1")
-	saved := pluginDirs
+	saved, savedSystem := pluginDirs, systemPluginDirs
 	pluginDirs = []string{t.TempDir()}
-	t.Cleanup(func() { pluginDirs = saved })
+	// One system directory that exists, and one that does not.
+	systemPluginDirs = []string{t.TempDir(), filepath.Join(t.TempDir(), "lib", "docker", "cli-plugins")}
+	t.Cleanup(func() { pluginDirs, systemPluginDirs = saved, savedSystem })
 	return r
 }
 
@@ -119,6 +122,64 @@ func TestDockerDesktopsCLIRunsFromACheckedCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "cli 2", read(t, cli.Path))
 	assert.Len(t, codesigned(r.runner), 2)
+}
+
+// A hook waits on more than the CLI: each directory the CLI searches for
+// plugins, and every entry in it, has to be root's alone, and one that does not
+// exist has to sit where only root could make it, since a hook that lists
+// plugins runs each one as root (decision 24).
+func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
+	for name, tc := range map[string]struct {
+		arrange func(t *testing.T, r *rig, existing, missing string)
+		says    string // "" when the hook runs
+	}{
+		"everything root's": {arrange: func(*testing.T, *rig, string, string) {}},
+		"a user's plugin in a system directory": {
+			arrange: func(t *testing.T, r *rig, existing, _ string) {
+				plugin := filepath.Join(existing, "docker-scout")
+				require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+				r.replaceable[plugin] = plugin + " is owned by uid 501, not root"
+			},
+			says: "docker-scout is owned by uid 501, not root",
+		},
+		"a system directory a group can write": {
+			arrange: func(_ *testing.T, r *rig, existing, _ string) {
+				r.replaceable[existing] = existing + " is writable by group 80"
+			},
+			says: "is writable by group 80",
+		},
+		"a missing one, where someone else could make it": {
+			arrange: func(_ *testing.T, r *rig, _, missing string) {
+				above := filepath.Dir(filepath.Dir(filepath.Dir(missing)))
+				r.replaceable[above] = above + " is writable by every user"
+			},
+			says: "is writable by every user",
+		},
+		"a plugin beside Docker Desktop's copies": {
+			arrange: func(t *testing.T, r *rig, _, _ string) {
+				plugin := filepath.Join(r.managerDir, "docker", "cli-plugins", "docker-extra")
+				require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o700))
+				require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+				r.replaceable[plugin] = plugin + " is owned by uid 501, not root"
+			},
+			says: "docker-extra is owned by uid 501, not root",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			tc.arrange(t, r, systemPluginDirs[0], systemPluginDirs[1])
+
+			err := r.engine().BeforeHook(context.Background())
+
+			if tc.says == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, domain.ErrPreflight)
+			assert.Contains(t, domain.AsError(err).Message, "a hook may list the docker CLI's plugins")
+			assert.Contains(t, domain.AsError(err).Message, tc.says)
+		})
+	}
 }
 
 // A copy that fails the check is never put in place: the copies checked before
