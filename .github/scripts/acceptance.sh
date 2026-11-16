@@ -818,10 +818,11 @@ restore_pid=$!
 # The services are down by now, so whatever mounts the volume is the helper.
 # The pattern is anchored to the docker CLI, so no shell whose command line
 # names the volume is stopped in its place.
-orphan="" helper="" offset_seen=""
+orphan="" helper="" cli_seen="" offset_seen=""
 for _ in $(seq 1 3000); do
 	cli=$(pgrep -f -- '^[^ ]*docker run .*demo_uploads:/dst' | head -1 || true)
 	if [ -n "${cli}" ] && kill -STOP "${cli}" 2>/dev/null; then
+		cli_seen=yes
 		stream_progress "${cli}"
 		[ -z "${streamed}" ] || offset_seen=yes
 		running=$(docker ps -q --filter volume=demo_uploads | head -1)
@@ -833,7 +834,9 @@ for _ in $(seq 1 3000); do
 	fi
 	sleep 0.01
 done
-if [ -z "${orphan}" ] && [ "${OS}" = Darwin ] && [ -z "${offset_seen}" ]; then
+# Only once the CLI was caught: one never found is a failure, whatever lsof can
+# say, and is reported as one below.
+if [ -z "${orphan}" ] && [ "${OS}" = Darwin ] && [ -n "${cli_seen}" ] && [ -z "${offset_seen}" ]; then
 	# Said rather than dropped: with no offset nothing tells where the stream
 	# is, so there is no part-way to stop it at (logs/macos-host.md).
 	info "SKIPPED: lsof gave no offset for the docker CLI's stdin, so the restore could not be stopped part-way"
