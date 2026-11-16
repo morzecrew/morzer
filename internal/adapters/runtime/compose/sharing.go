@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,9 +46,6 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 		return unpinnedHelper(ref)
 	}
 
-	// Named by this manager's pid, so a doctor beside an apply cannot remove
-	// the file the other is about to.
-	probe := fmt.Sprintf(".file-sharing-probe-%d", os.Getpid())
 	argv := []string{r.docker, "run", "--rm", "--network", "none"}
 	var script strings.Builder
 	for i, dir := range read {
@@ -60,10 +56,12 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	for i, dir := range write {
 		target := fmt.Sprintf("/probe/write/%d", i)
 		argv = append(argv, "--mount", bindMount(dir, target))
-		// touch, not `: >`: a redirection that fails on a special
-		// built-in ends a POSIX shell, and the probe with it.
-		fmt.Fprintf(&script, "{ touch %[1]s/%[3]s && rm %[1]s/%[3]s; } 2>/dev/null || echo unwritable %[2]d\n",
-			target, i, probe)
+		// mktemp creates a name nothing holds, so the rm removes only the
+		// probe's own file, and a doctor beside an apply cannot remove the
+		// other's. Not `: >`: a redirection that fails on a special built-in
+		// ends a POSIX shell, and the probe with it.
+		fmt.Fprintf(&script, "{ f=$(mktemp %s/.file-sharing-probe.XXXXXX) && rm \"$f\"; } 2>/dev/null || echo unwritable %d\n",
+			target, i)
 	}
 	// Last, so an image that ran something other than the script cannot
 	// pass for one that found nothing.

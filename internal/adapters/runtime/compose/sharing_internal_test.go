@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -59,12 +60,17 @@ func TestTheProbeListsWhatItReadsAndWritesWhatItWrites(t *testing.T) {
 	require.NoError(t, os.Chmod(sealed, 0o311))
 	require.NoError(t, os.Chmod(locked, 0o555))
 	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755); _ = os.Chmod(locked, 0o755) })
+	// Whatever the data directory already holds, a name the probe could pick
+	// among it.
+	kept := filepath.Join(data, fmt.Sprintf(".file-sharing-probe-%d", os.Getpid()))
+	require.NoError(t, os.WriteFile(kept, []byte("a service's"), 0o600))
 	r := New(&shellContainer{})
 
 	require.NoError(t, r.ProbeFileSharing(context.Background(), []string{etc}, []string{data}))
 	entries, err := os.ReadDir(data)
 	require.NoError(t, err)
-	assert.Empty(t, entries, "the probe's file was left in the data directory")
+	require.Len(t, entries, 1, "the probe's file was left in the data directory")
+	assert.FileExists(t, kept, "the probe removed a file it did not create")
 
 	err = r.ProbeFileSharing(context.Background(), []string{etc, sealed}, []string{data, locked})
 	require.ErrorIs(t, err, domain.ErrPreflight)
