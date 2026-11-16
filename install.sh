@@ -162,27 +162,9 @@ fi
 
 os="$(uname -s 2>/dev/null || echo unknown)"
 case "$os" in
-Linux) ;;
-Darwin)
-	# The refusal stands; the advice under it is what changed. It used to
-	# say "build from source" while the tree did not compile for darwin at
-	# all, so an hour of somebody's evening went into a suggestion that
-	# could not work. A refusal that tells you what to do instead has to be
-	# right about it.
-	#
-	# It is careful about what that buys, too: a binary that builds and
-	# runs. Whether it can drive a deployment against Docker Desktop is not
-	# something anyone has run yet, and promising it here would be the same
-	# defect one release later.
-	die "this installs Linux builds only, and there is no macOS build to point
-       at: the release matrix is linux/amd64 and linux/arm64.
-
-       Building from source does work: \`go build ./cmd/morzer\` with Go 1.26
-       or newer produces a binary that runs on macOS. That is a CLI for
-       authoring bundles and looking around -- running a deployment is a
-       Linux server's job, and this installer will not pretend otherwise."
-	;;
-*) die "unsupported operating system: ${os} (this installs Linux builds only)" ;;
+Linux) goos=linux ;;
+Darwin) goos=darwin ;;
+*) die "unsupported operating system: ${os} (published builds are for Linux and macOS)" ;;
 esac
 
 machine="$(uname -m 2>/dev/null || echo unknown)"
@@ -193,6 +175,11 @@ aarch64 | arm64) arch=arm64 ;;
 	die "unsupported architecture: ${machine} (published builds are amd64 and arm64)"
 	;;
 esac
+
+# Apple silicon alone: Intel Macs are not supported (RFC 0055 decision 12).
+if [ "$goos" = darwin ] && [ "$arch" = amd64 ]; then
+	die "Intel Macs are not supported: the macOS build is darwin/arm64 only"
+fi
 
 # Refused by name rather than guessed: guessing downloads an archive whose
 # binary the kernel will not exec, and that surfaces several steps later with a
@@ -341,6 +328,24 @@ fetch() {
 	fi
 }
 
+# sums_digest_of prints the digest the downloaded SHA256SUMS gives a name, and
+# nothing when it has no line for it.
+#
+# Read as fields rather than matched as a pattern: an archive name is full of
+# dots, and in a regular expression a dot matches anything. Comparing the name
+# field for equality is both simpler and exact.
+sums_digest_of() {
+	while read -r sums_digest sums_name; do
+		# `sha256sum` writes "<hash>  <name>" in text mode and "<hash> *<name>"
+		# in binary mode; both appear in the wild.
+		sums_name="${sums_name#\*}"
+		if [ "$sums_name" = "$1" ]; then
+			printf '%s\n' "$sums_digest"
+			return
+		fi
+	done <"${work}/SHA256SUMS"
+}
+
 sha256_of() {
 	if [ "$hasher" = sha256sum ]; then
 		sha256sum "$1" | awk '{print $1}'
@@ -378,7 +383,7 @@ else
 fi
 
 tag="v${version}"
-archive="${BINARY}_${version}_linux_${arch}.tar.zst"
+archive="${BINARY}_${version}_${goos}_${arch}.tar.zst"
 archive_url="${DOWNLOAD}/${tag}/${archive}"
 sums_url="${DOWNLOAD}/${tag}/SHA256SUMS"
 sig_url="${DOWNLOAD}/${tag}/SHA256SUMS.minisig"
@@ -451,9 +456,17 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT HUP INT TERM
 
 note "downloading ${archive} (${version})"
-fetch "$archive_url" "${work}/${archive}" ||
+if ! fetch "$archive_url" "${work}/${archive}"; then
+	# A release with no archive for this machine, as one without macOS's
+	# acceptance record has none for darwin, is told from one that is not
+	# published: its checksum file is there, without the archive's line.
+	if fetch "$sums_url" "${work}/SHA256SUMS" && [ -z "$(sums_digest_of "$archive")" ]; then
+		die "release ${version} publishes no ${goos}/${arch} archive
+       name a release that does with --version: https://github.com/${REPO}/releases"
+	fi
 	die "cannot download ${archive_url}
        check the version exists: https://github.com/${REPO}/releases"
+fi
 
 actual_digest="$(sha256_of "${work}/${archive}")"
 
@@ -475,19 +488,7 @@ fetch "$sums_url" "${work}/SHA256SUMS" || die "cannot download ${sums_url}"
 # were not downloaded -- and --ignore-missing, the usual way around that,
 # reports OK when *no* archive is present at all. That is the failure this
 # script exists to remove, and it is what the old instructions did.
-# Read as fields rather than matched as a pattern: an archive name is full of
-# dots, and in a regular expression a dot matches anything. Comparing the name
-# field for equality is both simpler and exact.
-expected_digest=""
-while read -r sums_digest sums_name; do
-	# `sha256sum` writes "<hash>  <name>" in text mode and "<hash> *<name>"
-	# in binary mode; both appear in the wild.
-	sums_name="${sums_name#\*}"
-	if [ "$sums_name" = "$archive" ]; then
-		expected_digest="$sums_digest"
-		break
-	fi
-done <"${work}/SHA256SUMS"
+expected_digest="$(sums_digest_of "$archive")"
 
 [ -n "$expected_digest" ] ||
 	die "SHA256SUMS has no line for ${archive}

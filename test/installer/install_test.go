@@ -359,25 +359,13 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 		wantRefusal       bool
 		wantSays          []string
 	}{
-		// The advice has to be true, which is the whole of RFC 0029 P1:
-		// this message told people to build from source for as long as
-		// the tree did not compile for darwin, so an hour went into a
-		// suggestion that could not work.
-		//
-		// The command is asserted verbatim because it is the sentence
-		// somebody acts on, and the bound is asserted alongside it
-		// because §5.3 requires the message not to promise that the
-		// binary drives a deployment — a refusal that over-promises is
-		// the same defect one release later.
-		{name: "macOS", os: "Darwin", machine: "arm64", wantRefusal: true,
-			wantSays: []string{
-				"Linux builds only", "no macOS build",
-				"go build ./cmd/morzer", "Go 1.26",
-				// Short enough not to be broken by the message's own
-				// wrapping, which is what an assertion on rendered
-				// text has to survive.
-				"Linux server's job",
-			}},
+		{name: "macOS on Apple silicon", os: "Darwin", machine: "arm64",
+			wantSays: []string{"morzer_" + fixtureVersion + "_darwin_arm64.tar.zst"}},
+		// RFC 0055 decision 12: Intel Macs are not supported.
+		{name: "an Intel Mac", os: "Darwin", machine: "x86_64", wantRefusal: true,
+			wantSays: []string{"Intel Macs are not supported", "darwin/arm64"}},
+		{name: "FreeBSD", os: "FreeBSD", machine: "amd64", wantRefusal: true,
+			wantSays: []string{"FreeBSD"}},
 		{name: "32-bit arm", os: "Linux", machine: "armv7l", wantRefusal: true,
 			wantSays: []string{"armv7l", "amd64 and arm64"}},
 		{name: "riscv", os: "Linux", machine: "riscv64", wantRefusal: true,
@@ -409,6 +397,28 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 			out.requireSays(t, tc.wantSays...)
 		})
 	}
+}
+
+// A release that publishes no archive for this machine, as one without macOS's
+// acceptance record publishes none for darwin, is named rather than reported
+// as a version that does not exist (RFC 0055 decision 20).
+func TestAReleaseWithoutThisMachinesArchiveIsNamed(t *testing.T) {
+	rel := newRelease(t, fixtureOptions{arch: "arm64"})
+	into := filepath.Join(t.TempDir(), "bin")
+	stubs := stubDir(t, map[string]string{
+		"uname": "#!/bin/sh\ncase \"$1\" in\n" +
+			"-s) printf 'Darwin\\n' ;;\n" +
+			"-m) printf 'arm64\\n' ;;\n" +
+			"-r) printf '25.5.0\\n' ;;\nesac\n",
+	})
+
+	out := run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: stubs},
+		"--version", fixtureVersion, "--dir", into)
+
+	out.requireFailed(t, "the release has no darwin/arm64 archive")
+	out.requireSays(t, "release "+fixtureVersion+" publishes no darwin/arm64 archive", "--version")
+	assertNothingInstalled(t, into)
 }
 
 func TestAShadowingBinaryIsNamedRatherThanIgnored(t *testing.T) {
