@@ -223,6 +223,27 @@ func TestARelativePluginDirectoryIsNotSearched(t *testing.T) {
 	require.ErrorContains(t, err, "has no Compose plugin")
 }
 
+// A directory whose name walks back past a link is one place to the kernel,
+// which lists it, and another to a lexical join, which is how the CLI names
+// each plugin it runs and how the manager checks one, so it is not searched
+// either.
+func TestAPluginDirectoryThatIsNotCleanIsNotSearched(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	r.onPath["docker"] = "/opt/homebrew/bin/docker"
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "extra"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "extra", "docker-compose"), nil, 0o755))
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(base, "link")))
+	config, err := json.Marshal(map[string][]string{"cliPluginsExtraDirs": {base + "/link/../extra"}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), config, 0o600))
+
+	_, err = r.engine().Settle(context.Background())
+
+	require.ErrorContains(t, err, "has no Compose plugin")
+}
+
 // A copy that fails the check is never put in place: the copies checked before
 // stay the ones root runs.
 func TestACopyThatFailsItsSignatureCheckIsNotRun(t *testing.T) {

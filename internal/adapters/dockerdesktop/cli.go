@@ -464,8 +464,11 @@ func (e *Engine) fromPath() (ports.EngineCLI, string, error) {
 	dirs = append(dirs, pluginDirs...)
 	for _, dir := range dirs {
 		// A relative one names a different directory for every process,
-		// a hook's among them, which runs from its release.
-		if !filepath.IsAbs(dir) {
+		// a hook's among them, which runs from its release. One with a
+		// `..` the kernel reads past a link and a lexical join does not,
+		// so the CLI would list one directory and run plugins named
+		// from another; one clean and absolute is the same to both.
+		if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 			continue
 		}
 		plugin := filepath.Join(dir, "docker-compose")
