@@ -1,6 +1,7 @@
 package atomicfs
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"syscall"
@@ -116,11 +117,61 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 					path = p
 				}
 			}
-			who, err := replaceableByNonRoot(path, lstat, readlink)
+			who, err := replaceableByNonRoot(path, lstat, readlink, noACL)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, who)
 		})
 	}
+}
+
+// noACL is a filesystem whose entries carry no ACL.
+func noACL(string, bool) (string, error) { return "", nil }
+
+// An entry's ACL is read for every entry the walk meets, / and links among
+// them, and the first that lets someone else in is the answer. One that cannot
+// be read stops the walk, so nothing past it is passed.
+func TestAnACLOnTheWayToTheBinaryCounts(t *testing.T) {
+	root := statInfo{mode: fs.ModeDir | 0o755}
+	tree := map[string]statInfo{
+		"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/usr/local/bin/morzer"}, "/opt/safe": root, "/opt": root,
+		"/usr/local/bin/morzer": {mode: 0o755}, "/usr/local/bin": root, "/usr/local": root, "/usr": root,
+	}
+	lstat := func(p string) (fs.FileInfo, error) {
+		if p == "/" {
+			return root, nil
+		}
+		if info, ok := tree[p]; ok {
+			return info, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	readlink := func(p string) (string, error) { return tree[p].link, nil }
+
+	for granted, dir := range map[string]bool{"/": true, "/usr/local": true, "/opt/safe/morzer": false, "/usr/local/bin/morzer": false} {
+		t.Run(granted, func(t *testing.T) {
+			var asked bool
+			acl := func(p string, d bool) (string, error) {
+				if p != granted {
+					return "", nil
+				}
+				asked = d
+				return p + " has an ACL", nil
+			}
+			who, err := replaceableByNonRoot("/opt/safe/morzer", lstat, readlink, acl)
+			require.NoError(t, err)
+			assert.Equal(t, granted+" has an ACL", who)
+			assert.Equal(t, dir, asked, "whether %s is a directory", granted)
+		})
+	}
+
+	unreadable := func(p string, _ bool) (string, error) {
+		if p == "/usr" {
+			return "", errors.New("cannot read the ACL of /usr")
+		}
+		return "", nil
+	}
+	_, err := replaceableByNonRoot("/opt/safe/morzer", lstat, readlink, unreadable)
+	require.ErrorContains(t, err, "cannot read the ACL of /usr")
 }
 
 // A relative path is made absolute without being cleaned: `..` after a link is
