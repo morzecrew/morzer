@@ -158,13 +158,13 @@ func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
 		// Where nobody else may rename an entry, anyone may still add one.
 		"a sticky system directory every user can write": {
 			arrange: func(t *testing.T, _ *rig, existing, _ string) {
-				require.NoError(t, os.Chmod(existing, 0o1777))
+				sticky(t, existing)
 			},
 			says: "every user can add a plugin to",
 		},
 		"a missing one under a sticky directory every user can write": {
 			arrange: func(t *testing.T, _ *rig, _, missing string) {
-				require.NoError(t, os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(missing))), 0o1777))
+				sticky(t, filepath.Dir(filepath.Dir(filepath.Dir(missing))))
 			},
 			says: "every user can add a plugin to",
 		},
@@ -193,6 +193,16 @@ func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
 			assert.Contains(t, domain.AsError(err).Message, tc.says)
 		})
 	}
+}
+
+// sticky makes a directory every user can write and none rename another's
+// entry in. os.Chmod reads the bit from os.ModeSticky, not from 0o1000.
+func sticky(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.Chmod(dir, os.ModeSticky|0o777))
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSticky, "%s is not sticky", dir)
 }
 
 // A relative plugin directory in root's config names a different directory
