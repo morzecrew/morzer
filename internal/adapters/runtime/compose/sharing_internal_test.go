@@ -96,6 +96,12 @@ func TestTheProbeSaysWhichDirectoryAContainerCannotReach(t *testing.T) {
 			message: "the engine does not share /opt/demo with containers",
 			hint:    "add /opt/demo to the engine's file sharing",
 		},
+		"outside it, with a space in its name": {
+			stderr: "docker: Error response from daemon: mounts denied: \nThe path /Volumes/Work Disk/demo " +
+				"is not shared from the host and is not known to Docker.",
+			message: "the engine does not share /Volumes/Work Disk/demo with containers",
+			hint:    "add /Volumes/Work Disk/demo to the engine's file sharing",
+		},
 		"under a directory the engine's user cannot list": {
 			stderr: `docker: Error response from daemon: invalid mount config for type "bind": ` +
 				`stat /host_mnt/private/var/lib/demo: permission denied`,

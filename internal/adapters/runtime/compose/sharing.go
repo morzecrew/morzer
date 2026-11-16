@@ -23,7 +23,7 @@ const sharingProbeTimeout = 2 * time.Minute
 var (
 	// notShared is Docker Desktop refusing a bind outside its file sharing
 	// (RFC 0055 §13 S1).
-	notShared = regexp.MustCompile(`The path (\S+) is not shared from the host`)
+	notShared = regexp.MustCompile(`The path (.+?) is not shared from the host`)
 
 	// unreachable is the engine failing to stat a bind's source that the
 	// user who runs it cannot reach. It names the Mac's path, or the VM's
