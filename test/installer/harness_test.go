@@ -105,6 +105,8 @@ type fixtureOptions struct {
 	omitSumsLine bool
 	// arch names the architecture the archive is built for.
 	arch string
+	// goos names the operating system it is built for; Linux unless set.
+	goos string
 }
 
 // newRelease builds the fixture and starts serving it.
@@ -113,6 +115,9 @@ func newRelease(t *testing.T, opts fixtureOptions) *release {
 
 	if opts.arch == "" {
 		opts.arch = hostArch(t)
+	}
+	if opts.goos == "" {
+		opts.goos = "linux"
 	}
 	if opts.reportsVersion == "" {
 		opts.reportsVersion = fixtureVersion
@@ -131,7 +136,7 @@ func newRelease(t *testing.T, opts fixtureOptions) *release {
 		t.Fatal(err)
 	}
 
-	archive := fmt.Sprintf("morzer_%s_linux_%s.tar.zst", fixtureVersion, opts.arch)
+	archive := fmt.Sprintf("morzer_%s_%s_%s.tar.zst", fixtureVersion, opts.goos, opts.arch)
 	archivePath := filepath.Join(dir, archive)
 	if err := atomicfs.WriteTarZst(archivePath, stage, []string{"morzer"}, time.Unix(0, 0)); err != nil {
 		t.Fatal(err)
@@ -150,12 +155,12 @@ func newRelease(t *testing.T, opts fixtureOptions) *release {
 
 	// Two lines, because the real file covers both architectures — which is
 	// what makes `sha256sum -c --ignore-missing` tempting and wrong.
-	sums := fmt.Sprintf("%s  %s\n%s  morzer_%s_linux_%s.tar.zst\n",
+	sums := fmt.Sprintf("%s  %s\n%s  morzer_%s_%s_%s.tar.zst\n",
 		digest, archive,
-		strings.Repeat("0", 64), fixtureVersion, otherArch(opts.arch))
+		strings.Repeat("0", 64), fixtureVersion, opts.goos, otherArch(opts.arch))
 	if opts.omitSumsLine {
-		sums = fmt.Sprintf("%s  morzer_%s_linux_%s.tar.zst\n",
-			strings.Repeat("0", 64), fixtureVersion, otherArch(opts.arch))
+		sums = fmt.Sprintf("%s  morzer_%s_%s_%s.tar.zst\n",
+			strings.Repeat("0", 64), fixtureVersion, opts.goos, otherArch(opts.arch))
 	}
 	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(sums), 0o600); err != nil {
 		t.Fatal(err)

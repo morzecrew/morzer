@@ -414,20 +414,40 @@ func TestDetectionRefusesWhatItCannotServe(t *testing.T) {
 func TestAReleaseWithoutThisMachinesArchiveIsNamed(t *testing.T) {
 	rel := newRelease(t, fixtureOptions{arch: "arm64"})
 	into := filepath.Join(t.TempDir(), "bin")
-	stubs := stubDir(t, map[string]string{
-		"uname": "#!/bin/sh\ncase \"$1\" in\n" +
-			"-s) printf 'Darwin\\n' ;;\n" +
-			"-m) printf 'arm64\\n' ;;\n" +
-			"-r) printf '25.5.0\\n' ;;\nesac\n",
-	})
 
 	out := run(t, script(t, rel),
-		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: stubs},
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: appleSilicon(t)},
 		"--version", fixtureVersion, "--dir", into)
 
 	out.requireFailed(t, "the release has no darwin/arm64 archive")
 	out.requireSays(t, "release "+fixtureVersion+" publishes no darwin/arm64 archive", "--version")
 	assertNothingInstalled(t, into)
+}
+
+// A Mac with Apple silicon downloads, checks and installs the darwin archive,
+// by the name the release publishes it under.
+func TestAMacInstallLandsTheDarwinBinary(t *testing.T) {
+	rel := newRelease(t, fixtureOptions{goos: "darwin", arch: "arm64"})
+	into := filepath.Join(t.TempDir(), "bin")
+
+	out := run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel, stubs: appleSilicon(t)},
+		"--version", fixtureVersion, "--dir", into, "--no-verify-signature",
+	).requireOK(t)
+
+	assertInstalled(t, into)
+	out.requireSays(t, rel.archive, rel.digest)
+}
+
+// appleSilicon is uname on a Mac with Apple silicon.
+func appleSilicon(t *testing.T) string {
+	t.Helper()
+	return stubDir(t, map[string]string{
+		"uname": "#!/bin/sh\ncase \"$1\" in\n" +
+			"-s) printf 'Darwin\\n' ;;\n" +
+			"-m) printf 'arm64\\n' ;;\n" +
+			"-r) printf '25.5.0\\n' ;;\nesac\n",
+	})
 }
 
 func TestAShadowingBinaryIsNamedRatherThanIgnored(t *testing.T) {
