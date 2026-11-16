@@ -535,8 +535,9 @@ func TestARecycledPIDIsNotTheHolder(t *testing.T) {
 	}
 
 	// A record naming a live PID, but a start time no live process can have:
-	// ticks since boot, so a holder that started before this machine did is
-	// the record's way of saying "not the same process".
+	// one tick after boot on Linux, one microsecond after 1970 on darwin, so a
+	// holder that started before this machine did is the record's way of
+	// saying "not the same process".
 	record := fmt.Sprintf(
 		`{"pid":%d,"operation_id":"op-killed","type":"update","pid_start":1}`,
 		os.Getpid())
@@ -547,7 +548,7 @@ func TestARecycledPIDIsNotTheHolder(t *testing.T) {
 
 	if _, found, err := l.Owner(ctx, "deployment"); err != nil {
 		t.Fatal(err)
-	} else if found && procStatReadable() {
+	} else if found {
 		t.Error("a recycled PID was reported as the holder; the operator is " +
 			"now looking at a process that has nothing to do with this lock")
 	}
@@ -589,24 +590,8 @@ func TestAGenuineHolderCarriesItsStartTime(t *testing.T) {
 	if !found {
 		t.Fatal("the lock this test is holding was not reported as held")
 	}
-	if !procStatReadable() {
-		// Without procfs there is no start time to record, and ownerAlive
-		// falls back to the PID alone -- which is the documented behaviour,
-		// not a failure. The recycled-PID assertion above is skipped for the
-		// same reason.
-		t.Skip("no /proc/<pid>/stat on this platform: nothing to record")
-	}
 	if got.PIDStart == 0 {
 		t.Error("the holder recorded no start time, so a recycled PID would " +
 			"still read as this operation")
 	}
-}
-
-// procStatReadable reports whether this platform can answer what pidStart asks
-// it. Linux can; a developer's macOS cannot, and the fallback there is the
-// PID-only behaviour that came before -- correct, and not what these two
-// assertions are about.
-func procStatReadable() bool {
-	_, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", os.Getpid()))
-	return err == nil
 }
