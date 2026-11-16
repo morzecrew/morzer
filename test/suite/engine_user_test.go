@@ -116,6 +116,15 @@ func TestTheEngineUserReadsTheRenderedConfiguration(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "the release declares 0640")
 	assert.Equal(t, [2]int{os.Geteuid(), os.Getegid()}, ownerOf(t, config), "the configuration was given away")
 
+	// The same bytes at a mode that user cannot read, as a build before this
+	// one rendered them, or a hand left them, are not converged.
+	require.NoError(t, os.Chmod(config, 0o640))
+	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	info, err = os.Stat(config)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(), "a file with the same bytes kept a mode that user cannot read")
+
 	h = newHarness(t)
 	h.install()
 	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
