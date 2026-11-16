@@ -113,6 +113,10 @@ sed_in_place() {
 	sed -i.bak "$@" && rm -f -- "${file}.bak"
 }
 
+# nl is a backslash before a newline, which GNU's and BSD's sed both read as
+# a newline in a replacement.
+nl=$'\\\n'
+
 # cleanup runs on every exit path, including a failure mid-scenario. A leaked
 # Compose project would break the next run with a name conflict, which is a
 # confusing way to be told about a failure that happened earlier.
@@ -288,6 +292,25 @@ prepare_bundle() {
 
 	grep -q "@sha256:" "${dest}/manifest.yaml" ||
 		fail "the manifest in ${dest} was not rewritten with real digests"
+	declare_darwin "${dest}"
+}
+
+# declare_darwin makes a bundle one a Mac installs. A release runs there only
+# once it lists darwin, from the manager version that reads the key (RFC 0055
+# §5.1), and the fixtures declare Linux alone.
+declare_darwin() {
+	[ "${OS}" = Darwin ] || return 0
+	local floor
+	floor="$(sed -n 's/^const PlatformsMinManagerVersion = "\(.*\)"$/\1/p' "${ROOT_DIR}/internal/domain/manifest.go")"
+	[ -n "${floor}" ] || fail "cannot read PlatformsMinManagerVersion from the source"
+	sed_in_place \
+		-e "s|^requirements:$|requirements:${nl}  platforms: [linux, darwin]|" \
+		-e "s|^  min_manager_version: \"0.0.0\"$|  min_manager_version: \"${floor}\"|" \
+		"$1/manifest.yaml"
+	if ! grep -q '^  platforms: \[linux, darwin\]$' "$1/manifest.yaml" ||
+		! grep -q "^  min_manager_version: \"${floor}\"$" "$1/manifest.yaml"; then
+		fail "the manifest in $1 was not rewritten to declare darwin"
+	fi
 }
 
 # prepare_web_bundle does the same for the three-tier example, which pins three.
@@ -303,6 +326,7 @@ prepare_web_bundle() {
 
 	grep -c "@sha256:" "${dest}/manifest.yaml" | grep -qx 3 ||
 		fail "the three-tier manifest was not rewritten with three real digests"
+	declare_darwin "${dest}"
 }
 
 # web_port reads a published host port out of the three-tier project.
@@ -1500,8 +1524,6 @@ prepare_bundle testdata/bundle "${BUNDLED}"
 # Only `app` travels. The mixed case is the design -- a vendor ships their two
 # private images and keeps pulling postgres -- and it is the one that neither a
 # bundle-everything nor a bundle-nothing scenario can show.
-# A backslash before each newline, which GNU's and BSD's sed both read as one.
-nl=$'\\\n'
 sed_in_place \
 	-e "s|^  app: .*|  app:${nl}    ref: ${REGISTRY}/demo/app@${APP_DIGEST}${nl}    from: bundle|" \
 	"${BUNDLED}/manifest.yaml"
