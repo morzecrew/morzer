@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -199,6 +200,19 @@ func (e *Engine) BeforeHook(ctx context.Context) error {
 	return nil
 }
 
+// addable says who other than root could add an entry to a directory, which
+// a sticky bit does not stop, or "".
+func addable(p string, info fs.FileInfo) string {
+	_, gid := atomicfs.Owner(info)
+	switch mode := info.Mode(); {
+	case mode&0o002 != 0:
+		return fmt.Sprintf("every user can add a plugin to %s", p)
+	case mode&0o020 != 0:
+		return fmt.Sprintf("group %d can add a plugin to %s", gid, p)
+	}
+	return ""
+}
+
 // pluginsTrusted refuses a plugin directory, or an entry in it, that someone
 // other than root could replace. One that does not exist is judged by the
 // nearest directory above it that does, where it could be made
@@ -223,6 +237,16 @@ func (e *Engine) pluginsTrusted(dir string) error {
 		if err != nil {
 			return err
 		}
+		return refuse(who)
+	}
+	// The rule asks who could replace an entry, which a sticky directory
+	// lets nobody else do. Anyone who can write it can still add a plugin,
+	// or make the directory that is missing.
+	info, err := os.Stat(at)
+	if err != nil {
+		return domain.Internal(err, "cannot check the plugin directory %s", dir)
+	}
+	if who := addable(at, info); who != "" {
 		return refuse(who)
 	}
 	if at != dir {

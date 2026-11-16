@@ -155,6 +155,19 @@ func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
 			},
 			says: "is writable by every user",
 		},
+		// Where nobody else may rename an entry, anyone may still add one.
+		"a sticky system directory every user can write": {
+			arrange: func(t *testing.T, _ *rig, existing, _ string) {
+				require.NoError(t, os.Chmod(existing, 0o1777))
+			},
+			says: "every user can add a plugin to",
+		},
+		"a missing one under a sticky directory every user can write": {
+			arrange: func(t *testing.T, _ *rig, _, missing string) {
+				require.NoError(t, os.Chmod(filepath.Dir(filepath.Dir(filepath.Dir(missing))), 0o1777))
+			},
+			says: "every user can add a plugin to",
+		},
 		"a plugin beside Docker Desktop's copies": {
 			arrange: func(t *testing.T, r *rig, _, _ string) {
 				plugin := filepath.Join(r.managerDir, "docker", "cli-plugins", "docker-extra")
