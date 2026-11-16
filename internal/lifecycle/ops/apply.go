@@ -692,6 +692,13 @@ func stepRenderConfiguration(d *Deps, inst domain.Installation, rel domain.Relea
 				if mode == 0 {
 					mode = domain.DefaultConfigMode.Perm()
 				}
+				// Where the engine reads the host as one user, a container
+				// reads a file only when that user can, and no group holds
+				// that user alone, so every account may read it (RFC 0055
+				// decision 16).
+				if d.EngineUser != nil {
+					mode |= 0o004
+				}
 				if err := atomicfs.WriteFile(target, rendered[target], os.FileMode(mode)); err != nil {
 					return err
 				}
