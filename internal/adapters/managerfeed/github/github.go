@@ -7,6 +7,7 @@
 package github
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -120,13 +121,17 @@ func (f *Feed) Download(ctx context.Context, v domain.Version, dir string) error
 // lists reports whether a sums file has a line for name, read as the signed
 // unpacker reads it.
 func lists(sums, name string) bool {
-	data, err := os.ReadFile(sums) //nolint:gosec // a file Download wrote, in a directory its caller made
+	f, err := os.Open(sums) //nolint:gosec // a file Download wrote, in a directory its caller made
 	if err != nil {
 		return false
 	}
-	for line := range strings.Lines(string(data)) {
+	defer func() { _ = f.Close() }()
+	// Line by line: the file may be as large as any download, where the
+	// unpacker reads no more than a megabyte of it.
+	lines := bufio.NewScanner(f)
+	for lines.Scan() {
 		// "<hash>  <name>" in text mode, "<hash> *<name>" in binary mode.
-		if fields := strings.Fields(line); len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
+		if fields := strings.Fields(lines.Text()); len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
 			return true
 		}
 	}
