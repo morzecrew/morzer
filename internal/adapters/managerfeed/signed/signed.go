@@ -74,7 +74,7 @@ func (u *Unpacker) Target(dir string) (domain.Version, error) {
 	if err != nil {
 		return domain.Version{}, err
 	}
-	suffix := "_linux_" + runtime.GOARCH + ".tar.zst"
+	suffix := "_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.zst"
 	var found []domain.Version
 	for name := range lines {
 		middle, ok := strings.CutPrefix(name, "morzer_")
@@ -93,15 +93,15 @@ func (u *Unpacker) Target(dir string) (domain.Version, error) {
 	switch len(found) {
 	case 0:
 		return domain.Version{}, domain.ValidationError(nil,
-			"%s names no morzer archive for linux/%s", filepath.Join(dir, ports.SumsFileName), runtime.GOARCH).
+			"%s names no morzer archive for %s/%s", filepath.Join(dir, ports.SumsFileName), runtime.GOOS, runtime.GOARCH).
 			WithHint("download the release's morzer_<version>%s, %s and %s into one directory",
 				suffix, ports.SumsFileName, ports.SignatureFileName)
 	case 1:
 		return found[0], nil
 	default:
 		return domain.Version{}, domain.ValidationError(nil,
-			"%s names more than one morzer archive for linux/%s, so it is not one release's",
-			filepath.Join(dir, ports.SumsFileName), runtime.GOARCH).
+			"%s names more than one morzer archive for %s/%s, so it is not one release's",
+			filepath.Join(dir, ports.SumsFileName), runtime.GOOS, runtime.GOARCH).
 			WithHint("use the %s published with the release", ports.SumsFileName)
 	}
 }
@@ -121,7 +121,7 @@ func (u *Unpacker) Unpack(ctx context.Context, dir string, v domain.Version, dst
 	want, ok := parseSums(signed)[archive]
 	if !ok {
 		return domain.ValidationError(nil, "%s has no line for %s", ports.SumsFileName, archive).
-			WithHint("the release does not carry an archive for linux/%s", runtime.GOARCH)
+			WithHint("the release does not carry an archive for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
 	work, err := os.MkdirTemp("", "morzer-self-update-")

@@ -79,9 +79,10 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
 	}
-	if runtime.GOOS != "linux" || (runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64") {
+	// Intel Macs are not supported (RFC 0055 decision 12).
+	if platform := runtime.GOOS + "/" + runtime.GOARCH; platform != "linux/amd64" && platform != "linux/arm64" && platform != "darwin/arm64" {
 		return ManagerUpdate{}, domain.ValidationError(nil,
-			"no manager release is published for %s/%s, only linux/amd64 and linux/arm64", runtime.GOOS, runtime.GOARCH)
+			"no manager release is published for %s, only linux/amd64, linux/arm64 and darwin/arm64", platform)
 	}
 	if d.ManagerUnpacker == nil {
 		return ManagerUpdate{}, domain.Internal(nil, "this build cannot replace itself")

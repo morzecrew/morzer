@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,7 +88,7 @@ func TestDownloadFetchesTheReleasesThreeFiles(t *testing.T) {
 	v := domain.MustParseVersion("0.13.0")
 	files := map[string]string{
 		"/v0.13.0/" + ports.ManagerArchive(v): "archive",
-		"/v0.13.0/" + ports.SumsFileName:      "sums",
+		"/v0.13.0/" + ports.SumsFileName:      "0000  " + ports.ManagerArchive(v) + "\n",
 		"/v0.13.0/" + ports.SignatureFileName: "signature",
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,4 +114,28 @@ func TestDownloadFetchesTheReleasesThreeFiles(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Message, "404")
 	assert.Contains(t, domain.AsError(err).Hint, "check the version is published")
+}
+
+// A release whose sums list no archive for this machine, as one without
+// macOS's acceptance record lists none for darwin, is refused by name rather
+// than reported as a missing file, and nothing is fetched for it.
+func TestDownloadRefusesAReleaseWithNoArchiveForThisMachine(t *testing.T) {
+	v := domain.MustParseVersion("0.13.0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v0.13.0/" + ports.SumsFileName:
+			_, _ = w.Write([]byte("0000 *morzer_0.13.0_nonesuch_amd64.tar.zst\n"))
+		case "/v0.13.0/" + ports.ManagerArchive(v):
+			t.Error("an archive the sums do not list was fetched")
+		default:
+			_, _ = w.Write([]byte("a file"))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	err := github.At(srv.URL, srv.URL, srv.Client()).Download(context.Background(), v, t.TempDir())
+
+	require.ErrorIs(t, err, domain.ErrValidation)
+	assert.Equal(t, "release 0.13.0 publishes no archive for "+runtime.GOOS+"/"+runtime.GOARCH, domain.AsError(err).Message)
+	assert.Contains(t, domain.AsError(err).Hint, "--to")
 }
