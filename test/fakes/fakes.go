@@ -139,6 +139,10 @@ type Runtime struct {
 	// Storage is what Volumes reports.
 	Storage ports.ProjectStorage
 
+	// SharingRead and SharingWrite are what the last ProbeFileSharing was
+	// asked to list and write.
+	SharingRead, SharingWrite []string
+
 	// VolumeContents is the simulated contents of each volume, keyed by
 	// its actual name. A capture writes this to a file; a restore reads it
 	// back, so a round trip through the backup engine really does move
@@ -184,14 +188,15 @@ func NewRuntime() *Runtime {
 }
 
 var (
-	_ ports.Runtime         = (*Runtime)(nil)
-	_ ports.ImageInspector  = (*Runtime)(nil)
-	_ ports.ImageIngester   = (*Runtime)(nil)
-	_ ports.ImageRemover    = (*Runtime)(nil)
-	_ ports.ServiceImager   = (*Runtime)(nil)
-	_ ports.VolumeInspector = (*Runtime)(nil)
-	_ ports.VolumeCapturer  = (*Runtime)(nil)
-	_ ports.OptionResolver  = (*Runtime)(nil)
+	_ ports.Runtime           = (*Runtime)(nil)
+	_ ports.ImageInspector    = (*Runtime)(nil)
+	_ ports.ImageIngester     = (*Runtime)(nil)
+	_ ports.ImageRemover      = (*Runtime)(nil)
+	_ ports.ServiceImager     = (*Runtime)(nil)
+	_ ports.VolumeInspector   = (*Runtime)(nil)
+	_ ports.VolumeCapturer    = (*Runtime)(nil)
+	_ ports.OptionResolver    = (*Runtime)(nil)
+	_ ports.FileSharingProber = (*Runtime)(nil)
 )
 
 func (r *Runtime) record(method string) error {
@@ -453,6 +458,15 @@ func (r *Runtime) Volumes(ctx context.Context, cfg ports.RuntimeConfig) (ports.P
 		return out.Anonymous[i].Target < out.Anonymous[j].Target
 	})
 	return out, nil
+}
+
+// ProbeFileSharing records what it was asked to reach; Fail decides what a
+// container found there.
+func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) error {
+	r.mu.Lock()
+	r.SharingRead, r.SharingWrite = read, write
+	r.mu.Unlock()
+	return r.record("ProbeFileSharing")
 }
 
 func (r *Runtime) HelperImage() string { return "busybox@sha256:" + strings.Repeat("f", 64) }

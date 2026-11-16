@@ -622,3 +622,43 @@ evidence: internal/adapters/dockerdesktop/cli.go:64-71
 action: departed
 proposal: OPEN — refuse while a candidate in the CLI's system plugin directories can be replaced by someone other than root, or document that a hook does not list plugins
 ```
+
+## The file-sharing probe
+
+On branch `rfc-0055-sharing` from `main` at `4e65c170`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T01:35:36Z
+attempt: 1
+claim: §5.3 has preflight and `doctor` list `EtcDir`, `VarDir`, `OptDir` and `RunDir` from a container, and decision 16 has preflight write each directory a container writes. Neither says which directories those are, where the check runs, or how often. The probe is one container from the volume helper image with no network: the four directories bound read-only and listed, and `DataDir`, the one directory the darwin layout gives the engine's user for containers to write, bound and written. The rendered secrets directory is not probed apart: it may not exist yet, and listing `RunDir` reaches the way to it. It runs only where the engine reads the host as one user, and at every `apply`, a running deployment included, since re-creating a container binds again.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:281-285
+action: decided
+proposal: UNLISTED — on an engine that reads the host as one user, `runtime.file-sharing` lists `EtcDir`, `VarDir`, `OptDir` and `RunDir` and writes `DataDir` from one container at every `apply` and every `doctor`, fatal in both
+```
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-16T01:35:36Z
+attempt: 1
+claim: `DataDir` is given to the engine's user as services start, after preflight. So on the first `apply` a container cannot yet write it, and a probe writing it would refuse every new installation. `apply`'s preflight gives it first, the same idempotent change every start makes. `doctor` changes nothing: it writes `DataDir` only once that user owns it, and lists it otherwise.
+evidence: internal/lifecycle/ops/ops.go:417-429
+action: departed
+proposal: ASSUMED — `apply`'s preflight gives `DataDir` to the engine's user before probing it; `doctor` writes it only once that user owns it
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T01:35:36Z
+attempt: 1
+claim: The volume operations refuse when the helper image is not on the machine rather than pull it during a backup. The probe runs on the first `apply`, before anything would have pulled it, so it lets the engine pull the pinned image. A probe that cannot run, for an image that cannot be pulled, an unpinned override or an engine that does not answer, warns and checks nothing, since `up` then refuses the same bind in the engine's words. Only what a container could not reach fails.
+evidence: internal/adapters/runtime/compose/volumes.go:715-745
+action: decided
+proposal: UNLISTED — the probe pulls the pinned helper image when it is absent, and a probe that cannot run warns rather than refuses
+```
