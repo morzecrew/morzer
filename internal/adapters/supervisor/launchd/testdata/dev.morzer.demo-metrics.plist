@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.morzer.demo-metrics</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/morzer</string>
+		<string>metrics</string>
+		<string>--textfile</string>
+		<string>/var/lib/node_exporter</string>
+		<string>--plain</string>
+		<string>--log-format</string>
+		<string>json</string>
+		<string>--config</string>
+		<string>/etc/demo/installation.yaml</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>StartCalendarInterval</key>
+	<dict/>
+	<key>StandardOutPath</key>
+	<string>/var/lib/demo/logs/dev.morzer.demo-metrics.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/lib/demo/logs/dev.morzer.demo-metrics.log</string>
+</dict>
+</plist>
