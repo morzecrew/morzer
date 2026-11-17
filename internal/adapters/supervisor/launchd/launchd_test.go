@@ -68,7 +68,7 @@ func every(t *testing.T) ports.UnitParams {
 		Product: "demo", ManagerPath: "/usr/local/bin/morzer", ConfigPath: "/etc/demo/installation.yaml",
 		UpdateTimer: true, FleetTimer: true, SyncTimer: true, SyncInterval: 10 * time.Minute,
 		DoctorTimer: true, MetricsDir: "/var/lib/node_exporter",
-		UpdateSchedule: "Sun *-*-* 04:00:00",
+		UpdateSchedule: "Sat,Sun *-*-* 04:00:00",
 	}
 }
 
