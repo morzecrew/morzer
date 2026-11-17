@@ -393,6 +393,30 @@ func TestJobsLiveWhereLaunchdLoadsThemAtBoot(t *testing.T) {
 	assert.Equal(t, "/etc/newsyslog.d", launchd.NewsyslogDir)
 }
 
+// A job launchd still has keeps running its schedule until the next boot,
+// so a failed unload keeps the plist and fails the removal for a retry; one
+// launchd does not have is removed.
+func TestAJobThatWouldNotUnloadIsNotRemoved(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	require.NoError(t, os.MkdirAll(f.daemons, 0o755))
+	plist := filepath.Join(f.daemons, "dev.morzer.demo-backup.plist")
+	require.NoError(t, os.WriteFile(plist, []byte("x"), 0o644))
+	f.runner.OnExit("bootout", 5, "Boot-out failed: 5: Input/output error")
+	f.runner.OnOutput("print system/dev.morzer.demo-backup", "system/dev.morzer.demo-backup = {\n\tstate = running\n}\n")
+
+	err := f.s.RemoveUnits(ctx, []string{"dev.morzer.demo-backup"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Boot-out failed: 5")
+	assert.FileExists(t, plist, "the plist of a job launchd still runs was removed")
+
+	f.fresh()
+	f.runner.OnExit("bootout", 3, "Boot-out failed: 3: No such process")
+	f.runner.OnExit("print system/", 113, "Could not find service")
+	require.NoError(t, f.s.RemoveUnits(ctx, []string{"dev.morzer.demo-backup"}))
+	assert.NoFileExists(t, plist)
+}
+
 // A write that fails partway removes the jobs written before it, so a retry
 // finds them fresh rather than skipping them as existing.
 func TestAFailedWriteRemovesTheJobsWrittenBeforeIt(t *testing.T) {

@@ -482,8 +482,15 @@ func (s *Supervisor) RemoveUnits(ctx context.Context, names []string) error {
 			return err
 		}
 		// Unloaded first: a job whose plist is gone stays loaded until
-		// the next boot otherwise.
-		_ = s.Stop(ctx, label)
+		// the next boot otherwise. A failure is an answer only when
+		// launchd no longer has the job, which is also what unloading a
+		// job it never had looks like; otherwise the plist stays, so a
+		// retry finds the job to remove.
+		if err := s.Stop(ctx, label); err != nil {
+			if loaded, lerr := s.loaded(ctx, label); lerr != nil || loaded {
+				return err
+			}
+		}
 		if err := os.Remove(s.plistPath(label)); err != nil && !os.IsNotExist(err) {
 			return domain.Internal(err, "cannot remove job %s", label)
 		}
