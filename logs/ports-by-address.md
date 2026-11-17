@@ -69,3 +69,44 @@ evidence: rfcs/0059-ports-a-release-needs-by-address-protocol-and-profile.md:356
 action: decided
 proposal: ASSUMED — sharing a machine with the operator's own web server is an authoring how-to
 ```
+
+## Review
+
+Findings from the review of the pull request that change what the RFC says,
+or settle what it leaves open.
+
+```divergence
+decision: 6
+grade: ASSUMED
+class: discovery
+at: 2026-11-17T19:57:35Z
+attempt: 1
+claim: Decision 6 has each caller pass the installation's effective selection. Built first with the platform check every deploying path applies, it refused to read an installation whose profile this platform would not deploy: `runtime.health` failed without a probe, `status` and a rollback's compensation could not build their health checks, and `machine.ports` counted the installation as unreadable. Reading what runs has to work whatever the selection is, as `runtimeConfig` already reads it. The health checks and `machine.ports` now resolve the selection with no platform; `apply`'s port check, which deploys, keeps the platform check.
+evidence: internal/lifecycle/ops/ops.go:1342
+action: departed
+proposal: ASSUMED (decision 6, amended) — callers that read what runs, health checks and `machine.ports`, resolve the selection without the platform check
+```
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: discovery
+at: 2026-11-17T19:57:35Z
+attempt: 1
+claim: Decision 7 has a templated entry that renders empty require nothing. `missingkey=error` catches a field reference to an undeclared parameter, but `index .Parameters "name"` renders an undeclared name as empty, so a typo there dropped the entry silently. A templated port entry or health URL that names, through `index` with a literal key, a parameter the release does not declare is refused at load, so `release verify` names it. A field reference is left to resolution, since refusing it at load would refuse a manifest whose `parameters` is absent, which the schema does not require.
+evidence: internal/domain/ports.go:165
+action: departed
+proposal: ASSUMED — a manifest template that reads an undeclared parameter through `index` is refused at load
+```
+
+```divergence
+decision: 1
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T19:57:35Z
+attempt: 1
+claim: Decision 1 allows an IPv6 address in brackets and does not say what an IPv4-mapped one is. Kept as IPv6, `[::ffff:127.0.0.1]:80` was bound as `tcp6`, which refuses a mapped address, and its claim never met `127.0.0.1:80`. It is now its IPv4 address, in the entry's spelling and wherever it is compared.
+evidence: internal/domain/ports.go:99
+action: departed
+proposal: ASSUMED (decision 1, amended) — an IPv4-mapped IPv6 address in an entry is read as its IPv4 address
+```
