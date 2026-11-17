@@ -1072,3 +1072,14 @@ evidence: internal/adapters/dockerdesktop/cli.go:178
 action: departed
 proposal: ASSUMED (decision 22, amended) — the directory first on `PATH` is the manager's own `bin`, holding Docker Desktop's checked copy or a link to the CLI on `PATH`
 ```
+
+```divergence
+decision: 25
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T17:57:06Z
+attempt: 1
+claim: Measured on the author's Mac on 2026-11-17, at `20aec75`, under `sudo`. Kept: `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin`. Dropped, each named with why: `~/.local/bin`, `~/.cargo/bin` and JetBrains' scripts directory, since the home directory is uid 501's; `/opt/homebrew/bin` and `/opt/homebrew/sbin`, since `/opt/homebrew` is; and `/System/Cryptexes/App/usr/bin`, since `/System/Volumes/Preboot/Cryptexes` is writable by every user. `~/bin`, the cryptexd bootstrap directories under `/var/run` and `/pkg/env/global/bin` do not exist there and are left off without a word. `vi`, `sh`, `jq` and `git` are found in `/usr/bin` and `/bin`; `zstd` is refused, naming Homebrew's and its owner; `sops`, `age` and `restic` are not installed for root and are missing. The row stands as written.
+evidence: internal/adapters/dockerdesktop/cli.go:351
+action: decided
+```
