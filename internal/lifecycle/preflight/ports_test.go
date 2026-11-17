@@ -40,12 +40,16 @@ func hold(t *testing.T, network, address string, reuse bool) int {
 		conn, err := lc.ListenPacket(context.Background(), network, address)
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = conn.Close() })
-		return conn.LocalAddr().(*net.UDPAddr).Port
+		addr, ok := conn.LocalAddr().(*net.UDPAddr)
+		require.True(t, ok)
+		return addr.Port
 	}
 	ln, err := lc.Listen(context.Background(), network, address)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
-	return ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	return addr.Port
 }
 
 // RFC 0059 §5.3: each entry is bound on its own address and protocol, so a

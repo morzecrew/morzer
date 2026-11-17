@@ -162,7 +162,7 @@ func readTemplate(field, text string) templateUse {
 			}
 		}
 	}
-	walk(tmpl.Tree.Root)
+	walk(tmpl.Root)
 	return u
 }
 

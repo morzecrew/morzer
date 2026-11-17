@@ -20,7 +20,9 @@ func TestAPortOnlyAProfilePublishesIsRequiredOnlyWithIt(t *testing.T) {
 	held, err := net.ListenPacket("udp", ":0")
 	require.NoError(t, err)
 	defer func() { _ = held.Close() }()
-	port := strconv.Itoa(held.LocalAddr().(*net.UDPAddr).Port)
+	addr, ok := held.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok)
+	port := strconv.Itoa(addr.Port)
 
 	h := newHarness(t)
 	patchManifest(t, h.Release.Root, `ports: ["{{ .Parameters.http_port }}"]`,
