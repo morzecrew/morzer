@@ -965,7 +965,7 @@ func (d *Deps) checkEngineCLI() preflight.Check {
 				config, login := "root's docker config", "`sudo docker login <registry>`"
 				if cli.RootConfig != "" {
 					config = cli.RootConfig
-					login = "`sudo docker --config " + filepath.Dir(cli.RootConfig) + " login <registry>`"
+					login = "`sudo docker --config " + domain.ShellQuote(filepath.Dir(cli.RootConfig)) + " login <registry>`"
 				}
 				return preflight.Warn(
 					"remove the helper from "+config+" and run "+login+", "+
