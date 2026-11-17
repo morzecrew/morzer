@@ -709,3 +709,28 @@ func TestAManagerCommandAHookRunsSettlesOnWhatTheLinksName(t *testing.T) {
 	assert.Equal(t, filepath.Join(cliDir, "docker"), link("bin/docker"))
 	assert.Equal(t, filepath.Join(cliDir, "docker-credential-vault"), link("helpers/docker-credential-vault"))
 }
+
+// A directory on PATH that cannot be checked is left off, never kept, and the
+// refusal of a tool found only there says so (decision 25).
+func TestADirectoryThatCannotBeCheckedIsLeftOffPATH(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	r.managerDir = filepath.Join(r.managerDir, "missing")
+	unchecked, roots := t.TempDir(), t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(unchecked, "sops"), nil, 0o755))
+	engine := r.engine()
+	engine.setEnv, engine.given = true, unchecked+string(os.PathListSeparator)+roots
+	engine.replaceable = func(path string) (string, error) {
+		if path == unchecked {
+			return "", fmt.Errorf("permission denied")
+		}
+		return "", nil
+	}
+
+	require.NoError(t, engine.Prepare())
+
+	assert.Equal(t, roots, os.Getenv("PATH"))
+	_, err := Runner{Runner: exec.New(), Engine: engine}.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(unchecked, "sops")+": "+unchecked+" cannot be checked")
+}
