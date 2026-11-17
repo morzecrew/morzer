@@ -681,8 +681,13 @@ func (s *Supervisor) Status(ctx context.Context, label string) (ports.UnitState,
 		return ports.UnitState{}, err
 	}
 	if !ok {
-		// Not loaded: an enabled job is loaded at the next boot.
+		// The boot job waits for the next boot to be loaded, as an
+		// enabled service does under systemd. A schedule launchd does not
+		// have runs at no time until then, which `doctor` reports.
 		state.Sub = "unloaded"
+		if runsAtLoad(contents) {
+			state.Sub = "dead"
+		}
 		return state, nil
 	}
 	// "78: EX_CONFIG", or "(never exited)" before a first run.

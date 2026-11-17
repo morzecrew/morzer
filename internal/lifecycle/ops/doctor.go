@@ -1795,6 +1795,15 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// that stopped is a schedule, which is silent by nature.
 				// Nobody notices a backup or a fleet row that did not
 				// happen until they need the one that did not.
+				// Enabled and not loaded, which only launchd reports:
+				// a schedule it does not have runs at no time before
+				// the next boot, and looks installed to everything else.
+				if wanted && want.Enable && state.Enabled && state.Sub == "unloaded" {
+					problems = append(problems, name+": not loaded")
+					if declarable[name] {
+						backupUnitAffected = true
+					}
+				}
 				if wanted && want.Enable && !state.Enabled {
 					problems = append(problems, name+": not enabled")
 					// Which unit it was, because the remedy
@@ -1856,7 +1865,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			// launchd has no RandomizedDelaySec, and decision 1 has the
 			// spread a Mac does without stated.
 			if mac {
-				return preflight.OK("all jobs loaded; each schedule runs at the time it names, with no spread")
+				return preflight.OK("all jobs installed and enabled; each schedule runs at the time it names, with no spread")
 			}
 			return preflight.OK("all units loaded")
 		},

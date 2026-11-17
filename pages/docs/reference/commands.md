@@ -505,9 +505,10 @@ A Mac adds these checks, for what is weaker there (see
 | `secrets.owner` | Warns while the release declares an `owner` for a secret: on a Mac every container that mounts it can read it. |
 
 `secrets.ephemeral-storage`, above, warns on every run there, since a Mac has
-no tmpfs. `system.units` reads launchd's jobs, which only root can, and warns
+no tmpfs. `system.units` reads launchd's jobs, which only root can. It warns
 while the start at boot is held after an exit 12, until `sudo morzer apply`
-succeeds.
+succeeds, and while a schedule is not loaded, which then runs at no time
+before the next boot.
 
 ## history
 

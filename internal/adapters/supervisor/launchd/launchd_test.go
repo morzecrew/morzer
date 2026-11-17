@@ -360,6 +360,15 @@ func TestStatusOfAJobNotLoadedOrNotThere(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ports.UnitState{Name: "dev.morzer.demo-backup", Loaded: true, Enabled: false,
 		Active: "inactive", Sub: "unloaded"}, got, "an older launchctl's `=> true` is a disabled job")
+
+	// The boot job is not loaded until the next boot, and that is not a
+	// schedule that has stopped.
+	units, err := f.s.Units(ports.UnitParams{Product: "demo", ManagerPath: "/m"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(f.daemons, "dev.morzer.demo.plist"), units[0].Contents, 0o644))
+	got, err = f.s.Status(ctx, "dev.morzer.demo")
+	require.NoError(t, err)
+	assert.Equal(t, "dead", got.Sub)
 }
 
 func TestTheManagerPathsAreThePlistsAndWhatLaunchdLoaded(t *testing.T) {

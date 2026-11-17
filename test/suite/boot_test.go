@@ -151,7 +151,7 @@ func TestAMacsDoctorReadsItsJobsAsRoot(t *testing.T) {
 	h.Deps.Platform = "darwin"
 	mac = doctorCheck(t, h, "system.units")
 	assert.Equal(t, events.CheckOK, mac.Status, mac.Message)
-	assert.Equal(t, "all jobs loaded; each schedule runs at the time it names, with no spread", mac.Message)
+	assert.Equal(t, "all jobs installed and enabled; each schedule runs at the time it names, with no spread", mac.Message)
 	h.Deps.Platform = "linux"
 	assert.Equal(t, "all units loaded", doctorCheck(t, h, "system.units").Message)
 }
@@ -201,3 +201,22 @@ func TestAnOperatorsApplyAfterTheLockIsReleasedIsNotUndoneByTheRecord(t *testing
 	assert.NotContains(t, res.Summary, "held", "the record of a run before the operator's apply held the boot after it")
 }
 
+// A schedule launchd has not loaded does not run until the next boot, so a
+// job with its plist in place and enabled, but unloaded, is reported.
+func TestAnUnloadedScheduleOnAMacIsReported(t *testing.T) {
+	ctx := context.Background()
+	h := darwinInstalled(t)
+	h.Deps.Supervisor = h.Supervisor
+	units, err := h.Supervisor.Units(ports.UnitParams{Product: "demo"})
+	require.NoError(t, err)
+	require.NoError(t, h.Supervisor.InstallUnits(ctx, units, ports.EnableAll))
+	state, err := h.Supervisor.Status(ctx, "demo-backup.timer")
+	require.NoError(t, err)
+	state.Active, state.Sub = "inactive", "unloaded"
+	h.Supervisor.States["demo-backup.timer"] = state
+
+	got := doctorCheck(t, h, "system.units")
+	assert.Equal(t, events.CheckWarn, got.Status, got.Message)
+	assert.Contains(t, got.Message, "demo-backup.timer: not loaded")
+	assert.Contains(t, got.Remedy, "init --repair --install-units")
+}
