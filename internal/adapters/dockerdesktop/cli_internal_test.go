@@ -67,6 +67,7 @@ func (r *rig) engine() *Engine {
 			return "", os.ErrNotExist
 		},
 		replaceable: func(path string) (string, error) { return r.replaceable[path], nil },
+		given:       os.Getenv("PATH"),
 	}
 }
 
@@ -351,6 +352,7 @@ func TestTheManagersConfigCarriesOnlyCheckedHelpers(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"desktop", "osxkeychain"}, cli.DroppedHelpers)
+	assert.Equal(t, filepath.Join(r.rootConfig, "config.json"), cli.RootConfig, "doctor names the file read")
 	var config map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(read(t, filepath.Join(r.managerDir, "docker", "config.json"))), &config))
 	assert.JSONEq(t, `{"ghcr.io": {"auth": "dXNlcjpwYXNz"}}`, string(config["auths"]))
@@ -542,7 +544,9 @@ func TestDockerByNameIsTheSettledCLI(t *testing.T) {
 	require.NoError(t, err)
 	found, err := lookIn(os.Getenv("PATH"), "docker")
 	require.NoError(t, err)
-	assert.Equal(t, cli.Path, found, "a hook running docker by name finds another CLI than the one settled")
+	target, err := os.Readlink(found)
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, target, "a hook running docker by name finds another CLI than the one settled")
 	helper, err := lookIn(os.Getenv("PATH"), "docker-credential-vault")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers", "docker-credential-vault"), helper,
@@ -580,4 +584,153 @@ func TestAConfigThatCannotBeRebuiltIsNotLeft(t *testing.T) {
 	require.Error(t, r.engine().Prepare())
 
 	assert.NoFileExists(t, filepath.Join(dir, "config.json"))
+}
+
+// Root finds a tool by name only where nobody but root could have put it, from
+// before `init` makes the manager directory, and one found only elsewhere is
+// refused by name rather than called missing (decision 25). `sudo` on a Mac
+// keeps the user's PATH, which names their own directories and Homebrew's.
+func TestRootFindsAToolByNameOnlyWhereOnlyRootCouldHavePutIt(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	ctx := context.Background()
+	r := newRig(t)
+	roots, users, sticky := t.TempDir(), t.TempDir(), t.TempDir()
+	require.NoError(t, os.Chmod(sticky, os.ModeSticky|0o777))
+	for _, dir := range []string{roots, users, sticky} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "sops"), nil, 0o755))
+	}
+	r.replaceable[users] = users + " is owned by uid 501, not root"
+	given := strings.Join([]string{users, "relative", filepath.Join(roots, "missing"), sticky, roots}, string(os.PathListSeparator))
+	ready := func() Runner {
+		engine := r.engine()
+		engine.setEnv, engine.given = true, given
+		require.NoError(t, engine.Prepare())
+		return Runner{Runner: exec.New(), Engine: engine}
+	}
+
+	r.managerDir = filepath.Join(r.managerDir, "missing")
+	runner := ready()
+	assert.Equal(t, roots, os.Getenv("PATH"))
+	found, err := runner.Look("sops")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(roots, "sops"), found)
+
+	// Found where only root can write, and itself someone else's.
+	r.replaceable[found] = found + " is owned by uid 501, not root"
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+found+": "+found+" is owned by uid 501, not root")
+	assert.ErrorIs(t, err, domain.ErrToolMissing)
+
+	require.NoError(t, os.Remove(found))
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(users, "sops")+": "+users+" is owned by uid 501")
+	_, err = runner.Run(ctx, exec.Command{Argv: []string{"sops", "--version"}})
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(users, "sops"))
+	require.NoError(t, os.Remove(filepath.Join(users, "sops")))
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "every user can add a tool to "+sticky)
+	_, err = runner.Look("age")
+	require.ErrorContains(t, err, `"age" was not found in PATH`)
+
+	// Once the manager directory exists, the checked helpers come first, then
+	// what was kept, and nothing else.
+	r.managerDir = filepath.Dir(r.managerDir)
+	ready()
+	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers")+string(os.PathListSeparator)+roots, os.Getenv("PATH"))
+}
+
+// A CLI on PATH may be root's in a directory anyone can add to, a sticky one,
+// which root's PATH leaves off. A process still finds that CLI by name, and
+// nothing else from its directory (decisions 22 and 25).
+func TestTheCLIsDirectoryDoesNotComeBackOnPATH(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	sticky := t.TempDir()
+	require.NoError(t, os.Chmod(sticky, os.ModeSticky|0o777))
+	for _, name := range []string{"docker", "jq"} {
+		require.NoError(t, os.WriteFile(filepath.Join(sticky, name), nil, 0o755))
+	}
+	r.onPath["docker"] = filepath.Join(sticky, "docker")
+	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
+	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
+	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+	engine := r.engine()
+	engine.setEnv, engine.given = true, sticky
+
+	cli, err := engine.Settle(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(sticky, "docker"), cli.Path)
+	assert.NotContains(t, filepath.SplitList(os.Getenv("PATH")), sticky)
+	found, err := lookIn(os.Getenv("PATH"), "docker")
+	require.NoError(t, err)
+	target, err := os.Readlink(found)
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, target)
+	_, err = lookIn(os.Getenv("PATH"), "jq")
+	assert.Error(t, err, "a tool beside the CLI, where anyone can add one, is found by name")
+}
+
+// A manager command a hook runs inherits the manager's bin and helpers first
+// on PATH, and settles on the CLI and helpers they link to, not on the links.
+func TestAManagerCommandAHookRunsSettlesOnWhatTheLinksName(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	cliDir := t.TempDir()
+	for _, name := range []string{"docker", "docker-credential-vault"} {
+		require.NoError(t, os.WriteFile(filepath.Join(cliDir, name), nil, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"),
+		[]byte(`{"credHelpers": {"b.example": "vault"}}`), 0o600))
+	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
+	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
+	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+	settle := func(path string) {
+		engine := r.engine()
+		engine.setEnv = true
+		engine.givenPath(path)
+		_, err := engine.Settle(context.Background())
+		require.NoError(t, err)
+	}
+	link := func(name string) string {
+		target, err := os.Readlink(filepath.Join(r.managerDir, "docker", name))
+		require.NoError(t, err)
+		return target
+	}
+
+	settle(cliDir)
+	settle(os.Getenv("PATH"))
+
+	assert.Equal(t, filepath.Join(cliDir, "docker"), link("bin/docker"))
+	assert.Equal(t, filepath.Join(cliDir, "docker-credential-vault"), link("helpers/docker-credential-vault"))
+}
+
+// A directory on PATH that cannot be checked is left off, never kept, and the
+// refusal of a tool found only there says so (decision 25).
+func TestADirectoryThatCannotBeCheckedIsLeftOffPATH(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	r.managerDir = filepath.Join(r.managerDir, "missing")
+	unchecked, roots := t.TempDir(), t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(unchecked, "sops"), nil, 0o755))
+	engine := r.engine()
+	engine.setEnv, engine.given = true, unchecked+string(os.PathListSeparator)+roots
+	engine.replaceable = func(path string) (string, error) {
+		if path == unchecked {
+			return "", fmt.Errorf("permission denied")
+		}
+		return "", nil
+	}
+
+	require.NoError(t, engine.Prepare())
+
+	assert.Equal(t, roots, os.Getenv("PATH"))
+	_, err := Runner{Runner: exec.New(), Engine: engine}.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(unchecked, "sops")+": "+unchecked+" cannot be checked")
 }

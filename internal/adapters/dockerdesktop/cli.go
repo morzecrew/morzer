@@ -105,6 +105,13 @@ type Engine struct {
 	cli *ports.EngineCLI
 	// pluginDir is the directory the manager's config names for plugins.
 	pluginDir string
+	// path is the PATH root finds a tool on by name: given, the one it was
+	// given, less each directory someone other than root could change, which
+	// dropped says why of (decision 25). Set once, by keepRootsPath.
+	given    string
+	path     string
+	dropped  []dropped
+	pathKept bool
 }
 
 // NewEngine returns the settler for an installation whose manager directory is
@@ -125,13 +132,24 @@ func NewEngine(runner exec.Runner, managerDir string) *Engine {
 			rootConfig = filepath.Join(home, ".docker")
 		}
 	}
-	return &Engine{
+	e := &Engine{
 		dir: filepath.Join(managerDir, "docker"), runner: runner, app: App,
 		rootConfig:  rootConfig,
-		look:        func(name string) (string, error) { return lookIn(start["PATH"], name) },
 		replaceable: atomicfs.ReplaceableByNonRoot,
 		setEnv:      true,
 	}
+	e.givenPath(start["PATH"])
+	return e
+}
+
+// givenPath is the PATH root was given, to look the CLI and its helpers up on
+// and to keep root's directories of. A manager command a hook runs was given
+// the manager's own bin and helpers first, whose links name what the lookup
+// chooses between, so a link found there would be linked to itself; they are
+// left out.
+func (e *Engine) givenPath(path string) {
+	e.given = outside(path, filepath.Join(e.dir, "bin"), filepath.Join(e.dir, "helpers"))
+	e.look = func(name string) (string, error) { return lookIn(e.given, name) }
 }
 
 // Settle returns the CLI to run, copying and checking it the first time, and
@@ -162,10 +180,12 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		pluginDir = filepath.Join(e.dir, "cli-plugins")
 	} else if cli, pluginDir, err = e.fromPath(); err == nil {
 		// Docker Desktop's earlier copies go: the CLI loads a plugin from
-		// its config's directory before any other.
-		_ = os.Remove(filepath.Join(e.dir, "bin", "docker"))
+		// its config's directory before any other. The CLI on PATH is linked
+		// where the copy was, so a process finds it by name without its
+		// directory on PATH, which anyone may add to if it is sticky.
 		_ = os.RemoveAll(filepath.Join(e.dir, "cli-plugins"))
 		_ = os.Remove(filepath.Join(e.dir, "version"))
+		err = atomicfs.ReplaceSymlink(cli.Path, filepath.Join(e.dir, "bin", "docker"))
 	}
 	if err != nil {
 		return ports.EngineCLI{}, err
@@ -174,7 +194,10 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		return ports.EngineCLI{}, err
 	}
 	cli.Verified = Verified
-	if err := e.useConfig(filepath.Dir(cli.Path)); err != nil {
+	if e.rootConfig != "" {
+		cli.RootConfig = filepath.Join(e.rootConfig, "config.json")
+	}
+	if err := e.useConfig(filepath.Join(e.dir, "bin")); err != nil {
 		return ports.EngineCLI{}, err
 	}
 	e.cli, e.pluginDir = &cli, pluginDir
@@ -200,15 +223,18 @@ func (e *Engine) BeforeHook(ctx context.Context) error {
 	return nil
 }
 
-// addable says who other than root could add an entry to a directory, which
-// a sticky bit does not stop, or "".
-func addable(p string, info fs.FileInfo) string {
+// dropped is a directory left off root's PATH, and why.
+type dropped struct{ dir, why string }
+
+// addable says who other than root could add what to a directory, which a
+// sticky bit does not stop, or "".
+func addable(p string, info fs.FileInfo, what string) string {
 	_, gid := atomicfs.Owner(info)
 	switch mode := info.Mode(); {
 	case mode&0o002 != 0:
-		return fmt.Sprintf("every user can add a plugin to %s", p)
+		return fmt.Sprintf("every user can add %s to %s", what, p)
 	case mode&0o020 != 0:
-		return fmt.Sprintf("group %d can add a plugin to %s", gid, p)
+		return fmt.Sprintf("group %d can add %s to %s", gid, what, p)
 	}
 	return ""
 }
@@ -246,7 +272,7 @@ func (e *Engine) pluginsTrusted(dir string) error {
 	if err != nil {
 		return domain.Internal(err, "cannot check the plugin directory %s", dir)
 	}
-	if who := addable(at, info); who != "" {
+	if who := addable(at, info, "a plugin"); who != "" {
 		return refuse(who)
 	}
 	if at != dir {
@@ -287,7 +313,8 @@ func (e *Engine) ready() error {
 // download of its release included: a config an earlier run left would name
 // helpers this process has not checked. Before `init` creates the manager
 // directory there is nothing to rebuild, and a registry is reached
-// anonymously (logs/macos-host.md).
+// anonymously (logs/macos-host.md). PATH loses every directory someone other
+// than root could change whether or not the manager directory exists.
 func (e *Engine) Prepare() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -296,6 +323,9 @@ func (e *Engine) Prepare() error {
 		if err := os.Setenv("DOCKER_CONFIG", nowhere); err != nil {
 			return domain.Internal(err, "cannot set DOCKER_CONFIG")
 		}
+	}
+	if err := e.keepRootsPath(); err != nil {
+		return err
 	}
 	if _, err := os.Stat(filepath.Dir(e.dir)); err != nil {
 		return nil
@@ -313,20 +343,61 @@ func (e *Engine) Prepare() error {
 	return e.useConfig("")
 }
 
+// keepRootsPath leaves off the PATH root was given each directory someone
+// other than root could change or add to, so a tool root finds by name is one
+// only root could have put there (decision 25). A directory that does not
+// exist, or is relative, is left off too, and so is one that cannot be
+// checked.
+func (e *Engine) keepRootsPath() error {
+	if e.pathKept {
+		return nil
+	}
+	var kept []string
+	for _, dir := range filepath.SplitList(e.given) {
+		info, err := os.Stat(dir)
+		if !filepath.IsAbs(dir) || err != nil || !info.IsDir() {
+			continue
+		}
+		why, err := e.replaceable(dir)
+		if err != nil {
+			why = fmt.Sprintf("%s cannot be checked: %s", dir, domain.AsError(err).Message)
+		} else if why == "" {
+			why = addable(dir, info, "a tool")
+		}
+		if why != "" {
+			e.dropped = append(e.dropped, dropped{dir, why})
+			continue
+		}
+		kept = append(kept, dir)
+	}
+	e.path, e.pathKept = strings.Join(kept, string(os.PathListSeparator)), true
+	if !e.setEnv {
+		return nil
+	}
+	if err := os.Setenv("PATH", e.path); err != nil {
+		return domain.Internal(err, "cannot set PATH")
+	}
+	return nil
+}
+
 // useConfig gives the process the manager's DOCKER_CONFIG, and its PATH the
 // checked helpers' directory first, then the settled CLI's, so every process
 // the manager starts finds those by name (decision 22). The helpers come first:
 // that directory holds nothing else, and a CLI's own directory can hold a
 // helper of the same name nobody checked.
 func (e *Engine) useConfig(cliDir string) error {
-	if !e.setEnv {
-		return nil
+	if err := e.keepRootsPath(); err != nil || !e.setEnv {
+		return err
 	}
 	dirs := []string{filepath.Join(e.dir, "helpers")}
 	if cliDir != "" {
 		dirs = append(dirs, cliDir)
 	}
-	path := strings.Join(append(dirs, startEnv()["PATH"]), string(os.PathListSeparator))
+	// An empty entry is the working directory.
+	path := strings.Join(append(dirs, e.path), string(os.PathListSeparator))
+	if e.path == "" {
+		path = strings.Join(dirs, string(os.PathListSeparator))
+	}
 	if err := os.Setenv("PATH", path); err != nil {
 		return domain.Internal(err, "cannot put %s first on PATH", strings.Join(dirs, ", "))
 	}
@@ -337,29 +408,67 @@ func (e *Engine) useConfig(cliDir string) error {
 }
 
 // Runner runs every docker command with the settled CLI, and refuses one when
-// none can be settled.
+// none can be settled. Any other tool named without a path runs only if
+// nobody but root could replace it (decision 25).
 type Runner struct {
 	exec.Runner
 	Engine *Engine
 }
 
 func (r Runner) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
-	if len(cmd.Argv) > 0 && cmd.Argv[0] == "docker" {
+	switch {
+	case len(cmd.Argv) == 0:
+	case cmd.Argv[0] == "docker":
 		cli, err := r.Engine.Settle(ctx)
 		if err != nil {
 			return exec.Result{}, err
 		}
 		cmd.Argv = append([]string{cli.Path}, cmd.Argv[1:]...)
+	case !strings.Contains(cmd.Argv[0], "/"):
+		path, err := r.Runner.Look(cmd.Argv[0])
+		if _, err := r.Engine.tool(cmd.Argv[0], path, err); err != nil {
+			return exec.Result{}, err
+		}
 	}
 	return r.Runner.Run(ctx, cmd)
 }
 
 func (r Runner) Look(name string) (string, error) {
 	if name != "docker" {
-		return r.Runner.Look(name)
+		path, err := r.Runner.Look(name)
+		return r.Engine.tool(name, path, err)
 	}
 	cli, err := r.Engine.Settle(context.Background())
 	return cli.Path, err
+}
+
+// tool refuses a tool found by name that someone other than root could
+// replace, and names one found only in a directory left off root's PATH,
+// rather than calling it missing.
+func (e *Engine) tool(name, path string, err error) (string, error) {
+	refuse := func(at, why string) error {
+		return domain.Preflight(domain.ErrToolMissing, "root does not run %s at %s: %s", name, at, why).
+			WithHint("install %s where only root can write, /usr/local/bin say", name)
+	}
+	if err != nil {
+		e.mu.Lock()
+		left := e.dropped
+		e.mu.Unlock()
+		for _, d := range left {
+			if at, lookErr := lookIn(d.dir, name); lookErr == nil {
+				return "", refuse(at, d.why)
+			}
+		}
+		return "", err
+	}
+	who, err := e.replaceable(path)
+	if err != nil {
+		return "", err
+	}
+	if who != "" {
+		return "", refuse(path, who)
+	}
+	return path, nil
 }
 
 // copyDesktop copies Docker Desktop's CLI and Compose plugin when its version
@@ -628,6 +737,17 @@ func (e *Engine) rootConfigField(key string) (json.RawMessage, error) {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// outside is path without the entries that name one of dirs.
+func outside(path string, dirs ...string) string {
+	var kept []string
+	for _, entry := range filepath.SplitList(path) {
+		if !slices.Contains(dirs, filepath.Clean(entry)) {
+			kept = append(kept, entry)
+		}
+	}
+	return strings.Join(kept, string(os.PathListSeparator))
 }
 
 // lookIn is exec.LookPath against a given PATH.

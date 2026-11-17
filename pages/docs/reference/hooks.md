@@ -60,14 +60,19 @@ whose hooks need them declares `min_manager_version: "0.13.0"`.
 
 ### On a Mac
 
-Beyond these, a hook gets the manager's own environment, with two changes on a
-Mac:
+Beyond these, a hook gets the manager's own environment, with three changes on
+a Mac:
 
-- **`PATH` starts with the directory of the `docker` CLI the manager checked.**
-  A hook that runs `docker` by name runs that copy. One that names a path,
+- **`PATH` starts with a directory of the manager's that holds the `docker` CLI
+  it checked**, a copy of Docker Desktop's or a link to the one on `PATH`. A
+  hook that runs `docker` by name runs that CLI. One that names a path,
   `/usr/local/bin/docker` say, runs whatever that path holds.
 - **`DOCKER_CONFIG` is the manager's**, so that CLI loads the Compose plugin
   the manager checked.
+- **The rest of `PATH` holds only the directories that only root can change.**
+  `sudo` on a Mac keeps the user's `PATH`, so it names their own directories
+  and Homebrew's, and those are left out. A hook that runs a Homebrew tool by
+  name does not find it.
 
 No hook runs while anyone but root could replace an entry in a directory that
 CLI searches for plugins, or in a directory on the way to one: the manager's

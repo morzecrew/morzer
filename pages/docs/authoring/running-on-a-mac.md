@@ -68,6 +68,9 @@ Linux's, and no `/proc` or `systemctl`.
   GNU's and fail on a Mac.
 - **Do Linux work in a container.** `docker compose run` and `exec` run the
   same image on either host.
+- **Do not count on Homebrew.** A hook's `PATH` on a Mac holds only the
+  directories that only root can change, so a tool from Homebrew, or from the
+  operator's home, is not found by name. Run it in a container instead.
 - **Run `docker` by name.** On a Mac, `PATH` starts with the CLI the manager
   has checked. A hook that names `/usr/local/bin/docker` runs whatever that
   path holds, which root has not checked.

@@ -959,8 +959,16 @@ func (d *Deps) checkEngineCLI() preflight.Check {
 				from = "a copy of Docker Desktop " + cli.DesktopVersion + "'s CLI, signed by Docker"
 			}
 			if len(cli.DroppedHelpers) > 0 {
+				// `sudo` on a Mac keeps HOME, so the config read is the
+				// user's, not root's, and it keeps no DOCKER_CONFIG, so the
+				// login names the directory (logs/macos-host.md).
+				config, login := "root's docker config", "`sudo docker login <registry>`"
+				if cli.RootConfig != "" {
+					config = cli.RootConfig
+					login = "`sudo docker --config " + domain.ShellQuote(filepath.Dir(cli.RootConfig)) + " login <registry>`"
+				}
 				return preflight.Warn(
-					"remove the helper from root's ~/.docker/config.json and run `sudo docker login <registry>`, "+
+					"remove the helper from "+config+" and run "+login+", "+
 						"which then stores the credential where the manager reads it",
 					"runs %s at %s, without the credential helper %s of root's config: someone other than "+
 						"root can replace it", from, cli.Path, strings.Join(cli.DroppedHelpers, ", "))
