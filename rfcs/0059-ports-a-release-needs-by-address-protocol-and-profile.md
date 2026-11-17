@@ -1,7 +1,8 @@
 # RFC 0059 — Ports a release needs, by address, protocol and profile
 
-- **Status:** 📝 Draft — proposed 2026-11-15, and ruled by the author
-  2026-11-16: decisions 5 and 9 as recommended. Nothing is built.
+- **Status:** ✅ Complete — shipped 2026-11-17 in #387. Ruled by the author
+  2026-11-16: decisions 5 and 9 as recommended. §10's measurement is §13,
+  and decision 11 was added on it.
 - **Scope:** Lets a `requirements.ports` entry say what a release really
   publishes: on which host address, over TCP or UDP, and under which
   profile. The entry is written as Compose writes a published port,
