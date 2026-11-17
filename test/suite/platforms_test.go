@@ -356,6 +356,8 @@ func TestDoctorSaysWhatNoSupervisorRunsOnAMac(t *testing.T) {
 	h.Deps.Supervisor = h.Supervisor
 	h.Supervisor.Present = false
 
+	// Named, since an empty one is the host's, darwin on a Mac.
+	h.Deps.Platform = "linux"
 	linux := doctorCheck(t, h, "system.units")
 	assert.Equal(t, events.CheckOK, linux.Status, linux.Message)
 
