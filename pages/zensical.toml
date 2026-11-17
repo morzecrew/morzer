@@ -64,6 +64,7 @@ nav = [
         "authoring/hooks.md",
         "authoring/backing-up-volumes.md",
         "authoring/bundled-images.md",
+        "authoring/running-on-a-mac.md",
         "authoring/publishing.md",
     ] },
     { "Reference" = [
@@ -88,6 +89,7 @@ nav = [
         "explanation/architecture.md",
         "explanation/the-step-engine.md",
         "explanation/secrets.md",
+        "explanation/platforms.md",
         "explanation/what-is-tested.md",
     ] },
 ]

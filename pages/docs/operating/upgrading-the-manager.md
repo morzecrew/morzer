@@ -73,8 +73,9 @@ installation's lock. An operation in progress anywhere on the machine refuses
 it; run it again once that finishes. `--to 0.13.1` pins a version, and
 `--dry-run` downloads, verifies and runs the new binary, then stops before it
 takes any lock or replaces anything. On a machine without the internet,
-download the release's archive for that machine's architecture (on amd64,
-`morzer_${VERSION}_linux_amd64.tar.zst`), `SHA256SUMS` and
+download the release's archive for that machine's platform (on amd64 Linux,
+`morzer_${VERSION}_linux_amd64.tar.zst`, and on a Mac,
+`morzer_${VERSION}_darwin_arm64.tar.zst`), `SHA256SUMS` and
 `SHA256SUMS.minisig` into one directory elsewhere, carry them over, and run
 `morzer self-update --from <directory>`. The
 [command reference](../reference/commands.md#self-update) has the refusals.

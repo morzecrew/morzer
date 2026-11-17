@@ -34,7 +34,7 @@ variable that is not here resolves to its `:-` fallback or to empty.
 | Variable | Meaning |
 | --- | --- |
 | `<PRODUCT>_DATA_DIR` | Persistent product data on the host. |
-| `<PRODUCT>_SECRETS_DIR` | The tmpfs directory secrets are rendered into. |
+| `<PRODUCT>_SECRETS_DIR` | The directory secrets are rendered into: a tmpfs on Linux, on disk on a Mac. |
 | `<PRODUCT>_CONFIG_FILE` | The rendered configuration file. |
 | `<PRODUCT>_RELEASE_DIR` | The unpacked release, for mounting files the bundle ships. |
 | `<PRODUCT>_VERSION` | The release version. |

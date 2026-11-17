@@ -875,3 +875,73 @@ evidence: internal/cli/root.go:1019-1024
 action: decided
 proposal: ASSUMED — a plugin directory that does not exist is judged by its nearest existing ancestor; the check runs before every hook, on darwin only
 ```
+
+## The docs
+
+On branch `rfc-0055-docs` from `main` at `d27056e6`, writing §7's pages for
+P1. The plan found three questions §7 does not settle, and the author ruled
+them on 2026-11-17 as the plan leaned. Two more turned up while checking what
+the pages would claim.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T10:45:03Z
+attempt: 1
+claim: §7 has the docs say "verified on Apple silicon with Docker Desktop <version>", never "works on macOS" alone, and no acceptance run has been made on a Mac yet: `dockerdesktop.Verified` stays empty until the release pull request that records one fills it. Ruled by the author: the pages say no manager release has passed the acceptance run yet, so none ships a macOS archive, and that `doctor`'s `runtime.engine-version` names the releases a manager passed on. The release pull request that commits `.github/macos-acceptance/v<version>.txt` fills `Verified`, that sentence and the changelog together. Quoting the spike's Docker Desktop is refused: the spike was not the acceptance run.
+evidence: internal/adapters/dockerdesktop/cli.go:40-43
+action: decided
+proposal: ASSUMED — the docs name the Docker Desktop releases `dockerdesktop.Verified` lists, written by the release pull request that commits the acceptance record, and say none has passed until then
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T10:45:03Z
+attempt: 1
+claim: §7 asks for a Platforms page and for authoring guidance, and does not say whether they are one page. Ruled by the author: two, each linking the other. `explanation/platforms.md` says what an installation on a Mac is and is not, and an authoring how-to says how a release is made to run there, since one informs knowing and the other doing.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:580-587
+action: decided
+proposal: ASSUMED — the Platforms page is an explanation, and making a release run on a Mac is a separate authoring how-to
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T10:45:03Z
+attempt: 1
+claim: Decision 12 has `install.sh` accept darwin, and its refusal when neither tar nor a `zstd` binary can decompress the archive names apt, apk and dnf alone, none of which a Mac has. Ruled by the author: the refusal also names `brew install zstd`, and the install page says so for a Mac. The hint shows only when extraction fails, so it holds whether or not a Mac's tar reads zstd.
+evidence: install.sh:544-546
+action: decided
+proposal: ASSUMED — `install.sh`'s missing-zstd refusal names Homebrew beside the Linux package managers
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T10:45:03Z
+attempt: 1
+claim: Decisions 18 and 21 have root run only a docker CLI and Compose plugin only root can replace, and say nothing of the other tools root runs by name. The manager runs the first `sops` on `PATH`, unchecked, on Linux too. There it is the distribution's, and root's. On a Mac it is Homebrew's, under `/opt/homebrew`, which the user who installed Homebrew owns, so that user could replace what root runs at the next `sudo morzer`: the exposure decision 18 closes for the CLI. The same holds for a tool a hook runs by name past the CLI's directory (decision 22), and for the `zstd` that `install.sh` runs when tar cannot read the archive. Decided for this task: the install page has a Mac put `sops` where only root can write, and not take it from Homebrew, and says why. No code changes here; the check needs a row.
+evidence: internal/adapters/secrets/sopsage/sopsage.go:138
+action: decided
+proposal: ASSUMED — on darwin, root runs `sops` only if `ReplaceableByNonRoot` passes for the one `PATH` names, as decision 21 has for the CLI, and `doctor` names it otherwise
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+class: drift
+at: 2026-11-17T10:45:03Z
+attempt: 1
+claim: Decision 1 has each weaker guarantee stated in `doctor` and the docs, never left implicit, and §12 has P1, usable without a supervisor, say so. On a Mac `doctor` does not. There is no systemd, so `init` skips its units without a word, as in a container, and `system.units` reports ok, "systemd is not in use on this host". `backup.schedule`, `doctor.schedule`, `update.schedule` and `sync.interval` are accepted and never run, and nothing converges at boot. The pages in this task state it. `doctor` stating it is a change to code P1 already merged and is not built here; halted on it for the author.
+evidence: internal/lifecycle/ops/doctor.go:1673-1674
+action: halted
+proposal: LOCKED (decision 1, unchanged) — on darwin, `system.units` warns that nothing converges at boot and no schedule runs until the launchd adapter (P2), and names the schedules the installation sets
+```
+
+**Drift count: 2.** P1 left the missing supervisor unstated in `doctor`,
+which decision 1 says it states, above.

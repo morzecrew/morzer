@@ -24,6 +24,10 @@ second and third lines of defence.
 
 Rendered configuration in `/etc` contains *paths* to secrets, never values.
 
+A Mac has no tmpfs: there the render directory is `/var/run/<product>/secrets`,
+on a disk FileVault has to encrypt, and the files are the user's who runs
+Docker Desktop. See [Platforms](../explanation/platforms.md#secrets-on-a-disk).
+
 Every write rewrites the whole file, so writes take turns. The commands below
 that change a value or a recipient, `init`, `installation import`, and an update
 generating a secret its release adds each hold the `secrets` lock for the length

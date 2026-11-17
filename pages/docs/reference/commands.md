@@ -487,7 +487,25 @@ These checks **fail** rather than warn:
 | `runtime.declared` | The runtime this installation is fixed to, and whether this manager drives it. Ok reports the name. It fails when they differ — a state file that arrived from a machine running something else, by import or by hand — and that failure is the one with no fix on this machine: the runtime is chosen when the installation is created and never transitions, so the way out is a manager built for it, or a fresh `init` and a `restore`. On a machine with no installation yet, `doctor` instead checks the tools that runtime needs, which is what `init` will want next. |
 | `runtime.services` | Fails when the runtime cannot say what is running, which is what a stopped or unreachable Docker daemon looks like: nothing the release runs can be up, and monitoring that watches the exit code has to see it. Fails too when a service is running and its Docker healthcheck says unhealthy: the product is up and broken, which nobody chooses. A stopped service, or a deployment with no containers yet, only warns, because an operator may have stopped it on purpose. While the product is [stopped](#stop) with `morzer stop`, it reports the stop as information, however old, and `runtime.health` does not probe. |
 | `runtime.health` | Fails when a health check the release declares does not pass while its services run, an unhealthy one included. With nothing running, or a runtime it cannot ask, it does not probe and only warns, as the service check above already says why. |
+| `system.platform` | Fails when the installed release is not made for this operating system: its [`requirements.platforms`](manifest.md#platforms) leaves it out. A Linux installation's state restored on a Mac is how it happens. `apply` refuses on it too. |
 | `manager.binary` | Fails when the installed units run a manager binary another user could replace: the units run it as root, so whoever can swap it gets root at the next timer tick. The binary, and every directory and link on the way to it, must be owned by root and writable by no group or other user. Every command a unit runs counts: those in its file and its drop-ins, and those systemd reports for it. Units it cannot read fail it too. The remedy installs the manager into `/usr/local/bin` for root and runs `init --repair` with it. |
+
+### On a Mac
+
+A Mac adds these checks, for what is weaker there (see
+[Platforms](../explanation/platforms.md)):
+
+| Check | What it means |
+| --- | --- |
+| `secrets.disk-encryption` | Fails while FileVault is off, with [`secrets.allow_unencrypted_disk`](parameters.md#installation-settings-are-not-parameters) set or not: the age identity, and any decrypted secret, is readable by anyone with the disk. If the disk left your hands while it was off, rotate the identity and every secret. |
+| `storage.run-directory` | Fails while an account other than root can write `/var/run`, where the run directory sits. Such an account could move the run directory aside and redirect where root writes decrypted secrets. `/var/run` is writable by its group, so take the accounts it names out of that group. |
+| `runtime.cli` | Says which `docker` CLI root runs: a copy of Docker Desktop's, signed by Docker, or one on `PATH` that only root can replace. Fails while root has neither to run. Warns when root's docker config names a credential helper someone else could replace: the manager leaves it out, and `sudo docker login` stores the credential where the manager reads it. |
+| `runtime.engine-version` | Warns when Docker Desktop is a release the acceptance run of this manager did not pass on. Nothing to change if it works: how it shares the Mac's files is the part of it least pinned by documentation. |
+| `runtime.file-sharing` | Fails while a container cannot list each managed directory and write the data directory, which is what `/opt` missing from Docker Desktop's file sharing looks like. `apply` runs it too, before it starts anything. It runs `sh`, `ls`, `mktemp` and `rm` in the [volume helper image](../operating/backups.md#the-helper-image), and warns when it cannot run. |
+| `secrets.owner` | Warns while the release declares an `owner` for a secret: on a Mac every container that mounts it can read it. |
+
+`secrets.ephemeral-storage`, above, warns on every run there, since a Mac has
+no tmpfs.
 
 ## history
 
@@ -993,8 +1011,11 @@ It refuses:
   escalates itself. When another user could replace this copy, `sudo` on it
   would run as root whatever they put there, so it prints how to install one
   for root instead;
-- a platform no release is published for: only `linux/amd64` and
-  `linux/arm64` are.
+- a platform no release is published for: only `linux/amd64`,
+  `linux/arm64` and `darwin/arm64` are;
+- a release that publishes no archive for this platform, as one that ships
+  no macOS archive on a Mac. It names the release, and `--to` names one
+  that does.
 
 When an installation's units run another copy of the manager, it warns and
 names that copy, since replacing this one leaves those units where they are. A

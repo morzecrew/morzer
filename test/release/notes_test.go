@@ -253,3 +253,33 @@ func TestTheTagsPrefixIsNotPartOfTheVersion(t *testing.T) {
 			"Keep a Changelog headings carry the version, not the tag")
 	}
 }
+
+// A release ships its macOS archive only when its tree holds the acceptance
+// run's record, so the notes name that archive on the same condition, and a
+// release without one never points a Mac at an archive it does not publish.
+func TestOnlyAReleaseWithAMacRecordNamesItsMacArchive(t *testing.T) {
+	records := t.TempDir()
+	t.Setenv("MACOS_ACCEPTANCE_DIR", records)
+	const archive = "morzer_1.2.0_darwin_arm64.tar.zst"
+
+	out, _, code := run(t, changelog, "v1.2.0")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	if strings.Contains(out, archive) {
+		t.Errorf("a release with no acceptance record names %s:\n%s", archive, out)
+	}
+
+	if err := os.WriteFile(filepath.Join(records, "v1.2.0.txt"), []byte("passed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code = run(t, changelog, "v1.2.0")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	for _, want := range []string{archive, "shasum -a 256 -c -"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("a release with an acceptance record does not carry %q:\n%s", want, out)
+		}
+	}
+}

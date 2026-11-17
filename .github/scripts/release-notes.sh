@@ -64,6 +64,17 @@ if [ -z "${section}" ]; then
 	exit 1
 fi
 
+# A release ships its macOS archive only when the tagged tree holds the
+# acceptance run's record, the condition release.yaml builds it on (RFC 0055
+# decision 20), so the notes name that archive on the same one.
+mac=""
+if [ -f "${MACOS_ACCEPTANCE_DIR:-.github/macos-acceptance}/${tag}.txt" ]; then
+	mac="
+On a Mac the archive is \`morzer_${version}_darwin_arm64.tar.zst\`, and
+\`shasum -a 256 -c -\` checks it where the line above has \`sha256sum -c -\`.
+"
+fi
+
 # The footer lives here rather than in `.goreleaser.yaml` because
 # `--release-notes` replaces the whole body: goreleaser's `release.header` and
 # `release.footer` are dropped the moment a notes file is passed, so a footer
@@ -95,7 +106,7 @@ curl -fsSLO https://raw.githubusercontent.com/morzecrew/morzer/main/morzer.pub
 minisign -Vm SHA256SUMS -p morzer.pub
 grep " \${ARCHIVE}\$" SHA256SUMS | sha256sum -c -
 \`\`\`
-
+${mac}
 \`SHA256SUMS\` covers every architecture, so checking it whole fails on the
 archives you did not download — and \`--ignore-missing\`, the usual way
 around that, reports \`OK\` when *no* archive is present at all. Pulling out

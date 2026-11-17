@@ -41,7 +41,7 @@ is the release's name whatever the installation is called, so an installation
 | `<PRODUCT>_PREVIOUS_VERSION` | The version being replaced, during an update or rollback. Absent otherwise, a first install included. |
 | `<PRODUCT>_DATA_DIR` | Persistent product data. |
 | `<PRODUCT>_BACKUP_DIR` | Where a backup hook writes, and a restore hook reads. Its contents are an ABI — see [below](#what-is-in-backup_dir). |
-| `<PRODUCT>_SECRETS_DIR` | The tmpfs directory secrets are rendered to. |
+| `<PRODUCT>_SECRETS_DIR` | The directory secrets are rendered to: a tmpfs on Linux, on disk on a Mac. |
 | `<PRODUCT>_CONFIG_FILE` | The rendered configuration file. |
 | `<PRODUCT>_DOMAIN` | The canonical domain, as a [Compose file](variables.md) reads it. Absent when the installation has none. |
 | `<PRODUCT>_DOMAINS` | Every domain, comma-separated, the canonical first. Absent when there is none. |
@@ -57,6 +57,25 @@ The domains are the installation's as they stand when the hook runs, so after
 [`config set installation.domains`](parameters.md#changing-the-domains) the next
 hook sees the new ones. Managers before 0.13.0 set none of the three: a release
 whose hooks need them declares `min_manager_version: "0.13.0"`.
+
+### On a Mac
+
+Beyond these, a hook gets the manager's own environment, with two changes on a
+Mac:
+
+- **`PATH` starts with the directory of the `docker` CLI the manager checked.**
+  A hook that runs `docker` by name runs that copy. One that names a path,
+  `/usr/local/bin/docker` say, runs whatever that path holds.
+- **`DOCKER_CONFIG` is the manager's**, so that CLI loads the Compose plugin
+  the manager checked.
+
+No hook runs while anyone but root could replace an entry in a directory that
+CLI searches for plugins, or in a directory on the way to one: the manager's
+own plugin directories, and `/usr/local/lib/docker/cli-plugins`,
+`/usr/local/libexec/docker/cli-plugins`, `/usr/lib/docker/cli-plugins` and
+`/usr/libexec/docker/cli-plugins`. A command that lists plugins, `docker info`
+say, runs each one it finds as root. The operation stops before the hook,
+exit 3, naming the entry.
 
 ### What the runtime adds
 

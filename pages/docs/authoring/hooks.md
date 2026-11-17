@@ -32,6 +32,10 @@ work. The command is resolved against the release root too: a hook named
 `backup` runs *your* `hooks/backup`, never something on `PATH` that shares the
 name.
 
+A hook runs on the host, as root. In a release made for a Mac it runs on macOS
+too, with macOS's tools; [Running a release on a
+Mac](running-on-a-mac.md#write-hooks-for-both-hosts) says what that rules out.
+
 ## What a hook is told
 
 Everything arrives as environment variables namespaced with your product name:

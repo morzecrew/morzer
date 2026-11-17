@@ -230,8 +230,9 @@ value: a file has one owner, and its mode lets nobody else read it.
 The owner is a uid on the host. With user-namespace remapping or rootless
 Docker, the container's 65532 is a different uid on the host, so the read is
 refused; the manager does not map ids through the daemon's configuration. On
-macOS the manager refuses `owner` altogether for now. The
-[secret schema reference](../reference/manifest.md#owner) has the rest.
+a Mac, `owner` is not enforced: every container that mounts a secret can read
+it ([Running a release on a Mac](running-on-a-mac.md#do-not-rely-on-owner)).
+The [secret schema reference](../reference/manifest.md#owner) has the rest.
 
 ## Validate as you go
 

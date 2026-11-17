@@ -303,7 +303,8 @@ Each list names `linux` or `darwin`, at least one, each once. A profile's
 list stays within the release's, and names a profile the runtime declares.
 Either key needs `compatibility.min_manager_version` of at least `0.18.0`,
 because an older manager refuses it as unknown. `release verify` checks the
-shape. It cannot check that a release works on a Mac.
+shape. It cannot check that a release works on a Mac; [Running a release on a
+Mac](../authoring/running-on-a-mac.md) lists what decides that.
 
 `platforms` is not `os`. `os` lists the Linux distributions a release was
 tested on. It only warns, and passes when empty. On a Mac it passes, saying the
