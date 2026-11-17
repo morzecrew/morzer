@@ -33,7 +33,7 @@ run it.
     Releases are `tar.zst`, and GNU tar's `--zstd` runs the `zstd` binary as a
     filter rather than decompressing on its own — so a machine without it cannot
     unpack a release however new its tar is. `apt install zstd`, `apk add zstd`
-    or `dnf install zstd`.
+    or `dnf install zstd`, and `brew install zstd` on a Mac.
 
     An installed server usually has it — on Debian and Ubuntu the initramfs
     tooling pulls it in. Container images mostly do not: of
@@ -102,6 +102,59 @@ every release, covered by that release's `SHA256SUMS`. So the script that
 verifies the archive is itself verifiable against the file it teaches you to
 check.
 
+## On a Mac
+
+An installation on a Mac needs Apple silicon, Docker Desktop, FileVault, and a
+release whose vendor made it for one. What it is, and how it is weaker than one
+on a Linux server, is in [Platforms](../explanation/platforms.md).
+
+1. In Docker Desktop's settings, under Advanced, allow the default Docker
+   socket. The manager reaches the engine through `/var/run/docker.sock`,
+   which Docker Desktop creates only then.
+2. Under Resources, File sharing, add `/opt`, where the manager unpacks
+   releases. Docker Desktop does not share it by default.
+3. Turn FileVault on, in System Settings, Privacy & Security. Rendered secrets
+   and the machine's age identity are on disk on a Mac, and `init` refuses
+   without it.
+4. Install morzer for root, naming the prefix:
+
+    ```sh
+    curl -fsSL https://morzecrew.github.io/morzer/install.sh \
+      | sudo sh -s -- --version <version> --dir /usr/local/bin
+    ```
+
+    `<version>` is a release that ships a macOS archive; the script names the
+    release it was given when that one has none. Without `--dir`, a Mac
+    without `/usr/local/bin` gets a copy under `$HOME`, which an installation
+    cannot run.
+
+5. Install `sops` for root, into `/usr/local/bin`, and not with Homebrew:
+
+    ```sh
+    SOPS=3.13.3
+    BASE=https://github.com/getsops/sops/releases/download/v${SOPS}
+    curl -fsSLO ${BASE}/sops-v${SOPS}.darwin.arm64
+    curl -fsSLO ${BASE}/sops-v${SOPS}.checksums.txt
+    grep " sops-v${SOPS}.darwin.arm64\$" sops-v${SOPS}.checksums.txt | shasum -a 256 -c -
+    sudo install -m 0755 sops-v${SOPS}.darwin.arm64 /usr/local/bin/sops
+    ```
+
+    The manager runs the first `sops` on the `PATH` it is given, as root.
+    Homebrew's prefix belongs to the user who installed Homebrew, so anything
+    running as that user could replace a `sops` there, and root would run it.
+    If Homebrew has one, `brew uninstall sops`.
+
+6. Check the machine:
+
+    ```sh
+    sudo morzer doctor
+    ```
+
+A binary that carries a browser's quarantine attribute is killed when it runs,
+exit 137. Download with `curl`, as the script does, or take the attribute off
+the installed binary with `sudo xattr -d com.apple.quarantine
+/usr/local/bin/morzer`.
+
 ## In GitHub Actions
 
 A workflow that builds or tests a bundle installs morzer with the action in this
@@ -154,6 +207,10 @@ tar --zstd -xf ${ARCHIVE}                # runs zstd as a filter; install it fir
 sudo install -m 0755 morzer /usr/local/bin/morzer
 ```
 
+On a Mac the archive is `morzer_${VERSION}_darwin_arm64.tar.zst`. Check it
+with `shasum -a 256 -c -` where the block has `sha256sum -c -`, and unpack it
+with `zstd -dc ${ARCHIVE} | tar -xf -`.
+
 Both checks matter and they answer different questions. The signature says a key
 you trust produced the checksum file; the checksum says the archive you have is
 the one that file describes.
@@ -183,7 +240,8 @@ and put it in the runbook.
     continuity: a release signed by a *different* key than the one you verified
     last time is worth stopping over. Save it the first time.
 
-`linux/arm64` is published alongside `amd64`.
+`linux/arm64` is published alongside `amd64`, and `darwin/arm64` with a
+release that has passed the acceptance run on a Mac.
 
 ## From source
 
@@ -222,7 +280,8 @@ A shell it cannot place a file for gets the script on stdout instead, and exits
 | `docker` and `docker compose` | The runtime the manager coordinates. | preflight, `doctor` |
 | `sops` | Encrypting and decrypting the secret state. | preflight, `doctor` |
 | A tmpfs at `/run` | Decrypted secrets are written there. Standard on systemd hosts. | `doctor` |
-| systemd | Optional. Boot-time convergence and scheduled backups. | `doctor` |
+| FileVault, on a Mac | A Mac has no tmpfs, so decrypted secrets and the age identity are on its disk. | `init`, every render, `doctor` |
+| systemd | Optional. Boot-time convergence and scheduled backups. A Mac has none yet; see [Platforms](../explanation/platforms.md#nothing-runs-without-you). | `doctor` |
 
 The versions a release requires are declared in its manifest, not by the
 manager, so a bundle that needs `docker >= 24` says so and preflight enforces
