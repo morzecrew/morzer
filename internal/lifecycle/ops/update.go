@@ -1481,7 +1481,7 @@ func (d *Deps) restorePreviousRuntime(
 		return err
 	}
 
-	specs, err := d.checkSpecs(inst, previous, st.OpID, st.OpType)
+	specs, err := d.checkSpecs(inst, previous, nil, st.OpID, st.OpType)
 	if err != nil {
 		return err
 	}

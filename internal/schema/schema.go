@@ -553,8 +553,16 @@ func stringSchema(t reflect.Type) map[string]any {
 			"the default and needs no declaration: the runtime pulls it. " +
 			"`bundle` means the image travels inside the bundle, under images/."
 	case reflect.TypeOf(domain.PortSpec("")):
-		out["description"] = "A port number, or a {{ .Parameters.<name> }} reference."
-		out["examples"] = []string{"18080", "{{ .Parameters.http_port }}"}
+		out["description"] = "A port the release needs free, as [address:]port[/protocol]: " +
+			"Compose's spelling of a published port without the container side. The address is " +
+			"an IP literal, IPv6 in brackets, and empty or absent means every address; the protocol " +
+			"is tcp or udp, tcp when absent. A template may read .Parameters and .Profiles, with has, " +
+			"and one that renders empty requires nothing. An address, a protocol or .Profiles needs " +
+			"compatibility.min_manager_version " + domain.PortsMinManagerVersion + "."
+		out["examples"] = []string{
+			"18080", "{{ .Parameters.http_port }}", "8447/udp", "203.0.113.11:443",
+			"{{ .Parameters.listen }}:443", `{{ if has "xdns" .Profiles }}53/udp{{ end }}`,
+		}
 	case reflect.TypeOf(domain.GeneratorPassword):
 		out["enum"] = []string{
 			string(domain.GeneratorPassword), string(domain.GeneratorHex),

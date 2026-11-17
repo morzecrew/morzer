@@ -1,7 +1,8 @@
 # RFC 0059 — Ports a release needs, by address, protocol and profile
 
-- **Status:** 📝 Draft — proposed 2026-11-15, and ruled by the author
-  2026-11-16: decisions 5 and 9 as recommended. Nothing is built.
+- **Status:** ✅ Complete — shipped 2026-11-17 in #387. Ruled by the author
+  2026-11-16: decisions 5 and 9 as recommended. §10's measurement is §13,
+  and decision 11 was added on it.
 - **Scope:** Lets a `requirements.ports` entry say what a release really
   publishes: on which host address, over TCP or UDP, and under which
   profile. The entry is written as Compose writes a published port,
@@ -416,6 +417,7 @@ The floor only turns those failures into one message that names the version.
 | 8 | `ASSUMED` | `PortsMinManagerVersion` is required when a port entry uses an address or a protocol literally, when either templated field refers to `.Profiles` or `has`, or when a templated port entry has `:`, `/` or `[` outside its actions. An entry whose text outside its actions is digits needs no floor, a lone `{{ .Parameters.<name> }}` or `8{{ .Parameters.suffix }}`, since it resolves today as it will then. The floor names the version at `release verify`. Older managers refuse every new form where they resolve it anyway. |
 | 9 | `ASSUMED` | The floor's value. **Recommended:** 0.18.0 if this ships before 0.18.0 is cut, the minor that already carries `PlatformsMinManagerVersion`, and the next minor otherwise. Was `OPEN`; ruled by the author 2026-11-16: as recommended. |
 | 10 | `ASSUMED` | The probe is a socket bind, never Docker. If §10's measurement shows that the two disagree for UDP/53, the probe is changed to agree with Docker, and the change is recorded here. |
+| 11 | `ASSUMED` | Every UDP bind the probe makes sets `SO_REUSEADDR` first, as Docker 28's own bind does. §13 measured the plain bind refused beside systemd-resolved's stub on `127.0.0.53` and `127.0.0.54`, where Docker publishes `53:53/udp`, and the bind with `SO_REUSEADDR` agreeing with Docker in every case measured. Like Docker, the probe then passes a UDP port that another socket holds and allows to be shared. TCP binds are unchanged, since both refuse 53/tcp there. Refused: a plain bind retried with `SO_REUSEADDR` that warns on success, which would warn on every Ubuntu machine with the stub on. Ruled by the author 2026-11-17 on the measurement; see logs/ports-by-address.md (decision 10, 2026-11-17T19:04:29Z). |
 
 ## 12. Phasing
 
@@ -429,3 +431,48 @@ in:
 
 The grammar without `.Profiles` (#366 alone) could land first, if the author
 wants dotdash's second-address setup unblocked before profile-aware ports.
+
+## 13. Measurements
+
+### UDP/53 beside systemd-resolved (§10)
+
+Run on 2026-11-17 on a GitHub-hosted `ubuntu-24.04` runner: Ubuntu 24.04.5,
+kernel 7.0.0-1017-azure, Docker Engine 28.0.4, Compose 2.38.2, no
+`daemon.json`, Go 1.24.13. systemd-resolved was active with its stub
+listener on, and `/etc/resolv.conf` named `stub-resolv.conf`. Before
+anything ran, port 53 was held by systemd-resolved alone, on UDP and TCP, at
+`127.0.0.53%lo` and `127.0.0.54`. The workflow ran on a scratch branch that
+was never merged, as two runs (44152312236 and 44152635157), with the same
+results for the binds both ran.
+
+Binds made by a Go program as root, each closed at once:
+
+| Bind | Result |
+| --- | --- |
+| `net.ListenPacket("udp", ":53")` | `bind: address already in use` |
+| `net.ListenPacket("udp4", "0.0.0.0:53")` | `bind: address already in use` |
+| `net.ListenPacket("udp6", "[::]:53")` | ok |
+| `net.ListenPacket("udp4", "127.0.0.1:53")` | ok |
+| `net.Listen("tcp", ":53")` | `bind: address already in use` |
+| `net.Listen("tcp4", "0.0.0.0:53")` | `bind: address already in use` |
+| `udp`, `:53`, with `SO_REUSEADDR` set before the bind | ok |
+| `udp4`, `0.0.0.0:53`, with `SO_REUSEADDR` | ok |
+| `tcp`, `:53`, with `SO_REUSEADDR` | `bind: address already in use` |
+
+What Compose did with a `busybox` service:
+
+- **`53:53/udp`:** `up` succeeded. `ss` showed `docker-proxy` on
+  `0.0.0.0:53` and `[::]:53` beside systemd-resolved's two sockets.
+  `dockerd` makes the socket and hands it to the proxy, which ran as
+  `docker-proxy -proto udp -host-ip 0.0.0.0 -host-port 53 ... -use-listen-fd`.
+- **`0.0.0.0:53:53/udp`:** `up` succeeded, on IPv4 alone.
+- **`53:53/tcp`:** `up` failed.
+- **`53:53/udp` while another process held `0.0.0.0:53/udp` with
+  `SO_REUSEADDR`:** `up` succeeded, and both sockets were bound to
+  `0.0.0.0:53`.
+
+So the plain probe and Docker disagree for UDP, and agree for TCP. Docker 28
+binds UDP with `SO_REUSEADDR`, and a probe that does the same agrees with it
+in every case measured. Docker then shares a UDP port with any socket that
+allows sharing; a probe that follows it does too. Docker 27 and older, where
+`docker-proxy` made the socket itself, were not measured.

@@ -9,15 +9,18 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -357,45 +360,99 @@ func Disk(path string, required domain.ByteSize) Check {
 // callers already use.
 func FreeSpace(path string) (int64, error) { return atomicfs.FreeSpace(path) }
 
-// Ports checks that the ports a release needs are free.
+// Ports checks that the ports a release needs are free, each bound as its entry
+// names it (RFC 0059 §5.3).
 //
 // A port held by the product's own containers is not a conflict -- `apply` on
 // a running deployment must not report its own listener as a blocker -- so
 // this check is only applied when the project is not already up.
-func Ports(required []int) Check {
+func Ports(required []domain.PortRequirement) Check {
 	return Check{
 		ID:          "network.ports",
 		Category:    CategoryNetwork,
 		Description: "required ports are available",
 		Fatal:       true,
-		Run: func(context.Context) events.CheckResult {
+		Run: func(ctx context.Context) events.CheckResult {
 			if len(required) == 0 {
 				return OK("the release requires no specific ports")
 			}
 
-			var occupied []string
-			for _, port := range required {
-				if !portFree(port) {
-					occupied = append(occupied, strconv.Itoa(port))
+			// Told apart, since only "in use" is someone else's
+			// listener, and "not an address of this machine" is the
+			// installation's own setting (decision 3).
+			var occupied, absent, other, params []string
+			for _, r := range required {
+				err := probePort(ctx, r)
+				switch {
+				case err == nil:
+				case errors.Is(err, syscall.EADDRINUSE):
+					occupied = append(occupied, r.String())
+				case errors.Is(err, syscall.EADDRNOTAVAIL):
+					absent = append(absent, r.Address.String())
+					params = append(params, r.Parameters...)
+				default:
+					other = append(other, fmt.Sprintf("%s cannot be bound: %v", r, err))
 				}
 			}
+			var problems []string
 			if len(occupied) > 0 {
-				return Fail(
-					"stop whatever is listening (`ss -tlnp`), or change the release's port mapping",
-					"port %s already in use", strings.Join(occupied, ", "))
+				problems = append(problems, fmt.Sprintf("port %s already in use", strings.Join(occupied, ", ")))
 			}
-			return OK("%d port(s) available", len(required))
+			if len(absent) > 0 {
+				problems = append(problems, fmt.Sprintf("%s is not an address of this machine", strings.Join(absent, ", ")))
+			}
+			problems = append(problems, other...)
+			if len(problems) == 0 {
+				return OK("%d port(s) available", len(required))
+			}
+			hint := "stop whatever is listening (`ss -tulnp`), or change the release's port mapping"
+			if len(absent) > 0 && len(params) > 0 {
+				hint = fmt.Sprintf("set %s to an address of this machine, or leave it empty for every address, "+
+					"with `morzer config set`", strings.Join(slices.Compact(slices.Sorted(slices.Values(params))), ", "))
+			}
+			return Fail(hint, "%s", strings.Join(problems, "; "))
 		},
 	}
 }
 
-func portFree(port int) bool {
-	ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		return false
+// reuseAddr sets SO_REUSEADDR before a UDP bind, as Docker's own bind does, so
+// a socket that allows sharing, systemd-resolved's stub on 127.0.0.53 say,
+// leaves the port free for both (RFC 0059 decision 11).
+var reuseAddr = net.ListenConfig{Control: func(_, _ string, c syscall.RawConn) error {
+	var serr error
+	if err := c.Control(func(fd uintptr) {
+		serr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	}); err != nil {
+		return err
 	}
-	_ = ln.Close()
-	return true
+	return serr
+}}
+
+// probePort binds an entry's protocol on its address, in that address's family
+// alone, and closes it at once. `tcp6` on `[::]` binds IPv6 alone, as Docker
+// 27 and later publish `::`.
+func probePort(ctx context.Context, r domain.PortRequirement) error {
+	network, address := string(r.Protocol), ":"+strconv.Itoa(int(r.Port))
+	if r.Address.IsValid() {
+		if r.Address.Is4() {
+			network += "4"
+		} else {
+			network += "6"
+		}
+		address = netip.AddrPortFrom(r.Address, r.Port).String()
+	}
+	if r.Protocol == domain.PortUDP {
+		conn, err := reuseAddr.ListenPacket(ctx, network, address)
+		if err == nil {
+			_ = conn.Close()
+		}
+		return err
+	}
+	ln, err := net.Listen(network, address)
+	if err == nil {
+		_ = ln.Close()
+	}
+	return err
 }
 
 // Directories checks that the managed directories exist with the right modes.

@@ -174,12 +174,13 @@ func TestTheExampleBundleTiesItsPortToItsParameter(t *testing.T) {
 		map[string]string{"http_port": "9000"})
 	require.NoError(t, err)
 
-	ports, err := h.Release.Manifest.ResolvePorts(params)
+	ports, err := h.Release.Manifest.ResolvePorts(params, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []int{9000}, ports,
+	require.Len(t, ports, 1)
+	assert.Equal(t, "9000/tcp", ports[0].String(),
 		"the bundle's requirements.ports must follow its http_port parameter")
 
-	checks, err := h.Release.Manifest.ResolveHealthChecks(params)
+	checks, err := h.Release.Manifest.ResolveHealthChecks(params, nil)
 	require.NoError(t, err)
 
 	var api *string

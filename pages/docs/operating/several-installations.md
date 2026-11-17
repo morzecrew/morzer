@@ -233,14 +233,18 @@ be installed. systemd starts it on every boot and the manager cannot tell it
 anything. A unit count that could not be read counts as "may have them" — a
 failed read is not evidence that there are none.
 
-**`machine.ports`** warns when two installations declare the same host port:
+**`machine.ports`** warns when two installations declare the same host port,
+on the same protocol and on addresses that overlap:
 
 ```text
 ! no two installations publish the same port
-  two installations want the same host port: 18080 (demo, sandbox)
+  two installations want the same host port: 18080/tcp (demo on every address, sandbox on every address)
   they cannot both run; change one release's port parameter with
   `morzer --product <name> config set`, or keep only one started
 ```
+
+Two on 443 at different addresses, or one on 53/udp and one on 53/tcp,
+collide with nobody. The rule is in [Ports](../reference/manifest.md#ports).
 
 They cannot both run. Without this check the second one's `apply` fails inside
 Compose with a message about a port already in use — true, and silent about the

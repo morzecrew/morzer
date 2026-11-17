@@ -263,7 +263,7 @@ func applySteps(d *Deps, inst domain.Installation, rel domain.Release, opts Opti
 		stepPullImages(d, inst, rel, opts),
 		stepMigrate(d, inst, rel, opts),
 		stepStartServices(d, inst, rel, opts),
-		stepHealthChecks(d, inst, rel),
+		stepHealthChecks(d, inst, rel, opts.Profiles),
 		stepSmokeTest(d, inst, rel, opts),
 		stepRecordState(d, inst, rel, opts),
 	}
@@ -312,7 +312,11 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 				if err != nil {
 					return err
 				}
-				required, err := rel.Manifest.ResolvePorts(params)
+				profiles, err := d.selection(rel, inst, opts.Profiles)
+				if err != nil {
+					return err
+				}
+				required, err := rel.Manifest.ResolvePorts(params, profiles)
 				if err != nil {
 					return err
 				}
@@ -1239,7 +1243,7 @@ const keySecretsKept = "secrets-kept"
 const keyConfigNotRestored = "config-not-restored"
 
 // stepHealthChecks waits for the application to report ready.
-func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) engine.Step {
+func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release, profiles []string) engine.Step {
 	return engine.Step{
 		ID:          "health-checks",
 		Description: "wait for health checks",
@@ -1253,7 +1257,7 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 			// The operation running the check, as every hook is told
 			// (hooks.md): `update`, `rollback`, `start` and `restart` run
 			// this step too.
-			specs, err := d.checkSpecs(inst, rel, st.OpID, st.OpType)
+			specs, err := d.checkSpecs(inst, rel, profiles, st.OpID, st.OpType)
 			if err != nil {
 				return err
 			}
@@ -1275,7 +1279,7 @@ func stepHealthChecks(d *Deps, inst domain.Installation, rel domain.Release) eng
 // deployment actually publishes. Without this a changed port produces a
 // deployment that works and an `apply` that fails at "wait for health".
 func (d *Deps) checkSpecs(
-	inst domain.Installation, rel domain.Release, opID string, opType domain.OperationType,
+	inst domain.Installation, rel domain.Release, profiles []string, opID string, opType domain.OperationType,
 ) ([]ports.CheckSpec, error) {
 	env := d.hookEnv(inst, rel, domain.Version{}, opID, opType, ports.PhaseHealthCheck, false)
 
@@ -1283,7 +1287,11 @@ func (d *Deps) checkSpecs(
 	if err != nil {
 		return nil, err
 	}
-	checks, err := rel.Manifest.ResolveHealthChecks(params)
+	profiles, err = d.readSelection(rel, inst, profiles)
+	if err != nil {
+		return nil, err
+	}
+	checks, err := rel.Manifest.ResolveHealthChecks(params, profiles)
 	if err != nil {
 		return nil, err
 	}

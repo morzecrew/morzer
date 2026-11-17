@@ -1641,7 +1641,7 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 			probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 
-			specs, err := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
+			specs, err := d.checkSpecs(inst, rel, nil, "", domain.OpTypeApply)
 			if err != nil {
 				// A health URL that cannot be resolved is a
 				// finding, not a crash: doctor's job is to

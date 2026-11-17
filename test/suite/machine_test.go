@@ -103,7 +103,12 @@ func (m *host) add(product string) domain.Installation {
 
 // install copies the example bundle in as product's current release, with the
 // host port it publishes set to the given value.
-func (m *host) install(product string, hostPort int) {
+func (m *host) install(product string, hostPort int) { m.installOn(product, "", hostPort) }
+
+// installOn installs a release that publishes its port on one address, every
+// address when address is empty (RFC 0059), after patching the bundle as each
+// of patches does.
+func (m *host) installOn(product, address string, hostPort int, patches ...func(root string)) {
 	m.t.Helper()
 	ctx := context.Background()
 
@@ -111,6 +116,15 @@ func (m *host) install(product string, hostPort int) {
 	releaseRoot := filepath.Join(paths.ReleasesDir(), "1.2.0")
 	copyBundle(m.t, testBundlePath(m.t), releaseRoot)
 	retargetForProduct(m.t, releaseRoot, m.Root, product)
+	if address != "" {
+		patchManifest(m.t, releaseRoot, `ports: ["{{ .Parameters.http_port }}"]`,
+			`ports: ["`+address+`:{{ .Parameters.http_port }}"]`)
+		patchManifest(m.t, releaseRoot, `min_manager_version: "0.0.0"`,
+			`min_manager_version: "`+domain.PortsMinManagerVersion+`"`)
+	}
+	for _, patch := range patches {
+		patch(releaseRoot)
+	}
 
 	rel, err := release.Load(releaseRoot)
 	require.NoError(m.t, err)
@@ -441,6 +455,47 @@ func TestTwoInstallationsOnDifferentPortsCollideWithNobody(t *testing.T) {
 	assert.Equal(t, "ok", installations.Status)
 	assert.Contains(t, installations.Message, "demo")
 	assert.Contains(t, installations.Message, "sandbox")
+}
+
+// Two installations on one port and two addresses collide with nobody, and one
+// on every address meets both (RFC 0059 decision 4).
+func TestTwoInstallationsOnDifferentAddressesCollideWithNobody(t *testing.T) {
+	m := newHost(t, "demo", "sandbox", "edge")
+	m.installOn("demo", "203.0.113.10", 18080)
+	m.installOn("sandbox", "203.0.113.11", 18080)
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", findResult(t, report, "machine.ports").Status)
+
+	m.install("edge", 18080)
+	report, err = ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+	got := findResult(t, report, "machine.ports")
+	assert.Equal(t, "warn", got.Status)
+	assert.Contains(t, got.Message, "18080/tcp (demo on 203.0.113.10, edge on every address, sandbox on 203.0.113.11)")
+}
+
+// An installation whose profile this platform would not deploy still claims its
+// ports: machine.ports reads what is deployed (RFC 0055 decision 3).
+func TestAProfileThisPlatformWouldNotDeployStillClaimsItsPorts(t *testing.T) {
+	m := newHost(t, "demo", "sandbox")
+	narrowed := func(root string) { madeForDarwin(t, root, "embedded") }
+	m.installOn("demo", "", 18080, narrowed)
+	m.installOn("sandbox", "", 18080, narrowed)
+	for _, product := range []string{"demo", "sandbox"} {
+		store := state.New(domain.PathsUnder(m.Root, product))
+		inst, err := store.LoadInstallation(context.Background())
+		require.NoError(t, err)
+		inst.Profiles = []string{"embedded"}
+		require.NoError(t, store.SaveInstallation(context.Background(), inst))
+	}
+	m.Deps.Platform = "darwin"
+
+	report, err := ops.Doctor(context.Background(), m.Deps)
+	require.NoError(t, err)
+	got := findResult(t, report, "machine.ports")
+	assert.Contains(t, got.Message, "18080/tcp (demo on every address, sandbox on every address)")
 }
 
 // TestUnitsWithoutReadableStateIsWorthSaying.

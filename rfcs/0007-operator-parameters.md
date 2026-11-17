@@ -460,7 +460,7 @@ against for exactly this reason.
 | 3 | Parameters are **not** secrets and the docs say so in those words. Secrets keep their declared, audited, tmpfs-rendered path; nothing here becomes a second way to deliver one. |
 | 4 | Values reach Compose and hooks as `<PRODUCT>_PARAM_<NAME>`, namespaced. The flat form lets a parameter named `data_dir` repoint the deployment's storage. |
 | 5 | Exactly two manifest fields interpolate parameters: `requirements.ports` and `health.checks[].url`. They are the two that contradict a changed port. A third is a new RFC. |
-| 6 | The interpolation context is `.Parameters` and nothing else. A health URL that could reach a secret path is one that can leak it into a log line. |
+| 6 | *(Superseded in part by RFC 0059 decision 5: the context also holds `.Profiles`, with `has`.)* The interpolation context is `.Parameters` and nothing else. A health URL that could reach a secret path is one that can leak it into a log line. |
 | 7 | `config set` is an engine operation — locked, planned, journaled, restarting only the declared services — not a file edit. |
 | 8 | `installation.yaml` stays a report; `config` is the supported editor and `doctor` fails when the two disagree. Making the YAML authoritative was considered and rejected: it gives a tool whose job is careful state transitions two sources of truth, and an operator editing it mid-restore a conflict nothing can resolve. |
 | 9 | `Installation.Settings` is removed rather than deprecated — it has never been settable, documented, schema'd or tested — and `InstallationSchemaVersion` is bumped, because `encoding/json` would otherwise let an older manager read a newer state file and silently apply defaults. |

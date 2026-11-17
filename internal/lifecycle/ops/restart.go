@@ -125,7 +125,7 @@ func Restart(ctx context.Context, d *Deps, opts RestartOptions) (Result, error) 
 // failure: the containers they replaced are gone, and a record that read
 // compensated would say something was put back.
 func restartSteps(d *Deps, inst domain.Installation, rel domain.Release, services []string) []engine.Step {
-	health := stepHealthChecks(d, inst, rel)
+	health := stepHealthChecks(d, inst, rel, nil)
 	health.OnFailure = engine.Abort
 	return []engine.Step{
 		{

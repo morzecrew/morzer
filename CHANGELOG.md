@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   can change, such as `/usr/local/bin`, so `sops` belongs in one, and a hook
   does not find Homebrew's tools by name.
 
+- A `requirements.ports` entry can name an address and a protocol,
+  `[address:]port[/protocol]`, and depend on profiles through `.Profiles` and
+  `has`. `apply` checks each on its own address and protocol, and
+  `machine.ports` reports only overlapping ones. Either needs a 0.18.0 floor.
+
 ### Fixed
 
 - A refused `init --repair` keeps the installation it was asked to repair.

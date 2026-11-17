@@ -1325,6 +1325,27 @@ func (d *Deps) checkRuntimeOptions(inst domain.Installation, declared map[string
 
 // runtimeConfig builds the runtime configuration for a release and a selection
 // of profiles, none meaning the installation's.
+// selection is the profiles an installation runs with, in layering order:
+// those given for one run, or else its own. The configuration templates and the
+// manifest's both read it (RFC 0059 decision 6).
+func (d *Deps) selection(rel domain.Release, inst domain.Installation, profiles []string) ([]string, error) {
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	return rel.Selection(inst.RuntimeName(), profiles, d.platform())
+}
+
+// readSelection is selection without the platform check, for reading what an
+// installation runs: its health URLs and its port claims follow what is
+// deployed, whatever this platform would refuse to deploy, as runtimeConfig
+// reads it (RFC 0055 decision 3).
+func (d *Deps) readSelection(rel domain.Release, inst domain.Installation, profiles []string) ([]string, error) {
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	return rel.Selection(inst.RuntimeName(), profiles, "")
+}
+
 func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profiles []string) (ports.RuntimeConfig, error) {
 	if len(profiles) == 0 {
 		profiles = inst.Profiles
@@ -1489,10 +1510,7 @@ func (d *Deps) templateData(
 		secretPaths[decl.Name] = d.Paths.SecretsRenderDir() + "/" + decl.FileName()
 	}
 
-	if len(profiles) == 0 {
-		profiles = inst.Profiles
-	}
-	profiles, err := rel.Selection(inst.RuntimeName(), profiles, d.platform())
+	profiles, err := d.selection(rel, inst, profiles)
 	if err != nil {
 		return ports.TemplateData{}, err
 	}

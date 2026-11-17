@@ -90,9 +90,11 @@ Without this, changing a port gives you a deployment that works and an `apply`
 that fails: Compose publishes 9000, preflight checks that 18080 is free, and the
 health probe asks 18080 and times out. The three have to move together.
 
-Only these two fields, and the only thing they can see is `.Parameters` —
-not paths, not secrets, not the installation. A health URL able to interpolate
-a secret path is a health URL able to put one in a log line.
+Only these two fields. They see `.Parameters`, and `.Profiles` with `has`,
+so a port only a profile publishes is required only where the profile is
+selected ([Ports](manifest.md#ports)). Nothing else: not paths, not secrets,
+not the installation. A health URL able to interpolate a secret path is a
+health URL able to put one in a log line.
 
 ## Only declared values reach the runtime
 
