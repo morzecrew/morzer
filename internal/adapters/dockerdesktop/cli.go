@@ -132,14 +132,24 @@ func NewEngine(runner exec.Runner, managerDir string) *Engine {
 			rootConfig = filepath.Join(home, ".docker")
 		}
 	}
-	return &Engine{
+	e := &Engine{
 		dir: filepath.Join(managerDir, "docker"), runner: runner, app: App,
 		rootConfig:  rootConfig,
-		look:        func(name string) (string, error) { return lookIn(start["PATH"], name) },
 		replaceable: atomicfs.ReplaceableByNonRoot,
 		setEnv:      true,
-		given:       start["PATH"],
 	}
+	e.givenPath(start["PATH"])
+	return e
+}
+
+// givenPath is the PATH root was given, to look the CLI and its helpers up on
+// and to keep root's directories of. A manager command a hook runs was given
+// the manager's own bin and helpers first, whose links name what the lookup
+// chooses between, so a link found there would be linked to itself; they are
+// left out.
+func (e *Engine) givenPath(path string) {
+	e.given = outside(path, filepath.Join(e.dir, "bin"), filepath.Join(e.dir, "helpers"))
+	e.look = func(name string) (string, error) { return lookIn(e.given, name) }
 }
 
 // Settle returns the CLI to run, copying and checking it the first time, and
@@ -727,6 +737,17 @@ func (e *Engine) rootConfigField(key string) (json.RawMessage, error) {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// outside is path without the entries that name one of dirs.
+func outside(path string, dirs ...string) string {
+	var kept []string
+	for _, entry := range filepath.SplitList(path) {
+		if !slices.Contains(dirs, filepath.Clean(entry)) {
+			kept = append(kept, entry)
+		}
+	}
+	return strings.Join(kept, string(os.PathListSeparator))
 }
 
 // lookIn is exec.LookPath against a given PATH.

@@ -673,3 +673,39 @@ func TestTheCLIsDirectoryDoesNotComeBackOnPATH(t *testing.T) {
 	_, err = lookIn(os.Getenv("PATH"), "jq")
 	assert.Error(t, err, "a tool beside the CLI, where anyone can add one, is found by name")
 }
+
+// A manager command a hook runs inherits the manager's bin and helpers first
+// on PATH, and settles on the CLI and helpers they link to, not on the links.
+func TestAManagerCommandAHookRunsSettlesOnWhatTheLinksName(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	cliDir := t.TempDir()
+	for _, name := range []string{"docker", "docker-credential-vault"} {
+		require.NoError(t, os.WriteFile(filepath.Join(cliDir, name), nil, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"),
+		[]byte(`{"credHelpers": {"b.example": "vault"}}`), 0o600))
+	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
+	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
+	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+	settle := func(path string) {
+		engine := r.engine()
+		engine.setEnv = true
+		engine.givenPath(path)
+		_, err := engine.Settle(context.Background())
+		require.NoError(t, err)
+	}
+	link := func(name string) string {
+		target, err := os.Readlink(filepath.Join(r.managerDir, "docker", name))
+		require.NoError(t, err)
+		return target
+	}
+
+	settle(cliDir)
+	settle(os.Getenv("PATH"))
+
+	assert.Equal(t, filepath.Join(cliDir, "docker"), link("bin/docker"))
+	assert.Equal(t, filepath.Join(cliDir, "docker-credential-vault"), link("helpers/docker-credential-vault"))
+}
