@@ -129,19 +129,36 @@ VPN or TUN profile on a Mac would route the VM and look like success, so a
 release marks such a profile Linux-only, and it is refused on a Mac. No
 installation routes a Mac's own traffic.
 
-## Nothing runs without you
+## What runs at boot and on schedule
 
-On a Mac there is no supervisor yet: nothing converges at boot, and no
-schedule runs. `backup.schedule`, `doctor.schedule`, `update.schedule` and
-`sync.interval` are recorded and do nothing there. `doctor` warns of it
-under `system.units`, naming each one the installation sets.
+`init` installs a LaunchDaemon in `/Library/LaunchDaemons` for each thing
+systemd runs on Linux: `dev.morzer.<product>`, which runs `apply --startup` at
+boot, and one for each schedule the installation sets,
+`dev.morzer.<product>-backup` and so on. Each job writes its output to
+`/var/lib/<product>/logs/<job>.log`, which newsyslog rotates.
 
-A restart clears `/var/run`, and the rendered secrets with it. Docker Desktop
-starts when its user logs in, and restarts the containers that have a restart
-policy. Run `sudo morzer apply` after every restart, once Docker Desktop is
-running: it renders the secrets again and brings the installation back to what
-its release declares. Run what is scheduled by hand when it is due, `sudo
-morzer backup` say.
+A restart clears `/var/run`, and the rendered secrets with it. With FileVault
+on, the Mac starts no job until somebody logs in, and Docker Desktop starts
+when its user does. Until the engine answers, the start at boot exits 7 and
+launchd starts it again every 30 seconds. Once it answers, the start renders
+the secrets again and brings the installation back to what its release
+declares. A start that ends needing a human, exit 12, holds every later start
+at boot, and `doctor` says so under `system.units`, until `sudo morzer apply`
+succeeds.
+
+Three things are weaker than under systemd:
+
+- **A schedule runs at the time it names.** systemd delays each run by a
+  random spread, so machines that share a registry or a bucket do not all reach
+  it at once. A Mac does not, and `update.randomized_delay` does nothing there.
+- **A job has no time limit, and no order.** A schedule that fires while the
+  start at boot runs is refused the lock, exit 4, as a command of yours would
+  be.
+- **A run missed while the Mac was off is not run when it starts.** The next
+  one runs at its time.
+
+A schedule takes the forms launchd runs exactly; see
+[schedules on a Mac](../reference/parameters.md#schedules-on-a-mac).
 
 ## Verified, and where
 
