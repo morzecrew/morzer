@@ -60,8 +60,8 @@ whose hooks need them declares `min_manager_version: "0.13.0"`.
 
 ### On a Mac
 
-Beyond these, a hook gets the manager's own environment, with two changes on a
-Mac:
+Beyond these, a hook gets the manager's own environment, with three changes on
+a Mac:
 
 - **`PATH` starts with the directory of the `docker` CLI the manager checked.**
   A hook that runs `docker` by name runs that copy. One that names a path,
