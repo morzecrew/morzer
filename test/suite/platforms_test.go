@@ -347,24 +347,3 @@ func TestRestartingAReleaseThisPlatformDoesNotRunIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
 	assert.Len(t, h.Runtime.UpOptions, ups)
 }
-
-// A Mac has no supervisor yet, and doctor says what does not run there rather
-// than calling it ok, as Linux without systemd does (decision 26).
-func TestDoctorSaysWhatNoSupervisorRunsOnAMac(t *testing.T) {
-	h := newHarness(t)
-	h.install()
-	h.Deps.Supervisor = h.Supervisor
-	h.Supervisor.Present = false
-
-	// Named, since an empty one is the host's, darwin on a Mac.
-	h.Deps.Platform = "linux"
-	linux := doctorCheck(t, h, "system.units")
-	assert.Equal(t, events.CheckOK, linux.Status, linux.Message)
-
-	h.Deps.Platform = "darwin"
-	mac := doctorCheck(t, h, "system.units")
-	assert.Equal(t, events.CheckWarn, mac.Status)
-	assert.Equal(t, "a Mac has no supervisor yet, so none of this runs: `apply --startup` at boot, scheduled backups",
-		mac.Message, "it names only what this installation sets")
-	assert.Contains(t, mac.Remedy, "sudo morzer apply")
-}

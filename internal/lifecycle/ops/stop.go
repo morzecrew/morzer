@@ -180,7 +180,9 @@ func stopSteps(d *Deps, inst domain.Installation, rel domain.Release, opID, reas
 // the release has converged, so a `start` that fails keeps boot and the update
 // timer away from a half-converged machine.
 func Start(ctx context.Context, d *Deps, opts Options) (Result, error) {
-	return apply(ctx, d, opts, domain.OpTypeStart)
+	res, err := apply(ctx, d, opts, domain.OpTypeStart)
+	d.recordStartup(opts, err)
+	return res, err
 }
 
 // stepClearStop is start's last step.

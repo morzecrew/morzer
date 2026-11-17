@@ -31,7 +31,14 @@ import (
 // nothing and says so. That property is what lets systemd call it at every
 // boot without it being a deployment.
 func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
-	return apply(ctx, d, opts, domain.OpTypeApply)
+	if opts.Startup && d.platform() == "darwin" {
+		if reason, held := d.startupHeld(); held {
+			return Result{Summary: d.heldSummary(reason)}, nil
+		}
+	}
+	res, err := apply(ctx, d, opts, domain.OpTypeApply)
+	d.recordStartup(opts, err)
+	return res, err
 }
 
 // apply is `apply` and `start`, which is `apply` and then clears the stop
@@ -72,6 +79,12 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		return Result{}, err
 	}
 	d.warnOneRunProfile(inst, opts.Profiles)
+
+	if opts.Startup && d.platform() == "darwin" {
+		if err := d.engineAnswers(ctx, rel, inst, opts.Profiles); err != nil {
+			return Result{}, err
+		}
+	}
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
