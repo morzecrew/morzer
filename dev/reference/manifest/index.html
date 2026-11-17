@@ -1298,6 +1298,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/sharing-a-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Sharing a machine with a web server
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1812,6 +1841,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Platforms
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ports
       </span>
     </span>
   </a>
@@ -2688,6 +2728,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Platforms
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Ports
       </span>
     </span>
   </a>
@@ -3591,7 +3642,7 @@ created with refuses the change as well.</p>
 <tr>
 <td><code>ports</code></td>
 <td>list</td>
-<td>TCP ports the release binds, checked for conflicts. A literal number, or <code>"{{ .Parameters.&lt;name&gt; }}"</code> so the check follows the port the deployment actually publishes.</td>
+<td>Host ports the release publishes, checked free before an <code>apply</code> starts anything. Each is <code>[address:]port[/protocol]</code>, and may be templated. See <a href="#ports">Ports</a>.</td>
 </tr>
 </tbody>
 </table>
@@ -3639,6 +3690,65 @@ Mac</a> lists what decides that.</p>
 tested on. It only warns, and passes when empty. On a Mac it passes, saying the
 list names Linux distributions. <code>os: [darwin]</code> fails to decode, because each
 <code>os</code> entry is a mapping with an <code>id</code>.</p>
+<h3 id="ports">Ports<a class="headerlink" href="#ports" title="Permanent link">&para;</a></h3>
+<p>Each entry names a host port the way a Compose file publishes one, without the
+container side:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">requirements</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"80"</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.https_port</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"{{</span><span class="nv"> </span><span class="s">.Parameters.listen</span><span class="nv"> </span><span class="s">}}:443"</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">'{{</span><span class="nv"> </span><span class="s">if</span><span class="nv"> </span><span class="s">has</span><span class="nv"> </span><span class="s">"mkcp"</span><span class="nv"> </span><span class="s">.Profiles</span><span class="nv"> </span><span class="s">}}{{</span><span class="nv"> </span><span class="s">.Parameters.kcp_port</span><span class="nv"> </span><span class="s">}}/udp{{</span><span class="nv"> </span><span class="s">end</span><span class="nv"> </span><span class="s">}}'</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">'{{</span><span class="nv"> </span><span class="s">if</span><span class="nv"> </span><span class="s">has</span><span class="nv"> </span><span class="s">"xdns"</span><span class="nv"> </span><span class="s">.Profiles</span><span class="nv"> </span><span class="s">}}53/udp{{</span><span class="nv"> </span><span class="s">end</span><span class="nv"> </span><span class="s">}}'</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.18.0"</span>
+</code></pre></div>
+<ul>
+<li><strong><code>[address:]port[/protocol]</code>.</strong> The address is an IP literal, an IPv6 one in
+  brackets: <code>203.0.113.11:443</code>, <code>[2001:db8::1]:443</code>. The protocol is <code>tcp</code> or
+  <code>udp</code>, and <code>tcp</code> when absent. A bare port is TCP on every address, as
+  before. A port range, <code>sctp</code>, a host name, an IPv6 address without brackets
+  and a zone are refused.</li>
+<li><strong>An empty address is every address</strong>, as Compose reads <code>":443:443"</code>. So
+  <code>"{{ .Parameters.listen }}:443"</code> with <code>listen</code> empty means the same as the
+  Compose file's <code>${LISTEN}:443:443</code>.</li>
+<li><strong>A template sees <code>.Parameters</code> and <code>.Profiles</code></strong>, the installation's
+  selection in layering order, with <code>has</code> as the configuration templates have
+  it: <code>has "xdns" .Profiles</code>. A <code>health.checks[].url</code> sees the same, so a
+  profile that moves a port can move its health URL with it.</li>
+<li><strong>A templated entry that renders empty requires nothing</strong>, which is how a
+  port only a profile publishes is declared. A literal empty entry is refused.</li>
+<li><strong>An address, a protocol, or <code>.Profiles</code> and <code>has</code></strong> in either field need
+  <code>compatibility.min_manager_version</code> of at least <code>0.18.0</code>. So does a templated
+  entry that writes <code>:</code>, <code>/</code> or <code>[</code> beside its template, as
+  <code>"{{ .Parameters.listen }}:443"</code> does. An older manager refuses all of them;
+  <code>release verify</code> names the version. A lone <code>"{{ .Parameters.port }}"</code> needs
+  no floor.</li>
+</ul>
+<p>Before an <code>apply</code> starts a project that is not running, <code>network.ports</code> binds
+each entry on its own address and protocol, and closes it at once. It fails, and
+<code>apply</code> starts nothing, when:</p>
+<ul>
+<li><strong>the port is in use:</strong> <code>port 203.0.113.11:443/tcp already in use</code>. <code>ss
+  -tulnp</code> shows what holds it;</li>
+<li><strong>the address is not this machine's:</strong> <code>203.0.113.11 is not an address of
+  this machine</code>, naming the parameter the entry reads, if any. Compose would
+  fail the same way, after the old containers had stopped;</li>
+<li><strong>the bind fails another way,</strong> such as a port below 1024 for a manager that
+  is not root, which is reported as itself and never as "in use".</li>
+</ul>
+<p>An entry with an address binds that address's family alone, so <code>[::]:443</code> is
+free beside an IPv4 listener on 443, as Docker publishes <code>::</code> on IPv6 alone. A
+UDP port is bound as Docker binds it, sharing it with a socket that allows
+sharing. So systemd-resolved's stub listener on <code>127.0.0.53:53</code> leaves <code>53/udp</code>
+free, and Docker publishes it beside the stub. TCP port 53 stays in use there.</p>
+<p><code>machine.ports</code> in <code>doctor</code> counts two installations as colliding only on one
+protocol and port, and only where their addresses overlap: either is every
+address, both are the same address, or one is <code>0.0.0.0</code> or <code>::</code> beside an
+address of its family. Two installations on 443 at <code>203.0.113.10</code> and
+<code>203.0.113.11</code> collide with nobody. <a href="../../authoring/sharing-a-machine/">Sharing a machine with a web
+server</a> shows both ways to run beside one the
+operator already has.</p>
 <h2 id="bundle">bundle<a class="headerlink" href="#bundle" title="Permanent link">&para;</a></h2>
 <p>What the release says about its own packaging, as distinct from what it needs
 of the host.</p>

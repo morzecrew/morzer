@@ -1298,6 +1298,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/sharing-a-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Sharing a machine with a web server
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -2650,9 +2679,11 @@ otherwise contradict a changed port:</p>
 <p>Without this, changing a port gives you a deployment that works and an <code>apply</code>
 that fails: Compose publishes 9000, preflight checks that 18080 is free, and the
 health probe asks 18080 and times out. The three have to move together.</p>
-<p>Only these two fields, and the only thing they can see is <code>.Parameters</code> —
-not paths, not secrets, not the installation. A health URL able to interpolate
-a secret path is a health URL able to put one in a log line.</p>
+<p>Only these two fields. They see <code>.Parameters</code>, and <code>.Profiles</code> with <code>has</code>,
+so a port only a profile publishes is required only where the profile is
+selected (<a href="../manifest/#ports">Ports</a>). Nothing else: not paths, not secrets,
+not the installation. A health URL able to interpolate a secret path is a
+health URL able to put one in a log line.</p>
 <h2 id="only-declared-values-reach-the-runtime">Only declared values reach the runtime<a class="headerlink" href="#only-declared-values-reach-the-runtime" title="Permanent link">&para;</a></h2>
 <p>Setting <code>DEMO_PARAM_HTTP_PORT</code> in your shell does nothing. The manager builds
 the runtime's environment from an allow-list plus the declared parameters, so

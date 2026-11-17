@@ -1463,6 +1463,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/sharing-a-machine/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-network" viewBox="0 0 24 24"><rect width="6" height="6" x="16" y="16" rx="1"/><rect width="6" height="6" x="2" y="16" rx="1"/><rect width="6" height="6" x="9" y="2" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Sharing a machine with a web server
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -2654,12 +2683,15 @@ nothing else reports: an installation whose state will not load while units may
 be installed. systemd starts it on every boot and the manager cannot tell it
 anything. A unit count that could not be read counts as "may have them" — a
 failed read is not evidence that there are none.</p>
-<p><strong><code>machine.ports</code></strong> warns when two installations declare the same host port:</p>
+<p><strong><code>machine.ports</code></strong> warns when two installations declare the same host port,
+on the same protocol and on addresses that overlap:</p>
 <div class="highlight"><pre><span></span><code>! no two installations publish the same port
-  two installations want the same host port: 18080 (demo, sandbox)
+  two installations want the same host port: 18080/tcp (demo on every address, sandbox on every address)
   they cannot both run; change one release's port parameter with
   `morzer --product &lt;name&gt; config set`, or keep only one started
 </code></pre></div>
+<p>Two on 443 at different addresses, or one on 53/udp and one on 53/tcp,
+collide with nobody. The rule is in <a href="../../reference/manifest/#ports">Ports</a>.</p>
 <p>They cannot both run. Without this check the second one's <code>apply</code> fails inside
 Compose with a message about a port already in use — true, and silent about the
 neighbour holding it, which sends an operator looking for a stray process with
