@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile. `init`, `update` and `rollback` refuse a release or profile not
   made for the machine. Either key needs a 0.18.0 floor.
 
+- An installation runs on a Mac with Apple silicon and Docker Desktop, for a
+  release that declares `darwin`, from the `darwin/arm64` archive
+  `install.sh` and `self-update` take. The Platforms page says how a Mac is
+  weaker: secrets on disk need FileVault, `owner` is not enforced, and
+  nothing runs at boot or on a schedule.
+
 ### Fixed
 
 - A refused `init --repair` keeps the installation it was asked to repair.
