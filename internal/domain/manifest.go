@@ -1849,6 +1849,7 @@ func (m *Manifest) Validate() error {
 			}
 		}
 	}
+	m.checkTemplateParameters(&v)
 	if minimum := MustParseVersion(PortsMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
 		if why := m.newPortsGrammar(); why != "" {
 			v.add("compatibility.min_manager_version",

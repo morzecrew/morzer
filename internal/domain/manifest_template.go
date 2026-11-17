@@ -99,18 +99,31 @@ func (p Parameters) namesOrNone() string {
 // outside its actions.
 type templateUse struct {
 	parameters []string
-	profiles   bool // `.Profiles` or `has`
-	text       string
+	// indexed are the parameters read by `index .Parameters "name"`,
+	// which renders an undeclared name as empty rather than failing.
+	indexed  []string
+	profiles bool // `.Profiles` or `has`
+	text     string
 }
 
-// readTemplate walks a field's parse tree, for the floor (RFC 0059 §5.5) and
-// for the parameters a refusal names. A field that does not parse reads as
-// nothing; validation reports it.
+// readTemplate walks a field's parse trees, every template it defines included,
+// for the floor (RFC 0059 §5.5), the parameters a refusal names and the ones
+// validation checks are declared. A field that does not parse reads as
+// nothing; validation reports it. It reads conservatively: any path through
+// `Profiles`, `$` or not, counts as reading the profiles.
 func readTemplate(field, text string) templateUse {
 	var u templateUse
 	tmpl, err := parseField(field, text)
 	if err != nil {
 		return u
+	}
+	read := func(idents []string) {
+		if slices.Contains(idents, "Profiles") {
+			u.profiles = true
+		}
+		if len(idents) > 1 && idents[0] == "Parameters" && !slices.Contains(u.parameters, idents[1]) {
+			u.parameters = append(u.parameters, idents[1])
+		}
 	}
 	var walk func(tparse.Node)
 	walk = func(node tparse.Node) {
@@ -144,26 +157,53 @@ func readTemplate(field, text string) templateUse {
 				}
 			}
 		case *tparse.CommandNode:
+			if name, ok := indexedParameter(n); ok {
+				read([]string{"Parameters", name})
+				u.indexed = append(u.indexed, name)
+			}
 			for _, arg := range n.Args {
 				walk(arg)
 			}
 		case *tparse.ChainNode:
 			walk(n.Node)
+			read(n.Field)
 		case *tparse.FieldNode:
-			switch {
-			case n.Ident[0] == "Profiles":
-				u.profiles = true
-			case n.Ident[0] == "Parameters" && len(n.Ident) > 1 && !slices.Contains(u.parameters, n.Ident[1]):
-				u.parameters = append(u.parameters, n.Ident[1])
-			}
+			read(n.Ident)
+		case *tparse.VariableNode:
+			read(n.Ident[1:])
+		case *tparse.TemplateNode:
+			walk(n.Pipe)
 		case *tparse.IdentifierNode:
 			if n.Ident == "has" {
 				u.profiles = true
 			}
 		}
 	}
-	walk(tmpl.Root)
+	for _, t := range tmpl.Templates() {
+		walk(t.Root)
+	}
+	slices.Sort(u.parameters)
 	return u
+}
+
+// indexedParameter is the name in `index .Parameters "name"`, or `$.Parameters`.
+func indexedParameter(cmd *tparse.CommandNode) (string, bool) {
+	if len(cmd.Args) != 3 {
+		return "", false
+	}
+	fn, ok := cmd.Args[0].(*tparse.IdentifierNode)
+	key, isKey := cmd.Args[2].(*tparse.StringNode)
+	if !ok || fn.Ident != "index" || !isKey {
+		return "", false
+	}
+	var path []string
+	switch m := cmd.Args[1].(type) {
+	case *tparse.FieldNode:
+		path = m.Ident
+	case *tparse.VariableNode:
+		path = m.Ident[1:]
+	}
+	return key.Text, slices.Equal(path, []string{"Parameters"})
 }
 
 // ResolvePorts renders `requirements.ports` and reads each entry, against the

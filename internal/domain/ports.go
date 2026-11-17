@@ -155,3 +155,28 @@ func (m *Manifest) newPortsGrammar() string {
 	}
 	return ""
 }
+
+// checkTemplateParameters refuses a templated port entry or health URL that
+// reads, through `index`, a parameter the release does not declare. A field
+// reference fails at resolution, but `index .Parameters "name"` renders empty,
+// and an empty entry requires nothing.
+func (m *Manifest) checkTemplateParameters(v *validationErrors) {
+	check := func(field, text string) {
+		if !strings.Contains(text, "{{") {
+			return
+		}
+		for _, name := range readTemplate(field, text).indexed {
+			if _, ok := m.Parameters[name]; !ok {
+				v.add(field, "reads parameter %q, which the release does not declare", name)
+			}
+		}
+	}
+	for i, raw := range m.Requirements.Ports {
+		check(fmt.Sprintf("requirements.ports[%d]", i), string(raw))
+	}
+	for i, c := range m.Health.Checks {
+		if c.Type == HealthHTTP {
+			check(fmt.Sprintf("health.checks[%d].url", i), c.URL)
+		}
+	}
+}

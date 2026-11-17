@@ -143,6 +143,13 @@ func TestTheNewPortGrammarNeedsItsFloor(t *testing.T) {
 		"profiles in a health": func(m *Manifest) {
 			m.Health.Checks = []HealthCheck{{Name: "api", Type: HealthHTTP, URL: "http://x/{{ index .Profiles 0 }}"}}
 		},
+		"profiles from the root": func(m *Manifest) { m.Requirements.Ports = []PortSpec{"{{ if $.Profiles }}53{{ end }}"} },
+		"profiles in a defined template": func(m *Manifest) {
+			m.Requirements.Ports = []PortSpec{`{{ define "p" }}{{ if .Profiles }}53{{ end }}{{ end }}{{ template "p" . }}`}
+		},
+		"an address in a defined template": func(m *Manifest) {
+			m.Requirements.Ports = []PortSpec{`{{ define "a" }}203.0.113.11:{{ end }}{{ template "a" }}{{ .Parameters.port }}`}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := validManifest()
@@ -184,4 +191,39 @@ func TestEveryAddressIsTheZeroAddress(t *testing.T) {
 	assert.Equal(t, "53/udp", r.String())
 	r.Address = netip.MustParseAddr("2001:db8::1")
 	assert.Equal(t, "[2001:db8::1]:53/udp", r.String())
+}
+
+// A template that reads, through `index`, a parameter the release does not
+// declare is refused at load: `index` renders it empty, and an empty entry
+// requires nothing. A field reference fails when it resolves.
+func TestAPortTemplateReadingAnUndeclaredParameterIsRefused(t *testing.T) {
+	for name, edit := range map[string]func(*Manifest){
+		"in a port":     func(m *Manifest) { m.Requirements.Ports = []PortSpec{`{{ index .Parameters "kcp_prot" }}`} },
+		"from the root": func(m *Manifest) { m.Requirements.Ports = []PortSpec{`{{ index $.Parameters "kcp_prot" }}`} },
+		"in a health url": func(m *Manifest) {
+			m.Health.Checks = []HealthCheck{{Name: "api", Type: HealthHTTP, URL: `http://x:{{ index .Parameters "kcp_prot" }}/`}}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := validManifest()
+			m.Parameters = map[string]ParameterSpec{"kcp_port": {Type: ParamPort, Default: new("8447")}}
+			edit(&m)
+			assert.ErrorContains(t, m.Validate(), `reads parameter "kcp_prot", which the release does not declare`)
+		})
+	}
+	m := validManifest()
+	m.Parameters = map[string]ParameterSpec{"kcp_port": {Type: ParamPort, Default: new("8447")}}
+	m.Requirements.Ports = []PortSpec{`{{ index .Parameters "kcp_port" }}`, "{{ $.Parameters.kcp_port }}"}
+	require.NoError(t, m.Validate())
+	params, err := ResolveParameters(m.Parameters, nil)
+	require.NoError(t, err)
+	got, err := m.ResolvePorts(params, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"kcp_port"}, got[0].Parameters)
+	assert.Equal(t, []string{"kcp_port"}, got[1].Parameters)
+
+	m.Requirements.Ports = []PortSpec{"{{ $.Parameters.kcp_prot }}"}
+	require.NoError(t, m.Validate(), "a field reference is left to resolution")
+	_, err = m.ResolvePorts(params, nil)
+	assert.Error(t, err, "and fails there")
 }
