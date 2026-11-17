@@ -26,6 +26,8 @@ func TestUnsupervisedNamesEachScheduleSetAndNoOther(t *testing.T) {
 		"all": {ports.UnitParams{UpdateTimer: true, FleetTimer: true, SyncTimer: true, DoctorTimer: true, MetricsDir: "/var/lib/metrics"},
 			[]string{boot, "scheduled backups", "update checks", "fleet publishing", "sync", "scheduled doctor runs", "metrics"}},
 	} {
-		assert.Equal(t, tc.want, unsupervised(tc.params), name)
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, unsupervised(tc.params))
+		})
 	}
 }
