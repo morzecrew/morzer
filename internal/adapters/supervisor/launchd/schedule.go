@@ -24,7 +24,8 @@ const (
 
 var intervalKeys = []string{keyMonth, keyDay, keyWeekday, keyHour, keyMinute}
 
-// shorthands are systemd's names for a calendar, each of which launchd can run.
+// shorthands are systemd's names for a calendar, each of which launchd can run
+// (systemd.time(7)).
 var shorthands = map[string]string{
 	"minutely": "*-*-* *:*:00",
 	"hourly":   "*-*-* *:00:00",
@@ -32,7 +33,13 @@ var shorthands = map[string]string{
 	"weekly":   "Mon *-*-* 00:00:00",
 	"monthly":  "*-*-01 00:00:00",
 	"yearly":   "*-01-01 00:00:00",
-	"annually": "*-01-01 00:00:00",
+}
+
+// firstOfMonths are the two of systemd's names that list months, which the
+// grammar below does not: midnight on the first of each.
+var firstOfMonths = map[string][]int{
+	"quarterly":    {1, 4, 7, 10},
+	"semiannually": {1, 7},
 }
 
 // weekdays are launchd's numbers for systemd's day names, Sunday 0.
@@ -56,6 +63,13 @@ func calendar(expr string) ([]interval, error) {
 	if len(fields) == 1 {
 		if long, ok := shorthands[strings.ToLower(fields[0])]; ok {
 			fields = strings.Fields(long)
+		}
+		if months, ok := firstOfMonths[strings.ToLower(fields[0])]; ok {
+			out := make([]interval, 0, len(months))
+			for _, m := range months {
+				out = append(out, interval{keyMonth: m, keyDay: 1, keyHour: 0, keyMinute: 0})
+			}
+			return out, nil
 		}
 	}
 	var days []int
