@@ -155,3 +155,49 @@ func TestAMacsDoctorReadsItsJobsAsRoot(t *testing.T) {
 	h.Deps.Platform = "linux"
 	assert.Equal(t, "all units loaded", doctorCheck(t, h, "system.units").Message)
 }
+
+// operatorMeanwhile is a notifier that, once the start at boot has finished
+// needing a human, has an operator put it right and apply before the start's
+// own run returns: the window after its lock is released.
+type operatorMeanwhile struct {
+	t    *testing.T
+	h    *harness
+	done bool
+}
+
+func (n *operatorMeanwhile) Name() string { return "operator" }
+
+func (n *operatorMeanwhile) Notify(ctx context.Context, ev events.Event) error {
+	if n.done || ev.Kind != events.KindOperationFinished || ev.Status != string(domain.StatusManualIntervention) {
+		return nil
+	}
+	n.done = true
+	delete(n.h.Runtime.Fail, "Down")
+	n.h.Runtime.OnCall = nil
+	_, err := ops.ClearIntervention(ctx, n.h.Deps, ev.OpID)
+	require.NoError(n.t, err)
+	_, err = ops.Apply(ctx, n.h.Deps, ops.Options{})
+	require.NoError(n.t, err)
+	return nil
+}
+
+// The record is of the run the lock was held for: an operator's apply that
+// succeeds after the start at boot released the lock is not undone by that
+// start writing its record afterwards.
+func TestAnOperatorsApplyAfterTheLockIsReleasedIsNotUndoneByTheRecord(t *testing.T) {
+	ctx := context.Background()
+	h := darwinInstalled(t)
+	operator := &operatorMeanwhile{t: t, h: h}
+	h.Deps.Notifier = operator
+	failingFirstUp(h)
+	failingTeardown(h)
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{Startup: true})
+	require.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err), "%v", err)
+	require.True(t, operator.done, "the operator never ran")
+
+	res, err := ops.Apply(ctx, h.Deps, ops.Options{Startup: true})
+	require.NoError(t, err)
+	assert.NotContains(t, res.Summary, "held", "the record of a run before the operator's apply held the boot after it")
+}
+

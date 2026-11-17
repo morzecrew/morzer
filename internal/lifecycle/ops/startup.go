@@ -39,7 +39,7 @@ func (d *Deps) heldSummary(reason string) string {
 }
 
 // recordStartup writes the record when a start at boot ends in exit 12, and
-// removes it when an operator's run succeeds.
+// removes it when an operator's run succeeds, under the lock that run holds.
 func (d *Deps) recordStartup(opts Options, err error) {
 	if opts.DryRun || d.platform() != "darwin" {
 		return

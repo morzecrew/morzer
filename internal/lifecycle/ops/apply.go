@@ -36,9 +36,7 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 			return Result{Summary: d.heldSummary(reason)}, nil
 		}
 	}
-	res, err := apply(ctx, d, opts, domain.OpTypeApply)
-	d.recordStartup(opts, err)
-	return res, err
+	return apply(ctx, d, opts, domain.OpTypeApply)
 }
 
 // apply is `apply` and `start`, which is `apply` and then clears the stop
@@ -160,6 +158,9 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun && !opts.Startup {
 			d.reconcileUnitsAfterConverge(ctx)
 		}
+		// Under the lock, so the record is of this run: an operator's run
+		// that succeeds after it is not undone by it.
+		d.recordStartup(opts, err)
 		return err
 	})
 
