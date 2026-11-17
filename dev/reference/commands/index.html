@@ -3983,7 +3983,11 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tbody>
 </table>
 <p><code>secrets.ephemeral-storage</code>, above, warns on every run there, since a Mac has
-no tmpfs.</p>
+no tmpfs. So does <code>system.units</code>, since a Mac has no supervisor yet: it names
+<code>apply --startup</code> at boot and each schedule the installation sets, none of
+which runs. Run <code>sudo morzer apply</code> after the Mac starts, once Docker Desktop
+is running, and what is scheduled by hand when it is due: <code>sudo morzer backup</code>
+for scheduled backups, say.</p>
 <h2 id="history">history<a class="headerlink" href="#history" title="Permanent link">&para;</a></h2>
 <p>Lists the operations the installation ran, newest first: every <code>apply</code>,
 <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>, <code>task run</code> and the rest, with its

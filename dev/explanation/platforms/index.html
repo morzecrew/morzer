@@ -2514,12 +2514,14 @@ installation routes a Mac's own traffic.</p>
 <h2 id="nothing-runs-without-you">Nothing runs without you<a class="headerlink" href="#nothing-runs-without-you" title="Permanent link">&para;</a></h2>
 <p>On a Mac there is no supervisor yet: nothing converges at boot, and no
 schedule runs. <code>backup.schedule</code>, <code>doctor.schedule</code>, <code>update.schedule</code> and
-<code>sync.interval</code> are recorded and do nothing there.</p>
+<code>sync.interval</code> are recorded and do nothing there. <code>doctor</code> warns of it
+under <code>system.units</code>, naming each one the installation sets.</p>
 <p>A restart clears <code>/var/run</code>, and the rendered secrets with it. Docker Desktop
 starts when its user logs in, and restarts the containers that have a restart
 policy. Run <code>sudo morzer apply</code> after every restart, once Docker Desktop is
 running: it renders the secrets again and brings the installation back to what
-its release declares.</p>
+its release declares. Run what is scheduled by hand when it is due, <code>sudo
+morzer backup</code> say.</p>
 <h2 id="verified-and-where">Verified, and where<a class="headerlink" href="#verified-and-where" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Every change to the code</strong> runs the unit tests on a hosted macOS runner.
