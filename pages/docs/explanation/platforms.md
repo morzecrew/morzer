@@ -56,7 +56,7 @@ app, root runs the `docker` CLI on `PATH` only while root alone can replace it
 and the Compose plugin it loads. `doctor` says which CLI root runs, under
 `runtime.cli`.
 
-A hook gets that CLI's directory first on `PATH`, and the manager's docker
+A hook finds that CLI first on `PATH`, by name, and gets the manager's docker
 configuration. A hook is refused, exit 3, while anyone but root could replace
 an entry in a directory that CLI searches for plugins, since a command that
 lists them, `docker info` say, runs each one as root.

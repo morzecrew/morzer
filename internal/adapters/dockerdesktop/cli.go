@@ -170,10 +170,12 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		pluginDir = filepath.Join(e.dir, "cli-plugins")
 	} else if cli, pluginDir, err = e.fromPath(); err == nil {
 		// Docker Desktop's earlier copies go: the CLI loads a plugin from
-		// its config's directory before any other.
-		_ = os.Remove(filepath.Join(e.dir, "bin", "docker"))
+		// its config's directory before any other. The CLI on PATH is linked
+		// where the copy was, so a process finds it by name without its
+		// directory on PATH, which anyone may add to if it is sticky.
 		_ = os.RemoveAll(filepath.Join(e.dir, "cli-plugins"))
 		_ = os.Remove(filepath.Join(e.dir, "version"))
+		err = atomicfs.ReplaceSymlink(cli.Path, filepath.Join(e.dir, "bin", "docker"))
 	}
 	if err != nil {
 		return ports.EngineCLI{}, err
@@ -185,7 +187,7 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 	if e.rootConfig != "" {
 		cli.RootConfig = filepath.Join(e.rootConfig, "config.json")
 	}
-	if err := e.useConfig(filepath.Dir(cli.Path)); err != nil {
+	if err := e.useConfig(filepath.Join(e.dir, "bin")); err != nil {
 		return ports.EngineCLI{}, err
 	}
 	e.cli, e.pluginDir = &cli, pluginDir

@@ -544,7 +544,9 @@ func TestDockerByNameIsTheSettledCLI(t *testing.T) {
 	require.NoError(t, err)
 	found, err := lookIn(os.Getenv("PATH"), "docker")
 	require.NoError(t, err)
-	assert.Equal(t, cli.Path, found, "a hook running docker by name finds another CLI than the one settled")
+	target, err := os.Readlink(found)
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, target, "a hook running docker by name finds another CLI than the one settled")
 	helper, err := lookIn(os.Getenv("PATH"), "docker-credential-vault")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers", "docker-credential-vault"), helper,
@@ -636,4 +638,38 @@ func TestRootFindsAToolByNameOnlyWhereOnlyRootCouldHavePutIt(t *testing.T) {
 	r.managerDir = filepath.Dir(r.managerDir)
 	ready()
 	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers")+string(os.PathListSeparator)+roots, os.Getenv("PATH"))
+}
+
+// A CLI on PATH may be root's in a directory anyone can add to, a sticky one,
+// which root's PATH leaves off. A process still finds that CLI by name, and
+// nothing else from its directory (decisions 22 and 25).
+func TestTheCLIsDirectoryDoesNotComeBackOnPATH(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	sticky := t.TempDir()
+	require.NoError(t, os.Chmod(sticky, os.ModeSticky|0o777))
+	for _, name := range []string{"docker", "jq"} {
+		require.NoError(t, os.WriteFile(filepath.Join(sticky, name), nil, 0o755))
+	}
+	r.onPath["docker"] = filepath.Join(sticky, "docker")
+	plugin := filepath.Join(r.rootConfig, "cli-plugins", "docker-compose")
+	require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o755))
+	require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+	engine := r.engine()
+	engine.setEnv, engine.given = true, sticky
+
+	cli, err := engine.Settle(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(sticky, "docker"), cli.Path)
+	assert.NotContains(t, filepath.SplitList(os.Getenv("PATH")), sticky)
+	found, err := lookIn(os.Getenv("PATH"), "docker")
+	require.NoError(t, err)
+	target, err := os.Readlink(found)
+	require.NoError(t, err)
+	assert.Equal(t, cli.Path, target)
+	_, err = lookIn(os.Getenv("PATH"), "jq")
+	assert.Error(t, err, "a tool beside the CLI, where anyone can add one, is found by name")
 }

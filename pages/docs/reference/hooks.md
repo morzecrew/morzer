@@ -63,8 +63,9 @@ whose hooks need them declares `min_manager_version: "0.13.0"`.
 Beyond these, a hook gets the manager's own environment, with three changes on
 a Mac:
 
-- **`PATH` starts with the directory of the `docker` CLI the manager checked.**
-  A hook that runs `docker` by name runs that copy. One that names a path,
+- **`PATH` starts with a directory of the manager's that holds the `docker` CLI
+  it checked**, a copy of Docker Desktop's or a link to the one on `PATH`. A
+  hook that runs `docker` by name runs that CLI. One that names a path,
   `/usr/local/bin/docker` say, runs whatever that path holds.
 - **`DOCKER_CONFIG` is the manager's**, so that CLI loads the Compose plugin
   the manager checked.

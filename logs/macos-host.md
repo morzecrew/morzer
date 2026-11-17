@@ -1060,3 +1060,15 @@ claim: As the entry for decision 22 above amends it: every process the manager s
 evidence: internal/adapters/dockerdesktop/cli.go:376-392
 action: decided
 ```
+
+```divergence
+decision: 22
+grade: ASSUMED
+class: discovery
+at: 2026-11-17T17:32:33Z
+attempt: 1
+claim: Decision 22 puts the directory of the CLI decisions 18 or 21 settled first on `PATH`. For a CLI on `PATH` that directory may be one decision 25 leaves off: `ReplaceableByNonRoot` passes a root-owned CLI in a sticky directory, which anyone can add a tool to, and putting that directory first gave a hook whatever anyone added. So the CLI on `PATH` is linked as `docker` in the manager's `bin`, where Docker Desktop's copy goes, and that directory comes first on `PATH` for either CLI. A hook running `docker` by name still runs the CLI settled; nothing else from its directory is found.
+evidence: internal/adapters/dockerdesktop/cli.go:178
+action: departed
+proposal: ASSUMED (decision 22, amended) — the directory first on `PATH` is the manager's own `bin`, holding Docker Desktop's checked copy or a link to the CLI on `PATH`
+```
