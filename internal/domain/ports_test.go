@@ -20,6 +20,7 @@ func TestAPortEntryIsAPublishedPortWithoutTheContainerSide(t *testing.T) {
 		"0.0.0.0:53/udp":        "0.0.0.0:53/udp",
 		"[2001:db8::1]:443/tcp": "[2001:db8::1]:443/tcp",
 		"[::]:443":              "[::]:443/tcp",
+		"[::ffff:127.0.0.1]:80": "127.0.0.1:80/tcp",
 		"65535":                 "65535/tcp",
 	} {
 		t.Run(entry, func(t *testing.T) {

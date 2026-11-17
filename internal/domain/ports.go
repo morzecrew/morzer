@@ -94,7 +94,9 @@ func ParsePortEntry(text string) (PortRequirement, error) {
 		if err != nil || !addr.Is6() {
 			return r, errors.New("the address in brackets must be an IPv6 address")
 		}
-		r.Address, port = addr, rest[end+2:]
+		// An IPv4-mapped address is its IPv4 address: it binds and
+		// overlaps as one.
+		r.Address, port = addr.Unmap(), rest[end+2:]
 	} else if i := strings.LastIndex(rest, ":"); i >= 0 {
 		if strings.Contains(rest[:i], ":") {
 			return r, errors.New("an IPv6 address needs brackets, as in [2001:db8::1]:443")
