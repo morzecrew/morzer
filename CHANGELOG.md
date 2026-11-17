@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weaker: secrets on disk need FileVault, `owner` is not enforced, and
   nothing runs at boot or on a schedule.
 
+- On a Mac, root runs a tool it finds by name only from a directory only root
+  can change, such as `/usr/local/bin`, so `sops` belongs in one, and a hook
+  does not find Homebrew's tools by name.
+
 - A `requirements.ports` entry can name an address and a protocol,
   `[address:]port[/protocol]`, and depend on profiles through `.Profiles` and
   `has`. `apply` checks each on its own address and protocol, and
