@@ -261,7 +261,8 @@ If your registry does not carry busybox, name a different image. Any image with
 a POSIX `tar`, `du`, `find`, `wc` and `sh` will do — `find` and `wc` are for the
 size check, which counts a volume's entries to bound what `tar` adds on top of
 them. An image missing them measures nothing, and a backup that cannot be
-measured is refused rather than started:
+measured is refused rather than started. On a Mac it needs `ls`, `mktemp` and
+`rm` too, for `doctor`'s [file-sharing check](../reference/commands.md#on-a-mac):
 
 ```sh
 MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:... morzer backup
