@@ -1012,3 +1012,14 @@ evidence: internal/lifecycle/ops/doctor.go:1673-1674
 action: decided
 proposal: ASSUMED — on darwin, `system.units` warns, naming the start at boot and each schedule the installation sets, with `sudo morzer apply` after a restart as its remedy
 ```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-17T16:19:34Z
+attempt: 1
+claim: Decision 1 has the weaker guarantee stated in `doctor`. On darwin, `system.units` now warns that a Mac has no supervisor yet, naming `apply --startup` at boot and each schedule the installation sets, with `sudo morzer apply` as the remedy, as the author ruled on the halted entry under "The docs". Linux without systemd still reports ok.
+evidence: internal/lifecycle/ops/doctor.go:1694-1704
+action: decided
+```
