@@ -21,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing runs at boot or on a schedule.
 
 - On a Mac, root runs a tool it finds by name only from a directory only root
-  can change, so `sops` belongs in `/usr/local/bin`, and a hook does not find
-  Homebrew's tools by name.
+  can change, such as `/usr/local/bin`, so `sops` belongs in one, and a hook
+  does not find Homebrew's tools by name.
 
 ### Fixed
 
