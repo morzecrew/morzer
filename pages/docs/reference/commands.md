@@ -505,7 +505,10 @@ A Mac adds these checks, for what is weaker there (see
 | `secrets.owner` | Warns while the release declares an `owner` for a secret: on a Mac every container that mounts it can read it. |
 
 `secrets.ephemeral-storage`, above, warns on every run there, since a Mac has
-no tmpfs.
+no tmpfs. So does `system.units`, since a Mac has no supervisor yet: it names
+`apply --startup` at boot and each schedule the installation sets, none of
+which runs. Run `sudo morzer apply` after the Mac starts, once Docker Desktop
+is running.
 
 ## history
 

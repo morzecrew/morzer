@@ -1663,6 +1663,27 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 	}
 }
 
+// unsupervised names, in the operator's words, what the units for p would run.
+func unsupervised(p ports.UnitParams) []string {
+	runs := []string{"`apply --startup` at boot"}
+	for _, unit := range []struct {
+		set  bool
+		what string
+	}{
+		{!p.SkipBackupTimer, "scheduled backups"},
+		{p.UpdateTimer, "update checks"},
+		{p.FleetTimer, "fleet publishing"},
+		{p.SyncTimer, "sync"},
+		{p.DoctorTimer, "scheduled doctor runs"},
+		{p.MetricsDir != "", "metrics"},
+	} {
+		if unit.set {
+			runs = append(runs, unit.what)
+		}
+	}
+	return runs
+}
+
 func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 	return preflight.Check{
 		ID:          "system.units",
@@ -1671,6 +1692,16 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
 			if !d.Supervisor.Available(ctx) {
+				// A Mac has no supervisor until the launchd adapter, and
+				// decision 1 has that stated, not left implicit (RFC 0055
+				// decision 26).
+				if d.platform() == "darwin" {
+					return preflight.Warn(
+						"run `sudo morzer apply` after the Mac starts, once Docker Desktop is running, "+
+							"and anything else above by hand when it is due",
+						"a Mac has no supervisor yet, so none of this runs: %s",
+						strings.Join(unsupervised(d.unitParams(inst)), ", "))
+				}
 				return preflight.OK("systemd is not in use on this host")
 			}
 
