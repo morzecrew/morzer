@@ -61,6 +61,15 @@ configuration. A hook is refused, exit 3, while anyone but root could replace
 an entry in a directory that CLI searches for plugins, since a command that
 lists them, `docker info` say, runs each one as root.
 
+`sudo` on a Mac keeps the user's `PATH`, which names their own directories and
+Homebrew's, ahead of or beside `/usr/local/bin`. That user could put a binary
+there that root would run. So the manager keeps on `PATH` only the directories
+that only root can change, and refuses a tool, `sops` say, that it finds only
+in another, naming where it found it and who could change it. A hook gets that
+`PATH`, so it does not find a Homebrew tool by name. `install.sh` does run with
+the `PATH` you give `sudo`, Homebrew's `zstd` among it, as anything you pipe
+into `sudo sh` does.
+
 ## The paths
 
 The paths are Linux's, except one:

@@ -165,7 +165,9 @@ filesystem. What bounds it:
 - **Removing a secret the release declares `required`**, without `--force`.
 
 `$VISUAL` is preferred over `$EDITOR`, the order `git`, `crontab` and `sudoedit`
-use. A non-zero exit from the editor — `:cq` in vim — abandons the edit.
+use. A non-zero exit from the editor — `:cq` in vim — abandons the edit. On a
+Mac, an editor named without a path is found only in a directory that only root
+can change, so one from Homebrew is not found; `vi` is in `/usr/bin`.
 
 ## secret remove
 

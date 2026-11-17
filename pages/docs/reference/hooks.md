@@ -68,6 +68,10 @@ Mac:
   `/usr/local/bin/docker` say, runs whatever that path holds.
 - **`DOCKER_CONFIG` is the manager's**, so that CLI loads the Compose plugin
   the manager checked.
+- **The rest of `PATH` holds only the directories that only root can change.**
+  `sudo` on a Mac keeps the user's `PATH`, so it names their own directories
+  and Homebrew's, and those are left out. A hook that runs a Homebrew tool by
+  name does not find it.
 
 No hook runs while anyone but root could replace an entry in a directory that
 CLI searches for plugins, or in a directory on the way to one: the manager's

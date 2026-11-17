@@ -67,6 +67,7 @@ func (r *rig) engine() *Engine {
 			return "", os.ErrNotExist
 		},
 		replaceable: func(path string) (string, error) { return r.replaceable[path], nil },
+		given:       os.Getenv("PATH"),
 	}
 }
 
@@ -580,4 +581,58 @@ func TestAConfigThatCannotBeRebuiltIsNotLeft(t *testing.T) {
 	require.Error(t, r.engine().Prepare())
 
 	assert.NoFileExists(t, filepath.Join(dir, "config.json"))
+}
+
+// Root finds a tool by name only where nobody but root could have put it, from
+// before `init` makes the manager directory, and one found only elsewhere is
+// refused by name rather than called missing (decision 25). `sudo` on a Mac
+// keeps the user's PATH, which names their own directories and Homebrew's.
+func TestRootFindsAToolByNameOnlyWhereOnlyRootCouldHavePutIt(t *testing.T) {
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Setenv("DOCKER_CONFIG", os.Getenv("DOCKER_CONFIG"))
+	ctx := context.Background()
+	r := newRig(t)
+	roots, users, sticky := t.TempDir(), t.TempDir(), t.TempDir()
+	require.NoError(t, os.Chmod(sticky, os.ModeSticky|0o777))
+	for _, dir := range []string{roots, users, sticky} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "sops"), nil, 0o755))
+	}
+	r.replaceable[users] = users + " is owned by uid 501, not root"
+	given := strings.Join([]string{users, "relative", filepath.Join(roots, "missing"), sticky, roots}, string(os.PathListSeparator))
+	ready := func() Runner {
+		engine := r.engine()
+		engine.setEnv, engine.given = true, given
+		require.NoError(t, engine.Prepare())
+		return Runner{Runner: exec.New(), Engine: engine}
+	}
+
+	r.managerDir = filepath.Join(r.managerDir, "missing")
+	runner := ready()
+	assert.Equal(t, roots, os.Getenv("PATH"))
+	found, err := runner.Look("sops")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(roots, "sops"), found)
+
+	// Found where only root can write, and itself someone else's.
+	r.replaceable[found] = found + " is owned by uid 501, not root"
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+found+": "+found+" is owned by uid 501, not root")
+	assert.ErrorIs(t, err, domain.ErrToolMissing)
+
+	require.NoError(t, os.Remove(found))
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(users, "sops")+": "+users+" is owned by uid 501")
+	_, err = runner.Run(ctx, exec.Command{Argv: []string{"sops", "--version"}})
+	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(users, "sops"))
+	require.NoError(t, os.Remove(filepath.Join(users, "sops")))
+	_, err = runner.Look("sops")
+	require.ErrorContains(t, err, "every user can add a tool to "+sticky)
+	_, err = runner.Look("age")
+	require.ErrorContains(t, err, `"age" was not found in PATH`)
+
+	// Once the manager directory exists, the checked helpers come first, then
+	// what was kept, and nothing else.
+	r.managerDir = filepath.Dir(r.managerDir)
+	ready()
+	assert.Equal(t, filepath.Join(r.managerDir, "docker", "helpers")+string(os.PathListSeparator)+roots, os.Getenv("PATH"))
 }

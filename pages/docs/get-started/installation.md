@@ -126,7 +126,8 @@ on a Linux server, is in [Platforms](../explanation/platforms.md).
     `<version>` is a release that ships a macOS archive; the script names the
     release it was given when that one has none. Without `--dir`, a Mac
     without `/usr/local/bin` gets a copy under `$HOME`, which an installation
-    cannot run.
+    cannot run. `sudo` keeps your `PATH`, so the script runs the tools on it,
+    Homebrew's `zstd` among them.
 
 5. Install `sops` for root, into `/usr/local/bin`, and not with Homebrew:
 
@@ -139,10 +140,9 @@ on a Linux server, is in [Platforms](../explanation/platforms.md).
     sudo install -m 0755 sops-v${SOPS}.darwin.arm64 /usr/local/bin/sops
     ```
 
-    The manager runs the first `sops` on the `PATH` it is given, as root.
-    Homebrew's prefix belongs to the user who installed Homebrew, so anything
-    running as that user could replace a `sops` there, and root would run it.
-    If Homebrew has one, `brew uninstall sops`.
+    Root runs a tool it finds by name only from a directory that only root
+    can change. Homebrew's prefix belongs to the user who installed Homebrew,
+    so the manager refuses a `sops` it finds only there, and names it.
 
 6. Check the machine:
 

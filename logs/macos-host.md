@@ -1023,3 +1023,40 @@ claim: Decision 1 has the weaker guarantee stated in `doctor`. On darwin, `syste
 evidence: internal/lifecycle/ops/doctor.go:1694-1704
 action: decided
 ```
+
+The rest of this section is on branch `rfc-0055-tools`, cut from
+`rfc-0055-units` at `dd213d43`, building decision 25.
+
+```divergence
+decision: 25
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T16:34:37Z
+attempt: 1
+claim: Built as decision 25 says. `Prepare` leaves off the `PATH` root was given each directory that fails `ReplaceableByNonRoot` or that anyone but root can add to, and each relative or missing one, before it looks for the manager directory. A tool the runner looks up or runs by name is refused when the file found is someone else's to replace, and when it was found only in a directory left off, naming the file and why, wrapped as a missing tool. Decision 21's lookup still searches the `PATH` root was given.
+evidence: internal/adapters/dockerdesktop/cli.go:339-368
+action: decided
+```
+
+```divergence
+decision: 25
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T16:34:37Z
+attempt: 1
+claim: Decision 25 has a tool found only in a directory left off refused by name. That reaches what the manager runs through its runner, `sops` and the tools preflight and `doctor` probe. `secret edit` starts the editor with `os/exec` itself, so that a terminal session is not captured or timed out, and a hook's lookups are its shell's. Both find a tool on the kept `PATH` or not at all, and say so in their own words: "cannot run the editor", or the shell's "not found". The editor and hooks pages say why. Naming the refusal for the editor would route it through the runner, which changes its messages on Linux too.
+evidence: internal/cli/secret_edit.go:443
+action: departed
+proposal: ASSUMED (decision 25, amended) — the refusal by name is for the tools the manager runs through its runner; the editor and hooks find a tool on the kept `PATH` or not at all
+```
+
+```divergence
+decision: 22
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T16:34:37Z
+attempt: 1
+claim: As the entry for decision 22 above amends it: every process the manager starts gets the checked helpers' directory and the settled CLI's first, then the directories decision 25 keeps, and none of the rest. With none kept, `PATH` holds those two alone, never an empty entry, which a shell reads as the working directory.
+evidence: internal/adapters/dockerdesktop/cli.go:376-392
+action: decided
+```
