@@ -1083,3 +1083,164 @@ claim: Measured on the author's Mac on 2026-11-17, at `20aec75`, under `sudo`. K
 evidence: internal/adapters/dockerdesktop/cli.go:351
 action: decided
 ```
+
+## The supervisor, P2
+
+On branch `rfc-0055-launchd` from `main` at `bbc917ed`, executing RFC 0055 P2
+(§12): the launchd adapter, boot convergence and schedules (§5.6), with the
+reboot run. The plan split P2 into three pull requests and found seven
+questions the RFC does not settle. The author ruled all seven on 2026-11-17 as
+the plan leaned; they are the first seven entries below.
+
+The split, as built: the adapter with boot convergence, then the stamps and the
+catch-up, then the docs, the acceptance run's reboot and port-probe steps, and
+the close-out. The plan had boot convergence in the second pull request. It
+moved to the first because the adapter installs the boot job, and without the
+exit 7 before the lock and the exit-12 record that job would take the lock and
+journal a failed `apply` every 30 seconds until a login, and retry an exit 12
+every 30 seconds.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: launchd starts a job with `PATH=/usr/bin:/bin:/usr/sbin:/sbin` (S4), so a job never finds the `sops` the install page puts in `/usr/local/bin`, and the RFC does not say what a job's `PATH` is. Ruled by the author as the plan leaned: every plist sets `PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`. Decision 25's filter still applies to it, and each of these directories is root's on the Mac measured.
+evidence: spikes/macos-host/report.txt:86
+action: decided
+proposal: ASSUMED — every LaunchDaemon sets `PATH` to `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`, which decision 25 then filters as it filters the `PATH` `sudo` gives
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: Every systemd timer but metrics spreads its runs with `RandomizedDelaySec`, and launchd has no counterpart; the RFC does not say whether a Mac spreads them. Ruled by the author as the plan leaned: no spread on a Mac, stated in `doctor`'s `system.units` and on the Platforms page, as decision 1 has every weaker guarantee stated. A fleet rarely has many Macs. Refused: a random sleep inside every unattended command.
+evidence: internal/adapters/supervisor/systemd/systemd.go:660
+action: decided
+proposal: ASSUMED — a Mac's schedules run at the time they name, with no spread; `doctor`'s `system.units` and the Platforms page say so
+```
+
+```divergence
+decision: 8
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: §5.6 has the four persistent jobs write their stamps on darwin, and does not say how a job knows it is one. Ruled by the author as the plan leaned: the unattended runs of `backup`, `update`, `fleet publish` and `doctor` write their stamp on every platform once they have reached the engine, and Linux does not read it. A run that cannot reach the engine exits 7 and leaves its stamp, `doctor` and `fleet publish` included, so a job that fires before a login is not reported as a failure. Refused: a flag or an environment variable that only the plists set. Decision 14 holds Linux unchanged; where this would change what Linux reports, the second pull request logs it against decision 14 before building it.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:410-411
+action: departed
+proposal: ASSUMED (decision 8, amended) — the unattended runs of the four persistent jobs write their stamps on every platform once they reach the engine; one that cannot exits 7 and leaves its stamp
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: §5.6 has `apply --startup` start the overdue jobs with `launchctl kickstart`, and the RFC does not say where that lives, since `ops` knows no launchd. Ruled by the author as the plan leaned: a small optional interface beside `ports.Supervisor`, which the launchd adapter implements: list the jobs overdue by their stamps, then start each and wait for it to exit. `apply --startup` calls it when the supervisor has it. systemd needs none, since `Persistent=true` catches up.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:413-417
+action: decided
+proposal: ASSUMED — the catch-up is an optional port the launchd adapter implements and `apply --startup` calls once it has converged; a supervisor without it catches up on its own
+```
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: §5.6 leans on a record of an exit 12 without saying where it is kept. Ruled by the author as the plan leaned: a file under `VarDir`. `apply --startup` writes it when it ends in exit 12, a later `--startup` exits 0 at once while it stands, and an operator's `apply` removes it, as S4 measured.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:396-400
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: §5.6 sends each job's output under `VarDir/logs`, and launchd neither rotates nor caps a `StandardOutPath`, so the logs grow until the disk is full; the RFC does not say what bounds them. Ruled by the author as the plan leaned: each job writes `VarDir/logs/<label>.log`, and one `/etc/newsyslog.d/dev.morzer.<p>.conf` caps and rotates them, installed and removed with the jobs.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:428-429
+action: decided
+proposal: ASSUMED — each job logs to `VarDir/logs/<label>.log`, and `/etc/newsyslog.d/dev.morzer.<p>.conf`, installed and removed with the jobs, caps and rotates them
+```
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T21:52:58Z
+attempt: 1
+claim: §6 has the acceptance run survive a reboot, and decision 9's ruling made that run one by hand on the author's Mac, which a script cannot restart and carry on through. Ruled by the author as the plan leaned: two phases. `just acceptance-record <version>` installs and checks, then asks for a restart and a login; `just acceptance-record --after-reboot <version>` then checks that the boot converged and a missed backup was caught up, and only then writes the record.
+evidence: justfile:334
+action: decided
+```
+
+The rest of this section is the first pull request, the adapter and boot
+convergence, written before it was built.
+
+```divergence
+decision: 8
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T21:55:23Z
+attempt: 1
+claim: Decision 8 has one LaunchDaemon per systemd unit, and systemd's schedules are pairs, a oneshot service and the timer that starts it, while a launchd job carries its own schedule. One plist per unit would give each timer a job with nothing to run. So there is one job per service: `dev.morzer.<p>` for the boot job, and one per pair, `dev.morzer.<p>-backup` and so on, its schedule in its own plist.
+evidence: internal/adapters/supervisor/systemd/systemd.go:962-971
+action: departed
+proposal: ASSUMED (decision 8, amended) — one LaunchDaemon per systemd service: the boot job, and one per service and timer pair, which carries the timer's schedule
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:55:23Z
+attempt: 1
+claim: Installing the units must not run them, and launchd runs a `RunAtLoad` job when it is loaded. systemd enables the product's service and starts only the timers, so `init` does not converge an installation before the operator's `apply`. The RFC does not say what installing loads. So installing loads each scheduled job it enables, reloads a loaded one whose plist changed so its new schedule holds at once, and never loads the boot job, which launchd loads at the next boot from `/Library/LaunchDaemons`. A reload stops a run in progress, as `launchctl bootout` does.
+evidence: internal/adapters/supervisor/systemd/systemd.go:199-215
+action: decided
+proposal: ASSUMED — installing the units loads the scheduled jobs it enables and reloads a changed one, and leaves the boot job for launchd to load at the next boot
+```
+
+```divergence
+decision: 8
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T21:55:23Z
+attempt: 1
+claim: The ruling above keeps the exit-12 record in a file and has an operator's `apply` remove it; it does not say on which platform it is honoured, or whether an `apply` that itself ends in exit 12 removes it. On Linux systemd's `RestartPreventExitStatus=12` already stops the retries, and honouring the record there would skip the convergence at the next boot, which decision 14 refuses. So the record is written and honoured on darwin alone, and removed by an operator's `apply` or `start` that succeeds, so one that ends in exit 12 again leaves the boot job held.
+evidence: internal/adapters/supervisor/systemd/systemd.go:622-626
+action: departed
+proposal: ASSUMED (decision 8, amended) — the exit-12 record is a file under `VarDir`, written and honoured on darwin, and removed by an operator's `apply` or `start` that succeeds
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:55:23Z
+attempt: 1
+claim: §5.6 translates the calendar timers, and the sync timer is not one: it runs two minutes after boot and then every `sync.interval` after the last run. launchd's `StartInterval` runs a job every interval from when it was loaded, and a `RunAtLoad` sync would run before the engine answers. So the sync job runs every `sync.interval` from when it is loaded, the first an interval after boot, with no spread.
+evidence: internal/adapters/supervisor/systemd/systemd.go:795-805
+action: decided
+proposal: ASSUMED — the sync job runs every `sync.interval` through `StartInterval`, the first an interval after it is loaded
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T21:55:23Z
+attempt: 1
+claim: Every systemd unit has a `TimeoutStartSec`, and every scheduled one is ordered after the product's service; launchd has neither a limit on how long a job runs nor an order between jobs, and the RFC does not say what replaces them. Nothing does: a job runs until the manager's own timeouts end it, and a schedule that fires while the boot job converges is refused the lock, exit 4, as an operator's command would be. Decision 1 has that stated, so the Platforms page says it.
+evidence: internal/adapters/supervisor/systemd/systemd.go:636-647
+action: decided
+proposal: ASSUMED — a job on a Mac has no time limit and no order after the boot job; the Platforms page says so
+```
