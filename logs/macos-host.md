@@ -945,3 +945,81 @@ proposal: LOCKED (decision 1, unchanged) — on darwin, `system.units` warns tha
 
 **Drift count: 2.** P1 left the missing supervisor unstated in `doctor`,
 which decision 1 says it states, above.
+
+## What root runs by name, and the missing supervisor
+
+On branch `rfc-0055-units` from `main` at `624f1603`, with `rfc-0055-tools`
+after it, on the two findings under "The docs". The author measured a Mac on
+2026-11-17 and ruled on both, and ruled the questions the plan raised as it
+leaned.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T16:12:14Z
+attempt: 1
+claim: The finding under "The docs" has root run the first `sops` on `PATH` unchecked. Measured on the author's Mac on 2026-11-17, macOS 27.2.1: `sudo` resets the environment and sets no `secure_path`, so root keeps the user's `PATH`, `~/bin:~/.local/bin:/usr/local/bin:/opt/homebrew/bin:…`, and `/opt/homebrew/bin` is that user's at `0775`. So `sops`, the tools preflight probes, `secret edit`'s editor and what a hook runs by name are found where that user can write, `~/bin` ahead of `/usr/local/bin`, which is `root:wheel` at `0755`. Ruled by the author: root refuses a `sops` someone other than root could replace. Ruled as the plan leaned, for every tool and not `sops` alone: on darwin the manager's `PATH` keeps, after the directories decision 22 puts first, only the directories that pass `ReplaceableByNonRoot` and that nobody but root can add an entry to, from the process's start, before `init` makes the manager directory. A tool found only in a dropped directory is refused, naming it and who could change that directory. Decision 21's own lookup still searches the `PATH` root was given, so a CLI there is refused by name, not missing. A tool named by its path runs what the path names, as decision 22 has for a hook. Refused: checking `sops` alone, which leaves the editor and every hook the user's directories; and refusing to run with such a `PATH` at all, which every Mac with Homebrew has.
+evidence: internal/adapters/dockerdesktop/cli.go:329
+action: decided
+proposal: ASSUMED — on darwin, root's `PATH` keeps only the directories only root can change, after decision 22's; a tool found only in a dropped one is refused by name
+```
+
+```divergence
+decision: 22
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-17T16:12:14Z
+attempt: 1
+claim: Decision 22 puts the checked CLI's directory first on the `PATH` of every process the manager starts, and leaves the rest as root was given it. With the entry above, a hook gets the filtered `PATH`, so on a Mac a hook that runs a Homebrew tool by name, `jq` say, no longer finds it. That changes what a hook inherits there; the hooks reference and the authoring how-to say so. Ruled as the plan leaned.
+evidence: internal/adapters/dockerdesktop/cli.go:321-337
+action: departed
+proposal: ASSUMED (decision 22, amended) — on darwin, the rest of a hook's `PATH` is the filtered one decision 25 keeps
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T16:12:14Z
+attempt: 1
+claim: `install.sh`, run as `curl … | sudo sh`, unpacks with the first `zstd` on `PATH` when tar cannot read the archive itself, and a Mac's tar cannot: measured on the author's Mac on 2026-11-17, bsdtar 3.5.3 refuses `--zstd` with no `zstd` on `PATH`. There it is Homebrew's, the user's. Ruled as the plan leaned: unchanged. `sudo` keeps the user's `PATH` for the pipeline too, so `sudo sh` is itself found on it, and the user's `curl` writes what root runs; a replaced `zstd` gives that user nothing the pipeline has not. The install page says the installer trusts the `PATH` it runs with. Refused: shipping the darwin archive as `.tar.gz`, which a Mac's tar reads alone, since it changes the archive's name, `self-update`'s unpacking and the installer for a check the pipeline cannot keep.
+evidence: install.sh:538-541
+action: decided
+proposal: ASSUMED — `install.sh` runs the `zstd` on the `PATH` it was given; the install page says the pipeline trusts that `PATH`
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-17T16:12:14Z
+attempt: 1
+claim: The registry-credentials ruling under "On branch `rfc-0055-engine`" has the manager's config carry root's `auths`, read from `DOCKER_CONFIG`, then `HOME`, as the docker CLI reads it. Measured on the author's Mac on 2026-11-17: `sudo` keeps `HOME`, so that config is the user's `~/.docker/config.json`. A helper it names is still checked, so root runs nothing unchecked, but `runtime.cli`'s remedy names "root's ~/.docker/config.json", a file that is not the one read. Ruled as the plan leaned: the remedy names the file the manager read.
+evidence: internal/lifecycle/ops/doctor.go:963
+action: decided
+proposal: ASSUMED — `doctor` names the config file the manager read `auths` from, which under `sudo` on a Mac is the user's
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-17T16:12:14Z
+attempt: 1
+claim: Ruled by the author on the halted entry for decision 1 under "The docs": on darwin, `system.units` warns that nothing converges at boot and no schedule runs, as that entry proposed. The ruling does not say what the warning names. Ruled as the plan leaned: the units this installation would have under systemd, from the parameters `unitParams` gives them, as the operator set them: the start at boot, which runs `apply --startup`, and each schedule set, backups, updates, fleet publishing, sync, `doctor` and metrics. The remedy is `sudo morzer apply` after the Mac starts, once Docker Desktop runs. A warning, since the installation runs and `doctor` exits 0. Linux without systemd, a container say, is unchanged.
+evidence: internal/lifecycle/ops/doctor.go:1673-1674
+action: decided
+proposal: ASSUMED — on darwin, `system.units` warns, naming the start at boot and each schedule the installation sets, with `sudo morzer apply` after a restart as its remedy
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-17T16:19:34Z
+attempt: 1
+claim: Decision 1 has the weaker guarantee stated in `doctor`. On darwin, `system.units` now warns that a Mac has no supervisor yet, naming `apply --startup` at boot and each schedule the installation sets, with `sudo morzer apply` as the remedy, as the author ruled on the halted entry under "The docs". Linux without systemd still reports ok.
+evidence: internal/lifecycle/ops/doctor.go:1694-1704
+action: decided
+```

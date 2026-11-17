@@ -124,13 +124,15 @@ installation routes a Mac's own traffic.
 
 On a Mac there is no supervisor yet: nothing converges at boot, and no
 schedule runs. `backup.schedule`, `doctor.schedule`, `update.schedule` and
-`sync.interval` are recorded and do nothing there.
+`sync.interval` are recorded and do nothing there. `doctor` warns of it
+under `system.units`, naming each one the installation sets.
 
 A restart clears `/var/run`, and the rendered secrets with it. Docker Desktop
 starts when its user logs in, and restarts the containers that have a restart
 policy. Run `sudo morzer apply` after every restart, once Docker Desktop is
 running: it renders the secrets again and brings the installation back to what
-its release declares.
+its release declares. Run what is scheduled by hand when it is due, `sudo
+morzer backup` say.
 
 ## Verified, and where
 
