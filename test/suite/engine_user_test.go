@@ -279,7 +279,8 @@ func TestDoctorSaysWhichDockerCLIRootRuns(t *testing.T) {
 	assert.Contains(t, check.Message, "without the credential helper desktop")
 	// `sudo` keeps HOME, so the file named is the one read, not "root's".
 	cli.RootConfig = "/Users/someone/.docker/config.json"
-	assert.Contains(t, doctorCheck(t, h, "runtime.cli").Remedy, "remove the helper from /Users/someone/.docker/config.json")
+	assert.Contains(t, doctorCheck(t, h, "runtime.cli").Remedy,
+		"remove the helper from /Users/someone/.docker/config.json and run `sudo docker --config /Users/someone/.docker login <registry>`")
 
 	cli.DesktopVersion = "4.45.0"
 	check = doctorCheck(t, h, "runtime.engine-version")
