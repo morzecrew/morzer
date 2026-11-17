@@ -91,11 +91,14 @@ func ParsePortEntry(text string) (PortRequirement, error) {
 			return r, errors.New("a bracketed IPv6 address must be followed by :<port>")
 		}
 		addr, err := netip.ParseAddr(rest[1:end])
-		if err != nil || !addr.Is6() {
+		switch {
+		case err != nil || !addr.Is6():
 			return r, errors.New("the address in brackets must be an IPv6 address")
+		case addr.Zone() != "":
+			return r, errors.New("an address with a zone is not supported")
 		}
 		// An IPv4-mapped address is its IPv4 address: it binds and
-		// overlaps as one.
+		// overlaps as one. Unmap drops a zone, so that is refused first.
 		r.Address, port = addr.Unmap(), rest[end+2:]
 	} else if i := strings.LastIndex(rest, ":"); i >= 0 {
 		if strings.Contains(rest[:i], ":") {
@@ -110,10 +113,6 @@ func ParsePortEntry(text string) (PortRequirement, error) {
 		}
 		port = rest[i+1:]
 	}
-	if r.Address.Zone() != "" {
-		return r, errors.New("an address with a zone is not supported")
-	}
-
 	if strings.Contains(port, "-") {
 		return r, errors.New("a port range is not supported; list each port")
 	}

@@ -30,18 +30,19 @@ func TestAPortEntryIsAPublishedPortWithoutTheContainerSide(t *testing.T) {
 		})
 	}
 	for entry, why := range map[string]string{
-		"8000-8010":          "a port range is not supported",
-		"443/sctp":           "the protocol must be tcp or udp",
-		"443/":               "the protocol must be tcp or udp",
-		"example.com:443":    "not a host name",
-		"2001:db8::1:443":    "an IPv6 address needs brackets",
-		"[fe80::1%eth0]:443": "an address with a zone is not supported",
-		"[203.0.113.1]:443":  "must be an IPv6 address",
-		"[2001:db8::1]443":   "must be followed by :<port>",
-		"0":                  "from 1 to 65535",
-		"65536":              "from 1 to 65535",
-		"+443":               "from 1 to 65535",
-		"443x":               "from 1 to 65535",
+		"8000-8010":                   "a port range is not supported",
+		"443/sctp":                    "the protocol must be tcp or udp",
+		"443/":                        "the protocol must be tcp or udp",
+		"example.com:443":             "not a host name",
+		"2001:db8::1:443":             "an IPv6 address needs brackets",
+		"[fe80::1%eth0]:443":          "an address with a zone is not supported",
+		"[::ffff:127.0.0.1%eth0]:443": "an address with a zone is not supported",
+		"[203.0.113.1]:443":           "must be an IPv6 address",
+		"[2001:db8::1]443":            "must be followed by :<port>",
+		"0":                           "from 1 to 65535",
+		"65536":                       "from 1 to 65535",
+		"+443":                        "from 1 to 65535",
+		"443x":                        "from 1 to 65535",
 	} {
 		t.Run(entry, func(t *testing.T) {
 			_, err := ParsePortEntry(entry)
