@@ -392,3 +392,52 @@ func TestJobsLiveWhereLaunchdLoadsThemAtBoot(t *testing.T) {
 	assert.Equal(t, "/Library/LaunchDaemons", launchd.DaemonDir)
 	assert.Equal(t, "/etc/newsyslog.d", launchd.NewsyslogDir)
 }
+
+// A write that fails partway removes the jobs written before it, so a retry
+// finds them fresh rather than skipping them as existing.
+func TestAFailedWriteRemovesTheJobsWrittenBeforeIt(t *testing.T) {
+	f := newFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(f.daemons, "dev.morzer.demo-backup.plist"), 0o755))
+	units, err := f.s.Units(ports.UnitParams{Product: "demo", ManagerPath: "/m"})
+	require.NoError(t, err)
+
+	require.Error(t, f.s.InstallUnits(context.Background(), units, ports.EnableNew))
+	assert.NoFileExists(t, filepath.Join(f.daemons, "dev.morzer.demo.plist"),
+		"the boot job written before the failure was left for a retry to skip")
+	assert.NoFileExists(t, filepath.Join(f.newsyslog, "dev.morzer.demo.conf"))
+}
+
+// A schedule unloaded to be loaded again, and refused, gets its old plist and
+// its old load back, so the job runs as it did and a retry still sees the
+// change to make.
+func TestAFailedReloadPutsTheOldScheduleBack(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p := ports.UnitParams{Product: "demo", ManagerPath: "/m"}
+	units, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.NoError(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+	plist := filepath.Join(f.daemons, "dev.morzer.demo-backup.plist")
+	old, err := os.ReadFile(plist)
+	require.NoError(t, err)
+
+	f.fresh()
+	f.runner.OnOutput("print-disabled", "disabled services = {\n}\n")
+	f.runner.OnOutput("print system/", "system/x = {\n\tstate = not running\n}\n")
+	f.runner.OnExit("bootstrap system "+plist, 5, "Bootstrap failed: 5: Input/output error")
+	p.BackupSchedule = "*-*-* 01:00"
+	changed, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.Error(t, f.s.InstallUnits(ctx, changed, ports.EnableNew), "the refused load was not reported")
+
+	now, err := os.ReadFile(plist)
+	require.NoError(t, err)
+	assert.Equal(t, string(old), string(now), "the new schedule was left on disk with the job unloaded")
+	var loads int
+	for _, c := range f.runner.Calls() {
+		if strings.Contains(strings.Join(c.Argv, " "), "bootstrap system "+plist) {
+			loads++
+		}
+	}
+	assert.Equal(t, 2, loads, "the old schedule was not loaded again:\n%s", f.runner.CommandLines())
+}

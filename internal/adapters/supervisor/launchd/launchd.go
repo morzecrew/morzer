@@ -359,6 +359,9 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 	// unreadable file is not taken as new and enabled behind somebody's back.
 	fresh := make(map[string]bool, len(units))
 	changed := make(map[string]bool, len(units))
+	// What a changed plist held, so a failure can put it back: launchd still
+	// runs it, and a retry has to see the change again to make it.
+	previous := make(map[string][]byte, len(units))
 	for _, u := range units {
 		if err := validateLabel(u.Name); err != nil {
 			return err
@@ -366,27 +369,21 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		switch old, err := os.ReadFile(s.plistPath(u.Name)); {
 		case os.IsNotExist(err):
 			fresh[u.Name] = true
-		case err != nil || !bytes.Equal(old, u.Contents):
+		case err != nil:
 			changed[u.Name] = true
+		case !bytes.Equal(old, u.Contents):
+			changed[u.Name] = true
+			previous[u.Name] = old
 		}
 	}
-	_, confErr := os.Stat(s.newsyslogConf())
-	freshConf := os.IsNotExist(confErr)
+	oldConf, confErr := os.ReadFile(s.newsyslogConf())
 
-	for _, u := range units {
-		if err := atomicfs.WriteFile(s.plistPath(u.Name), u.Contents, 0o644); err != nil {
-			return err
-		}
-	}
-	if err := atomicfs.WriteFile(s.newsyslogConf(), s.newsyslog(units), 0o644); err != nil {
-		return err
-	}
-
-	// A failure from here undoes what this call created, for the reason
-	// systemd's adapter does: a job left behind is not fresh on the retry, so
-	// EnableNew would skip it and a transient failure would become a
-	// schedule that never runs.
-	var enabled, loaded []string
+	// A failure undoes what this call did, for the reason systemd's adapter
+	// does: a job left behind is not fresh on the retry, so EnableNew would
+	// skip it, and a transient failure would become a schedule that never
+	// runs. Unlike systemd's, it has the overwritten plists to put back, and
+	// a job unloaded to be reloaded is loaded again as it was.
+	var enabled, loaded, reloading []string
 	rollback := func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackBudget)
 		defer cancel()
@@ -399,9 +396,29 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		for label := range fresh {
 			_ = os.Remove(s.plistPath(label))
 		}
-		if freshConf {
-			_ = os.Remove(s.newsyslogConf())
+		for label, old := range previous {
+			_ = atomicfs.WriteFile(s.plistPath(label), old, 0o644)
 		}
+		for _, label := range reloading {
+			_ = s.bootstrap(ctx, label)
+		}
+		switch {
+		case os.IsNotExist(confErr):
+			_ = os.Remove(s.newsyslogConf())
+		case confErr == nil:
+			_ = atomicfs.WriteFile(s.newsyslogConf(), oldConf, 0o644)
+		}
+	}
+
+	for _, u := range units {
+		if err := atomicfs.WriteFile(s.plistPath(u.Name), u.Contents, 0o644); err != nil {
+			rollback()
+			return err
+		}
+	}
+	if err := atomicfs.WriteFile(s.newsyslogConf(), s.newsyslog(units), 0o644); err != nil {
+		rollback()
+		return err
 	}
 
 	var disabled map[string]bool
@@ -447,6 +464,7 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 				return err
 			}
 			if err := s.bootstrap(ctx, u.Name); err != nil {
+				reloading = append(reloading, u.Name)
 				rollback()
 				return err
 			}
