@@ -383,7 +383,7 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 	// skip it, and a transient failure would become a schedule that never
 	// runs. Unlike systemd's, it has the overwritten plists to put back, and
 	// a job unloaded to be reloaded is loaded again as it was.
-	var enabled, loaded, reloading []string
+	var enabled, loaded, reloaded []string
 	rollback := func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackBudget)
 		defer cancel()
@@ -399,7 +399,9 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 		for label, old := range previous {
 			_ = atomicfs.WriteFile(s.plistPath(label), old, 0o644)
 		}
-		for _, label := range reloading {
+		// Its old plist is back, and launchd has the new one or none.
+		for _, label := range reloaded {
+			_ = s.Stop(ctx, label)
 			_ = s.bootstrap(ctx, label)
 		}
 		switch {
@@ -486,8 +488,8 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 				rollback()
 				return err
 			}
+			reloaded = append(reloaded, u.Name)
 			if err := s.bootstrap(ctx, u.Name); err != nil {
-				reloading = append(reloading, u.Name)
 				rollback()
 				return err
 			}

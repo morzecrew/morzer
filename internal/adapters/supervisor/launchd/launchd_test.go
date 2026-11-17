@@ -523,3 +523,37 @@ func TestARepairReloadsAJobItSwitchesBackOn(t *testing.T) {
 	assert.True(t, f.runner.Ran("bootstrap system "+filepath.Join(f.daemons, "dev.morzer.demo-backup.plist")),
 		"the schedule of a job switched back on was not reloaded:\n%s", f.runner.CommandLines())
 }
+
+// A schedule reloaded before a later job fails is reloaded again from the
+// old plist the undo puts back, so the file and what launchd runs agree.
+func TestAnUndoReloadsTheSchedulesItHadReloaded(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p := ports.UnitParams{Product: "demo", ManagerPath: "/m", FleetTimer: true}
+	units, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.NoError(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+	backup := filepath.Join(f.daemons, "dev.morzer.demo-backup.plist")
+
+	f.fresh()
+	f.runner.OnOutput("print-disabled", "disabled services = {\n}\n")
+	f.runner.OnOutput("print system/", "system/x = {\n\tstate = not running\n}\n")
+	f.runner.OnExit("bootstrap system "+filepath.Join(f.daemons, "dev.morzer.demo-fleet.plist"), 5,
+		"Bootstrap failed: 5: Input/output error")
+	p.BackupSchedule, p.FleetSchedule = "*-*-* 01:00", "*-*-* *:30"
+	changed, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.Error(t, f.s.InstallUnits(ctx, changed, ports.EnableNew))
+
+	var loads []string
+	for _, c := range f.runner.Calls() {
+		if line := strings.Join(c.Argv, " "); strings.Contains(line, "bootstrap system "+backup) ||
+			strings.Contains(line, "bootout system/dev.morzer.demo-backup") {
+			loads = append(loads, c.Argv[1])
+		}
+	}
+	assert.Equal(t, []string{"bootout", "bootstrap", "bootout", "bootstrap"}, loads,
+		"the backup job, reloaded before the fleet job failed, was not reloaded from its old plist:\n%s",
+		f.runner.CommandLines())
+	assert.Equal(t, string(units[1].Contents), func() string { b, _ := os.ReadFile(backup); return string(b) }())
+}
