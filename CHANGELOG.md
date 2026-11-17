@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weaker: secrets on disk need FileVault, `owner` is not enforced, and
   nothing runs at boot or on a schedule.
 
+- On a Mac, root runs a tool it finds by name only from a directory only root
+  can change, so `sops` belongs in `/usr/local/bin`, and a hook does not find
+  Homebrew's tools by name.
+
 ### Fixed
 
 - A refused `init --repair` keeps the installation it was asked to repair.
