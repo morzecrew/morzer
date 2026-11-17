@@ -3,6 +3,7 @@ package dockerdesktop
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -32,9 +34,11 @@ func newRig(t *testing.T) *rig {
 		runner: fakes.NewScripted(), onPath: map[string]string{}, replaceable: map[string]string{},
 	}
 	r.desktop(t, "4.44.1", "cli 1", "compose 1")
-	saved := pluginDirs
+	saved, savedSystem := pluginDirs, systemPluginDirs
 	pluginDirs = []string{t.TempDir()}
-	t.Cleanup(func() { pluginDirs = saved })
+	// One system directory that exists, and one that does not.
+	systemPluginDirs = []string{t.TempDir(), filepath.Join(t.TempDir(), "lib", "docker", "cli-plugins")}
+	t.Cleanup(func() { pluginDirs, systemPluginDirs = saved, savedSystem })
 	return r
 }
 
@@ -119,6 +123,152 @@ func TestDockerDesktopsCLIRunsFromACheckedCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "cli 2", read(t, cli.Path))
 	assert.Len(t, codesigned(r.runner), 2)
+}
+
+// A hook waits on more than the CLI: each directory the CLI searches for
+// plugins, and every entry in it, has to be root's alone, and one that does not
+// exist has to sit where only root could make it, since a hook that lists
+// plugins runs each one as root (decision 24).
+func TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced(t *testing.T) {
+	for name, tc := range map[string]struct {
+		arrange func(t *testing.T, r *rig, existing, missing string)
+		says    string // "" when the hook runs
+	}{
+		"everything root's": {arrange: func(*testing.T, *rig, string, string) {}},
+		"a user's plugin in a system directory": {
+			arrange: func(t *testing.T, r *rig, existing, _ string) {
+				plugin := filepath.Join(existing, "docker-scout")
+				require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+				r.replaceable[plugin] = plugin + " is owned by uid 501, not root"
+			},
+			says: "docker-scout is owned by uid 501, not root",
+		},
+		"a system directory a group can write": {
+			arrange: func(_ *testing.T, r *rig, existing, _ string) {
+				r.replaceable[existing] = existing + " is writable by group 80"
+			},
+			says: "is writable by group 80",
+		},
+		"a missing one, where someone else could make it": {
+			arrange: func(_ *testing.T, r *rig, _, missing string) {
+				above := filepath.Dir(filepath.Dir(filepath.Dir(missing)))
+				r.replaceable[above] = above + " is writable by every user"
+			},
+			says: "is writable by every user",
+		},
+		// Where nobody else may rename an entry, anyone may still add one.
+		"a sticky system directory every user can write": {
+			arrange: func(t *testing.T, _ *rig, existing, _ string) {
+				sticky(t, existing)
+			},
+			says: "every user can add a plugin to",
+		},
+		"a missing one under a sticky directory every user can write": {
+			arrange: func(t *testing.T, _ *rig, _, missing string) {
+				sticky(t, filepath.Dir(filepath.Dir(filepath.Dir(missing))))
+			},
+			says: "every user can add a plugin to",
+		},
+		"a plugin beside Docker Desktop's copies": {
+			arrange: func(t *testing.T, r *rig, _, _ string) {
+				plugin := filepath.Join(r.managerDir, "docker", "cli-plugins", "docker-extra")
+				require.NoError(t, os.MkdirAll(filepath.Dir(plugin), 0o700))
+				require.NoError(t, os.WriteFile(plugin, nil, 0o755))
+				r.replaceable[plugin] = plugin + " is owned by uid 501, not root"
+			},
+			says: "docker-extra is owned by uid 501, not root",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			tc.arrange(t, r, systemPluginDirs[0], systemPluginDirs[1])
+
+			err := r.engine().BeforeHook(context.Background())
+
+			if tc.says == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, domain.ErrPreflight)
+			assert.Contains(t, domain.AsError(err).Message, "a hook may list the docker CLI's plugins")
+			assert.Contains(t, domain.AsError(err).Message, tc.says)
+		})
+	}
+}
+
+// sticky makes a directory every user can write and none rename another's
+// entry in. os.Chmod reads the bit from os.ModeSticky, not from 0o1000.
+func sticky(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.Chmod(dir, os.ModeSticky|0o777))
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSticky, "%s is not sticky", dir)
+}
+
+// A relative plugin directory in root's config names a different directory
+// for every process, a hook's among them, which runs from its release, so it
+// is never the one the manager's config names.
+func TestARelativePluginDirectoryIsNotSearched(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	r.onPath["docker"] = "/opt/homebrew/bin/docker"
+	here := t.TempDir()
+	t.Chdir(here)
+	require.NoError(t, os.MkdirAll(filepath.Join(here, "plugins"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(here, "plugins", "docker-compose"), nil, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), []byte(`{"cliPluginsExtraDirs": ["plugins"]}`), 0o600))
+
+	_, err := r.engine().Settle(context.Background())
+
+	require.ErrorContains(t, err, "has no Compose plugin")
+}
+
+// A directory whose name walks back past a link is one place to the kernel,
+// which lists it, and another to a lexical join, which is how the CLI names
+// each plugin it runs and how the manager checks one, so it is not searched
+// either.
+func TestAPluginDirectoryThatIsNotCleanIsNotSearched(t *testing.T) {
+	r := newRig(t)
+	require.NoError(t, os.RemoveAll(r.app))
+	r.onPath["docker"] = "/opt/homebrew/bin/docker"
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "extra"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "extra", "docker-compose"), nil, 0o755))
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(base, "link")))
+	config, err := json.Marshal(map[string][]string{"cliPluginsExtraDirs": {base + "/link/../extra"}})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), config, 0o600))
+
+	_, err = r.engine().Settle(context.Background())
+
+	require.ErrorContains(t, err, "has no Compose plugin")
+}
+
+// A trailing slash or a `.` names the same directory to the kernel and to a
+// join, so such a directory is searched, and named in the manager's config
+// clean.
+func TestAPluginDirectorySpelledWithASlashOrADotIsSearchedClean(t *testing.T) {
+	for name, spelling := range map[string]string{"a trailing slash": "%s/extra/", "a dot": "%s/./extra", "a doubled slash": "%s//extra"} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			require.NoError(t, os.RemoveAll(r.app))
+			r.onPath["docker"] = "/opt/homebrew/bin/docker"
+			base := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(base, "extra"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(base, "extra", "docker-compose"), nil, 0o755))
+			config, err := json.Marshal(map[string][]string{"cliPluginsExtraDirs": {fmt.Sprintf(spelling, base)}})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(r.rootConfig, "config.json"), config, 0o600))
+
+			_, err = r.engine().Settle(context.Background())
+
+			require.NoError(t, err)
+			var written map[string]any
+			require.NoError(t, json.Unmarshal([]byte(read(t, filepath.Join(r.managerDir, "docker", "config.json"))), &written))
+			assert.Equal(t, []any{filepath.Join(base, "extra")}, written["cliPluginsExtraDirs"])
+		})
+	}
 }
 
 // A copy that fails the check is never put in place: the copies checked before

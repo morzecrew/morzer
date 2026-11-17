@@ -10,8 +10,10 @@ import (
 
 // engineRunner is engine_darwin.go's counterpart: on Linux root runs the
 // docker CLI on PATH, as it always has.
-func engineRunner(runner exec.Runner, _ domain.Paths) (exec.Runner, func(context.Context) (ports.EngineCLI, error)) {
-	return runner, nil
+func engineRunner(runner exec.Runner, _ domain.Paths) (
+	exec.Runner, func(context.Context) (ports.EngineCLI, error), func(context.Context) error,
+) {
+	return runner, nil, nil
 }
 
 // engineUser is engine_darwin.go's counterpart: on Linux the engine reads the

@@ -846,3 +846,32 @@ evidence: internal/infra/atomicfs/atomicfs.go:562-565
 action: decided
 proposal: ASSUMED — an ACL that cannot be read makes the entry one that cannot be checked
 ```
+
+## The plugins a hook could list
+
+On branch `rfc-0055-plugins` from `main` at `21ff2c66`, building decision
+24. The plan found questions the row does not settle, and the author ruled
+them on 2026-11-17 as the plan leaned.
+
+```divergence
+decision: 24
+grade: ASSUMED
+kind: resolved
+at: 2026-11-16T22:35:40Z
+attempt: 1
+claim: Decision 24 has the author rule again if Docker Desktop leaves a link to a binary inside `Docker.app` in the CLI's system plugin directories. Measured on the author's Mac on 2026-11-17: `/usr/local/lib/docker/cli-plugins` and `/usr/local/libexec/docker/cli-plugins` do not exist, nor do `/usr/local/lib` and `/usr/local/libexec`, and `/usr/local` is `root:wheel` at `0755`. Docker Desktop leaves nothing there, so the row stands as written.
+evidence: internal/adapters/dockerdesktop/cli.go:64-71
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-16T22:35:40Z
+attempt: 1
+claim: Decision 24 refuses a hook while an entry in a plugin directory, or a directory on the way to one, can be replaced by someone other than root, and does not say what a directory that does not exist is. Someone who can write the nearest directory above it can make it and put a plugin in. Ruled by the author: a directory that does not exist is judged by the nearest one above it that does, by `ReplaceableByNonRoot`. The check runs before every hook, after the CLI settles, as the settle check does, and costs a few `lstat`s. Linux is unchanged: root's CLI there searches the same directories, and decision 24 is darwin's.
+evidence: internal/cli/root.go:1019-1024
+action: decided
+proposal: ASSUMED — a plugin directory that does not exist is judged by its nearest existing ancestor; the check runs before every hook, on darwin only
+```

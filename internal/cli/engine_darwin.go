@@ -16,13 +16,18 @@ import (
 // rebuilt from root's own before anything reaches a registry. Until it is, a
 // registry is reached anonymously, so root's own config is never read
 // unchecked (RFC 0055 decisions 18, 21 and 22).
-func engineRunner(runner exec.Runner, paths domain.Paths) (exec.Runner, func(context.Context) (ports.EngineCLI, error)) {
+//
+// beforeHook is what a hook waits on: the settled CLI, and no plugin it would
+// find that someone other than root could replace (RFC 0055 decision 24).
+func engineRunner(runner exec.Runner, paths domain.Paths) (
+	wrapped exec.Runner, settle func(context.Context) (ports.EngineCLI, error), beforeHook func(context.Context) error,
+) {
 	engine := dockerdesktop.NewEngine(runner, paths.ManagerDir())
 	// A refusal here, a command run without root say, leaves the process
 	// reaching registries anonymously, and surfaces at its first docker
 	// command.
 	_ = engine.Prepare()
-	return dockerdesktop.Runner{Runner: runner, Engine: engine}, engine.Settle
+	return dockerdesktop.Runner{Runner: runner, Engine: engine}, engine.Settle, engine.BeforeHook
 }
 
 // engineUser is who the engine reads the host's files as: on a Mac, the user

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -61,14 +62,17 @@ list) echo "{}" ;;
 esac
 `
 
-// pluginDirs is where a Compose plugin for a CLI on PATH is looked for after
-// root's own config's: Homebrew's, which its formula asks to be named in a
-// config, then the docker CLI's system directories, in its order.
-var pluginDirs = []string{
-	"/opt/homebrew/lib/docker/cli-plugins",
+// systemPluginDirs are the docker CLI's own plugin directories, which it
+// searches whatever its config names.
+var systemPluginDirs = []string{
 	"/usr/local/lib/docker/cli-plugins", "/usr/local/libexec/docker/cli-plugins",
 	"/usr/lib/docker/cli-plugins", "/usr/libexec/docker/cli-plugins",
 }
+
+// pluginDirs is where a Compose plugin for a CLI on PATH is looked for after
+// root's own config's: Homebrew's, which its formula asks to be named in a
+// config, then the docker CLI's system directories, in its order.
+var pluginDirs = append([]string{"/opt/homebrew/lib/docker/cli-plugins"}, systemPluginDirs...)
 
 // startEnv is DOCKER_CONFIG and PATH as the process started, before they are
 // replaced: root's own config is read from there, and the CLI and its helpers
@@ -99,6 +103,8 @@ type Engine struct {
 
 	mu  sync.Mutex
 	cli *ports.EngineCLI
+	// pluginDir is the directory the manager's config names for plugins.
+	pluginDir string
 }
 
 // NewEngine returns the settler for an installation whose manager directory is
@@ -171,8 +177,95 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 	if err := e.useConfig(filepath.Dir(cli.Path)); err != nil {
 		return ports.EngineCLI{}, err
 	}
-	e.cli = &cli
+	e.cli, e.pluginDir = &cli, pluginDir
 	return cli, nil
+}
+
+// BeforeHook refuses a hook until the CLI is settled, and while a plugin the
+// CLI would find could be replaced by someone other than root: a hook that
+// lists plugins, `docker info` say, runs every one it finds as root (RFC 0055
+// decision 24). The manager's own commands list none.
+func (e *Engine) BeforeHook(ctx context.Context) error {
+	if _, err := e.Settle(ctx); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	dirs := append([]string{filepath.Join(e.dir, "cli-plugins"), e.pluginDir}, systemPluginDirs...)
+	e.mu.Unlock()
+	for _, dir := range dirs {
+		if err := e.pluginsTrusted(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addable says who other than root could add an entry to a directory, which
+// a sticky bit does not stop, or "".
+func addable(p string, info fs.FileInfo) string {
+	_, gid := atomicfs.Owner(info)
+	switch mode := info.Mode(); {
+	case mode&0o002 != 0:
+		return fmt.Sprintf("every user can add a plugin to %s", p)
+	case mode&0o020 != 0:
+		return fmt.Sprintf("group %d can add a plugin to %s", gid, p)
+	}
+	return ""
+}
+
+// pluginsTrusted refuses a plugin directory, or an entry in it, that someone
+// other than root could replace. One that does not exist is judged by the
+// nearest directory above it that does, where it could be made
+// (logs/macos-host.md).
+func (e *Engine) pluginsTrusted(dir string) error {
+	refuse := func(who string) error {
+		return domain.Preflight(nil, "a hook may list the docker CLI's plugins, which runs each one as root, and %s", who).
+			WithHint("make it root's alone, or remove it; root runs no hook until then")
+	}
+	at := dir
+	for {
+		_, err := os.Lstat(at)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return domain.Internal(err, "cannot check the plugin directory %s", dir)
+		}
+		at = filepath.Dir(at)
+	}
+	if who, err := e.replaceable(at); err != nil || who != "" {
+		if err != nil {
+			return err
+		}
+		return refuse(who)
+	}
+	// The rule asks who could replace an entry, which a sticky directory
+	// lets nobody else do. Anyone who can write it can still add a plugin,
+	// or make the directory that is missing.
+	info, err := os.Stat(at)
+	if err != nil {
+		return domain.Internal(err, "cannot check the plugin directory %s", dir)
+	}
+	if who := addable(at, info); who != "" {
+		return refuse(who)
+	}
+	if at != dir {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return domain.Internal(err, "cannot list the plugin directory %s", dir)
+	}
+	for _, entry := range entries {
+		who, err := e.replaceable(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return err
+		}
+		if who != "" {
+			return refuse(who)
+		}
+	}
+	return nil
 }
 
 // ready makes the manager's directory for the CLI, refusing one whose way down
@@ -370,6 +463,17 @@ func (e *Engine) fromPath() (ports.EngineCLI, string, error) {
 	}
 	dirs = append(dirs, pluginDirs...)
 	for _, dir := range dirs {
+		// A relative one names a different directory for every process,
+		// a hook's among them, which runs from its release. A `..` the
+		// kernel reads past a link and a lexical join does not, so the
+		// CLI would list one directory and run plugins named from
+		// another. A slash or a `.` means the same to both, so such a
+		// spelling is cleaned, and the clean one is what is checked and
+		// named in the manager's config.
+		if !filepath.IsAbs(dir) || slices.Contains(strings.Split(dir, "/"), "..") {
+			continue
+		}
+		dir = filepath.Clean(dir)
 		plugin := filepath.Join(dir, "docker-compose")
 		if !exists(plugin) {
 			continue
