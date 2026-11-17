@@ -1,11 +1,11 @@
 package ops
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -124,13 +124,7 @@ func (d *Deps) checkMachinePorts() preflight.Check {
 		Run: func(ctx context.Context) events.CheckResult {
 			claims, problems := d.declaredPorts(ctx)
 
-			var collisions []string
-			for _, port := range sortedPorts(claims) {
-				if products := claims[port]; len(products) > 1 {
-					collisions = append(collisions,
-						fmt.Sprintf("%d (%s)", port, strings.Join(products, ", ")))
-				}
-			}
+			collisions := portCollisions(claims)
 			if len(collisions) > 0 {
 				return preflight.Warn(
 					"they cannot both run; change one release's port parameter with "+
@@ -157,13 +151,26 @@ func (d *Deps) checkMachinePorts() preflight.Check {
 	}
 }
 
-// declaredPorts maps each host port to the installations that want it.
+// portClaim is one installation's claim on a port, as it declares it.
+type portClaim struct {
+	product string
+	port    domain.PortRequirement
+}
+
+// portKey is what two claims must share to meet: protocol and port.
+type portKey struct {
+	port     uint16
+	protocol domain.PortProtocol
+}
+
+// declaredPorts maps each protocol and port to the installations that claim
+// it, and where.
 //
-// Every installation is read through its own layout, so the parameters that
-// resolve a `{{ .Parameters.http_port }}` are that installation's own -- which
-// is the whole reason this cannot be answered from one manifest.
-func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
-	claims := map[int][]string{}
+// Every installation is read through its own layout, so the parameters and
+// profiles that resolve a `{{ .Parameters.http_port }}` are that installation's
+// own -- which is the whole reason this cannot be answered from one manifest.
+func (d *Deps) declaredPorts(ctx context.Context) (map[portKey][]portClaim, []string) {
+	claims := map[portKey][]portClaim{}
 
 	if d.StateFor == nil {
 		// Unreachable: the check is only registered when the reader is
@@ -209,7 +216,12 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
 			problems = append(problems, product)
 			continue
 		}
-		ports, err := rel.Manifest.ResolvePorts(params)
+		profiles, err := scoped.selection(rel, inst, nil)
+		if err != nil {
+			problems = append(problems, product)
+			continue
+		}
+		ports, err := rel.Manifest.ResolvePorts(params, profiles)
 		if err != nil {
 			problems = append(problems, product)
 			continue
@@ -219,19 +231,48 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[int][]string, []string) {
 			// declares the same port twice is claiming it once, and
 			// reporting that as a collision with itself would be a
 			// warning an operator cannot act on.
-			if !slices.Contains(claims[port], product) {
-				claims[port] = append(claims[port], product)
+			key := portKey{port.Port, port.Protocol}
+			if !slices.ContainsFunc(claims[key], func(c portClaim) bool {
+				return c.product == product && c.port.Address == port.Address
+			}) {
+				claims[key] = append(claims[key], portClaim{product, port})
 			}
 		}
 	}
 	return claims, problems
 }
 
-// sortedPorts orders the claims so the report is stable. Map iteration would
-// otherwise reorder a warning between two runs of the same command, which is
-// what makes a diff of two `doctor --json` outputs unreadable.
-func sortedPorts(claims map[int][]string) []int {
-	out := slices.Collect(maps.Keys(claims))
-	sort.Ints(out)
+// portCollisions names each protocol and port two installations claim on
+// overlapping addresses, with the claims that meet: "443/tcp (dotdash on
+// 203.0.113.11, web on every address)" (RFC 0059 decision 4, RFC 0020
+// decision 5e). Ordered by port, then protocol, so the report is stable: map
+// iteration would otherwise reorder a warning between two runs of the same
+// command, which is what makes a diff of two `doctor --json` outputs
+// unreadable.
+func portCollisions(claims map[portKey][]portClaim) []string {
+	keys := slices.SortedFunc(maps.Keys(claims), func(a, b portKey) int {
+		if a.port != b.port {
+			return cmp.Compare(a.port, b.port)
+		}
+		return strings.Compare(string(a.protocol), string(b.protocol))
+	})
+	var out []string
+	for _, key := range keys {
+		var meet []string
+		for _, c := range claims[key] {
+			if slices.ContainsFunc(claims[key], func(o portClaim) bool {
+				return o.product != c.product && o.port.Overlaps(c.port)
+			}) {
+				where := "every address"
+				if c.port.Address.IsValid() {
+					where = c.port.Address.String()
+				}
+				meet = append(meet, c.product+" on "+where)
+			}
+		}
+		if len(meet) > 0 {
+			out = append(out, fmt.Sprintf("%d/%s (%s)", key.port, key.protocol, strings.Join(meet, ", ")))
+		}
+	}
 	return out
 }

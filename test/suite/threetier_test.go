@@ -52,12 +52,13 @@ func TestEachTierPublishesItsOwnPort(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ports, err := rel.Manifest.ResolvePorts(params)
+	ports, err := rel.Manifest.ResolvePorts(params, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []int{8443, 9443}, ports,
+	require.Len(t, ports, 2)
+	assert.Equal(t, []string{"8443/tcp", "9443/tcp"}, []string{ports[0].String(), ports[1].String()},
 		"preflight must check both published ports, each from its own parameter")
 
-	checks, err := rel.Manifest.ResolveHealthChecks(params)
+	checks, err := rel.Manifest.ResolveHealthChecks(params, nil)
 	require.NoError(t, err)
 
 	byName := map[string]string{}

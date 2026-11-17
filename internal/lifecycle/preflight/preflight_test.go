@@ -442,7 +442,7 @@ func TestPorts(t *testing.T) {
 		port := addr.Port
 		_ = ln.Close()
 
-		res := preflight.Ports([]int{port}).Run(context.Background())
+		res := preflight.Ports([]domain.PortRequirement{{Port: uint16(port), Protocol: domain.PortTCP}}).Run(context.Background())
 		if res.Status != events.CheckOK {
 			t.Errorf("a free port was reported occupied: %s", res.Message)
 		}
@@ -460,7 +460,7 @@ func TestPorts(t *testing.T) {
 		}
 		port := addr.Port
 
-		check := preflight.Ports([]int{port})
+		check := preflight.Ports([]domain.PortRequirement{{Port: uint16(port), Protocol: domain.PortTCP}})
 		if !check.Fatal {
 			t.Error("an occupied port must be fatal: the container will not start")
 		}
@@ -472,7 +472,7 @@ func TestPorts(t *testing.T) {
 			t.Errorf("message %q does not name the port, so the operator cannot "+
 				"go and find what is holding it", res.Message)
 		}
-		if !strings.Contains(res.Remedy, "ss -tlnp") {
+		if !strings.Contains(res.Remedy, "ss -tulnp") {
 			t.Errorf("remedy %q does not say how to find the listener", res.Remedy)
 		}
 	})

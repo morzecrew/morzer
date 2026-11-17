@@ -37,11 +37,11 @@ func TestAChangedPortMovesEverythingTogether(t *testing.T) {
 	params, err := domain.ResolveParameters(m.Parameters, map[string]string{"http_port": "9000"})
 	require.NoError(t, err)
 
-	required, err := m.ResolvePorts(params)
+	required, err := m.ResolvePorts(params, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []int{9000}, required, "preflight must check the port that will be published")
+	assert.Equal(t, []string{"9000/tcp"}, entries(required), "preflight must check the port that will be published")
 
-	checks, err := m.ResolveHealthChecks(params)
+	checks, err := m.ResolveHealthChecks(params, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "http://127.0.0.1:9000/health/ready", checks[0].URL,
 		"the probe must ask the port that will be published")
@@ -50,11 +50,11 @@ func TestAChangedPortMovesEverythingTogether(t *testing.T) {
 	defaults, err := domain.ResolveParameters(m.Parameters, nil)
 	require.NoError(t, err)
 
-	required, err = m.ResolvePorts(defaults)
+	required, err = m.ResolvePorts(defaults, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []int{18080}, required)
+	assert.Equal(t, []string{"18080/tcp"}, entries(required))
 
-	checks, err = m.ResolveHealthChecks(defaults)
+	checks, err = m.ResolveHealthChecks(defaults, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "http://127.0.0.1:18080/health/ready", checks[0].URL)
 }
@@ -65,9 +65,18 @@ func TestALiteralPortStillWorks(t *testing.T) {
 	m := validManifestWithParameters(nil)
 	m.Requirements.Ports = []domain.PortSpec{"18080", "5432"}
 
-	got, err := m.ResolvePorts(domain.Parameters{})
+	got, err := m.ResolvePorts(domain.Parameters{}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []int{18080, 5432}, got)
+	assert.Equal(t, []string{"18080/tcp", "5432/tcp"}, entries(got))
+}
+
+// entries is each requirement's canonical spelling.
+func entries(reqs []domain.PortRequirement) []string {
+	out := make([]string, len(reqs))
+	for i, r := range reqs {
+		out[i] = r.String()
+	}
+	return out
 }
 
 func TestNonHTTPChecksAreLeftAlone(t *testing.T) {
@@ -75,7 +84,7 @@ func TestNonHTTPChecksAreLeftAlone(t *testing.T) {
 	params, err := domain.ResolveParameters(m.Parameters, nil)
 	require.NoError(t, err)
 
-	checks, err := m.ResolveHealthChecks(params)
+	checks, err := m.ResolveHealthChecks(params, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"hooks/check-db"}, checks[1].Command,
 		"a command check is the vendor's executable, not a template")
@@ -92,7 +101,7 @@ func TestATypoInAManifestTemplateIsRefused(t *testing.T) {
 	params, err := domain.ResolveParameters(m.Parameters, nil)
 	require.NoError(t, err)
 
-	_, err = m.ResolveHealthChecks(params)
+	_, err = m.ResolveHealthChecks(params, nil)
 	require.Error(t, err)
 	assert.Contains(t, domain.AsError(err).Hint, "http_port",
 		"the hint must name what is available")
@@ -106,7 +115,7 @@ func TestATypoInAManifestTemplateIsRefused(t *testing.T) {
 // error's message for "not a valid template", which made rewording the message
 // silently disable the check.
 func TestAnUnparseableTemplateIsMatchedByItsSentinel(t *testing.T) {
-	_, err := domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port ")
+	_, err := domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port ", nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrTemplateSyntax)
 	// The cause survives the sentinel: an author needs to see what the
@@ -116,7 +125,7 @@ func TestAnUnparseableTemplateIsMatchedByItsSentinel(t *testing.T) {
 	// A template that parses and cannot resolve is the other case, and
 	// carries no syntax sentinel -- validation must not refuse a manifest
 	// over a parameter it cannot know the value of yet.
-	_, err = domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port }}")
+	_, err = domain.Parameters{}.Resolve("requirements.ports[0]", "{{ .Parameters.http_port }}", nil)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, domain.ErrTemplateSyntax)
 }
@@ -130,14 +139,15 @@ func TestAPortThatResolvesToNonsenseIsRefused(t *testing.T) {
 	params, err := domain.ResolveParameters(m.Parameters, nil)
 	require.NoError(t, err)
 
-	_, err = m.ResolvePorts(params)
+	_, err = m.ResolvePorts(params, nil)
 	require.Error(t, err)
-	assert.Contains(t, domain.AsError(err).Message, "not a port number")
+	assert.Contains(t, domain.AsError(err).Message, `resolved to "http": the port must be a number from 1 to 65535`)
 }
 
-// TestTheTemplateContextIsParametersOnly pins decision 6. A health URL able to
-// interpolate a secret path is a health URL able to put one in a log line.
-func TestTheTemplateContextIsParametersOnly(t *testing.T) {
+// TestTheTemplateContextIsParametersAndProfiles pins RFC 0007 decision 6 as
+// RFC 0059 decision 5 leaves it. A health URL able to interpolate a secret path
+// is a health URL able to put one in a log line.
+func TestTheTemplateContextIsParametersAndProfiles(t *testing.T) {
 	params := domain.Parameters{"http_port": "9000"}
 
 	for _, expr := range []string{
@@ -145,8 +155,8 @@ func TestTheTemplateContextIsParametersOnly(t *testing.T) {
 		"{{ .Paths.Secrets }}",
 		"{{ .Installation.ID }}",
 	} {
-		_, err := params.Resolve("health.checks[0].url", "http://x/"+expr)
-		assert.Error(t, err, "%s must not resolve: the context is .Parameters only", expr)
+		_, err := params.Resolve("health.checks[0].url", "http://x/"+expr, []string{"embedded"})
+		assert.Error(t, err, "%s must not resolve: the context is .Parameters and .Profiles", expr)
 	}
 }
 
@@ -157,7 +167,7 @@ func TestAManifestWithNoTemplatesIsUntouched(t *testing.T) {
 	params := domain.Parameters{}
 	const url = "http://127.0.0.1:18080/health/ready"
 
-	got, err := params.Resolve("health.checks[0].url", url)
+	got, err := params.Resolve("health.checks[0].url", url, nil)
 	require.NoError(t, err)
 	assert.Equal(t, url, got)
 }

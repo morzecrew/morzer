@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"net/url"
@@ -1828,7 +1827,8 @@ func (m *Manifest) Validate() error {
 		v.add("requirements.cpus", "must not be negative, got %d", m.Requirements.CPUs)
 	}
 
-	// requirements.ports -- literal or a parameter reference, never junk
+	// requirements.ports -- an entry in the grammar, or a template that
+	// parses, never junk
 	for i, port := range m.Requirements.Ports {
 		field := fmt.Sprintf("requirements.ports[%d]", i)
 		text := strings.TrimSpace(string(port))
@@ -1840,15 +1840,19 @@ func (m *Manifest) Validate() error {
 			// values; here only that it parses at all, so a
 			// malformed template fails at `release verify` rather
 			// than midway through an apply.
-			empty := Parameters{}
-			_, err := empty.Resolve(field, text)
-			if errors.Is(err, ErrTemplateSyntax) {
+			if _, err := parseField(field, text); err != nil {
 				v.add(field, "%s", AsError(err).Message)
 			}
 		default:
-			if n, err := strconv.Atoi(text); err != nil || n < 1 || n > 65535 {
-				v.add(field, "must be a port number (1-65535) or a parameter reference, got %q", text)
+			if _, err := ParsePortEntry(text); err != nil {
+				v.add(field, "must be [address:]port[/protocol], got %q: %s", text, err)
 			}
+		}
+	}
+	if minimum := MustParseVersion(PortsMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+		if why := m.newPortsGrammar(); why != "" {
+			v.add("compatibility.min_manager_version",
+				"must be at least %s, because %s, which an older manager refuses", minimum, why)
 		}
 	}
 

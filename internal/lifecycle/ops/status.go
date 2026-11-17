@@ -352,7 +352,7 @@ func (d *Deps) readRuntime(ctx context.Context, inst domain.Installation, rel do
 	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	specs, err := d.checkSpecs(inst, rel, "", domain.OpTypeApply)
+	specs, err := d.checkSpecs(inst, rel, nil, "", domain.OpTypeApply)
 	if err != nil {
 		out.healthErr = err
 		return out

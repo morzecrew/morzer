@@ -633,7 +633,7 @@ func (d *Deps) changeSteps(
 		steps = append(steps, stepRecreateForChange(d, before, after, rel, planned.schema, run.services,
 			len(names.secretNames()) > 0))
 	}
-	return append(steps, stepHealthChecks(d, after, rel)), nil
+	return append(steps, stepHealthChecks(d, after, rel, nil)), nil
 }
 
 // stepRecordChange writes the settings and parameters in one write, named for
