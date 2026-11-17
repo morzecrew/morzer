@@ -76,6 +76,9 @@
         <loc>https://morzecrew.github.io/morzer/dev/authoring/bundled-images/</loc>
       </url>
       <url>
+        <loc>https://morzecrew.github.io/morzer/dev/authoring/running-on-a-mac/</loc>
+      </url>
+      <url>
         <loc>https://morzecrew.github.io/morzer/dev/authoring/publishing/</loc>
       </url>
       <url>
@@ -134,6 +137,9 @@
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/explanation/secrets/</loc>
+      </url>
+      <url>
+        <loc>https://morzecrew.github.io/morzer/dev/explanation/platforms/</loc>
       </url>
       <url>
         <loc>https://morzecrew.github.io/morzer/dev/explanation/what-is-tested/</loc>

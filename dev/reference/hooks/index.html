@@ -1269,6 +1269,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1754,6 +1783,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#what-the-runtime-adds" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2183,6 +2223,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../explanation/platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../explanation/what-is-tested/" class="md-nav__link">
         
   
@@ -2263,6 +2332,17 @@
   
     <nav class="md-nav" aria-label="Environment">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#what-the-runtime-adds" class="md-nav__link">
@@ -2560,7 +2640,7 @@ is the release's name whatever the installation is called, so an installation
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_SECRETS_DIR</code></td>
-<td>The tmpfs directory secrets are rendered to.</td>
+<td>The directory secrets are rendered to: a tmpfs on Linux, on disk on a Mac.</td>
 </tr>
 <tr>
 <td><code>&lt;PRODUCT&gt;_CONFIG_FILE</code></td>
@@ -2598,6 +2678,23 @@ variable's existence rather than its value would otherwise mutate during a plan.
 <a href="../parameters/#changing-the-domains"><code>config set installation.domains</code></a> the next
 hook sees the new ones. Managers before 0.13.0 set none of the three: a release
 whose hooks need them declares <code>min_manager_version: "0.13.0"</code>.</p>
+<h3 id="on-a-mac">On a Mac<a class="headerlink" href="#on-a-mac" title="Permanent link">&para;</a></h3>
+<p>Beyond these, a hook gets the manager's own environment, with two changes on a
+Mac:</p>
+<ul>
+<li><strong><code>PATH</code> starts with the directory of the <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> the manager checked.</strong>
+  A hook that runs <code>docker</code> by name runs that copy. One that names a path,
+  <code>/usr/local/bin/docker</code> say, runs whatever that path holds.</li>
+<li><strong><code>DOCKER_CONFIG</code> is the manager's</strong>, so that <abbr title="Command-Line Interface">CLI</abbr> loads the Compose plugin
+  the manager checked.</li>
+</ul>
+<p>No hook runs while anyone but root could replace an entry in a directory that
+<abbr title="Command-Line Interface">CLI</abbr> searches for plugins, or in a directory on the way to one: the manager's
+own plugin directories, and <code>/usr/local/lib/docker/cli-plugins</code>,
+<code>/usr/local/libexec/docker/cli-plugins</code>, <code>/usr/lib/docker/cli-plugins</code> and
+<code>/usr/libexec/docker/cli-plugins</code>. A command that lists plugins, <code>docker info</code>
+say, runs each one it finds as root. The operation stops before the hook,
+exit 3, naming the entry.</p>
 <h3 id="what-the-runtime-adds">What the runtime adds<a class="headerlink" href="#what-the-runtime-adds" title="Permanent link">&para;</a></h3>
 <p>The table above is what every installation gets. A runtime contributes its own
 variables on top, and which ones depends on the runtime the installation is

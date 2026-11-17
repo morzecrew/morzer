@@ -1434,6 +1434,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../publishing/" class="md-nav__link">
         
   
@@ -2128,6 +2157,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../explanation/platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../explanation/what-is-tested/" class="md-nav__link">
         
   
@@ -2574,8 +2632,9 @@ value: a file has one owner, and its mode lets nobody else read it.</p>
 <p>The owner is a uid on the host. With user-namespace remapping or rootless
 Docker, the container's 65532 is a different uid on the host, so the read is
 refused; the manager does not map ids through the daemon's configuration. On
-macOS the manager refuses <code>owner</code> altogether for now. The
-<a href="../../reference/manifest/#owner">secret schema reference</a> has the rest.</p>
+a Mac, <code>owner</code> is not enforced: every container that mounts a secret can read
+it (<a href="../running-on-a-mac/#do-not-rely-on-owner">Running a release on a Mac</a>).
+The <a href="../../reference/manifest/#owner">secret schema reference</a> has the rest.</p>
 <h2 id="validate-as-you-go">Validate as you go<a class="headerlink" href="#validate-as-you-go" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product
 </code></pre></div>

@@ -1269,6 +1269,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -2461,6 +2490,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../explanation/platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../explanation/what-is-tested/" class="md-nav__link">
         
   
@@ -3575,7 +3633,8 @@ created with refuses the change as well.</p>
 list stays within the release's, and names a profile the runtime declares.
 Either key needs <code>compatibility.min_manager_version</code> of at least <code>0.18.0</code>,
 because an older manager refuses it as unknown. <code>release verify</code> checks the
-shape. It cannot check that a release works on a Mac.</p>
+shape. It cannot check that a release works on a Mac; <a href="../../authoring/running-on-a-mac/">Running a release on a
+Mac</a> lists what decides that.</p>
 <p><code>platforms</code> is not <code>os</code>. <code>os</code> lists the Linux distributions a release was
 tested on. It only warns, and passes when empty. On a Mac it passes, saying the
 list names Linux distributions. <code>os: [darwin]</code> fails to decode, because each

@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://morzecrew.github.io/morzer/dev/explanation/what-is-tested/">
       
       
-        <link rel="prev" href="../secrets/">
+        <link rel="prev" href="../platforms/">
       
       
       
@@ -1267,6 +1267,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -1963,6 +1992,35 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -2144,6 +2202,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Health and reporting
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
       </span>
     </span>
   </a>
@@ -2349,6 +2418,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Health and reporting
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
       </span>
     </span>
   </a>
@@ -3199,6 +3279,49 @@ arrive.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="on-a-mac">On a Mac<a class="headerlink" href="#on-a-mac" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The user a Mac's containers reach files as is the one who owns Docker Desktop's socket</td>
+<td><code>TestTheEngineUserIsTheSocketsOwner</code></td>
+</tr>
+<tr>
+<td>A container on a Mac reads the configuration rendered for it</td>
+<td><code>TestTheEngineUserReadsTheRenderedConfiguration</code></td>
+</tr>
+<tr>
+<td>With FileVault off, no render writes a secret until the setting allows it</td>
+<td><code>TestFileVaultOffRefusesEveryRenderUntilAllowed</code></td>
+</tr>
+<tr>
+<td><code>init</code> refuses an unencrypted disk before it writes anything</td>
+<td><code>TestInitRefusesAnUnencryptedDiskBeforeItWritesAnything</code></td>
+</tr>
+<tr>
+<td>Root runs Docker Desktop's <abbr title="Command-Line Interface">CLI</abbr> only from a copy it checked</td>
+<td><code>TestDockerDesktopsCLIRunsFromACheckedCopy</code></td>
+</tr>
+<tr>
+<td>A copy that fails its signature check is not run</td>
+<td><code>TestACopyThatFailsItsSignatureCheckIsNotRun</code></td>
+</tr>
+<tr>
+<td>An ACL that lets someone else replace an entry counts as their being able to</td>
+<td><code>TestAnACLOnTheWayToTheBinaryCounts</code></td>
+</tr>
+<tr>
+<td>A hook waits while a plugin the <abbr title="Command-Line Interface">CLI</abbr> would find could be replaced</td>
+<td><code>TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="what-a-test-in-this-table-has-to-do">What a test in this table has to do<a class="headerlink" href="#what-a-test-in-this-table-has-to-do" title="Permanent link">&para;</a></h2>
 <p>Naming a test is not enough. Each one must <strong>fail when the property is
 removed</strong>, and each was verified that way — the behaviour was deleted, the test
@@ -3209,6 +3332,11 @@ and pins nothing.</p>
 <h2 id="what-is-not-claimed-here">What is <em>not</em> claimed here<a class="headerlink" href="#what-is-not-claimed-here" title="Permanent link">&para;</a></h2>
 <p>Being explicit about the edges is part of the point.</p>
 <ul>
+<li><strong>On a Mac, no change is run against a real engine.</strong> The hosted macOS runner
+  runs the unit tests and has no Docker engine. What needs one is the
+  acceptance run's, made by hand on an Apple-silicon Mac with Docker Desktop
+  before each release that ships a macOS archive, and recorded in that
+  release's pull request.</li>
 <li><strong>Redaction is eager on <code>.With</code>.</strong> A value captured before its secret is
   registered is written in the clear. Not reachable today — the only call sites
   pass operation ids — and recorded as <code>TestRegisteringAfterWithIsAKnownLimit</code>
@@ -3284,7 +3412,7 @@ and pins nothing.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../secrets/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The secrets model">
+          <a href="../platforms/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Platforms">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
@@ -3294,7 +3422,7 @@ and pins nothing.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                The secrets model
+                Platforms
               </div>
             </div>
           </a>

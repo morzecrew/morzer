@@ -1269,6 +1269,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -2194,6 +2223,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../explanation/platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../explanation/what-is-tested/" class="md-nav__link">
         
   
@@ -2525,6 +2583,9 @@ second and third lines of defence.</p>
 /run/secrets/*                       inside the container
 </code></pre></div>
 <p>Rendered configuration in <code>/etc</code> contains <em>paths</em> to secrets, never values.</p>
+<p>A Mac has no tmpfs: there the render directory is <code>/var/run/&lt;product&gt;/secrets</code>,
+on a disk FileVault has to encrypt, and the files are the user's who runs
+Docker Desktop. See <a href="../../explanation/platforms/#secrets-on-a-disk">Platforms</a>.</p>
 <p>Every write rewrites the whole file, so writes take turns. The commands below
 that change a value or a recipient, <code>init</code>, <code>installation import</code>, and an update
 generating a secret its release adds each hold the <code>secrets</code> lock for the length

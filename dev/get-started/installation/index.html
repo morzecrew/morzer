@@ -555,6 +555,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#in-github-actions" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1417,6 +1428,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../authoring/running-on-a-mac/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running a release on a Mac
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../authoring/publishing/" class="md-nav__link">
         
   
@@ -2111,6 +2151,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../explanation/platforms/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-laptop" viewBox="0 0 24 24"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2zM20.054 15.987H3.946"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Platforms
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../explanation/what-is-tested/" class="md-nav__link">
         
   
@@ -2205,6 +2274,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        On a Mac
+      </span>
+    </span>
+  </a>
   
 </li>
       
@@ -2366,7 +2446,7 @@ run it.</p>
 <p>Releases are <code>tar.zst</code>, and GNU tar's <code>--zstd</code> runs the <code>zstd</code> binary as a
 filter rather than decompressing on its own — so a machine without it cannot
 unpack a release however new its tar is. <code>apt install zstd</code>, <code>apk add zstd</code>
-or <code>dnf install zstd</code>.</p>
+or <code>dnf install zstd</code>, and <code>brew install zstd</code> on a Mac.</p>
 <p>An installed server usually has it — on Debian and Ubuntu the initramfs
 tooling pulls it in. Container images mostly do not: of
 <code>debian:bookworm-slim</code>, <code>ubuntu:24.04</code>, <code>rockylinux:9</code>, <code>alpine:3.20</code> and
@@ -2457,6 +2537,53 @@ sh<span class="w"> </span>install.sh<span class="w"> </span>--version<span class
 every release, covered by that release's <code>SHA256SUMS</code>. So the script that
 verifies the archive is itself verifiable against the file it teaches you to
 check.</p>
+<h2 id="on-a-mac">On a Mac<a class="headerlink" href="#on-a-mac" title="Permanent link">&para;</a></h2>
+<p>An installation on a Mac needs Apple silicon, Docker Desktop, FileVault, and a
+release whose vendor made it for one. What it is, and how it is weaker than one
+on a Linux server, is in <a href="../../explanation/platforms/">Platforms</a>.</p>
+<ol>
+<li>In Docker Desktop's settings, under Advanced, allow the default Docker
+   socket. The manager reaches the engine through <code>/var/run/docker.sock</code>,
+   which Docker Desktop creates only then.</li>
+<li>Under Resources, File sharing, add <code>/opt</code>, where the manager unpacks
+   releases. Docker Desktop does not share it by default.</li>
+<li>Turn FileVault on, in System Settings, Privacy &amp; Security. Rendered secrets
+   and the machine's age identity are on disk on a Mac, and <code>init</code> refuses
+   without it.</li>
+<li>
+<p>Install morzer for root, naming the prefix:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://morzecrew.github.io/morzer/install.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>sh<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span>--version<span class="w"> </span>&lt;version&gt;<span class="w"> </span>--dir<span class="w"> </span>/usr/local/bin
+</code></pre></div>
+<p><code>&lt;version&gt;</code> is a release that ships a macOS archive; the script names the
+release it was given when that one has none. Without <code>--dir</code>, a Mac
+without <code>/usr/local/bin</code> gets a copy under <code>$HOME</code>, which an installation
+cannot run.</p>
+</li>
+<li>
+<p>Install <code>sops</code> for root, into <code>/usr/local/bin</code>, and not with Homebrew:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">SOPS</span><span class="o">=</span><span class="m">3</span>.13.3
+<span class="nv">BASE</span><span class="o">=</span>https://github.com/getsops/sops/releases/download/v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>
+curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span>/sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.darwin.arm64
+curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span>/sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.checksums.txt
+grep<span class="w"> </span><span class="s2">" sops-v</span><span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span><span class="s2">.darwin.arm64\$"</span><span class="w"> </span>sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.checksums.txt<span class="w"> </span><span class="p">|</span><span class="w"> </span>shasum<span class="w"> </span>-a<span class="w"> </span><span class="m">256</span><span class="w"> </span>-c<span class="w"> </span>-
+sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.darwin.arm64<span class="w"> </span>/usr/local/bin/sops
+</code></pre></div>
+<p>The manager runs the first <code>sops</code> on the <code>PATH</code> it is given, as root.
+Homebrew's prefix belongs to the user who installed Homebrew, so anything
+running as that user could replace a <code>sops</code> there, and root would run it.
+If Homebrew has one, <code>brew uninstall sops</code>.</p>
+</li>
+<li>
+<p>Check the machine:</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>morzer<span class="w"> </span>doctor
+</code></pre></div>
+</li>
+</ol>
+<p>A binary that carries a browser's quarantine attribute is killed when it runs,
+exit 137. Download with <code>curl</code>, as the script does, or take the attribute off
+the installed binary with <code>sudo xattr -d com.apple.quarantine
+/usr/local/bin/morzer</code>.</p>
 <h2 id="in-github-actions">In GitHub Actions<a class="headerlink" href="#in-github-actions" title="Permanent link">&para;</a></h2>
 <p>A workflow that builds or tests a bundle installs morzer with the action in this
 repository:</p>
@@ -2512,6 +2639,9 @@ grep<span class="w"> </span><span class="s2">" </span><span class="si">${</span>
 tar<span class="w"> </span>--zstd<span class="w"> </span>-xf<span class="w"> </span><span class="si">${</span><span class="nv">ARCHIVE</span><span class="si">}</span><span class="w">                </span><span class="c1"># runs zstd as a filter; install it first</span>
 sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>morzer<span class="w"> </span>/usr/local/bin/morzer
 </code></pre></div>
+<p>On a Mac the archive is <code>morzer_${VERSION}_darwin_arm64.tar.zst</code>. Check it
+with <code>shasum -a 256 -c -</code> where the block has <code>sha256sum -c -</code>, and unpack it
+with <code>zstd -dc ${ARCHIVE} | tar -xf -</code>.</p>
 <p>Both checks matter and they answer different questions. The signature says a key
 you trust produced the checksum file; the checksum says the archive you have is
 the one that file describes.</p>
@@ -2538,7 +2668,8 @@ its own it proves only that the repository was self-consistent. Its value is
 continuity: a release signed by a <em>different</em> key than the one you verified
 last time is worth stopping over. Save it the first time.</p>
 </div>
-<p><code>linux/arm64</code> is published alongside <code>amd64</code>.</p>
+<p><code>linux/arm64</code> is published alongside <code>amd64</code>, and <code>darwin/arm64</code> with a
+release that has passed the acceptance run on a Mac.</p>
 <h2 id="from-source">From source<a class="headerlink" href="#from-source" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/morzecrew/morzer
 <span class="nb">cd</span><span class="w"> </span>morzer
@@ -2585,8 +2716,13 @@ produces no error at all, just a Tab key that does nothing.</p>
 <td><code>doctor</code></td>
 </tr>
 <tr>
+<td>FileVault, on a Mac</td>
+<td>A Mac has no tmpfs, so decrypted secrets and the age identity are on its disk.</td>
+<td><code>init</code>, every render, <code>doctor</code></td>
+</tr>
+<tr>
 <td>systemd</td>
-<td>Optional. Boot-time convergence and scheduled backups.</td>
+<td>Optional. Boot-time convergence and scheduled backups. A Mac has none yet; see <a href="../../explanation/platforms/#nothing-runs-without-you">Platforms</a>.</td>
 <td><code>doctor</code></td>
 </tr>
 </tbody>
