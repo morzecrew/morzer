@@ -65,6 +65,7 @@ nav = [
         "authoring/backing-up-volumes.md",
         "authoring/bundled-images.md",
         "authoring/running-on-a-mac.md",
+        "authoring/sharing-a-machine.md",
         "authoring/publishing.md",
     ] },
     { "Reference" = [

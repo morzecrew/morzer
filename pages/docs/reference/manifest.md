@@ -260,7 +260,7 @@ Checked in preflight and reported by `doctor`.
 | `memory` | size | Minimum RAM, e.g. `2GiB`. |
 | `disk` | size | Minimum free disk, e.g. `5GiB`. |
 | `cpus` | int | Logical CPUs the release wants. A cgroup quota is honoured where one is in force, so a containerised manager sees what it may actually use rather than what the host has. |
-| `ports` | list | TCP ports the release binds, checked for conflicts. A literal number, or `"{{ .Parameters.<name> }}"` so the check follows the port the deployment actually publishes. |
+| `ports` | list | Host ports the release publishes, checked free before an `apply` starts anything. Each is `[address:]port[/protocol]`, and may be templated. See [Ports](#ports). |
 
 ### Platforms
 
@@ -310,6 +310,70 @@ Mac](../authoring/running-on-a-mac.md) lists what decides that.
 tested on. It only warns, and passes when empty. On a Mac it passes, saying the
 list names Linux distributions. `os: [darwin]` fails to decode, because each
 `os` entry is a mapping with an `id`.
+
+### Ports
+
+Each entry names a host port the way a Compose file publishes one, without the
+container side:
+
+```yaml
+requirements:
+  ports:
+    - "80"
+    - "{{ .Parameters.https_port }}"
+    - "{{ .Parameters.listen }}:443"
+    - '{{ if has "mkcp" .Profiles }}{{ .Parameters.kcp_port }}/udp{{ end }}'
+    - '{{ if has "xdns" .Profiles }}53/udp{{ end }}'
+compatibility:
+  min_manager_version: "0.18.0"
+```
+
+- **`[address:]port[/protocol]`.** The address is an IP literal, an IPv6 one in
+  brackets: `203.0.113.11:443`, `[2001:db8::1]:443`. The protocol is `tcp` or
+  `udp`, and `tcp` when absent. A bare port is TCP on every address, as
+  before. A port range, `sctp`, a host name, an IPv6 address without brackets
+  and a zone are refused.
+- **An empty address is every address**, as Compose reads `":443:443"`. So
+  `"{{ .Parameters.listen }}:443"` with `listen` empty means the same as the
+  Compose file's `${LISTEN}:443:443`.
+- **A template sees `.Parameters` and `.Profiles`**, the installation's
+  selection in layering order, with `has` as the configuration templates have
+  it: `has "xdns" .Profiles`. A `health.checks[].url` sees the same, so a
+  profile that moves a port can move its health URL with it.
+- **A templated entry that renders empty requires nothing**, which is how a
+  port only a profile publishes is declared. A literal empty entry is refused.
+- **An address, a protocol, or `.Profiles` and `has`** in either field need
+  `compatibility.min_manager_version` of at least `0.18.0`. So does a templated
+  entry that writes `:`, `/` or `[` beside its template, as
+  `"{{ .Parameters.listen }}:443"` does. An older manager refuses all of them;
+  `release verify` names the version. A lone `"{{ .Parameters.port }}"` needs
+  no floor.
+
+Before an `apply` starts a project that is not running, `network.ports` binds
+each entry on its own address and protocol, and closes it at once. It fails, and
+`apply` starts nothing, when:
+
+- **the port is in use:** `port 203.0.113.11:443/tcp already in use`. `ss
+  -tulnp` shows what holds it;
+- **the address is not this machine's:** `203.0.113.11 is not an address of
+  this machine`, naming the parameter the entry reads, if any. Compose would
+  fail the same way, after the old containers had stopped;
+- **the bind fails another way,** such as a port below 1024 for a manager that
+  is not root, which is reported as itself and never as "in use".
+
+An entry with an address binds that address's family alone, so `[::]:443` is
+free beside an IPv4 listener on 443, as Docker publishes `::` on IPv6 alone. A
+UDP port is bound as Docker binds it, sharing it with a socket that allows
+sharing. So systemd-resolved's stub listener on `127.0.0.53:53` leaves `53/udp`
+free, and Docker publishes it beside the stub. TCP port 53 stays in use there.
+
+`machine.ports` in `doctor` counts two installations as colliding only on one
+protocol and port, and only where their addresses overlap: either is every
+address, both are the same address, or one is `0.0.0.0` or `::` beside an
+address of its family. Two installations on 443 at `203.0.113.10` and
+`203.0.113.11` collide with nobody. [Sharing a machine with a web
+server](../authoring/sharing-a-machine.md) shows both ways to run beside one the
+operator already has.
 
 ## bundle
 

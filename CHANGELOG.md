@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weaker: secrets on disk need FileVault, `owner` is not enforced, and
   nothing runs at boot or on a schedule.
 
+- A `requirements.ports` entry can name an address and a protocol,
+  `[address:]port[/protocol]`, and depend on profiles through `.Profiles` and
+  `has`. `apply` checks each on its own address and protocol, and
+  `machine.ports` reports only overlapping ones. Either needs a 0.18.0 floor.
+
 ### Fixed
 
 - A refused `init --repair` keeps the installation it was asked to repair.
