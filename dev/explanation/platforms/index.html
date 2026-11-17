@@ -2433,10 +2433,18 @@ them again when Docker Desktop's version changes. Without Docker Desktop's
 app, root runs the <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> on <code>PATH</code> only while root alone can replace it
 and the Compose plugin it loads. <code>doctor</code> says which <abbr title="Command-Line Interface">CLI</abbr> root runs, under
 <code>runtime.cli</code>.</p>
-<p>A hook gets that <abbr title="Command-Line Interface">CLI</abbr>'s directory first on <code>PATH</code>, and the manager's docker
+<p>A hook finds that <abbr title="Command-Line Interface">CLI</abbr> first on <code>PATH</code>, by name, and gets the manager's docker
 configuration. A hook is refused, exit 3, while anyone but root could replace
 an entry in a directory that <abbr title="Command-Line Interface">CLI</abbr> searches for plugins, since a command that
 lists them, <code>docker info</code> say, runs each one as root.</p>
+<p><code>sudo</code> on a Mac keeps the user's <code>PATH</code>, which names their own directories and
+Homebrew's, ahead of or beside <code>/usr/local/bin</code>. That user could put a binary
+there that root would run. So the manager keeps on <code>PATH</code> only the directories
+that only root can change, and refuses a tool, <code>sops</code> say, that it finds only
+in another, naming where it found it and who could change it. A hook gets that
+<code>PATH</code>, so it does not find a Homebrew tool by name. <code>install.sh</code> does run with
+the <code>PATH</code> you give <code>sudo</code>, Homebrew's <code>zstd</code> among it, as anything you pipe
+into <code>sudo sh</code> does.</p>
 <h2 id="the-paths">The paths<a class="headerlink" href="#the-paths" title="Permanent link">&para;</a></h2>
 <p>The paths are Linux's, except one:</p>
 <table>

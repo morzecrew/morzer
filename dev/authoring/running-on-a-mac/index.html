@@ -2394,6 +2394,9 @@ Linux's, and no <code>/proc</code> or <code>systemctl</code>.</p>
   GNU's and fail on a Mac.</li>
 <li><strong>Do Linux work in a container.</strong> <code>docker compose run</code> and <code>exec</code> run the
   same image on either host.</li>
+<li><strong>Do not count on Homebrew.</strong> A hook's <code>PATH</code> on a Mac holds only the
+  directories that only root can change, so a tool from Homebrew, or from the
+  operator's home, is not found by name. Run it in a container instead.</li>
 <li><strong>Run <code>docker</code> by name.</strong> On a Mac, <code>PATH</code> starts with the <abbr title="Command-Line Interface">CLI</abbr> the manager
   has checked. A hook that names <code>/usr/local/bin/docker</code> runs whatever that
   path holds, which root has not checked.</li>

@@ -2558,7 +2558,8 @@ on a Linux server, is in <a href="../../explanation/platforms/">Platforms</a>.</
 <p><code>&lt;version&gt;</code> is a release that ships a macOS archive; the script names the
 release it was given when that one has none. Without <code>--dir</code>, a Mac
 without <code>/usr/local/bin</code> gets a copy under <code>$HOME</code>, which an installation
-cannot run.</p>
+cannot run. <code>sudo</code> keeps your <code>PATH</code>, so the script runs the tools on it,
+Homebrew's <code>zstd</code> among them.</p>
 </li>
 <li>
 <p>Install <code>sops</code> for root, into <code>/usr/local/bin</code>, and not with Homebrew:</p>
@@ -2569,10 +2570,9 @@ curl<span class="w"> </span>-fsSLO<span class="w"> </span><span class="si">${</s
 grep<span class="w"> </span><span class="s2">" sops-v</span><span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span><span class="s2">.darwin.arm64\$"</span><span class="w"> </span>sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.checksums.txt<span class="w"> </span><span class="p">|</span><span class="w"> </span>shasum<span class="w"> </span>-a<span class="w"> </span><span class="m">256</span><span class="w"> </span>-c<span class="w"> </span>-
 sudo<span class="w"> </span>install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span>sops-v<span class="si">${</span><span class="nv">SOPS</span><span class="si">}</span>.darwin.arm64<span class="w"> </span>/usr/local/bin/sops
 </code></pre></div>
-<p>The manager runs the first <code>sops</code> on the <code>PATH</code> it is given, as root.
-Homebrew's prefix belongs to the user who installed Homebrew, so anything
-running as that user could replace a <code>sops</code> there, and root would run it.
-If Homebrew has one, <code>brew uninstall sops</code>.</p>
+<p>Root runs a tool it finds by name only from a directory that only root
+can change. Homebrew's prefix belongs to the user who installed Homebrew,
+so the manager refuses a <code>sops</code> it finds only there, and names it.</p>
 </li>
 <li>
 <p>Check the machine:</p>

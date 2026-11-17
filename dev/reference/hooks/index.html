@@ -2679,14 +2679,19 @@ variable's existence rather than its value would otherwise mutate during a plan.
 hook sees the new ones. Managers before 0.13.0 set none of the three: a release
 whose hooks need them declares <code>min_manager_version: "0.13.0"</code>.</p>
 <h3 id="on-a-mac">On a Mac<a class="headerlink" href="#on-a-mac" title="Permanent link">&para;</a></h3>
-<p>Beyond these, a hook gets the manager's own environment, with two changes on a
-Mac:</p>
+<p>Beyond these, a hook gets the manager's own environment, with three changes on
+a Mac:</p>
 <ul>
-<li><strong><code>PATH</code> starts with the directory of the <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> the manager checked.</strong>
-  A hook that runs <code>docker</code> by name runs that copy. One that names a path,
+<li><strong><code>PATH</code> starts with a directory of the manager's that holds the <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr>
+  it checked</strong>, a copy of Docker Desktop's or a link to the one on <code>PATH</code>. A
+  hook that runs <code>docker</code> by name runs that <abbr title="Command-Line Interface">CLI</abbr>. One that names a path,
   <code>/usr/local/bin/docker</code> say, runs whatever that path holds.</li>
 <li><strong><code>DOCKER_CONFIG</code> is the manager's</strong>, so that <abbr title="Command-Line Interface">CLI</abbr> loads the Compose plugin
   the manager checked.</li>
+<li><strong>The rest of <code>PATH</code> holds only the directories that only root can change.</strong>
+  <code>sudo</code> on a Mac keeps the user's <code>PATH</code>, so it names their own directories
+  and Homebrew's, and those are left out. A hook that runs a Homebrew tool by
+  name does not find it.</li>
 </ul>
 <p>No hook runs while anyone but root could replace an entry in a directory that
 <abbr title="Command-Line Interface">CLI</abbr> searches for plugins, or in a directory on the way to one: the manager's

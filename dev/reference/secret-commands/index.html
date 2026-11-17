@@ -2709,7 +2709,9 @@ filesystem. What bounds it:</p>
 <li><strong>Removing a secret the release declares <code>required</code></strong>, without <code>--force</code>.</li>
 </ul>
 <p><code>$VISUAL</code> is preferred over <code>$EDITOR</code>, the order <code>git</code>, <code>crontab</code> and <code>sudoedit</code>
-use. A non-zero exit from the editor — <code>:cq</code> in vim — abandons the edit.</p>
+use. A non-zero exit from the editor — <code>:cq</code> in vim — abandons the edit. On a
+Mac, an editor named without a path is found only in a directory that only root
+can change, so one from Homebrew is not found; <code>vi</code> is in <code>/usr/bin</code>.</p>
 <h2 id="secret-remove">secret remove<a class="headerlink" href="#secret-remove" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span>remove<span class="w"> </span>&lt;name&gt;
 </code></pre></div>

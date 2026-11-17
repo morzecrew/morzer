@@ -3966,7 +3966,7 @@ does not — pointing at <code>rotate</code> there would point at a command that
 </tr>
 <tr>
 <td><code>runtime.cli</code></td>
-<td>Says which <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> root runs: a copy of Docker Desktop's, signed by Docker, or one on <code>PATH</code> that only root can replace. Fails while root has neither to run. Warns when root's docker config names a credential helper someone else could replace: the manager leaves it out, and <code>sudo docker login</code> stores the credential where the manager reads it.</td>
+<td>Says which <code>docker</code> <abbr title="Command-Line Interface">CLI</abbr> root runs: a copy of Docker Desktop's, signed by Docker, or one on <code>PATH</code> that only root can replace. Fails while root has neither to run. Warns when the docker config root reads names a credential helper someone else could replace: the manager leaves it out, and <code>docker login</code> run as root with that config stores the credential where the manager reads it. <code>sudo</code> keeps <code>HOME</code>, so that config is the one in your home directory, and the remedy names it and the <code>--config</code> to log in with.</td>
 </tr>
 <tr>
 <td><code>runtime.engine-version</code></td>
