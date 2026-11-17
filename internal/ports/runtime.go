@@ -851,4 +851,8 @@ type EngineCLI struct {
 	// DroppedHelpers names the credential helpers of root's own config left
 	// out of the manager's, which someone other than root could replace.
 	DroppedHelpers []string
+
+	// RootConfig is the file root's own config was read from. `sudo` on a
+	// Mac keeps HOME, so there it is the invoking user's.
+	RootConfig string
 }

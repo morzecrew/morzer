@@ -182,6 +182,9 @@ func (e *Engine) Settle(ctx context.Context) (ports.EngineCLI, error) {
 		return ports.EngineCLI{}, err
 	}
 	cli.Verified = Verified
+	if e.rootConfig != "" {
+		cli.RootConfig = filepath.Join(e.rootConfig, "config.json")
+	}
 	if err := e.useConfig(filepath.Dir(cli.Path)); err != nil {
 		return ports.EngineCLI{}, err
 	}

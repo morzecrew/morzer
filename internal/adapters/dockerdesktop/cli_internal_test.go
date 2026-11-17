@@ -352,6 +352,7 @@ func TestTheManagersConfigCarriesOnlyCheckedHelpers(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"desktop", "osxkeychain"}, cli.DroppedHelpers)
+	assert.Equal(t, filepath.Join(r.rootConfig, "config.json"), cli.RootConfig, "doctor names the file read")
 	var config map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(read(t, filepath.Join(r.managerDir, "docker", "config.json"))), &config))
 	assert.JSONEq(t, `{"ghcr.io": {"auth": "dXNlcjpwYXNz"}}`, string(config["auths"]))
