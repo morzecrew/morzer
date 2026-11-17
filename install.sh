@@ -542,8 +542,9 @@ elif [ "$zstd_present" = yes ]; then
 else
 	die "cannot extract ${archive}.
        This tar cannot decompress zstd on its own and the zstd binary is not
-       installed -- GNU tar's --zstd runs it as a filter. Install zstd (apt
-       install zstd, apk add zstd, dnf install zstd) and run this again."
+       installed -- GNU tar's --zstd runs it as a filter. Install zstd
+       (apt install zstd, apk add zstd, dnf install zstd, or on a Mac
+       brew install zstd) and run this again."
 fi
 
 [ -f "${work}/${BINARY}" ] || die "the archive does not contain a ${BINARY} binary"

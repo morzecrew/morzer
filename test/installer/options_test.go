@@ -98,6 +98,31 @@ func TestAMachineWithNeitherDownloaderSaysSo(t *testing.T) {
 		requireSays(t, "curl", "wget")
 }
 
+func TestATarThatCannotReadZstdIsToldWhereToGetIt(t *testing.T) {
+	// A Mac has none of the package managers a Linux machine would name,
+	// so the refusal names Homebrew too. The stub tar refuses --zstd, as a
+	// tar without zstd support does, whatever this machine's tar can do.
+	rel := newRelease(t, fixtureOptions{})
+	into := filepath.Join(t.TempDir(), "bin")
+	tar, err := exec.LookPath("tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run(t, script(t, rel),
+		env{home: newHome(t), shell: "/bin/bash", release: rel,
+			pathOnly: toolsExcept(t, []string{"zstd"}),
+			stubs: stubDir(t, map[string]string{"tar": "#!/bin/sh\n" +
+				"for a in \"$@\"; do [ \"$a\" = --zstd ] && exit 2; done\n" +
+				"exec " + tar + " \"$@\"\n"})},
+		"--version", fixtureVersion, "--dir", into,
+		"--no-verify-signature", "--no-completions",
+	).requireFailed(t, "neither tar nor a zstd binary can decompress the archive").
+		requireSays(t, "apt install zstd", "brew install zstd")
+
+	assertNothingInstalled(t, into)
+}
+
 func TestArgumentsThatCannotMeanAnythingAreRefused(t *testing.T) {
 	rel := newRelease(t, fixtureOptions{})
 	scriptPath := script(t, rel)
