@@ -1244,3 +1244,58 @@ evidence: internal/adapters/supervisor/systemd/systemd.go:636-647
 action: decided
 proposal: ASSUMED — a job on a Mac has no time limit and no order after the boot job; the Platforms page says so
 ```
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T22:15:08Z
+attempt: 1
+claim: Built as decision 8 and the entries above have it: a LaunchDaemon per systemd service, the boot job `RunAtLoad` with `KeepAlive` on a failed exit and a `ThrottleInterval` of 30, and each schedule a `StartCalendarInterval` translated exactly or refused by `ValidateSchedule`, naming the forms it takes. On darwin, `apply --startup` asks the engine for the project's containers before the lock and exits 7 when it does not answer; one that ends in exit 12 is recorded, and the next exits 0 without converging until an operator's `apply` or `start` succeeds. The catch-up and the stamps are the next pull request's.
+evidence: internal/adapters/supervisor/launchd/launchd.go:261-274
+action: decided
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-17T22:15:08Z
+attempt: 1
+claim: Decision 1 has each weaker guarantee stated. The Platforms page says a Mac starts no job until a login with FileVault on, that its schedules run with no spread, have no time limit or order, and that a run missed while the Mac was off is not run, which the next pull request changes. `doctor`'s `system.units` says the spread a Mac does without in its ok, and warns while the start at boot is held.
+evidence: pages/docs/explanation/platforms.md:132-161
+action: decided
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T22:15:08Z
+attempt: 1
+claim: Linux is unchanged: the adapter is wired in `internal/cli/supervisor_darwin.go` alone, and the engine check before the lock, the exit-12 record and `system.units`' new wording each run only where the platform is darwin. The suite runs each on Linux too: a start at boot there journals its run without asking the engine first, and an exit 12 holds nothing.
+evidence: test/suite/boot_test.go:45-83
+action: decided
+```
+
+```divergence
+decision: 26
+grade: ASSUMED
+kind: resolved
+at: 2026-11-17T22:15:08Z
+attempt: 1
+claim: Decision 26's warning was for until the launchd adapter, and it ends with it: on darwin `system.units` now reads the jobs. What it named, the start at boot and each schedule set, is what the adapter installs, and a Mac where launchd cannot be asked, without root, warns that only root can read the jobs.
+evidence: internal/lifecycle/ops/doctor.go:1676-1692
+action: decided
+```
+
+**Not measured:** `Status` reads `launchctl print`'s own properties, the lines
+one tab in. The fixture in `launchd_test.go` keeps the three lines S4 captured,
+`state`, `runs` and `last exit code` (`spikes/macos-host/report.txt:89`), in
+launchctl's layout around them, which S4 did not capture whole. Neither did it
+capture `print-disabled`, whose two spellings the parser takes, nor
+`program =`, which `UnitsManagerPaths` reads beside the plist and which adds
+nothing when absent. The acceptance run on the author's Mac is where all three
+are seen.
+
+**Drift count: 2.** Nothing in P2 so far is drift.
