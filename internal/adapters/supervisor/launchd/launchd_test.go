@@ -474,3 +474,52 @@ func TestAFailedReloadPutsTheOldScheduleBack(t *testing.T) {
 	}
 	assert.Equal(t, 2, loads, "the old schedule was not loaded again:\n%s", f.runner.CommandLines())
 }
+
+// An undo puts enablement back as it was: a job this call found enabled stays
+// enabled, so a failure in `init --repair` does not switch off what was on.
+func TestAFailedRepairLeavesEnabledJobsEnabled(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p := ports.UnitParams{Product: "demo", ManagerPath: "/m", FleetTimer: true}
+	units, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.NoError(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+
+	f.fresh()
+	f.runner.OnOutput("print-disabled", "disabled services = {\n\t\"dev.morzer.demo-fleet\" => disabled\n}\n")
+	f.runner.OnExit("print system/", 113, "Could not find service")
+	f.runner.OnExit("bootstrap system "+filepath.Join(f.daemons, "dev.morzer.demo-fleet.plist"), 5,
+		"Bootstrap failed: 5: Input/output error")
+	require.Error(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+
+	assert.False(t, f.runner.Ran("disable system/dev.morzer.demo-backup"),
+		"the undo switched off a job that was on:\n%s", f.runner.CommandLines())
+	for _, c := range f.runner.Calls() {
+		if strings.Join(c.Argv, " ") == "/bin/launchctl disable system/dev.morzer.demo" {
+			t.Errorf("the undo switched off the boot job, which was on:\n%s", f.runner.CommandLines())
+		}
+	}
+	assert.True(t, f.runner.Ran("disable system/dev.morzer.demo-fleet"),
+		"the job that was off was not switched off again:\n%s", f.runner.CommandLines())
+}
+
+// A repair that switches a job back on reloads its changed schedule too.
+func TestARepairReloadsAJobItSwitchesBackOn(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	p := ports.UnitParams{Product: "demo", ManagerPath: "/m"}
+	units, err := f.s.Units(p)
+	require.NoError(t, err)
+	require.NoError(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+
+	f.fresh()
+	f.runner.OnOutput("print-disabled", "disabled services = {\n\t\"dev.morzer.demo-backup\" => disabled\n}\n")
+	f.runner.OnOutput("print system/", "system/x = {\n\tstate = not running\n}\n")
+	p.BackupSchedule = "*-*-* 01:00"
+	units, err = f.s.Units(p)
+	require.NoError(t, err)
+	require.NoError(t, f.s.InstallUnits(ctx, units, ports.EnableAll))
+	assert.True(t, f.runner.Ran("enable system/dev.morzer.demo-backup"), f.runner.CommandLines())
+	assert.True(t, f.runner.Ran("bootstrap system "+filepath.Join(f.daemons, "dev.morzer.demo-backup.plist")),
+		"the schedule of a job switched back on was not reloaded:\n%s", f.runner.CommandLines())
+}

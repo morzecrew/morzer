@@ -422,14 +422,38 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 	}
 
 	var disabled map[string]bool
+	disabledJobs := func() (map[string]bool, error) {
+		if disabled == nil {
+			var err error
+			disabled, err = s.disabledJobs(ctx)
+			return disabled, err
+		}
+		return disabled, nil
+	}
 	for _, u := range units {
 		enable := u.Enable && (scope == ports.EnableAll || fresh[u.Name])
 		if enable {
+			// Only a job that was off is switched off again by the undo,
+			// so a failed repair leaves on what it found on.
+			wasOff := fresh[u.Name]
+			if !wasOff {
+				off, err := disabledJobs()
+				if err != nil {
+					rollback()
+					return err
+				}
+				wasOff = off[u.Name]
+			}
 			if err := s.Enable(ctx, u.Name); err != nil {
 				rollback()
 				return err
 			}
-			enabled = append(enabled, u.Name)
+			if wasOff {
+				enabled = append(enabled, u.Name)
+			}
+			if disabled != nil {
+				disabled[u.Name] = false
+			}
 		}
 		if runsAtLoad(u.Contents) {
 			continue
@@ -450,13 +474,12 @@ func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope
 			// launchd reads a plist when it loads it, so a new schedule
 			// needs the job loaded again, which stops a run in progress.
 			// A job an operator disabled stays as they left it.
-			if disabled == nil {
-				if disabled, err = s.disabledJobs(ctx); err != nil {
-					rollback()
-					return err
-				}
+			off, err := disabledJobs()
+			if err != nil {
+				rollback()
+				return err
 			}
-			if disabled[u.Name] {
+			if off[u.Name] {
 				continue
 			}
 			if err := s.Stop(ctx, u.Name); err != nil {
