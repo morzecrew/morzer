@@ -241,6 +241,19 @@ arrive.
 | The backup fake's on-disk layout, verification and retention are the engine's, checked rather than mirrored by hand | `TestBackupEngineContract_Fake` |
 | A parameter the new release stopped declaring is reported and retired, not left to refuse every later command | `TestUpdateRetiresAParameterTheNewReleaseDropped` |
 
+### On a Mac
+
+| Claim | Test |
+| --- | --- |
+| The user a Mac's containers reach files as is the one who owns Docker Desktop's socket | `TestTheEngineUserIsTheSocketsOwner` |
+| A container on a Mac reads the configuration rendered for it | `TestTheEngineUserReadsTheRenderedConfiguration` |
+| With FileVault off, no render writes a secret until the setting allows it | `TestFileVaultOffRefusesEveryRenderUntilAllowed` |
+| `init` refuses an unencrypted disk before it writes anything | `TestInitRefusesAnUnencryptedDiskBeforeItWritesAnything` |
+| Root runs Docker Desktop's CLI only from a copy it checked | `TestDockerDesktopsCLIRunsFromACheckedCopy` |
+| A copy that fails its signature check is not run | `TestACopyThatFailsItsSignatureCheckIsNotRun` |
+| An ACL that lets someone else replace an entry counts as their being able to | `TestAnACLOnTheWayToTheBinaryCounts` |
+| A hook waits while a plugin the CLI would find could be replaced | `TestAHookWaitsWhileAPluginTheCLIWouldFindCouldBeReplaced` |
+
 ## What a test in this table has to do
 
 Naming a test is not enough. Each one must **fail when the property is
@@ -255,6 +268,11 @@ and pins nothing.
 
 Being explicit about the edges is part of the point.
 
+- **On a Mac, no change is run against a real engine.** The hosted macOS runner
+  runs the unit tests and has no Docker engine. What needs one is the
+  acceptance run's, made by hand on an Apple-silicon Mac with Docker Desktop
+  before each release that ships a macOS archive, and recorded in that
+  release's pull request.
 - **Redaction is eager on `.With`.** A value captured before its secret is
   registered is written in the clear. Not reachable today — the only call sites
   pass operation ids — and recorded as `TestRegisteringAfterWithIsAKnownLimit`
