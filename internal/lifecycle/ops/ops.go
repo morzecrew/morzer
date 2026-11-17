@@ -1335,6 +1335,17 @@ func (d *Deps) selection(rel domain.Release, inst domain.Installation, profiles 
 	return rel.Selection(inst.RuntimeName(), profiles, d.platform())
 }
 
+// readSelection is selection without the platform check, for reading what an
+// installation runs: its health URLs and its port claims follow what is
+// deployed, whatever this platform would refuse to deploy, as runtimeConfig
+// reads it (RFC 0055 decision 3).
+func (d *Deps) readSelection(rel domain.Release, inst domain.Installation, profiles []string) ([]string, error) {
+	if len(profiles) == 0 {
+		profiles = inst.Profiles
+	}
+	return rel.Selection(inst.RuntimeName(), profiles, "")
+}
+
 func (d *Deps) runtimeConfig(rel domain.Release, inst domain.Installation, profiles []string) (ports.RuntimeConfig, error) {
 	if len(profiles) == 0 {
 		profiles = inst.Profiles

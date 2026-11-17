@@ -216,7 +216,7 @@ func (d *Deps) declaredPorts(ctx context.Context) (map[portKey][]portClaim, []st
 			problems = append(problems, product)
 			continue
 		}
-		profiles, err := scoped.selection(rel, inst, nil)
+		profiles, err := scoped.readSelection(rel, inst, nil)
 		if err != nil {
 			problems = append(problems, product)
 			continue

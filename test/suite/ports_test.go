@@ -11,6 +11,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/internal/release"
 )
 
@@ -42,4 +43,25 @@ func TestAPortOnlyAProfilePublishesIsRequiredOnlyWithIt(t *testing.T) {
 
 	_, err = ops.Apply(context.Background(), h.Deps, ops.Options{})
 	require.NoError(t, err, "the installation's own profile publishes no UDP port")
+}
+
+// Reading what runs works whatever its selection: an installation whose
+// profile this platform would not deploy is still probed for health, and its
+// ports still claimed (RFC 0055 decision 3, RFC 0059 decision 6).
+func TestAProfileThisPlatformWouldNotDeployIsStillRead(t *testing.T) {
+	h := newHarness(t)
+	madeForDarwin(t, h.Release.Root, "embedded")
+	rel, err := release.Load(h.Release.Root)
+	require.NoError(t, err)
+	h.Release = rel // so install records the patched bundle's digest
+	h.install()
+	h.Deps.Platform = "darwin"
+	h.Runtime.Services = map[string]ports.ServiceState{
+		"app": {Name: "app", State: "running", Health: ports.HealthHealthy},
+	}
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+	health := findResult(t, report, "runtime.health")
+	assert.Equal(t, "ok", health.Status, health.Message)
 }

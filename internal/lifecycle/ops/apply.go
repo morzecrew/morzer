@@ -1287,7 +1287,7 @@ func (d *Deps) checkSpecs(
 	if err != nil {
 		return nil, err
 	}
-	profiles, err = d.selection(rel, inst, profiles)
+	profiles, err = d.readSelection(rel, inst, profiles)
 	if err != nil {
 		return nil, err
 	}
