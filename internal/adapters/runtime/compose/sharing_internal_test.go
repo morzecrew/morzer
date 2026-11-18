@@ -87,6 +87,54 @@ func TestTheProbeListsWhatItReadsAndWritesWhatItWrites(t *testing.T) {
 	assert.Equal(t, "a container cannot list "+sealed+", or write "+locked, domain.AsError(err).Message)
 }
 
+// busybox's ls stats each entry it lists, and through Docker Desktop's file
+// sharing an entry the engine's user cannot open does not exist, as a Mac
+// measured (logs/macos-host.md, 2026-11-18T21:21:47Z). So ls fails in each directory
+// that holds one of root's, which a container lists all the same. The ls
+// on the PATH here does what that one did; GNU's stats nothing it lists.
+func TestTheProbeListsADirectoryHoldingAnEntryAContainerCannotOpen(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens an entry whatever its mode")
+	}
+	bin := t.TempDir()
+	for _, tool := range []string{"mktemp", "rm"} {
+		found, err := osexec.LookPath(tool)
+		require.NoError(t, err)
+		require.NoError(t, os.Symlink(found, filepath.Join(bin, tool)))
+	}
+	ls, err := osexec.LookPath("ls")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "ls"), []byte(`#!/bin/sh
+for dir; do :; done
+names=$('`+ls+`' -a "$dir") || exit $?
+status=0
+for name in $names; do
+	if [ -r "$dir/$name" ]; then
+		echo "$name"
+	else
+		echo "ls: $dir/$name: No such file or directory" >&2
+		status=1
+	fi
+done
+exit $status
+`), 0o755)) //nolint:gosec // a tool the probe runs
+	dir := t.TempDir()
+	etc, sealed := filepath.Join(dir, "etc"), filepath.Join(dir, "sealed")
+	for _, d := range []string{etc, sealed} {
+		require.NoError(t, os.Mkdir(d, 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(etc, "secrets.sops.yaml"), nil, 0o000))
+	require.NoError(t, os.Chmod(sealed, 0o311))
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+	r := New(&shellContainer{path: bin})
+
+	require.NoError(t, r.ProbeFileSharing(context.Background(), []string{etc}, nil))
+
+	err = r.ProbeFileSharing(context.Background(), []string{etc, sealed}, nil)
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	assert.Equal(t, "a container cannot list "+sealed, domain.AsError(err).Message)
+}
+
 func TestTheProbeBindsWhatItWritesAloneWritable(t *testing.T) {
 	scripted := fakes.NewScripted()
 	scripted.OnOutput("docker run", "probed\n")

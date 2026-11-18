@@ -54,7 +54,11 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	for i, dir := range read {
 		target := fmt.Sprintf("/probe/read/%d", i)
 		argv = append(argv, "--mount", bindMount(dir, target, "readonly"))
-		fmt.Fprintf(&script, "ls -a %s >/dev/null 2>&1 || echo unlistable %d\n", target, i)
+		// By what ls prints, not its status: busybox's stats each entry,
+		// and an entry the engine's user cannot open, as root's own are,
+		// does not exist through Docker Desktop's file sharing. A
+		// directory read prints at least `.`; one unread prints nothing.
+		fmt.Fprintf(&script, "[ -n \"$(ls -a %s 2>/dev/null)\" ] || echo unlistable %d\n", target, i)
 	}
 	for i, dir := range write {
 		target := fmt.Sprintf("/probe/write/%d", i)

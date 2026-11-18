@@ -1718,3 +1718,19 @@ action: decided
 ```
 
 **Drift count: 3.** The review found no new drift.
+
+## The probe's listing, after the close-out
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: discovery
+at: 2026-11-18T21:21:47Z
+attempt: 1
+claim: Decision 16 keeps the age identity, the signing key, the state, the backups and the secrets directory root's, inside `EtcDir`, `VarDir` and `RunDir`, and the file-sharing check lists those three from a container. On the author's Mac, with #392's parents at `0755`, the container started and the check still refused all three, and passed `OptDir`, where nothing is root's alone. busybox's `ls` stats each entry it lists, and through Docker Desktop's file sharing an entry the user who runs it cannot open does not exist: `ls -a` in `etc/demo` printed `.` and `..` and `ls: /p/installation.yaml: No such file or directory` for each of root's, and exited 1, while a shell glob in the same container named every entry. So no layout decision 16 describes could pass the check. The check now reads a listing by what `ls` prints: a directory read prints at least `.`, and one that cannot be read prints nothing, which the pinned busybox showed for a `0311` directory. It runs no tool it did not run before.
+evidence: internal/adapters/runtime/compose/sharing.go:57-61
+action: departed
+proposal: ASSUMED (decision 16, unchanged) — the check lists a directory as a container reads it, by its names, and an entry the engine's user cannot open, which a container does not see, does not fail it
+```
+
+**Drift count: 3.** The listing was a discovery: no run before the Mac's put a container in a directory holding one of root's.
