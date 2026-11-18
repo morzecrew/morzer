@@ -25,9 +25,10 @@ import (
 // Under sudo the completion runs as the operator, not as root, so the 0750
 // installation directories cannot be opened and the listing comes back with
 // every one of them unreadable. The generated units are 0644, so a
-// `<product>.service` the manager wrote names an installation without opening
-// it. They are in the host's unit directory whatever --root says, and say
-// which root through --config. An installation made with
+// `<product>.service` the manager wrote, or on a Mac the boot job's plist,
+// names an installation without opening it (supervisedProducts). They are in
+// the host's unit directory whatever --root says, and say which root through
+// --config. An installation made with
 // `--install-units=false` has none and is not offered then; the command still
 // checks whatever name it is given.
 func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -52,7 +53,7 @@ func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobr
 		out = append(out, cobra.CompletionWithDesc(e.Product, describeForCompletion(e)))
 	}
 	if unreadable {
-		for _, product := range unitProducts(systemd.UnitDir, a.Flags.root) {
+		for _, product := range supervisedProducts(a.Flags.root) {
 			if !offered[product] {
 				offered[product] = true
 				out = append(out, cobra.CompletionWithDesc(product, "not readable as this user"))

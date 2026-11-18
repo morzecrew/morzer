@@ -250,7 +250,7 @@ func newInitCommand(app *App) *cobra.Command {
 	f.BoolVar(&allowUnencrypted, "allow-unencrypted-disk", false,
 		"on a Mac, go on with FileVault off, recording secrets.allow_unencrypted_disk: "+
 			"anyone with the disk can then read every secret")
-	f.BoolVar(&installUnits, "install-units", true, "install systemd units when systemd is available")
+	f.BoolVar(&installUnits, "install-units", true, "install the init system's units, systemd's or a Mac's launchd jobs, when it is available")
 	f.StringVar(&backupSchedule, "backup-schedule", "", "systemd OnCalendar expression for scheduled backups")
 	f.BoolVar(&generate, "generate-secrets", true, "generate every secret the release declares a generator for")
 	f.StringArrayVar(&signingKeys, "signing-key", nil,

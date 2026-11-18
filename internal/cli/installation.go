@@ -379,7 +379,7 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 			"targets. Omitted keeps whatever the export was; a sandbox can never "+
 			"be imported as production")
 	cmd.Flags().BoolVar(&installUnits, "install-units", true,
-		"install systemd units when systemd is available")
+		"install the init system's units, systemd's or a Mac's launchd jobs, when it is available")
 	return cmd
 }
 
