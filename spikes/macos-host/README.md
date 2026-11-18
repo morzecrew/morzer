@@ -120,3 +120,12 @@ someone logs in, and `/Library/LaunchDaemons` is on that volume. If that holds,
 nothing in this spike, and no engine, runs before a login after a power cut.
 `after-reboot` compares the first attempt's time with your login to say
 whether it does.
+
+## What launchctl prints around a kickstart
+
+`launchd-probe.sh` loads one throwaway job, `dev.morzer.probe-catchup`, prints
+it before its first run, while it runs and after it exits 3, kickstarts it
+again while it runs, and reads `print-disabled` with it off and on. It removes
+the job on exit. Run it as root from the directory to write
+`launchd-probe.txt` into; the launchd adapter's test fixtures are taken from
+that file.

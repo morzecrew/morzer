@@ -1455,3 +1455,27 @@ calendar time a clock change skips. The acceptance run on the author's Mac is
 where those are seen.
 
 **Drift count: 2.** Nothing in this pull request is drift.
+
+**Measured, 2026-11-18:** the author ran `spikes/macos-host/launchd-probe.sh`
+on macOS 27.2.1, and its output is `spikes/macos-host/launchd-probe.txt`. It
+settles what the two "Not measured" notes above left open, and agrees with each
+assumption: a job launchd does not have exits 113; a job's own properties are
+one tab in, and the coalitions below them carry a `state = active` of their own;
+before a first run it prints `runs = 0` and `last exit code = (never exited)`;
+`kickstart` returns with the job already `running` and `runs = 1`; a kickstart
+of a running job exits 0 and starts nothing; a run that exits 3 prints `last
+exit code = 3`; `print-disabled` prints `"<label>" => disabled` or `=> enabled`;
+and `program =` is the first of the arguments. The tests now read those
+captures (`internal/adapters/supervisor/launchd/testdata/print-*.txt`). What a
+calendar time a clock change skips does is still not measured.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:45:23Z
+attempt: 1
+claim: The wait the catch-up does is the one a Mac measured: a kickstarted job reads `state = running` with `runs` one more at once, a second kickstart adds no run, and it reads `state = not running` once it has exited.
+evidence: spikes/macos-host/launchd-probe.txt:96-300
+action: decided
+```
