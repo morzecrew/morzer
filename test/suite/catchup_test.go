@@ -137,8 +137,8 @@ func TestAScheduledRunWithNothingToCatchItUpReportsAsBefore(t *testing.T) {
 }
 
 // What each run reports on Linux with dockerd down, which decision 31 keeps:
-// the backup journals and notifies its failure, doctor notifies, and the fleet
-// row says the runtime did not answer.
+// the backup journals and notifies its run, doctor notifies, and the fleet row
+// says the runtime did not answer.
 func TestOnLinuxADownEngineIsStillReported(t *testing.T) {
 	ctx := context.Background()
 	down := errors.New("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
@@ -153,6 +153,8 @@ func TestOnLinuxADownEngineIsStillReported(t *testing.T) {
 	before := operations(t, h)
 	_, _ = ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
 	assert.Equal(t, before+1, operations(t, h), "the backup did not journal its run")
+	assert.True(t, notified(notifier, events.KindOperationFinished, domain.OpTypeBackup),
+		"the backup's outcome was not notified: %v", notifier.kinds())
 	_, err := ops.DoctorUnattended(ctx, h.Deps)
 	require.NoError(t, err)
 	assert.Contains(t, notifier.kinds(), events.KindDoctorFinished)
@@ -277,4 +279,96 @@ func TestAScheduledDoctorBeforeTheEngineAnswersStillSendsTheOutbox(t *testing.T)
 
 	assert.Equal(t, domain.ExitRuntime, domain.ExitCode(err), "%v", err)
 	assert.Zero(t, entries(t, h), "the outbox waited for the engine")
+}
+
+// notified is whether an event of that kind left for that operation.
+func notified(n *recordingNotifier, kind events.Kind, op domain.OperationType) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, ev := range n.events {
+		if ev.Kind == kind && ev.OpType == op {
+			return true
+		}
+	}
+	return false
+}
+
+// A stopped product's scheduled backup is skipped, exit 0, before the engine is
+// asked: a Mac stopped on purpose with Docker Desktop quit is not a failure.
+func TestAScheduledBackupOfAStoppedMacIsSkippedWhateverTheEngine(t *testing.T) {
+	ctx := context.Background()
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	_, err = ops.Stop(ctx, h.Deps, ops.StopOptions{})
+	require.NoError(t, err)
+	h.Runtime.Fail["Status"] = errors.New("Cannot connect to the daemon")
+
+	res, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
+
+	require.NoError(t, err)
+	assert.Contains(t, res.Summary, "scheduled backup skipped")
+	assert.True(t, stamped(h, domain.StampBackup), "the skipped run did not stamp, as the timer's run")
+}
+
+// An operation waiting for a person is what a tick reports, before the engine is
+// asked, so the refusal names it rather than a login.
+func TestATickWithAnOperationWaitingForAPersonSaysSoWhateverTheEngine(t *testing.T) {
+	ctx := context.Background()
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	failingFirstUp(h)
+	failingTeardown(h)
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Equal(t, domain.ExitManualIntervention, domain.ExitCode(err), "%v", err)
+	h.Runtime.Fail["Status"] = errors.New("Cannot connect to the daemon")
+
+	_, err = ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires manual intervention")
+	assert.NotContains(t, err.Error(), "the engine does not answer yet")
+	assert.True(t, stamped(h, domain.StampUpdate), "the refused tick did not stamp")
+}
+
+// The question to the engine reads the project first, so a project that will
+// not load fails it with the engine up: that is the run's own failure, which
+// stamps and is reported by the run, not deferred as the engine down.
+func TestAProjectThatWillNotLoadIsNotTheEngineDown(t *testing.T) {
+	for _, s := range scheduledRuns {
+		t.Run(s.job, func(t *testing.T) {
+			h := darwinInstalled(t)
+			withCatchUp(h)
+			broken := errors.New("env file /etc/demo/app.env not found")
+			h.Runtime.Fail["Status"] = broken
+			h.Runtime.Fail["Validate"] = broken
+
+			err := s.run(context.Background(), h.Deps)
+
+			if err != nil {
+				assert.NotContains(t, err.Error(), "the engine does not answer yet")
+			}
+			assert.True(t, stamped(h, s.job), "a run that reached the engine's question left no stamp")
+		})
+	}
+}
+
+// An interrupted question to the engine is an interruption, exit 130, whether
+// the start at boot or a scheduled run asked it, and whatever the supervisor.
+func TestAnInterruptedQuestionToTheEngineExitsAsInterrupted(t *testing.T) {
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h.Runtime.Fail["Status"] = context.Canceled
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{Startup: true})
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	_, err = ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	h.Deps.Supervisor = h.Supervisor
+	_, err = ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	assert.False(t, stamped(h, domain.StampBackup))
 }

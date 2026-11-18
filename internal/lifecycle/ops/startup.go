@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,6 +71,9 @@ func (d *Deps) engineAnswers(ctx context.Context, rel domain.Release, inst domai
 		return err
 	}
 	if err := d.engineStatus(ctx, cfg); err != nil {
+		if errors.Is(err, domain.ErrInterrupted) {
+			return err
+		}
 		return err.WithHint("Docker Desktop starts at login; launchd starts this again in 30 seconds")
 	}
 	return nil
@@ -81,6 +85,10 @@ func (d *Deps) engineStatus(ctx context.Context, cfg ports.RuntimeConfig) *domai
 	probe, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if _, err := d.Runtime.Status(probe, cfg); err != nil {
+		// Stopped, not unanswered: an interrupted run exits 130.
+		if ctx.Err() != nil {
+			return domain.Interrupted("interrupted while asking the engine")
+		}
 		return domain.RuntimeError(err, "the engine does not answer yet")
 	}
 	return nil

@@ -485,9 +485,6 @@ func (r UnattendedResult) Summary() string {
 // leaves it alone (UpdateCandidate.Failed), and one that finds an operation
 // waiting for a person does nothing but say so.
 func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (UnattendedResult, error) {
-	if err := d.scheduledRun(ctx, domain.StampUpdate, opts.DryRun); err != nil {
-		return UnattendedResult{}, err
-	}
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return UnattendedResult{}, err
@@ -498,7 +495,15 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	// would otherwise answer for an install that ended needing
 	// intervention, and the machine that most needs looking at would
 	// report a quiet night.
+	// Before the engine is asked, so the refusal names the operation rather
+	// than a login, and stamped, as every failure but the engine's is.
 	if err := d.refuseOpenIntervention(ctx); err != nil {
+		if !opts.DryRun {
+			d.stamp(domain.StampUpdate)
+		}
+		return UnattendedResult{}, err
+	}
+	if err := d.scheduledRun(ctx, domain.StampUpdate, opts.DryRun); err != nil {
 		return UnattendedResult{}, err
 	}
 

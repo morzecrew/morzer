@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -28,11 +29,12 @@ func (d *Deps) scheduledRun(ctx context.Context, job string, dryRun bool) error 
 		return nil
 	}
 	err := d.askEngine(ctx)
-	if err == nil {
+	switch _, catches := d.Supervisor.(ports.CatchUp); {
+	case err == nil:
 		d.stamp(job)
-		return nil
-	}
-	if _, catches := d.Supervisor.(ports.CatchUp); catches {
+	case errors.Is(err, domain.ErrInterrupted):
+		return err
+	case catches:
 		return err.WithHint("Docker Desktop starts at login; the start at boot runs this once the engine answers")
 	}
 	return nil
@@ -58,7 +60,18 @@ func (d *Deps) askEngine(ctx context.Context) *domain.Error {
 	if err != nil {
 		return nil
 	}
-	return d.engineStatus(ctx, cfg)
+	answer := d.engineStatus(ctx, cfg)
+	if answer == nil || errors.Is(answer, domain.ErrInterrupted) {
+		return answer
+	}
+	// The question reads the project before it reaches the engine, so a
+	// project that will not load fails it with the engine up. Reading one
+	// needs no engine: a project that will not load is the run's own
+	// failure, and stamps.
+	if _, err := d.Runtime.Validate(ctx, cfg); err != nil {
+		return nil
+	}
+	return answer
 }
 
 // stamp records that a scheduled run reached the engine. A stamp that cannot be
