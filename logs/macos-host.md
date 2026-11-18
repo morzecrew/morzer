@@ -1479,3 +1479,59 @@ claim: The wait the catch-up does is the one a Mac measured: a kickstarted job r
 evidence: spikes/macos-host/launchd-probe.txt:96-300
 action: decided
 ```
+
+## Review of the catch-up
+
+The review of the pull request found four races in the catch-up and two runs
+that asked the engine before an answer that needs none. Each was reproduced
+failing before it was fixed. The entries below are the decisions those fixes
+made that the RFC does not.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:58:32Z
+attempt: 2
+claim: The catch-up raced the jobs it runs. Which jobs were due was read job by job, so a caught-up update, which installs the units again and rewrites every plist, hid the jobs after it that had no stamp. A job its own schedule started during the start at boot was passed over as not due while it still ran, so the next job could start beside it and be refused the lock. And a job whose own run finished between the read and the start ran twice. Now which jobs are due is read before any starts, and before each start the catch-up waits until none of the four jobs runs, then reads the stamp and the disabled jobs again. A job whose exit cannot be read starts nothing after it, and a run that left its stamp is reported as still due.
+evidence: internal/adapters/supervisor/launchd/catchup.go:103-130
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: The question a scheduled run asks reads the project before it reaches the engine, so a project that will not load, a missing `env_file` say, failed it with the engine up and was taken for the engine down: no stamp, and on a Mac an exit 7 naming a login. Nothing in the runtime's port asks the engine alone. So when the question fails, the run reads the project with `Runtime.Validate`, which needs no engine; a project that will not load is the run's own failure, and it stamps and fails as it would have. The start at boot keeps its question as P1 built it.
+evidence: internal/lifecycle/ops/stamp.go:63-75
+action: decided
+proposal: ASSUMED — a scheduled run whose question fails while the project will not load is not the engine down; it stamps and fails on its own
+```
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: discovery
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: Asking the engine first put it ahead of two answers that need none: a stopped product's scheduled backup, skipped with exit 0 under RFC 0040, and a tick refused while an operation waits for a person. On a Mac with Docker Desktop quit, both became an exit 7 naming a login. Both now answer first, and stamp, as the timer's run that §5.6 has every failure but the engine's stamp.
+evidence: internal/lifecycle/ops/channel.go:496-507
+action: departed
+proposal: ASSUMED (decision 29, amended) — a run whose answer needs no engine gives it before the engine is asked, and stamps
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: A calendar time a clock change repeats happens twice, and what launchd does with it is not measured. The latest time a schedule passed takes whichever of the two instants last passed, so a run missed at the first is still caught up, at the cost of at most one more run at the boot after the second. A leap day's schedule is looked for eight years back, since 2100 has none.
+evidence: internal/adapters/supervisor/launchd/schedule.go:248-262
+action: decided
+proposal: ASSUMED — a repeated calendar time counts at either instant
+```
+
+**Drift count: 2.** Nothing the review found is drift.
