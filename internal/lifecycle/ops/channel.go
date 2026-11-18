@@ -487,6 +487,7 @@ func (r UnattendedResult) Summary() string {
 func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (UnattendedResult, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
+		d.stampFailure(ctx, domain.StampUpdate, opts.DryRun)
 		return UnattendedResult{}, err
 	}
 
@@ -498,9 +499,7 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	// Before the engine is asked, so the refusal names the operation rather
 	// than a login, and stamped, as every failure but the engine's is.
 	if err := d.refuseOpenIntervention(ctx); err != nil {
-		if !opts.DryRun {
-			d.stamp(domain.StampUpdate)
-		}
+		d.stampFailure(ctx, domain.StampUpdate, opts.DryRun)
 		return UnattendedResult{}, err
 	}
 	if err := d.scheduledRun(ctx, domain.StampUpdate, opts.DryRun); err != nil {

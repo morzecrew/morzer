@@ -393,3 +393,57 @@ func TestARunInterruptedWhileItReadsTheProjectLeavesItsStamp(t *testing.T) {
 	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
 	assert.False(t, stamped(h, domain.StampBackup), "an interrupted run moved its stamp")
 }
+
+// Interrupted after the engine's question failed, the run is an interruption
+// all the same, not the engine down.
+func TestARunInterruptedAfterTheEngineDidNotAnswerIsInterrupted(t *testing.T) {
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.Fail["Status"] = errors.New("Cannot connect to the daemon")
+	h.Runtime.OnCall = func(method string) {
+		if method == "Validate" {
+			cancel()
+		}
+	}
+
+	_, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
+
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	assert.False(t, stamped(h, domain.StampBackup))
+}
+
+// A read of the project that timed out says nothing about it, so the run is
+// the engine down, as the question said.
+func TestAProjectReadThatTimedOutSettlesNothing(t *testing.T) {
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	h.Runtime.Fail["Status"] = errors.New("Cannot connect to the daemon")
+	h.Runtime.Fail["Validate"] = domain.RuntimeError(context.DeadlineExceeded, "docker compose config timed out after 1m0s")
+
+	_, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{Unattended: true})
+
+	assert.Equal(t, domain.ExitRuntime, domain.ExitCode(err), "%v", err)
+	assert.Contains(t, errString(err), "the engine does not answer yet")
+	assert.False(t, stamped(h, domain.StampBackup), "a run that may not have reached the engine moved its stamp")
+}
+
+// A scheduled run that cannot read the installation fails before the engine's
+// question, and stamps, as every failure but the engine's does.
+func TestAScheduledRunThatCannotReadTheInstallationStamps(t *testing.T) {
+	for _, s := range scheduledRuns[:2] {
+		t.Run(s.job, func(t *testing.T) {
+			h := darwinInstalled(t)
+			withCatchUp(h)
+			require.NoError(t, os.WriteFile(h.Paths.InstallationState(), []byte("{ not json\n"), 0o600))
+
+			err := s.run(context.Background(), h.Deps)
+
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "the engine does not answer yet")
+			assert.Contains(t, err.Error(), "installation")
+			assert.True(t, stamped(h, s.job), "a run that failed on its own left its stamp")
+		})
+	}
+}

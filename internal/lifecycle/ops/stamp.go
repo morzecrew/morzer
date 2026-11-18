@@ -29,9 +29,9 @@ func (d *Deps) scheduledRun(ctx context.Context, job string, dryRun bool) error 
 		return nil
 	}
 	err := d.askEngine(ctx)
-	// Interrupted on any of the question's paths, it did not reach the engine
-	// either, and the next boot still catches it up.
-	if err == nil && ctx.Err() != nil {
+	// Interrupted on any of the question's paths, whatever it answered, it is
+	// an interruption, and the next boot still catches it up.
+	if ctx.Err() != nil && !errors.Is(err, domain.ErrInterrupted) {
 		err = domain.Interrupted("interrupted before the scheduled %s began", job)
 	}
 	switch _, catches := d.Supervisor.(ports.CatchUp); {
@@ -40,7 +40,7 @@ func (d *Deps) scheduledRun(ctx context.Context, job string, dryRun bool) error 
 	case errors.Is(err, domain.ErrInterrupted):
 		return err
 	case catches:
-		return err.WithHint("Docker Desktop starts at login; the start at boot runs this once the engine answers")
+		return domain.AsError(err).WithHint("Docker Desktop starts at login; the start at boot runs this once the engine answers")
 	}
 	return nil
 }
@@ -48,7 +48,7 @@ func (d *Deps) scheduledRun(ctx context.Context, job string, dryRun bool) error 
 // askEngine is the start at boot's question, for a scheduled run. One that
 // cannot read what the question needs fails on its own, and stamps as every
 // failure but the engine's does (§5.6).
-func (d *Deps) askEngine(ctx context.Context) *domain.Error {
+func (d *Deps) askEngine(ctx context.Context) error {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return nil
@@ -66,17 +66,29 @@ func (d *Deps) askEngine(ctx context.Context) *domain.Error {
 		return nil
 	}
 	answer := d.engineStatus(ctx, cfg)
-	if answer == nil || errors.Is(answer, domain.ErrInterrupted) {
+	switch {
+	case answer == nil:
+		return nil
+	case errors.Is(answer, domain.ErrInterrupted):
 		return answer
 	}
 	// The question reads the project before it reaches the engine, so a
 	// project that will not load fails it with the engine up. Reading one
 	// needs no engine: a project that will not load is the run's own
-	// failure, and stamps.
-	if _, err := d.Runtime.Validate(ctx, cfg); err != nil {
+	// failure, and stamps. A read that timed out settles nothing.
+	if _, err := d.Runtime.Validate(ctx, cfg); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return nil
 	}
 	return answer
+}
+
+// stampFailure stamps a scheduled run that failed, or answered, before the
+// engine's question, as §5.6 has every outcome but the engine's stamp. An
+// interrupted run is none of them.
+func (d *Deps) stampFailure(ctx context.Context, job string, dryRun bool) {
+	if !dryRun && ctx.Err() == nil {
+		d.stamp(job)
+	}
 }
 
 // stamp records that a scheduled run reached the engine. A stamp that cannot be
