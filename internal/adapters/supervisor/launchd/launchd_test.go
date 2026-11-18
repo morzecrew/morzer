@@ -345,14 +345,23 @@ func TestStatusReadsLaunchctlPrintInSystemdsWords(t *testing.T) {
 	}
 }
 
-// printedOnAMac is what launchctl printed for a job on a Mac
-// (spikes/macos-host/launchd-probe.txt), for the job named, with its run count.
-func printedOnAMac(capture, label string, runs int) string {
-	b, err := os.ReadFile(filepath.Join("testdata", capture))
-	if err != nil {
-		panic(err)
+// macCaptures are what launchctl printed for a job on a Mac
+// (spikes/macos-host/launchd-probe.txt), by file.
+func macCaptures(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, name := range []string{"print-never-run.txt", "print-running.txt", "print-exited.txt"} {
+		b, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+		out[name] = string(b)
 	}
-	s := strings.ReplaceAll(string(b), "dev.morzer.probe-catchup", label)
+	return out
+}
+
+// printedOnAMac is a capture as launchctl prints it for the job named, with its
+// run count.
+func printedOnAMac(capture, label string, runs int) string {
+	s := strings.ReplaceAll(capture, "dev.morzer.probe-catchup", label)
 	return runsLine.ReplaceAllString(s, fmt.Sprintf("\truns = %d", runs))
 }
 
@@ -385,7 +394,7 @@ func TestStatusReadsWhatLaunchctlPrintsOnAMac(t *testing.T) {
 				label = "dev.morzer.demo"
 			}
 			f.runner.OnOutput("print-disabled", "\tdisabled services = {\n\t\t\""+label+"\" => enabled\n\t}\n")
-			f.runner.OnOutput("print system/", printedOnAMac(tc.capture, label, 1))
+			f.runner.OnOutput("print system/", printedOnAMac(macCaptures(t)[tc.capture], label, 1))
 
 			got, err := f.s.Status(context.Background(), label)
 			require.NoError(t, err)

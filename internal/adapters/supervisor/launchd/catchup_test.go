@@ -29,45 +29,67 @@ import (
 type launchctlSim struct {
 	mu sync.Mutex
 
+	captures map[string]string
+
 	runs map[string]int
-	// busy is how many more polls a job reads as running.
-	busy   map[string]int
-	runFor int
+	// running is a job launchd runs until a print has seen it exit, and busy
+	// how many more prints read it as running.
+	running map[string]bool
+	busy    map[string]int
+	runFor  int
 
 	disabled  []string
 	unloaded  map[string]bool
 	failStart map[string]bool
 	// neverStarts is a job launchd accepts a kickstart for and does not run,
-	// and noStamp one that runs and exits before it reaches the engine.
+	// noStamp one that runs and exits before it reaches the engine, and
+	// stampOnExit one that stamps only once it exits.
 	neverStarts map[string]bool
 	noStamp     map[string]bool
-	// printFails is a job launchd cannot be asked about.
-	printFails map[string]bool
+	stampOnExit map[string]bool
+	// printFails is how many more times launchd cannot be asked about a job.
+	printFails map[string]int
+	// ignoresCancel is a launchctl that answers after the catch-up was
+	// cancelled, so a wait that ignored the cancellation would show.
+	ignoresCancel    bool
+	polledAfterAbort int
 
 	// stamp is where each job stamps, and now when.
 	stamp func(label string) string
 	now   func() time.Time
-	// onKickstart is what else happens when a job is kickstarted.
+	// onKickstart and onPrint are what else happens then; a print right after
+	// print-disabled is the catch-up's last look before a start.
 	onKickstart func(label string)
+	onPrint     func(label string, lastLook bool)
+	last        string
 
 	kickstarted []string
 	overlapped  bool
 }
 
-func newLaunchctlSim() *launchctlSim {
+func newLaunchctlSim(captures map[string]string) *launchctlSim {
 	return &launchctlSim{
-		runs: map[string]int{}, busy: map[string]int{}, runFor: 2,
+		captures: captures,
+		runs:     map[string]int{}, running: map[string]bool{}, busy: map[string]int{}, runFor: 2,
 		unloaded: map[string]bool{}, failStart: map[string]bool{}, neverStarts: map[string]bool{},
-		noStamp: map[string]bool{}, printFails: map[string]bool{},
+		noStamp: map[string]bool{}, stampOnExit: map[string]bool{}, printFails: map[string]int{},
 	}
 }
 
+// startsItself is a job launchd starts on its own schedule.
+func (l *launchctlSim) startsItself(label string) {
+	l.runs[label]++
+	l.running[label], l.busy[label] = true, l.runFor
+}
+
 func (l *launchctlSim) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
-	if err := ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil && !l.ignoresCancel {
 		return exec.Result{}, err
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	last := l.last
+	l.last = cmd.Argv[1]
 	fail := func(code int, stderr string) (exec.Result, error) {
 		return exec.Result{ExitCode: code, Stderr: stderr}, &exec.ExitError{Argv: cmd.Argv, ExitCode: code, Stderr: stderr}
 	}
@@ -80,7 +102,16 @@ func (l *launchctlSim) Run(ctx context.Context, cmd exec.Command) (exec.Result, 
 		return exec.Result{Stdout: out + "\t}\n"}, nil
 	case "print":
 		label := strings.TrimPrefix(cmd.Argv[2], "system/")
-		if l.printFails[label] {
+		if ctx.Err() != nil {
+			if l.polledAfterAbort++; l.polledAfterAbort > 3 {
+				return exec.Result{}, errors.New("launchctl was polled after the catch-up was cancelled")
+			}
+		}
+		if l.onPrint != nil {
+			l.onPrint(label, last == "print-disabled")
+		}
+		if l.printFails[label] > 0 {
+			l.printFails[label]--
 			return exec.Result{}, errors.New("launchctl: connection interrupted")
 		}
 		if l.unloaded[label] {
@@ -88,18 +119,23 @@ func (l *launchctlSim) Run(ctx context.Context, cmd exec.Command) (exec.Result, 
 		}
 		capture := "print-exited.txt"
 		switch {
-		case l.busy[label] > 0:
+		case l.running[label] && l.busy[label] > 0:
 			l.busy[label]--
 			capture = "print-running.txt"
+		case l.running[label]:
+			l.running[label] = false
+			if l.stampOnExit[label] {
+				touch(l.stamp(label), l.now())
+			}
 		case l.runs[label] == 0:
 			capture = "print-never-run.txt"
 		}
-		return exec.Result{Stdout: printedOnAMac(capture, label, l.runs[label])}, nil
+		return exec.Result{Stdout: printedOnAMac(l.captures[capture], label, l.runs[label])}, nil
 	case "kickstart":
 		label := strings.TrimPrefix(cmd.Argv[2], "system/")
 		l.kickstarted = append(l.kickstarted, label)
-		for other, busy := range l.busy {
-			if other != label && busy > 0 {
+		for other, running := range l.running {
+			if other != label && running {
 				l.overlapped = true
 			}
 		}
@@ -107,9 +143,8 @@ func (l *launchctlSim) Run(ctx context.Context, cmd exec.Command) (exec.Result, 
 			return fail(5, "Input/output error")
 		}
 		if !l.neverStarts[label] {
-			l.runs[label]++
-			l.busy[label] = l.runFor
-			if !l.noStamp[label] {
+			l.startsItself(label)
+			if !l.noStamp[label] && !l.stampOnExit[label] {
 				// A run that cannot stamp is one that did not, as the
 				// manager's warning has it.
 				_ = touchErr(l.stamp(label), l.now())
@@ -163,7 +198,7 @@ func newCatchUpFixture(t *testing.T, now func() time.Time) catchUpFixture {
 	t.Helper()
 	root := t.TempDir()
 	f := catchUpFixture{
-		sim:     newLaunchctlSim(),
+		sim:     newLaunchctlSim(macCaptures(t)),
 		paths:   domain.PathsUnder(root, "demo"),
 		daemons: filepath.Join(root, "Library", "LaunchDaemons"),
 	}
@@ -226,7 +261,7 @@ func TestACatchUpRunsEachOverdueJobOnceInOrder(t *testing.T) {
 	assert.False(t, f.sim.overlapped, "a job was started while another ran")
 	for _, label := range want {
 		assert.Equal(t, 1, f.sim.runs[label], label)
-		assert.Zero(t, f.sim.busy[label], "%s was not waited for", label)
+		assert.False(t, f.sim.running[label], "%s was not waited for until it exited", label)
 	}
 }
 
@@ -243,6 +278,20 @@ func TestAJobInstalledSinceItsScheduleLastPassedIsNotCaughtUp(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, ran)
 	assert.Empty(t, f.sim.kickstarted)
+}
+
+// A job whose plist is gone is not installed, whatever its stamp says and
+// whether or not launchd still has it.
+func TestAJobWhosePlistIsGoneIsNotStarted(t *testing.T) {
+	f := newCatchUpFixture(t, fixedClock)
+	f.stamped(domain.StampBackup, catchUpNow.AddDate(0, 0, -3))
+	require.NoError(t, os.Remove(filepath.Join(f.daemons, launchd.BackupLabel("demo")+".plist")))
+
+	ran, err := f.s.CatchUp(bounded(t), every(t))
+
+	require.NoError(t, err)
+	assert.NotContains(t, f.sim.kickstarted, launchd.BackupLabel("demo"))
+	assert.NotContains(t, ran, launchd.BackupLabel("demo"))
 }
 
 // Which jobs are due is read before any runs: a caught-up update installs the
@@ -271,16 +320,41 @@ func TestAJobAlreadyRunningIsWaitedForBeforeTheNextStarts(t *testing.T) {
 	f := newCatchUpFixture(t, fixedClock)
 	backup := launchd.BackupLabel("demo")
 	f.stamped(domain.StampBackup, catchUpNow)
-	f.sim.runs[backup], f.sim.busy[backup] = 1, 3
+	f.sim.runFor = 3
+	f.sim.startsItself(backup)
 
 	ran, err := f.s.CatchUp(bounded(t), every(t))
 
 	require.NoError(t, err)
 	assert.NotContains(t, f.sim.kickstarted, backup)
 	assert.NotContains(t, ran, backup)
-	assert.Zero(t, f.sim.busy[backup], "the running backup was not waited for")
+	assert.False(t, f.sim.running[backup], "the running backup was not waited for until it exited")
 	assert.False(t, f.sim.overlapped, "a job was started while the backup ran")
 	assert.Contains(t, ran, launchd.UpdateLabel("demo"))
+}
+
+// A job seen idle that its schedule starts while another is waited for is
+// waited for too: the look starts again after any wait.
+func TestAJobThatStartsWhileAnotherIsWaitedForIsWaitedForToo(t *testing.T) {
+	f := newCatchUpFixture(t, fixedClock)
+	backup, fleet := launchd.BackupLabel("demo"), launchd.FleetLabel("demo")
+	f.stamped(domain.StampBackup, catchUpNow)
+	f.stamped(domain.StampFleet, catchUpNow)
+	f.stamped(domain.StampDoctor, catchUpNow)
+	f.sim.startsItself(fleet)
+	started := false
+	f.sim.onPrint = func(label string, _ bool) {
+		if label == fleet && !started {
+			started = true
+			f.sim.startsItself(backup)
+		}
+	}
+
+	ran, err := f.s.CatchUp(bounded(t), every(t))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{launchd.UpdateLabel("demo")}, ran)
+	assert.False(t, f.sim.overlapped, "the update was started while the backup ran")
 }
 
 // A job whose own run reached the engine while an earlier one was caught up has
@@ -299,6 +373,44 @@ func TestWhatChangedWhileAnEarlierJobRanIsReadBeforeTheNext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{launchd.BackupLabel("demo"), launchd.DoctorLabel("demo")}, ran)
 	assert.Equal(t, ran, f.sim.kickstarted)
+}
+
+// The stamp is read after the last look at a job before it starts, so a run
+// that reached the engine up to that look is not started again.
+func TestAJobsOwnRunStampedByTheLastLookIsNotStartedAgain(t *testing.T) {
+	f := newCatchUpFixture(t, fixedClock)
+	update := launchd.UpdateLabel("demo")
+	f.sim.onPrint = func(label string, lastLook bool) {
+		if label == update && lastLook {
+			f.stamped(domain.StampUpdate, catchUpNow)
+		}
+	}
+
+	ran, err := f.s.CatchUp(bounded(t), every(t))
+
+	require.NoError(t, err)
+	assert.NotContains(t, f.sim.kickstarted, update)
+	assert.NotContains(t, ran, update)
+}
+
+// A job launchd started on its own just before the catch-up would have is
+// waited for, and is not reported as one the catch-up ran.
+func TestAJobLaunchdStartedItselfIsNotReportedAsCaughtUp(t *testing.T) {
+	f := newCatchUpFixture(t, fixedClock)
+	backup := launchd.BackupLabel("demo")
+	f.sim.stampOnExit[backup] = true
+	f.sim.onPrint = func(label string, lastLook bool) {
+		if label == backup && lastLook && f.sim.runs[backup] == 0 {
+			f.sim.startsItself(backup)
+		}
+	}
+
+	ran, err := f.s.CatchUp(bounded(t), every(t))
+
+	require.NoError(t, err)
+	assert.NotContains(t, f.sim.kickstarted, backup)
+	assert.NotContains(t, ran, backup)
+	assert.False(t, f.sim.overlapped, "a job was started while the backup ran")
 }
 
 // A job an operator disabled stays off, a job launchd has not loaded is not
@@ -347,18 +459,34 @@ func TestAStampThatCannotBeReadStartsNothing(t *testing.T) {
 	assert.Empty(t, f.sim.kickstarted)
 }
 
-// A started job whose exit cannot be read may still hold the lock, so nothing
-// starts after it.
-func TestNothingStartsAfterAJobWhoseExitCannotBeRead(t *testing.T) {
-	f := newCatchUpFixture(t, fixedClock)
-	f.sim.onKickstart = func(label string) { f.sim.printFails[label] = true }
+// A started job whose state cannot be read may still hold the lock, so nothing
+// starts while that lasts; once launchd says it has exited, the rest run.
+func TestNothingStartsWhileAJobsExitCannotBeRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fails   int
+		started []string
+	}{
+		"never read again": {1 << 30, []string{launchd.BackupLabel("demo")}},
+		"read again": {1, []string{launchd.BackupLabel("demo"), launchd.UpdateLabel("demo"),
+			launchd.FleetLabel("demo"), launchd.DoctorLabel("demo")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newCatchUpFixture(t, fixedClock)
+			f.sim.onKickstart = func(label string) {
+				if label == launchd.BackupLabel("demo") {
+					f.sim.printFails[label] = tc.fails
+				}
+			}
 
-	ran, err := f.s.CatchUp(bounded(t), every(t))
+			ran, err := f.s.CatchUp(bounded(t), every(t))
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot ask launchd about dev.morzer.demo-backup")
-	assert.Empty(t, ran)
-	assert.Equal(t, []string{launchd.BackupLabel("demo")}, f.sim.kickstarted)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cannot ask launchd about dev.morzer.demo-backup")
+			assert.NotContains(t, ran, launchd.BackupLabel("demo"))
+			assert.Equal(t, tc.started, f.sim.kickstarted)
+			assert.False(t, f.sim.overlapped, "a job was started while the backup ran")
+		})
+	}
 }
 
 // A job launchd accepts and never runs is given up on, so the start at boot
@@ -383,10 +511,11 @@ func TestAJobLaunchdNeverStartsIsGivenUpOn(t *testing.T) {
 }
 
 // A run has no time limit, so only the start at boot being stopped ends the
-// wait, which it does while the job runs.
+// wait, which it does while the job runs, without asking launchd again.
 func TestACatchUpEndsWhenItsContextDoes(t *testing.T) {
 	f := newCatchUpFixture(t, fixedClock)
 	f.sim.runFor = 1 << 30
+	f.sim.ignoresCancel = true
 	ctx, cancel := context.WithCancel(bounded(t))
 	defer cancel()
 	f.sim.onKickstart = func(string) { cancel() }
@@ -396,6 +525,7 @@ func TestACatchUpEndsWhenItsContextDoes(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, ran)
 	assert.Equal(t, []string{launchd.BackupLabel("demo")}, f.sim.kickstarted)
+	assert.Zero(t, f.sim.polledAfterAbort, "the wait asked launchd after it was cancelled")
 }
 
 var _ ports.CatchUp = (*launchd.Supervisor)(nil)

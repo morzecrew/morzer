@@ -98,13 +98,11 @@ func (s *Supervisor) CatchUp(ctx context.Context, p ports.UnitParams) ([]string,
 // catchUpOne runs one overdue job once none of the product's persistent jobs
 // runs: a schedule that fired during the start at boot may have started one,
 // which holds the lock a backup or an update needs. A job whose own run reached
-// the engine meanwhile has nothing left to catch up, and one an operator
-// disabled meanwhile stays off.
+// the engine meanwhile has nothing left to catch up, read after the last look
+// at the job, and one an operator disabled meanwhile stays off. It reports
+// whether this pass started the job.
 func (s *Supervisor) catchUpOne(ctx context.Context, j overdueJob, all []string) (bool, error) {
 	if err := s.waitIdle(ctx, all); err != nil {
-		return false, err
-	}
-	if at, ok, err := s.stampedAt(j.stamp); err != nil || (ok && !j.due.After(at)) {
 		return false, err
 	}
 	disabled, err := s.disabledJobs(ctx)
@@ -115,35 +113,45 @@ func (s *Supervisor) catchUpOne(ctx context.Context, j overdueJob, all []string)
 	if err != nil || !loaded {
 		return false, err
 	}
-	if err := s.runOnce(ctx, j.label, props); err != nil {
-		return true, err
+	if covered, err := s.covers(j); err != nil || covered {
+		return false, err
+	}
+	started, err := s.runOnce(ctx, j.label, props)
+	if err != nil {
+		return started, err
 	}
 	// A run that exited before it reached the engine left its stamp as it was,
 	// so the job is still due.
-	if at, ok, err := s.stampedAt(j.stamp); err != nil || !ok || j.due.After(at) {
+	if covered, err := s.covers(j); err != nil || !covered {
 		if err == nil {
 			err = domain.Internal(nil, "%s ran and left its stamp as it was, so it is still due", j.label)
 		}
-		return true, err
+		return started, err
 	}
-	return true, nil
+	return started, nil
+}
+
+// covers is whether the job's stamp is at or after the time it was due.
+func (s *Supervisor) covers(j overdueJob) (bool, error) {
+	at, ok, err := s.stampedAt(j.stamp)
+	return ok && !j.due.After(at), err
 }
 
 // lastRun is when a job's run last reached the engine: its stamp, or, before its
 // first, when its plist was written, as systemd starts a persistent timer's
 // stamp when the timer first starts. A job with no plist is not installed.
 func (s *Supervisor) lastRun(label, stamp string) (time.Time, bool, error) {
+	info, err := os.Stat(s.plistPath(label))
+	switch {
+	case os.IsNotExist(err):
+		return time.Time{}, false, nil
+	case err != nil:
+		return time.Time{}, false, domain.Internal(err, "cannot read job %s", label)
+	}
 	if at, ok, err := s.stampedAt(stamp); err != nil || ok {
 		return at, ok, err
 	}
-	switch info, err := os.Stat(s.plistPath(label)); {
-	case err == nil:
-		return info.ModTime(), true, nil
-	case os.IsNotExist(err):
-		return time.Time{}, false, nil
-	default:
-		return time.Time{}, false, domain.Internal(err, "cannot read job %s", label)
-	}
+	return info.ModTime(), true, nil
 }
 
 // stampedAt is a stamp's time, and false when there is none. One that cannot be
@@ -160,27 +168,32 @@ func (s *Supervisor) stampedAt(stamp string) (time.Time, bool, error) {
 	}
 }
 
-// waitIdle waits until none of labels is running, read from `launchctl print`.
-// A job whose state cannot be read may be running, so it is an error, and
-// nothing is started after it.
+// waitIdle waits until one look at every label finds none running, read from
+// `launchctl print`: a job seen idle may start while another is waited for, so
+// a wait starts the look again. A job whose state cannot be read may be
+// running, so it is an error, and nothing is started while it lasts.
 func (s *Supervisor) waitIdle(ctx context.Context, labels []string) error {
-	for _, label := range labels {
-		for {
+	for {
+		busy := false
+		for _, label := range labels {
 			props, loaded, err := s.print(ctx, label)
 			if err != nil {
 				return err
 			}
-			if !loaded || props["state"] != "running" {
+			if loaded && props["state"] == "running" {
+				busy = true
 				break
 			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(s.poll):
-			}
+		}
+		if !busy {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(s.poll):
 		}
 	}
-	return nil
 }
 
 // runOnce starts a loaded job and waits until launchd has run it once more and
@@ -188,34 +201,35 @@ func (s *Supervisor) waitIdle(ctx context.Context, labels []string) error {
 // (spikes/macos-host/launchd-probe.txt). One already running is waited for. A
 // run has no time limit, as no job has one; launchd has startBudget to start
 // it, after `kickstart` has returned, which a Mac measured it does with the job
-// already running.
-func (s *Supervisor) runOnce(ctx context.Context, label string, props map[string]string) error {
+// already running. It reports whether it started the job.
+func (s *Supervisor) runOnce(ctx context.Context, label string, props map[string]string) (bool, error) {
 	runs := runCount(props)
-	if props["state"] == "running" {
+	started := props["state"] != "running"
+	if !started {
 		runs--
 	} else if err := s.Start(ctx, label); err != nil {
-		return err
+		return true, err
 	}
-	started := s.now()
+	since := s.now()
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return started, ctx.Err()
 		case <-time.After(s.poll):
 		}
 		props, ok, err := s.print(ctx, label)
 		switch {
 		case err != nil:
-			return err
+			return started, err
 		case !ok:
-			return domain.Internal(nil, "launchd no longer has %s", label)
+			return started, domain.Internal(nil, "launchd no longer has %s", label)
 		}
 		n := runCount(props)
 		if n > runs && props["state"] != "running" {
-			return nil
+			return started, nil
 		}
-		if n <= runs && s.now().Sub(started) > s.startBudget {
-			return domain.Internal(nil, "launchd did not start %s within %s", label, s.startBudget)
+		if n <= runs && s.now().Sub(since) > s.startBudget {
+			return started, domain.Internal(nil, "launchd did not start %s within %s", label, s.startBudget)
 		}
 	}
 }
