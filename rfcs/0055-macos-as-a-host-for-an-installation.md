@@ -1,6 +1,6 @@
 # RFC 0055 — macOS as a host for an installation
 
-- **Status:** ✅ Complete — shipped 2026-11-18: P1 in #369 to #386, P2 in #389, #390 and PR3_NUMBER. P3, the client bundle, is morzecrew/dotdash's. Proposed 2026-11-09, and ruled by the author
+- **Status:** ✅ Complete — shipped 2026-11-18: P1 in #369 to #386, P2 in #389, #390 and #391. P3, the client bundle, is morzecrew/dotdash's. Proposed 2026-11-09, and ruled by the author
   2026-11-11: decisions 3, 5 and 7 as recommended; 6 before S2, accepting the
   first two outcomes; 9 with a release-time acceptance run by hand in place of
   a self-hosted runner; and 12 narrowed to `arm64`. The author runs the P0
