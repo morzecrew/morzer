@@ -1669,3 +1669,23 @@ the record it writes is the release's. What launchd does with a calendar time a
 clock change skips or repeats is not measured either.
 
 **Drift count: 2.** Nothing in P2 is drift. RFC 0055 closes with the two from P1.
+
+## Review of the restart's run
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:57:48Z
+attempt: 2
+claim: The review of this pull request tightened the restart's run. A restart clears `/var/run`, but not the restart installation's copy of it under a directory that outlives the restart, so the first phase takes its containers down and removes it, and the second fails unless the start at boot rendered the secrets again. A first phase that fails after it installed removes what it installed, so no job is left for the next boot. The removal names the installation's seven jobs, not every job under its prefix. And the second phase requires exactly one backup, taken after the boot: the first phase takes none, and the job logs carry no time to tell one boot from another, so a second backup says the Mac restarted more than once or its schedule came round as well.
+evidence: .github/scripts/acceptance-reboot.sh:110-120
+action: decided
+```
+
+**Found, not fixed:** a job's log on a Mac carries no time. The manager's JSON
+log leaves the time out unless asked for it (`internal/infra/logging/logging.go:50`),
+since journald stamps every line, and nothing asks for it; launchd writes a
+job's output to its file as it comes. So `VarDir/logs/<label>.log` cannot say
+when a line was written. It needs a decision, whether every log off journald
+carries its time or only a Mac's jobs, and is for a later pull request.
