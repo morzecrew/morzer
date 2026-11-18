@@ -982,7 +982,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	// every process finds it first (RFC 0055 decisions 18, 21 and 22).
 	runner, engineCLI, beforeHook := engineRunner(exec.New(), paths)
 	stateStore := state.New(paths)
-	locker := lock.New(paths.LockDir())
+	locker := lock.ForLayout(paths)
 	toolRegistry := tools.NewRegistry(runner)
 
 	// Subprocess output is forwarded to the bus so the live view can tail
@@ -1060,7 +1060,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// adapter still is, which is the whole rule this file keeps.
 		StateFor: func(p domain.Paths) ports.StateStore { return state.New(p) },
 		// And their locks, for the one command that holds all of them.
-		LockerFor: func(p domain.Paths) ports.Locker { return lock.New(p.LockDir()) },
+		LockerFor: func(p domain.Paths) ports.Locker { return lock.ForLayout(p) },
 		Runtime:   runtime,
 		Secrets:   secrets,
 		Source:    sources,

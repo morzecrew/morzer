@@ -569,10 +569,10 @@ func (s *Store) AppendOperation(ctx context.Context, rec domain.OperationRecord)
 		}
 	}
 
-	// The first record on a machine creates the layout's parents, which a
-	// Mac's Docker Desktop user lists on the way to a bind (RFC 0055
-	// decision 16).
-	if err := atomicfs.MkdirAll(filepath.Dir(s.paths.ManagerDir()), 0o755); err != nil {
+	// The first record on a machine creates the directories above the
+	// layout listable, as a Mac's Docker Desktop user needs on the way to a
+	// bind (RFC 0055 decision 16), before the layout's own at 0750.
+	if err := atomicfs.MkdirListable(filepath.Dir(s.paths.VarDir)); err != nil {
 		return err
 	}
 	if err := atomicfs.MkdirAll(s.paths.ManagerDir(), 0o750); err != nil {

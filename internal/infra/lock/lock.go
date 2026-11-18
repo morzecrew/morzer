@@ -32,6 +32,12 @@ const defaultPollInterval = 500 * time.Millisecond
 type Locker struct {
 	dir string
 
+	// above is the directory above an installation's layout, if the lock
+	// files are an installation's: the first lock on a machine creates it
+	// and its parents listable, as a Mac's Docker Desktop user needs on the
+	// way to a bind (RFC 0055 decision 16), before the layout's own at 0750.
+	above string
+
 	// pollInterval is the gap between attempts while waiting. A test that
 	// has to observe a waiter actually waiting would otherwise pay the
 	// production interval in real seconds on every run.
@@ -41,6 +47,13 @@ type Locker struct {
 // New returns a Locker storing lock files in dir.
 func New(dir string) *Locker {
 	return &Locker{dir: dir, pollInterval: defaultPollInterval}
+}
+
+// ForLayout returns a Locker storing lock files in the installation's LockDir.
+func ForLayout(paths domain.Paths) *Locker {
+	l := New(paths.LockDir())
+	l.above = filepath.Dir(paths.VarDir)
+	return l
 }
 
 // WithPollInterval overrides the wait poll interval. Tests use it to avoid
@@ -68,10 +81,10 @@ func (l *Locker) ownerPath(name string) string {
 // Acquire takes the named lock, returning a release function that must be
 // deferred by the caller.
 func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOptions) (func() error, error) {
-	// The first lock on a machine creates the layout's parents, which a Mac's
-	// Docker Desktop user lists on the way to a bind (RFC 0055 decision 16).
-	if err := atomicfs.MkdirAll(filepath.Dir(l.dir), 0o755); err != nil {
-		return nil, err
+	if l.above != "" {
+		if err := atomicfs.MkdirListable(l.above); err != nil {
+			return nil, err
+		}
 	}
 	if err := atomicfs.MkdirAll(l.dir, 0o750); err != nil {
 		return nil, err

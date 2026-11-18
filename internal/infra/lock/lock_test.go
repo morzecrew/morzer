@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -98,35 +99,49 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	}
 }
 
-// The first lock on a machine creates the directories above it. On a Mac the
-// user who runs Docker Desktop has to list each one on the way to a bind
-// (RFC 0055 decision 16), so they are 0755 and the lock directory alone 0750.
-func TestTheFirstLockLeavesTheDirectoriesAboveItListable(t *testing.T) {
-	t.Parallel()
+// The first lock on a machine creates the directories above the layout. On a
+// Mac the user who runs Docker Desktop has to list each one on the way to a
+// bind (RFC 0055 decision 16), so they are 0755 whatever the umask. The
+// layout's own directories it creates are no wider than 0750 until init sets
+// their modes. Not parallel: the umask is the process's.
+func TestTheFirstLockLeavesTheDirectoriesAboveTheLayoutListable(t *testing.T) {
+	for _, mask := range []int{0o022, 0o077} {
+		t.Run(fmt.Sprintf("umask %04o", mask), func(t *testing.T) {
+			defer syscall.Umask(syscall.Umask(mask))
 
-	base := t.TempDir()
-	dir := filepath.Join(base, "root", "var", "lib", "demo", "manager", "locks")
-	release, err := lock.New(dir).Acquire(context.Background(), "deployment", ports.LockOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = release() }()
+			base := t.TempDir()
+			before := perm(t, base)
+			paths := domain.PathsUnder(filepath.Join(base, "root"), "demo")
+			release, err := lock.ForLayout(paths).Acquire(context.Background(), "deployment", ports.LockOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = release() }()
 
-	for path := filepath.Dir(dir); path != base; path = filepath.Dir(path) {
-		assertMode(t, path, 0o755)
+			if got := perm(t, base); got != before {
+				t.Errorf("%s, which existed, went from %04o to %04o", base, before, got)
+			}
+			for path := filepath.Dir(paths.VarDir); path != base; path = filepath.Dir(path) {
+				if got := perm(t, path); got != 0o755 {
+					t.Errorf("%s: mode %04o, want 0755", path, got)
+				}
+			}
+			for _, dir := range []string{paths.VarDir, paths.ManagerDir(), paths.LockDir()} {
+				if got := perm(t, dir); got&^0o750 != 0 {
+					t.Errorf("%s: mode %04o, wider than 0750", dir, got)
+				}
+			}
+		})
 	}
-	assertMode(t, dir, 0o750)
 }
 
-func assertMode(t *testing.T, path string, want os.FileMode) {
+func perm(t *testing.T, path string) os.FileMode {
 	t.Helper()
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := info.Mode().Perm(); got != want {
-		t.Errorf("%s: mode %04o, want %04o", path, got, want)
-	}
+	return info.Mode().Perm()
 }
 
 // TestTheRefusalNamesWhoHoldsItAndForHowLong is the whole reason there is an
