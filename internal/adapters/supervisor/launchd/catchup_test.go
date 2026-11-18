@@ -21,7 +21,8 @@ import (
 
 // The catch-up of a schedule missed while the Mac was off (RFC 0055 §5.6),
 // against a launchctl that runs what it is asked to: a kickstarted job reads as
-// running for a few polls, then as exited with one more run.
+// running for a few polls, then as exited with one more run, each in the layout
+// a Mac printed.
 
 type launchctlSim struct {
 	mu sync.Mutex
@@ -69,13 +70,15 @@ func (l *launchctlSim) Run(ctx context.Context, cmd exec.Command) (exec.Result, 
 		if l.unloaded[label] {
 			return fail(113, "Could not find service \""+label+"\" in domain for port")
 		}
-		state := "not running"
-		if l.busy[label] > 0 {
+		capture := "print-exited.txt"
+		switch {
+		case l.busy[label] > 0:
 			l.busy[label]--
-			state = "running"
+			capture = "print-running.txt"
+		case l.runs[label] == 0:
+			capture = "print-never-run.txt"
 		}
-		return exec.Result{Stdout: fmt.Sprintf("system/%s = {\n\tactive count = 0\n\tstate = %s\n\truns = %d\n"+
-			"\tlast exit code = 0\n\tendpoints = {\n\t\tstate = active\n\t}\n}\n", label, state, l.runs[label])}, nil
+		return exec.Result{Stdout: printedOnAMac(capture, label, l.runs[label])}, nil
 	case "kickstart":
 		label := strings.TrimPrefix(cmd.Argv[2], "system/")
 		l.kickstarted = append(l.kickstarted, label)

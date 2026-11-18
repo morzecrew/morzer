@@ -1,0 +1,82 @@
+system/dev.morzer.probe-catchup = {
+	active count = 0
+	path = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist
+	type = LaunchDaemon
+	state = not running
+
+	program = /bin/sh
+	arguments = {
+		/bin/sh
+		-c
+		sleep 15; exit 3
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => dev.morzer.probe-catchup
+	}
+
+	domain = system
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	last exit code = 3
+
+	event triggers = {
+		dev.morzer.probe-catchup.268435473 => {
+			keepalive = 0
+			service = dev.morzer.probe-catchup
+			stream = com.apple.launchd.calendarinterval
+			monitor = com.apple.UserEventAgent-System
+			descriptor = {
+				"Minute" => 4
+				"Hour" => 4
+				"Day" => 1
+				"Month" => 1
+			}
+		}
+	}
+
+	event channels = {
+		"com.apple.launchd.calendarinterval" = {
+			port = 0x10d05b
+			active = 0
+			managed = 1
+			reset = 0
+			hide = 0
+			watching = 1
+		}
+	}
+
+	resource coalition = {
+		ID = 2149
+		type = resource
+		state = active
+		active count = 1
+		name = dev.morzer.probe-catchup
+	}
+
+	jetsam coalition = {
+		ID = 2150
+		type = jetsam
+		state = active
+		active count = 1
+		name = dev.morzer.probe-catchup
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+	job state = exited
+	sanitizer flags = 0x0
+
+	properties = inferred program
+}
