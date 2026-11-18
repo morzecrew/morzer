@@ -2155,10 +2155,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#nothing-runs-without-you" class="md-nav__link">
+  <a href="#what-runs-at-boot-and-on-schedule" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Nothing runs without you
+        What runs at boot and on schedule
       </span>
     </span>
   </a>
@@ -2328,10 +2328,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#nothing-runs-without-you" class="md-nav__link">
+  <a href="#what-runs-at-boot-and-on-schedule" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
-        Nothing runs without you
+        What runs at boot and on schedule
       </span>
     </span>
   </a>
@@ -2548,17 +2548,33 @@ which is journalled. <code>doctor</code> still fails while FileVault is off.</p>
 VPN or TUN profile on a Mac would route the VM and look like success, so a
 release marks such a profile Linux-only, and it is refused on a Mac. No
 installation routes a Mac's own traffic.</p>
-<h2 id="nothing-runs-without-you">Nothing runs without you<a class="headerlink" href="#nothing-runs-without-you" title="Permanent link">&para;</a></h2>
-<p>On a Mac there is no supervisor yet: nothing converges at boot, and no
-schedule runs. <code>backup.schedule</code>, <code>doctor.schedule</code>, <code>update.schedule</code> and
-<code>sync.interval</code> are recorded and do nothing there. <code>doctor</code> warns of it
-under <code>system.units</code>, naming each one the installation sets.</p>
-<p>A restart clears <code>/var/run</code>, and the rendered secrets with it. Docker Desktop
-starts when its user logs in, and restarts the containers that have a restart
-policy. Run <code>sudo morzer apply</code> after every restart, once Docker Desktop is
-running: it renders the secrets again and brings the installation back to what
-its release declares. Run what is scheduled by hand when it is due, <code>sudo
-morzer backup</code> say.</p>
+<h2 id="what-runs-at-boot-and-on-schedule">What runs at boot and on schedule<a class="headerlink" href="#what-runs-at-boot-and-on-schedule" title="Permanent link">&para;</a></h2>
+<p><code>init</code> installs a LaunchDaemon in <code>/Library/LaunchDaemons</code> for each thing
+systemd runs on Linux: <code>dev.morzer.&lt;product&gt;</code>, which runs <code>apply --startup</code> at
+boot, and one for each schedule the installation sets,
+<code>dev.morzer.&lt;product&gt;-backup</code> and so on. Each job writes its output to
+<code>/var/lib/&lt;product&gt;/logs/&lt;job&gt;.log</code>, which newsyslog rotates.</p>
+<p>A restart clears <code>/var/run</code>, and the rendered secrets with it. With FileVault
+on, the Mac starts no job until somebody logs in, and Docker Desktop starts
+when its user does. Until the engine answers, the start at boot exits 7 and
+launchd starts it again every 30 seconds. Once it answers, the start renders
+the secrets again and brings the installation back to what its release
+declares. A start that ends needing a human, exit 12, holds every later start
+at boot, and <code>doctor</code> says so under <code>system.units</code>, until <code>sudo morzer apply</code>
+succeeds.</p>
+<p>Three things are weaker than under systemd:</p>
+<ul>
+<li><strong>A schedule runs at the time it names.</strong> systemd delays each run by a
+  random spread, so machines that share a registry or a bucket do not all reach
+  it at once. A Mac does not, and <code>update.randomized_delay</code> does nothing there.</li>
+<li><strong>A job has no time limit, and no order.</strong> A schedule that fires while the
+  start at boot runs is refused the lock, exit 4, as a command of yours would
+  be.</li>
+<li><strong>A run missed while the Mac was off is not run when it starts.</strong> The next
+  one runs at its time.</li>
+</ul>
+<p>A schedule takes the forms launchd runs exactly; see
+<a href="../../reference/parameters/#schedules-on-a-mac">schedules on a Mac</a>.</p>
 <h2 id="verified-and-where">Verified, and where<a class="headerlink" href="#verified-and-where" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Every change to the code</strong> runs the unit tests on a hosted macOS runner.

@@ -1813,6 +1813,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#schedules-on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Schedules on a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#changing-the-domains" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2451,6 +2462,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#schedules-on-a-mac" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Schedules on a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#changing-the-domains" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3076,6 +3098,42 @@ by <code>config set</code>, and by <code>init --backup-schedule</code> before an
 an expression systemd cannot read is refused rather than left as a timer that
 never loads. On a host without <code>systemd-analyze</code> there is nothing to ask, and
 the value is stored as given.</p>
+<h3 id="schedules-on-a-mac">Schedules on a Mac<a class="headerlink" href="#schedules-on-a-mac" title="Permanent link">&para;</a></h3>
+<p>A schedule keeps systemd's <code>OnCalendar</code> grammar on a Mac, and launchd runs it at
+fixed times, so <code>config set</code> takes the expressions that say one exactly:</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A time each day</td>
+<td><code>*-*-* 02:30</code>, <code>02:30:00</code></td>
+</tr>
+<tr>
+<td>Weekdays and a time</td>
+<td><code>Sun *-*-* 04:00</code>, <code>Mon..Fri 09:00</code>, <code>Mon,Thu 09:00</code></td>
+</tr>
+<tr>
+<td>A day of the month, or a month</td>
+<td><code>*-*-01 03:00</code>, <code>*-12-25 07:00</code></td>
+</tr>
+<tr>
+<td>A minute of every hour</td>
+<td><code>*:15</code>, <code>*-*-* *:00:00</code></td>
+</tr>
+<tr>
+<td>A name</td>
+<td><code>hourly</code>, <code>daily</code>, <code>weekly</code>, <code>monthly</code>, <code>quarterly</code>, <code>semiannually</code>, <code>yearly</code></td>
+</tr>
+</tbody>
+</table>
+<p>Refused, naming these forms: a repetition such as <code>*:0/5</code>, a range or list of
+times, seconds other than <code>00</code>, a year, a time zone, and a weekday beside a day
+of the month, which launchd would run on either.</p>
 <p>A retention count takes effect where retention already runs: releases after an
 update and at <code>morzer release prune</code>, backups after a backup. Setting one prunes
 nothing by itself.</p>
