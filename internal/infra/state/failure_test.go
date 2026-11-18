@@ -336,6 +336,37 @@ func TestReadingAJournalThatDoesNotExistYet(t *testing.T) {
 	}
 }
 
+// The first record on a machine creates the directories above the manager's.
+// On a Mac the user who runs Docker Desktop has to list each one on the way to
+// a bind (RFC 0055 decision 16), so they are 0755 and the manager's alone 0750.
+func TestTheFirstRecordLeavesTheDirectoriesAboveItListable(t *testing.T) {
+	base := t.TempDir()
+	paths := domain.PathsUnder(filepath.Join(base, "root"), "demo")
+	rec := domain.OperationRecord{
+		ID: "01JAAA0000000000000000000A", Type: domain.OpTypeUpdate,
+		Status: domain.StatusSucceeded, StartedAt: domain.NewTime(time.Now()),
+	}
+	if err := state.New(paths).AppendOperation(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	for path := filepath.Dir(paths.ManagerDir()); path != base; path = filepath.Dir(path) {
+		assertMode(t, path, 0o755)
+	}
+	assertMode(t, paths.ManagerDir(), 0o750)
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Errorf("%s: mode %04o, want %04o", path, got, want)
+	}
+}
+
 // TestAnOversizeRecordIsTruncatedRatherThanDropped. A journal entry saying
 // "this happened, details elided" is far more useful than a missing one.
 func TestAnOversizeRecordIsTruncatedRatherThanDropped(t *testing.T) {

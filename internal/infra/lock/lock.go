@@ -68,6 +68,11 @@ func (l *Locker) ownerPath(name string) string {
 // Acquire takes the named lock, returning a release function that must be
 // deferred by the caller.
 func (l *Locker) Acquire(ctx context.Context, name string, opts ports.LockOptions) (func() error, error) {
+	// The first lock on a machine creates the layout's parents, which a Mac's
+	// Docker Desktop user lists on the way to a bind (RFC 0055 decision 16).
+	if err := atomicfs.MkdirAll(filepath.Dir(l.dir), 0o755); err != nil {
+		return nil, err
+	}
 	if err := atomicfs.MkdirAll(l.dir, 0o750); err != nil {
 		return nil, err
 	}

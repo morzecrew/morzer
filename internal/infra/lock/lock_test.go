@@ -98,6 +98,37 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	}
 }
 
+// The first lock on a machine creates the directories above it. On a Mac the
+// user who runs Docker Desktop has to list each one on the way to a bind
+// (RFC 0055 decision 16), so they are 0755 and the lock directory alone 0750.
+func TestTheFirstLockLeavesTheDirectoriesAboveItListable(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	dir := filepath.Join(base, "root", "var", "lib", "demo", "manager", "locks")
+	release, err := lock.New(dir).Acquire(context.Background(), "deployment", ports.LockOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+
+	for path := filepath.Dir(dir); path != base; path = filepath.Dir(path) {
+		assertMode(t, path, 0o755)
+	}
+	assertMode(t, dir, 0o750)
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Errorf("%s: mode %04o, want %04o", path, got, want)
+	}
+}
+
 // TestTheRefusalNamesWhoHoldsItAndForHowLong is the whole reason there is an
 // owner sidecar at all.
 func TestTheRefusalNamesWhoHoldsItAndForHowLong(t *testing.T) {
