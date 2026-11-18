@@ -141,11 +141,18 @@ func TestTheLatestTimeKeepsToTheMacsClock(t *testing.T) {
 
 	// Clocks went from 03:00 back to 02:00 on 25 October 2026, so 02:30 came
 	// at 00:30 and again at 01:30 UTC: the latest is whichever has passed.
-	for now, want := range map[time.Time]time.Time{
-		time.Date(2026, time.October, 25, 0, 45, 0, 0, time.UTC): time.Date(2026, time.October, 25, 0, 30, 0, 0, time.UTC),
-		time.Date(2026, time.October, 25, 1, 45, 0, 0, time.UTC): time.Date(2026, time.October, 25, 1, 30, 0, 0, time.UTC),
+	for _, tc := range []struct {
+		name      string
+		now, want time.Time
+	}{
+		{"the first passed", time.Date(2026, time.October, 25, 0, 45, 0, 0, time.UTC),
+			time.Date(2026, time.October, 25, 0, 30, 0, 0, time.UTC)},
+		{"the second passed", time.Date(2026, time.October, 25, 1, 45, 0, 0, time.UTC),
+			time.Date(2026, time.October, 25, 1, 30, 0, 0, time.UTC)},
 	} {
-		got := latest(times, now.In(berlin))
-		assert.True(t, want.Equal(got), "at %s: want %s, got %s", now, want, got)
+		t.Run(tc.name, func(t *testing.T) {
+			got := latest(times, tc.now.In(berlin))
+			assert.True(t, tc.want.Equal(got), "want %s, got %s", tc.want, got)
+		})
 	}
 }
