@@ -29,6 +29,11 @@ func (d *Deps) scheduledRun(ctx context.Context, job string, dryRun bool) error 
 		return nil
 	}
 	err := d.askEngine(ctx)
+	// Interrupted on any of the question's paths, it did not reach the engine
+	// either, and the next boot still catches it up.
+	if err == nil && ctx.Err() != nil {
+		err = domain.Interrupted("interrupted before the scheduled %s began", job)
+	}
 	switch _, catches := d.Supervisor.(ports.CatchUp); {
 	case err == nil:
 		d.stamp(job)

@@ -372,3 +372,24 @@ func TestAnInterruptedQuestionToTheEngineExitsAsInterrupted(t *testing.T) {
 	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
 	assert.False(t, stamped(h, domain.StampBackup))
 }
+
+// A run interrupted while it reads the project has not reached the engine
+// either, so it leaves its stamp: the next boot still catches it up.
+func TestARunInterruptedWhileItReadsTheProjectLeavesItsStamp(t *testing.T) {
+	h := darwinInstalled(t)
+	withCatchUp(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.Runtime.Fail["Status"] = errors.New("Cannot connect to the daemon")
+	h.Runtime.Fail["Validate"] = context.Canceled
+	h.Runtime.OnCall = func(method string) {
+		if method == "Validate" {
+			cancel()
+		}
+	}
+
+	_, err := ops.Backup(ctx, h.Deps, ops.BackupOptions{Unattended: true})
+
+	assert.Equal(t, domain.ExitInterrupted, domain.ExitCode(err), "%v", err)
+	assert.False(t, stamped(h, domain.StampBackup), "an interrupted run moved its stamp")
+}
