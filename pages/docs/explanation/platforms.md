@@ -171,10 +171,13 @@ A schedule takes the forms launchd runs exactly; see
 - **Every change to the code** runs the unit tests on a hosted macOS runner.
   That runner has no Docker engine.
 - **Every release** that ships a macOS archive has passed the acceptance run by
-  hand on an Apple-silicon Mac with Docker Desktop, against a real engine. Its
-  record, with the macOS and Docker Desktop versions, is committed in the
-  release's pull request. A release without that record ships no macOS
-  archive.
+  hand on an Apple-silicon Mac with Docker Desktop, against a real engine, and
+  across a restart. After the restart and a login, the start at boot has to
+  have converged the installation and caught up a backup the restart missed.
+  The run also checks that preflight's port check agrees with Docker Desktop
+  about a busy port and a free one, TCP and UDP. Its record, with the macOS
+  and Docker Desktop versions, is committed in the release's pull request. A
+  release without that record ships no macOS archive.
 - **On the machine**, `doctor` warns `runtime.engine-version` when Docker
   Desktop is a release the acceptance run did not pass on.
 
