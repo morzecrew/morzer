@@ -3,6 +3,7 @@ package launchd_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,23 +35,30 @@ func TestTheBootJobsTheManagerWroteNameTheirProducts(t *testing.T) {
 					require.NoError(t, os.WriteFile(filepath.Join(dir, u.Name+".plist"), u.Contents, 0o644))
 				}
 			}
-			// Another tool's job under the prefix, and a plist launchd
-			// reads that is not the XML Units writes.
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "dev.morzer.tool.plist"), []byte(
-				"<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/true</string></array></dict></plist>\n"),
-				0o644))
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "dev.morzer.binary.plist"), []byte("bplist00\x00\x01"), 0o644))
-			// The manager filed under a product's label, running something
-			// other than the start at boot.
-			require.NoError(t, os.WriteFile(filepath.Join(dir, "dev.morzer.extra.plist"), []byte(
-				"<plist><dict><key>ProgramArguments</key><array>"+
-					"<string>/usr/local/bin/morzer</string><string>status</string><string>--plain</string>"+
-					"<string>--log-format</string><string>json</string><string>--verbose</string>"+
-					"<string>--config</string><string>"+domain.PathsUnder(root, "extra").InstallationFile()+"</string>"+
-					"</array></dict></plist>\n"), 0o644))
+			// Each differs from a boot job for this root in one way only.
+			bootArgs := func(product string) []string {
+				return []string{"/usr/local/bin/morzer", "apply", "--startup", "--plain", "--log-format", "json",
+					"--config", domain.PathsUnder(root, product).InstallationFile()}
+			}
+			tool := bootArgs("tool")
+			tool[0] = "/usr/bin/true"
+			extra := bootArgs("extra")
+			extra[1] = "status"
+			for name, contents := range map[string]string{
+				"tool":     plistOf(tool, ""),
+				"extra":    plistOf(extra, ""),
+				"override": plistOf(bootArgs("override"), "<key>Program</key><string>/usr/bin/true</string>"),
+				"cut":      strings.TrimSuffix(plistOf(bootArgs("cut"), ""), "</dict></plist>\n"),
+				"binary":   "bplist00\x00\x01",
+			} {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "dev.morzer."+name+".plist"), []byte(contents), 0o644))
+			}
+			// The fixture itself is a boot job when nothing is changed.
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "dev.morzer.whole.plist"),
+				[]byte(plistOf(bootArgs("whole"), "")), 0o644))
 
-			assert.Equal(t, []string{"demo"}, launchd.BootJobProducts(dir, root),
-				"only the boot job of the installation under this root names a product")
+			assert.ElementsMatch(t, []string{"demo", "whole"}, launchd.BootJobProducts(dir, root),
+				"only a boot job of an installation under this root names a product")
 		})
 	}
 	assert.Nil(t, launchd.BootJobProducts(filepath.Join(t.TempDir(), "absent"), ""))
@@ -79,4 +87,15 @@ func TestABootJobNamingTheResolvedManagerNamesItsProduct(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, units[0].Name+".plist"), units[0].Contents, 0o644))
 
 	assert.Equal(t, []string{"demo"}, launchd.BootJobProducts(dir, ""))
+}
+
+// plistOf is a job whose ProgramArguments are args, with extra beside them.
+func plistOf(args []string, extra string) string {
+	var b strings.Builder
+	b.WriteString("<plist><dict>" + extra + "<key>ProgramArguments</key><array>")
+	for _, a := range args {
+		b.WriteString("<string>" + a + "</string>")
+	}
+	b.WriteString("</array></dict></plist>\n")
+	return b.String()
 }

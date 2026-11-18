@@ -50,7 +50,9 @@ func BootJobProducts(dir, root string) []string {
 	return products
 }
 
-// programArguments reads a plist's ProgramArguments.
+// programArguments reads a plist's ProgramArguments, from a whole document: one
+// cut short is not a job launchd loads, and one that names a Program runs that
+// rather than its first argument, so neither is the job Units writes.
 func programArguments(path string) ([]string, error) {
 	f, err := os.Open(path) //nolint:gosec // a plist in the directory named above
 	if err != nil {
@@ -59,11 +61,18 @@ func programArguments(path string) ([]string, error) {
 	defer func() { _ = f.Close() }()
 
 	d := xml.NewDecoder(f)
-	var key string
+	var (
+		key   string
+		args  []string
+		found bool
+	)
 	for {
 		tok, err := d.Token()
 		if errors.Is(err, io.EOF) {
-			return nil, errors.New("no ProgramArguments")
+			if !found {
+				return nil, errors.New("no ProgramArguments")
+			}
+			return args, nil
 		}
 		if err != nil {
 			return nil, err
@@ -75,6 +84,9 @@ func programArguments(path string) ([]string, error) {
 			if err := d.DecodeElement(&key, &start); err != nil {
 				return nil, err
 			}
+			if key == "Program" {
+				return nil, errors.New("the job names a Program")
+			}
 		case start.Name.Local == "array" && key == "ProgramArguments":
 			var array struct {
 				Strings []string `xml:"string"`
@@ -82,7 +94,7 @@ func programArguments(path string) ([]string, error) {
 			if err := d.DecodeElement(&array, &start); err != nil {
 				return nil, err
 			}
-			return array.Strings, nil
+			args, found = array.Strings, true
 		}
 	}
 }
