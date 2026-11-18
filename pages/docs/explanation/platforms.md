@@ -142,7 +142,9 @@ on, the Mac starts no job until somebody logs in, and Docker Desktop starts
 when its user does. Until the engine answers, the start at boot exits 7 and
 launchd starts it again every 30 seconds. Once it answers, the start renders
 the secrets again and brings the installation back to what its release
-declares. A start that ends needing a human, exit 12, holds every later start
+declares. Then it runs, one at a time, each backup, update, fleet publish and
+scheduled `doctor` whose time passed while the Mac was off or before the engine
+answered, as systemd catches up a missed run. A start that ends needing a human, exit 12, holds every later start
 at boot, and `doctor` says so under `system.units`, until `sudo morzer apply`
 succeeds.
 
@@ -154,8 +156,12 @@ Three things are weaker than under systemd:
 - **A job has no time limit, and no order.** A schedule that fires while the
   start at boot runs is refused the lock, exit 4, as a command of yours would
   be.
-- **A run missed while the Mac was off is not run when it starts.** The next
-  one runs at its time.
+- **A schedule that fires before the engine answers waits for it.** A backup,
+  an update, a fleet publish or a scheduled `doctor` that cannot reach the
+  engine exits 7, and the start at boot runs it once the engine answers. A
+  `fleet publish` of yours does the same. So a Mac whose Docker Desktop never
+  starts sends no `doctor.finished` and publishes no new fleet row; `fleet
+  list` calls its row stale after a day.
 
 A schedule takes the forms launchd runs exactly; see
 [schedules on a Mac](../reference/parameters.md#schedules-on-a-mac).

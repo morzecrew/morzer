@@ -61,6 +61,10 @@ is fine, and this machine still knows everything the row would have said. So an
 unreachable target is reported per target and the command carries on. It exits
 non-zero when one did not answer, so a cron job finds out.
 
+On a Mac, a publish before the engine answers exits 7 and publishes nothing,
+yours as well as the timer's, and the start at boot publishes once the engine
+answers; see [what runs at boot](../explanation/platforms.md#what-runs-at-boot-and-on-schedule).
+
 This is the same asymmetry [attestations](attestations.md) have, and the
 opposite of what a [backup](../operating/backups.md) does. A backup that did not
 leave the machine is a data-loss risk that has already materialised; a row that
