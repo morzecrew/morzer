@@ -46,7 +46,7 @@ fi
 remove() {
 	local status=$?
 	step "removing the restart's installation and its jobs"
-	local id
+	local id=""
 	[ ! -x "${MORZER}" ] ||
 		id=$("${MORZER}" --root "${ROOT}" --json status 2>/dev/null | jq -r '.data.installation_id // empty' || true)
 	if [ -n "${id}" ]; then
