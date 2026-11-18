@@ -80,8 +80,11 @@ type Supervisor interface {
 // exists, and reports the failure where it does not (decision 31).
 type CatchUp interface {
 	// CatchUp starts, one at a time, each scheduled job whose latest time is
-	// later than the stamp of its last run, and waits for each to exit. It
-	// returns the jobs it ran, and what it could not do.
+	// later than the stamp of its last run, and waits for each to exit. A job
+	// with no stamp counts from when it was installed, and one the operator
+	// disabled, or the init system has not loaded, is not started whatever
+	// its stamp says. It returns the jobs it ran and whose stamp then moved,
+	// and what it could not do.
 	CatchUp(ctx context.Context, params UnitParams) ([]string, error)
 }
 
