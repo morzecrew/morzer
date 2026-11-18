@@ -63,6 +63,10 @@ type Supervisor struct {
 	product string
 	logDir  string
 
+	// stamp is where a scheduled run records that it reached the engine,
+	// which the catch-up reads.
+	stamp func(job string) string
+
 	daemonDir    string
 	newsyslogDir string
 
@@ -71,6 +75,13 @@ type Supervisor struct {
 	plutil    string
 
 	isRoot func() bool
+
+	// now, poll and startBudget are the catch-up's clock: when it is, how
+	// often it asks launchd whether a job it started has exited, and how
+	// long launchd has to start one.
+	now         func() time.Time
+	poll        time.Duration
+	startBudget time.Duration
 }
 
 type Option func(*Supervisor)
@@ -82,17 +93,25 @@ func WithNewsyslogDir(dir string) Option { return func(s *Supervisor) { s.newsys
 
 func withRoot(isRoot func() bool) Option { return func(s *Supervisor) { s.isRoot = isRoot } }
 
+func withClock(now func() time.Time, poll, startBudget time.Duration) Option {
+	return func(s *Supervisor) { s.now, s.poll, s.startBudget = now, poll, startBudget }
+}
+
 // New returns the supervisor for the installation at paths.
 func New(runner exec.Runner, paths domain.Paths, opts ...Option) *Supervisor {
 	s := &Supervisor{
 		runner:       runner,
 		product:      paths.Product,
 		logDir:       filepath.Join(paths.VarDir, "logs"),
+		stamp:        paths.StampFile,
 		daemonDir:    DaemonDir,
 		newsyslogDir: NewsyslogDir,
 		launchctl:    "/bin/launchctl",
 		plutil:       "/usr/bin/plutil",
 		isRoot:       func() bool { return os.Geteuid() == 0 },
+		now:          time.Now,
+		poll:         2 * time.Second,
+		startBudget:  time.Minute,
 	}
 	for _, o := range opts {
 		o(s)
@@ -100,7 +119,10 @@ func New(runner exec.Runner, paths domain.Paths, opts ...Option) *Supervisor {
 	return s
 }
 
-var _ ports.Supervisor = (*Supervisor)(nil)
+var (
+	_ ports.Supervisor = (*Supervisor)(nil)
+	_ ports.CatchUp    = (*Supervisor)(nil)
+)
 
 // Available is true where launchctl runs and the manager is root, since only
 // root writes /Library/LaunchDaemons and loads a job into the system domain.
@@ -150,6 +172,18 @@ type job struct {
 // Units renders the jobs for a product: those systemd.BuildUnits renders, one
 // per service, each with its timer's schedule.
 func (s *Supervisor) Units(p ports.UnitParams) ([]ports.Unit, error) {
+	jobs, err := s.jobs(p)
+	if err != nil {
+		return nil, err
+	}
+	units := make([]ports.Unit, 0, len(jobs))
+	for _, j := range jobs {
+		units = append(units, ports.Unit{Name: j.label, Contents: s.plist(j), Enable: true})
+	}
+	return units, nil
+}
+
+func (s *Supervisor) jobs(p ports.UnitParams) ([]job, error) {
 	// The schedules the systemd units would run, defaults included, so a Mac
 	// and a Linux machine set alike run alike.
 	schedule := func(field, expr, fallback string) ([]interval, error) {
@@ -219,12 +253,7 @@ func (s *Supervisor) Units(p ports.UnitParams) ([]ports.Unit, error) {
 		jobs = append(jobs, job{label: MetricsLabel(p.Product),
 			args: command("metrics", "--textfile", p.MetricsDir), calendar: []interval{{}}})
 	}
-
-	units := make([]ports.Unit, 0, len(jobs))
-	for _, j := range jobs {
-		units = append(units, ports.Unit{Name: j.label, Contents: s.plist(j), Enable: true})
-	}
-	return units, nil
+	return jobs, nil
 }
 
 // plist renders a job. Its output goes to one log under the installation's

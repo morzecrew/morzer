@@ -3,6 +3,8 @@ package launchd
 import (
 	"context"
 	"testing"
+	"time"
+	_ "time/tzdata" // the clock change below, wherever the tests run
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,4 +84,47 @@ func TestACalendarLaunchdCannotRunIsRefusedSayingWhy(t *testing.T) {
 			assert.Contains(t, err.Error(), why)
 		})
 	}
+}
+
+// The catch-up compares a job's stamp with the last time its schedule passed,
+// in the Mac's own time (RFC 0055 §5.6).
+func TestTheLatestTimeAScheduleRanIsTheLastOneAtOrBeforeNow(t *testing.T) {
+	now := time.Date(2026, time.November, 18, 10, 0, 0, 0, time.UTC) // a Wednesday
+	at := func(y int, m time.Month, d, h, min int) time.Time { return time.Date(y, m, d, h, min, 0, 0, time.UTC) }
+	for expr, want := range map[string]time.Time{
+		"*-*-* 02:30":         at(2026, time.November, 18, 2, 30),
+		"*-*-* 11:00":         at(2026, time.November, 17, 11, 0),
+		"*-*-* 10:00":         now,
+		"*:15":                at(2026, time.November, 18, 9, 15),
+		"minutely":            now,
+		"Sat,Sun *-*-* 04:00": at(2026, time.November, 15, 4, 0),
+		"Wed 10:01":           at(2026, time.November, 11, 10, 1),
+		"*-*-31 03:00":        at(2026, time.October, 31, 3, 0),
+		"*-11-* 23:59":        at(2026, time.November, 17, 23, 59),
+		"*-12-25 07:00":       at(2025, time.December, 25, 7, 0),
+		"quarterly":           at(2026, time.October, 1, 0, 0),
+		"*-02-29 00:00":       at(2024, time.February, 29, 0, 0),
+	} {
+		times, err := calendar(expr)
+		require.NoError(t, err, expr)
+		got := latest(times, now)
+		assert.True(t, want.Equal(got), "%s: want %s, got %s", expr, want, got)
+	}
+}
+
+// A time the clocks skipped did not happen that day, and a schedule runs in the
+// Mac's own time zone.
+func TestTheLatestTimeKeepsToTheMacsClock(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err)
+	times, err := calendar("*-*-* 02:30")
+	require.NoError(t, err)
+
+	// Clocks went from 02:00 to 03:00 on 29 March 2026.
+	got := latest(times, time.Date(2026, time.March, 29, 12, 0, 0, 0, berlin))
+	assert.True(t, time.Date(2026, time.March, 28, 2, 30, 0, 0, berlin).Equal(got), "got %s", got)
+
+	got = latest(times, time.Date(2026, time.November, 18, 2, 0, 0, 0, berlin))
+	assert.True(t, time.Date(2026, time.November, 17, 2, 30, 0, 0, berlin).Equal(got), "got %s", got)
+	assert.True(t, time.Date(2026, time.November, 17, 1, 30, 0, 0, time.UTC).Equal(got), "got %s", got)
 }

@@ -73,6 +73,18 @@ type Supervisor interface {
 	UnitsManagerPaths(ctx context.Context, product string) ([]string, error)
 }
 
+// CatchUp is a supervisor that does not run a schedule missed while the machine
+// was off by itself, as systemd's Persistent= timers do, so the start at boot
+// asks it to once it has converged (RFC 0055 §5.6). launchd's is one. A
+// scheduled run that cannot reach the engine leaves itself to it where it
+// exists, and reports the failure where it does not (decision 31).
+type CatchUp interface {
+	// CatchUp starts, one at a time, each scheduled job whose latest time is
+	// later than the stamp of its last run, and waits for each to exit. It
+	// returns the jobs it ran, and what it could not do.
+	CatchUp(ctx context.Context, params UnitParams) ([]string, error)
+}
+
 // EnableScope says which of the units in an InstallUnits call may be enabled
 // (RFC 0030 §8.1).
 //
