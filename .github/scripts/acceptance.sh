@@ -1727,10 +1727,10 @@ docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 # an installation whose jobs launchd runs: the packed bundle above, which
 # carries its image and needs no registry, under a root of its own, run by a
 # copy of the manager only root can replace, since launchd runs it as root.
-# Its containers come down with the rest at the end of this script, so the
-# start at boot has them to bring back. After the restart and a login,
-# acceptance-reboot.sh checks that it did, and that it caught up a backup the
-# restart missed, then removes the installation.
+# Its containers come down, and its run directory goes, as a restart leaves
+# them, so the start at boot has both to bring back. After the restart and a
+# login, acceptance-reboot.sh checks that it did, and that it caught up a
+# backup the restart missed, then removes the installation.
 
 if [ "${OS}" = Darwin ] && [ -n "${ACCEPTANCE_REBOOT_DIR:-}" ]; then
 	REBOOT_DIR="${ACCEPTANCE_REBOOT_DIR}"
@@ -1769,6 +1769,13 @@ if [ "${OS}" = Darwin ] && [ -n "${ACCEPTANCE_REBOOT_DIR:-}" ]; then
 		fail "the backup has a stamp already, so nothing would be missed"
 	touch -t "$(date -v-1d +%Y%m%d%H%M)" "${DAEMONS}/dev.morzer.demo-backup.plist"
 	info "the backup is due since $(date -v-2M +%H:%M), and its job counts from $(date -v-1d '+%F %H:%M')"
+
+	# A restart clears /var/run, and the rendered secrets with it, but not this
+	# root's copy of it, which is under a directory that outlives the restart.
+	step "its containers down, and its run directory gone, as a restart leaves them"
+	docker compose -p demo down --remove-orphans >/dev/null
+	rm -rf -- "${REBOOT_ROOT}/var/run/demo"
+	[ ! -e "${REBOOT_ROOT}/var/run/demo" ] || fail "the restart's run directory is still there"
 
 	step "restart this Mac, log in, then run: just acceptance-record --after-reboot <version>"
 fi

@@ -7,6 +7,7 @@
 #
 #   the boot job ran during this boot and last exited 0
 #   the journal holds an apply begun after the boot, which succeeded
+#   the run directory the first phase removed, as a restart does, is back
 #   the backup's stamp is newer than the boot, and so is a backup listed
 #   the boot job's log names the job it caught up
 #
@@ -88,6 +89,13 @@ applies=$(printf '%s' "${history}" | jq --argjson boot "${BOOT}" '[.data.operati
 [ "${applies}" -ge 1 ] ||
 	fail "no apply begun after the boot succeeded: $(printf '%s' "${history}" | jq -c '[.data.operations[] | {type, status, started_at}]')"
 info "${applies} apply(ies) since the boot"
+
+step "the start at boot rendered the run directory again"
+secrets="${ROOT}/var/run/demo/secrets"
+[ -d "${secrets}" ] || fail "${secrets} is missing: the start at boot did not render the secrets again"
+[ "$(stat -f %m "${secrets}")" -gt "${BOOT}" ] ||
+	fail "${secrets} is older than the boot, so it was not rendered by the start at boot"
+info "${secrets} rendered at $(date -r "$(stat -f %m "${secrets}")" -u +%FT%TZ)"
 
 step "the backup the restart missed was caught up"
 stamp="${VAR_DIR}/manager/stamps/backup"
