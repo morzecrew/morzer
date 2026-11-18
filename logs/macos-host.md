@@ -1535,3 +1535,25 @@ proposal: ASSUMED — a repeated calendar time counts at either instant
 ```
 
 **Drift count: 2.** Nothing the review found is drift.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T10:06:10Z
+attempt: 3
+claim: A third look at the catch-up's races. A job seen idle could start while a later one was waited for, and the start that followed then ran beside it; the look now starts again after any wait. The stamp is read after the last look at a job, so a run its schedule finished up to that look is not started again, and a job launchd started itself is waited for and not reported as one the catch-up ran. A job whose plist is gone is not installed, whatever its stamp says. A short window remains between the last read of the stamp and `kickstart`, which only a lock every job takes could close; the jobs share none, since `fleet publish` and `doctor` take no lock.
+evidence: internal/adapters/supervisor/launchd/catchup.go:175-197
+action: decided
+```
+
+**Known limit:** a job with no stamp counts from when its plist was last
+written, and installing the units writes every plist. So a job installed
+before this release, missed while the Mac was off, caught up by a run that
+exits before it reaches the engine, and then reinstalled before its next tick,
+counts from the reinstall at the next boot and is not caught up. Keeping the
+time a job was first installed apart from its plist would close it, and is a
+design change for a later pull request; until the job's first run stamps, the
+next tick is the fallback.
+
+**Drift count: 2.** Nothing the third look found is drift.
