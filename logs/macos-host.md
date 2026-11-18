@@ -1734,3 +1734,19 @@ proposal: ASSUMED (decision 16, unchanged) — the check lists a directory as a 
 ```
 
 **Drift count: 3.** The listing was a discovery: no run before the Mac's put a container in a directory holding one of root's.
+
+## The record's binary, after the close-out
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T22:17:15Z
+attempt: 1
+claim: Decision 20 has the release PR commit the record, so the run comes before the tag, and nothing says what version the binary it runs reports. `just acceptance-record` built it through `build`, stamped by `git describe`, and on the author's Mac it reported `0.17.1-25-g83a8803`. On a Mac the run gives both bundles the floor darwin needs, `PlatformsMinManagerVersion`, 0.18.0, and `update` checks a release's floor where `init` and `apply` do not, so the update the run kills was refused at `check-compatibility` before its backup: `release 1.3.0 requires manager >= 0.18.0, this is 0.17.1-25-g83a8803`. Linux raises no floor, so CI never met it. Decided: the recipe builds the binary stamped with the version it records, as the tag's build will be. Refused: lowering the fixtures' floor, and letting a build `git describe` stamps pass a floor, since either runs something other than the release.
+evidence: justfile:347-349
+action: decided
+proposal: ASSUMED — `just acceptance-record <version>` runs a manager stamped `<version>`, the release it records, so the floor a darwin bundle declares is met as it will be by that release
+```
+
+**Drift count: 3.** The version the recorded binary reports was a gap in the spec, not drift.
