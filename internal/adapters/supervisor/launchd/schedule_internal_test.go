@@ -105,11 +105,22 @@ func TestTheLatestTimeAScheduleRanIsTheLastOneAtOrBeforeNow(t *testing.T) {
 		"quarterly":           at(2026, time.October, 1, 0, 0),
 		"*-02-29 00:00":       at(2024, time.February, 29, 0, 0),
 	} {
-		times, err := calendar(expr)
-		require.NoError(t, err, expr)
-		got := latest(times, now)
-		assert.True(t, want.Equal(got), "%s: want %s, got %s", expr, want, got)
+		t.Run(expr, func(t *testing.T) {
+			times, err := calendar(expr)
+			require.NoError(t, err)
+			got := latest(times, now)
+			assert.True(t, want.Equal(got), "want %s, got %s", want, got)
+		})
 	}
+}
+
+// 2100 is not a leap year, so a leap day's schedule can last have run eight
+// years before.
+func TestTheLatestLeapDayCanBeEightYearsBack(t *testing.T) {
+	times, err := calendar("*-02-29 00:00")
+	require.NoError(t, err)
+	got := latest(times, time.Date(2101, time.March, 1, 0, 0, 0, 0, time.UTC))
+	assert.True(t, time.Date(2096, time.February, 29, 0, 0, 0, 0, time.UTC).Equal(got), "got %s", got)
 }
 
 // A time the clocks skipped did not happen that day, and a schedule runs in the
@@ -127,4 +138,14 @@ func TestTheLatestTimeKeepsToTheMacsClock(t *testing.T) {
 	got = latest(times, time.Date(2026, time.November, 18, 2, 0, 0, 0, berlin))
 	assert.True(t, time.Date(2026, time.November, 17, 2, 30, 0, 0, berlin).Equal(got), "got %s", got)
 	assert.True(t, time.Date(2026, time.November, 17, 1, 30, 0, 0, time.UTC).Equal(got), "got %s", got)
+
+	// Clocks went from 03:00 back to 02:00 on 25 October 2026, so 02:30 came
+	// at 00:30 and again at 01:30 UTC: the latest is whichever has passed.
+	for now, want := range map[time.Time]time.Time{
+		time.Date(2026, time.October, 25, 0, 45, 0, 0, time.UTC): time.Date(2026, time.October, 25, 0, 30, 0, 0, time.UTC),
+		time.Date(2026, time.October, 25, 1, 45, 0, 0, time.UTC): time.Date(2026, time.October, 25, 1, 30, 0, 0, time.UTC),
+	} {
+		got := latest(times, now.In(berlin))
+		assert.True(t, want.Equal(got), "at %s: want %s, got %s", now, want, got)
+	}
 }
