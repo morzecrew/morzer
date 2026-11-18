@@ -3715,7 +3715,7 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 </tr>
 <tr>
 <td><code>--unattended</code></td>
-<td>One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see <a href="../../operating/unattended-updates/">unattended updates</a>.</td>
+<td>One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see <a href="../../operating/unattended-updates/">unattended updates</a>. On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see <a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>.</td>
 </tr>
 </tbody>
 </table>
@@ -3898,7 +3898,9 @@ fails, and any other warns. Their messages and remedies are the vendor's words.<
 <p><code>--unattended</code> is the <a href="../../operating/notifications/#the-scheduled-doctor">scheduled run</a>:
 it sends the notification outbox first, then notifies one <code>doctor.finished</code>
 naming the checks that warn or fail. A run where every check passes notifies
-nothing. Every run leaves out of <code>config.operations</code> the operation holding the
+nothing. On a Mac, once the outbox is sent, it exits 7 while the engine does
+not answer, and the start at boot runs it once it does; see
+<a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>. Every run leaves out of <code>config.operations</code> the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.</p>
 <p>Six checks are advisory by design, and warn rather than fail:</p>
@@ -4336,7 +4338,7 @@ manifest, and verifies the checksums by re-reading what was written.</p>
 </tr>
 <tr>
 <td><code>--unattended</code></td>
-<td>The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is <a href="#stop">stopped</a>.</td>
+<td>The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is <a href="#stop">stopped</a>. On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see <a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>.</td>
 </tr>
 </tbody>
 </table>
