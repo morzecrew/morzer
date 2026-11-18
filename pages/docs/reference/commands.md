@@ -112,7 +112,8 @@ picture: what two deployments share, and what `doctor` says about it.
 ## init
 
 Creates the directory layout, the machine's age identity, the installation
-configuration, the encrypted secret state and, optionally, the systemd units.
+configuration, the encrypted secret state and, optionally, the init system's
+units: systemd's, or launchd's jobs on a Mac.
 
 It never overwrites an existing installation, and it does not start the product:
 run `apply` afterwards.

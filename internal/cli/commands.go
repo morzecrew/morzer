@@ -49,7 +49,7 @@ func newInitCommand(app *App) *cobra.Command {
 		Short: "Create a new installation",
 		Long: "Creates the directory layout, the machine's age identity, the\n" +
 			"installation configuration, the encrypted secret state and, optionally,\n" +
-			"the systemd units.\n\n" +
+			"the init system's units: systemd's, or launchd's jobs on a Mac.\n\n" +
 			"It never overwrites an existing installation, and it does not start the\n" +
 			"product: run `morzer apply` afterwards.\n\n" +
 			"A release may ship its vendor's signing key. Given no --signing-key, init\n" +
