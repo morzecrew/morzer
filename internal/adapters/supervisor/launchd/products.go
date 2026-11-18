@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
 )
 
@@ -33,7 +34,9 @@ func BootJobProducts(dir, root string) []string {
 			continue
 		}
 		args, err := programArguments(filepath.Join(dir, f.Name()))
-		if err != nil || len(args) < 6 || filepath.Base(args[0]) != "morzer" ||
+		// The manager's path resolves links, so a job can name the binary a
+		// `morzer` link points at; that is this one, if any.
+		if err != nil || len(args) < 6 || (filepath.Base(args[0]) != "morzer" && args[0] != systemd.ManagerPath()) ||
 			!slices.Equal(args[1:6], []string{"apply", "--startup", "--plain", "--log-format", "json"}) {
 			continue
 		}

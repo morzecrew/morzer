@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/supervisor/launchd"
+	"github.com/morzecrew/morzer/internal/adapters/supervisor/systemd"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -65,4 +66,17 @@ func TestABootJobWithNoConfigIsTheRealRootsInstallation(t *testing.T) {
 
 	assert.Equal(t, []string{"demo"}, launchd.BootJobProducts(dir, ""))
 	assert.Empty(t, launchd.BootJobProducts(dir, "/srv/m"))
+}
+
+// A boot job names the binary a `morzer` link resolved to, a versioned file
+// say, which is this manager when it is the one running.
+func TestABootJobNamingTheResolvedManagerNamesItsProduct(t *testing.T) {
+	dir := t.TempDir()
+	s := launchd.New(nil, domain.PathsUnder("", "demo"), launchd.WithDaemonDir(dir))
+	units, err := s.Units(ports.UnitParams{Product: "demo", ManagerPath: systemd.ManagerPath(),
+		ConfigPath: domain.PathsUnder("", "demo").InstallationFile()})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, units[0].Name+".plist"), units[0].Contents, 0o644))
+
+	assert.Equal(t, []string{"demo"}, launchd.BootJobProducts(dir, ""))
 }
