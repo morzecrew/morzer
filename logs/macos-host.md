@@ -1299,3 +1299,95 @@ nothing when absent. The acceptance run on the author's Mac is where all three
 are seen.
 
 **Drift count: 2.** Nothing in P2 so far is drift.
+
+## The stamps and the catch-up, P2
+
+On branch `rfc-0055-catchup` from `main` at `e3d937db`, the second of P2's
+three pull requests: the stamps of the four persistent schedules, and the
+catch-up of a run missed while the Mac was off (§5.6, decisions 8 and 29). The
+plan raised two questions, which the author ruled on 2026-11-18 as it leaned;
+they are the first two entries below. The rest are gaps decided before code.
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 has a scheduled run that cannot reach the engine exit 7 and leave its stamp, and does not say on which platform, while decision 14 holds Linux unchanged. On Linux that exit would change what is reported while dockerd is down: the backup and update runs would no longer journal or notify their failure, `doctor --unattended` would send no `doctor.finished`, and `fleet publish` would no longer publish the row saying the runtime did not answer. Logged against decision 14, as P2's first ruling asked. Ruled by the author as the plan leaned: a run defers with exit 7 only where the supervisor catches it up later, which launchd's does; elsewhere it carries on and reports as it does today, and writes no stamp. Linux keeps its reports, and gains one question to the engine per scheduled run, of at most 30 seconds, and a stamp it does not read. The rule is keyed on the supervisor, not the platform.
+evidence: internal/lifecycle/ops/doctor.go:100-125
+action: departed
+proposal: ASSUMED (decision 29, amended) — a scheduled run that cannot reach the engine exits 7 and leaves its stamp only where the supervisor catches it up; elsewhere it runs and reports as before, with no stamp
+```
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 stamps the unattended runs of `backup`, `update`, `fleet publish` and `doctor`, and refuses a flag that only the plists set. Three of them have `--unattended`, which systemd's units pass too. `fleet publish` has no such flag, so nothing tells the fleet job's run from an operator's. Ruled by the author as the plan leaned: every `fleet publish` but a sync's is taken as the fleet job's. It stamps, and on a Mac it defers with exit 7 while the engine does not answer, an operator's run included. The stamp is right either way, since the row it publishes is fresh. Refused: `fleet publish --unattended` in both supervisors' jobs, which changes Linux's unit.
+evidence: internal/adapters/supervisor/systemd/systemd.go:742
+action: departed
+proposal: ASSUMED — every `fleet publish` but a sync's is the fleet job's run, for its stamp and for decision 29's exit 7
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 has a run write its stamp once it has reached the engine, and does not say how a run knows it has. A run that found out halfway through would already have taken the lock and journalled, which is the failure report decision 29 avoids. So a scheduled run asks the engine for the project's containers before it does anything else, as the start at boot does, bounded at 30 seconds, and stamps when the engine answers. A run that cannot read what that question needs, the installation or its release, stamps and carries on, as §5.6 has any failure but the engine's stamp. A dry run neither asks nor stamps.
+evidence: internal/lifecycle/ops/startup.go:62-78
+action: decided
+proposal: ASSUMED — a scheduled run asks the engine first, as the start at boot does, and stamps when it answers
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 catches a job up when its latest scheduled time is later than its stamp, and does not say what a job with no stamp is. That is a job installed and never run, or one installed before this release. systemd starts a persistent timer's stamp when the timer first starts, so the first run missed after installing is caught up. So a job without a stamp is taken as stamped when its plist was last written.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:406-414
+action: decided
+proposal: ASSUMED — a job with no stamp is caught up from when its plist was last written
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 has the boot job start the overdue jobs after it converges, and does not say what its exit is when a job cannot be started or fails. launchd starts the boot job again after any failed exit, so a non-zero exit would converge the installation again every 30 seconds and catch the same jobs up each time. So the boot job's exit is its convergence's. A job that cannot be started, or cannot be waited for, is a warning in the boot job's log, and a caught-up job's own failure is in its own log and notification.
+evidence: internal/adapters/supervisor/launchd/launchd.go:262-273
+action: decided
+proposal: ASSUMED — the catch-up never fails the start at boot; what it cannot do is a warning in the boot job's log
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 catches up each overdue job, and does not say what happens to one an operator disabled or launchd has not loaded. systemd starts no disabled timer, and kickstarting a job launchd does not have fails. So the catch-up skips a job an operator disabled, and one launchd has not loaded, which `doctor` already reports as not loaded.
+evidence: internal/adapters/supervisor/launchd/launchd.go:663-682
+action: decided
+proposal: ASSUMED — the catch-up skips a job an operator disabled or launchd has not loaded
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 has `doctor --unattended` exit 7 when the engine does not answer, and `doctor --unattended` sends the notification outbox first, which needs no engine. Asking the engine first would keep a notification queued at boot, the boot job's own exit 12 say, until a login. So it sends the outbox, then asks the engine.
+evidence: internal/lifecycle/ops/doctor.go:101-107
+action: decided
+proposal: ASSUMED — `doctor --unattended` sends the outbox before it asks the engine
+```
