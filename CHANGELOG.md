@@ -17,8 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An installation runs on a Mac with Apple silicon and Docker Desktop, for a
   release that declares `darwin`, from the `darwin/arm64` archive
   `install.sh` and `self-update` take. The Platforms page says how a Mac is
-  weaker: secrets on disk need FileVault, `owner` is not enforced, and
-  nothing runs at boot or on a schedule.
+  weaker: secrets on disk need FileVault, and `owner` is not enforced.
+
+- On a Mac, `init` installs launchd jobs: `apply --startup` at boot, started
+  again every 30 seconds until Docker Desktop answers and held after an exit
+  12 until `sudo morzer apply`, and each schedule at the time it names.
+  `config set` refuses a schedule launchd cannot run exactly.
 
 - On a Mac, root runs a tool it finds by name only from a directory only root
   can change, such as `/usr/local/bin`, so `sops` belongs in one, and a hook

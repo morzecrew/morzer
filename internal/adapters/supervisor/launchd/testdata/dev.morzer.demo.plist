@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.morzer.demo</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/morzer</string>
+		<string>apply</string>
+		<string>--startup</string>
+		<string>--plain</string>
+		<string>--log-format</string>
+		<string>json</string>
+		<string>--config</string>
+		<string>/etc/demo/installation.yaml</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<key>StandardOutPath</key>
+	<string>/var/lib/demo/logs/dev.morzer.demo.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/lib/demo/logs/dev.morzer.demo.log</string>
+</dict>
+</plist>

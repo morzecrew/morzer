@@ -361,6 +361,23 @@ an expression systemd cannot read is refused rather than left as a timer that
 never loads. On a host without `systemd-analyze` there is nothing to ask, and
 the value is stored as given.
 
+### Schedules on a Mac
+
+A schedule keeps systemd's `OnCalendar` grammar on a Mac, and launchd runs it at
+fixed times, so `config set` takes the expressions that say one exactly:
+
+| Form | Example |
+| --- | --- |
+| A time each day | `*-*-* 02:30`, `02:30:00` |
+| Weekdays and a time | `Sun *-*-* 04:00`, `Mon..Fri 09:00`, `Mon,Thu 09:00` |
+| A day of the month, or a month | `*-*-01 03:00`, `*-12-25 07:00` |
+| A minute of every hour | `*:15`, `*-*-* *:00:00` |
+| A name | `hourly`, `daily`, `weekly`, `monthly`, `quarterly`, `semiannually`, `yearly` |
+
+Refused, naming these forms: a repetition such as `*:0/5`, a range or list of
+times, seconds other than `00`, a year, a time zone, and a weekday beside a day
+of the month, which launchd would run on either.
+
 A retention count takes effect where retention already runs: releases after an
 update and at `morzer release prune`, backups after a backup. Setting one prunes
 nothing by itself.

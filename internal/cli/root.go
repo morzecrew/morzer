@@ -1082,7 +1082,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		Signer:         signminisign.New(paths.SigningKeyFile(), paths.Product),
 		Checker:        signminisign.NewChecker(),
 		Renderer:       gotemplate.New(),
-		Supervisor:     systemd.New(runner),
+		Supervisor:     newSupervisor(runner, paths),
 		Hooks:          hookRunner,
 		Tools:          toolRegistry,
 		Bus:            bus,

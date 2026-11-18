@@ -1671,44 +1671,24 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 	}
 }
 
-// unsupervised names, in the operator's words, what the units for p would run.
-func unsupervised(p ports.UnitParams) []string {
-	runs := []string{"`apply --startup` at boot"}
-	for _, unit := range []struct {
-		set  bool
-		what string
-	}{
-		{!p.SkipBackupTimer, "scheduled backups"},
-		{p.UpdateTimer, "update checks"},
-		{p.FleetTimer, "fleet publishing"},
-		{p.SyncTimer, "sync"},
-		{p.DoctorTimer, "scheduled doctor runs"},
-		{p.MetricsDir != "", "metrics"},
-	} {
-		if unit.set {
-			runs = append(runs, unit.what)
-		}
-	}
-	return runs
-}
-
 func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
+	// A Mac's units are launchd's jobs (RFC 0055 §5.6).
+	mac := d.platform() == "darwin"
+	description, inspect := "systemd units are installed and enabled", "`systemctl status`"
+	if mac {
+		description, inspect = "launchd jobs are installed and enabled", "`launchctl print system/<job>`"
+	}
 	return preflight.Check{
 		ID:          "system.units",
 		Category:    preflight.CategorySystem,
-		Description: "systemd units are installed and enabled",
+		Description: description,
 		Fatal:       false,
 		Run: func(ctx context.Context) events.CheckResult {
 			if !d.Supervisor.Available(ctx) {
-				// A Mac has no supervisor until the launchd adapter, and
-				// decision 1 has that stated, not left implicit (RFC 0055
-				// decision 26).
-				if d.platform() == "darwin" {
-					return preflight.Warn(
-						"run `sudo morzer apply` after the Mac starts, once Docker Desktop is running, "+
-							"and anything else above by hand when it is due",
-						"a Mac has no supervisor yet, so none of this runs: %s",
-						strings.Join(unsupervised(d.unitParams(inst)), ", "))
+				// Only root reads and loads a Mac's system jobs, so
+				// not being able to ask is not the same as having none.
+				if mac {
+					return preflight.Warn("run `sudo morzer doctor`", "launchd's jobs can be read only as root")
 				}
 				return preflight.OK("systemd is not in use on this host")
 			}
@@ -1724,6 +1704,15 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 			// warning that fires always and cannot be fixed is a warning
 			// nobody reads on the run that meant something.
 			var problems []string
+
+			// launchd starts the boot job again after an exit 12, which
+			// then exits 0 on the record, so the job itself reads as fine.
+			if mac {
+				if reason, held := d.startupHeld(); held {
+					problems = append(problems, "the start at boot is held ("+reason+
+						"); `sudo morzer apply` releases it once that is put right")
+				}
+			}
 
 			// The unit, not a boolean. Whether a unit should be enabled
 			// is the supervisor's decision and it varies within one
@@ -1806,6 +1795,15 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// that stopped is a schedule, which is silent by nature.
 				// Nobody notices a backup or a fleet row that did not
 				// happen until they need the one that did not.
+				// Enabled and not loaded, which only launchd reports:
+				// a schedule it does not have runs at no time before
+				// the next boot, and looks installed to everything else.
+				if wanted && want.Enable && state.Enabled && state.Sub == "unloaded" {
+					problems = append(problems, name+": not loaded")
+					if declarable[name] {
+						backupUnitAffected = true
+					}
+				}
 				if wanted && want.Enable && !state.Enabled {
 					problems = append(problems, name+": not enabled")
 					// Which unit it was, because the remedy
@@ -1851,7 +1849,7 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 				// it is printed beside, which is the defect this
 				// check has already been fixed for once.
 				remedy := "run `morzer init --repair --install-units`, " +
-					"or inspect with `systemctl status`"
+					"or inspect with " + inspect
 				if backupUnitAffected {
 					// "put it back" rather than "switch it back
 					// on": this branch is reached by a unit that
@@ -1863,6 +1861,11 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 						"if this machine's backups are handled elsewhere"
 				}
 				return preflight.Warn(remedy, "%s", strings.Join(problems, "; "))
+			}
+			// launchd has no RandomizedDelaySec, and decision 1 has the
+			// spread a Mac does without stated.
+			if mac {
+				return preflight.OK("all jobs installed and enabled; each schedule runs at the time it names, with no spread")
 			}
 			return preflight.OK("all units loaded")
 		},

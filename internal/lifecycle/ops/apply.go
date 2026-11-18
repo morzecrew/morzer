@@ -31,6 +31,11 @@ import (
 // nothing and says so. That property is what lets systemd call it at every
 // boot without it being a deployment.
 func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
+	if opts.Startup && d.platform() == "darwin" {
+		if reason, held := d.startupHeld(); held {
+			return Result{Summary: d.heldSummary(reason)}, nil
+		}
+	}
 	return apply(ctx, d, opts, domain.OpTypeApply)
 }
 
@@ -72,6 +77,12 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		return Result{}, err
 	}
 	d.warnOneRunProfile(inst, opts.Profiles)
+
+	if opts.Startup && d.platform() == "darwin" {
+		if err := d.engineAnswers(ctx, rel, inst, opts.Profiles); err != nil {
+			return Result{}, err
+		}
+	}
 
 	opID := d.newOpID()
 	var prior *domain.OperationRecord
@@ -147,6 +158,9 @@ func apply(ctx context.Context, d *Deps, opts Options, opType domain.OperationTy
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun && !opts.Startup {
 			d.reconcileUnitsAfterConverge(ctx)
 		}
+		// Under the lock, so the record is of this run: an operator's run
+		// that succeeds after it is not undone by it.
+		d.recordStartup(opts, err)
 		return err
 	})
 

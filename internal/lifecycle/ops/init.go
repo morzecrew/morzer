@@ -1419,11 +1419,15 @@ func stepAddRecoveryRecipient(d *Deps, opts InitOptions) engine.Step {
 	}
 }
 
-// stepInstallUnits writes the systemd units.
+// stepInstallUnits writes the systemd units, or a Mac's launchd jobs.
 func stepInstallUnits(d *Deps, product string, scope ports.EnableScope) engine.Step {
+	description := "install systemd units"
+	if d.platform() == "darwin" {
+		description = "install launchd jobs"
+	}
 	return engine.Step{
 		ID:          "install-units",
-		Description: "install systemd units",
+		Description: description,
 		Idempotent:  true,
 		OnFailure:   engine.Compensate,
 		Timeout:     2 * time.Minute,

@@ -281,7 +281,7 @@ A shell it cannot place a file for gets the script on stdout instead, and exits
 | `sops` | Encrypting and decrypting the secret state. | preflight, `doctor` |
 | A tmpfs at `/run` | Decrypted secrets are written there. Standard on systemd hosts. | `doctor` |
 | FileVault, on a Mac | A Mac has no tmpfs, so decrypted secrets and the age identity are on its disk. | `init`, every render, `doctor` |
-| systemd | Optional. Boot-time convergence and scheduled backups. A Mac has none yet; see [Platforms](../explanation/platforms.md#nothing-runs-without-you). | `doctor` |
+| systemd | Optional. Boot-time convergence and scheduled backups. On a Mac, launchd does this; see [Platforms](../explanation/platforms.md#what-runs-at-boot-and-on-schedule). | `doctor` |
 
 The versions a release requires are declared in its manifest, not by the
 manager, so a bundle that needs `docker >= 24` says so and preflight enforces
