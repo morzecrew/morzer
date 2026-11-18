@@ -3,9 +3,11 @@ package state_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -334,6 +336,49 @@ func TestReadingAJournalThatDoesNotExistYet(t *testing.T) {
 	if _, found, err := s.LastOperation(context.Background()); err != nil || found {
 		t.Errorf("LastOperation on an empty journal: found=%v err=%v", found, err)
 	}
+}
+
+// The first record on a machine creates the directories above the layout. On
+// a Mac the user who runs Docker Desktop has to list each one on the way to a
+// bind (RFC 0055 decision 16), so they are 0755 whatever the umask. The
+// layout's own directories it creates are no wider than 0750 until init sets
+// their modes. Not parallel: the umask is the process's.
+func TestTheFirstRecordLeavesTheDirectoriesAboveTheLayoutListable(t *testing.T) {
+	for _, mask := range []int{0o022, 0o077} {
+		t.Run(fmt.Sprintf("umask %04o", mask), func(t *testing.T) {
+			defer syscall.Umask(syscall.Umask(mask))
+
+			base := t.TempDir()
+			paths := domain.PathsUnder(filepath.Join(base, "root"), "demo")
+			rec := domain.OperationRecord{
+				ID: "01JAAA0000000000000000000A", Type: domain.OpTypeUpdate,
+				Status: domain.StatusSucceeded, StartedAt: domain.NewTime(time.Now()),
+			}
+			if err := state.New(paths).AppendOperation(context.Background(), rec); err != nil {
+				t.Fatal(err)
+			}
+
+			for path := filepath.Dir(paths.VarDir); path != base; path = filepath.Dir(path) {
+				if got := perm(t, path); got != 0o755 {
+					t.Errorf("%s: mode %04o, want 0755", path, got)
+				}
+			}
+			for _, dir := range []string{paths.VarDir, paths.ManagerDir()} {
+				if got := perm(t, dir); got&^0o750 != 0 {
+					t.Errorf("%s: mode %04o, wider than 0750", dir, got)
+				}
+			}
+		})
+	}
+}
+
+func perm(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
 }
 
 // TestAnOversizeRecordIsTruncatedRatherThanDropped. A journal entry saying

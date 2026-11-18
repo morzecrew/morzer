@@ -1689,3 +1689,32 @@ since journald stamps every line, and nothing asks for it; launchd writes a
 job's output to its file as it comes. So `VarDir/logs/<label>.log` cannot say
 when a line was written. It needs a decision, whether every log off journald
 carries its time or only a Mac's jobs, and is for a later pull request.
+
+## The directories above the layout, after the close-out
+
+```divergence
+decision: 16
+grade: ASSUMED
+class: drift
+at: 2026-11-18T16:38:58Z
+attempt: 1
+claim: Decision 16 keeps every directory on the way to a bind root's at `0755` on darwin. The first lock on a machine, and the first journal record, created each missing directory above their own at `0750`, before `init` builds the layout, and `init` sets the managed directories' modes and leaves those parents as they are. So under `--root` the root and its `var` and `var/lib` were `0750`, which the user who runs Docker Desktop cannot list, and the first `apply` of the acceptance run on the author's Mac refused at the file-sharing check, naming `probe-root/etc/demo`. A Mac with no `/private/var/lib` would refuse the same way at the real root. Both now create a missing parent at `0755`, and their own directory at `0750`, as `MkdirExactNoFollow` already did. No released manager ran on a Mac, so no installation holds the old modes.
+evidence: internal/infra/lock/lock.go:71-78
+action: departed
+proposal: ASSUMED (decision 16, unchanged) — a parent the lock or the journal creates is `0755` on every platform, and `init` sets the managed directories among them to their own modes
+```
+
+**Drift count: 3.** P1 left the parents its lock and journal create at `0750`.
+
+```divergence
+decision: 16
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T17:01:01Z
+attempt: 2
+claim: The review of this pull request found the first attempt short twice. Under a umask of `077`, which `sudo` keeps from a user who set it, a parent created at `0755` is `0700`, and the user who runs Docker Desktop still cannot list it. And the lock created every parent of its own directory at `0755`, `VarDir` and `ManagerDir` among them, which the layout holds at `0750` on Linux. Now the lock of an installation and the journal create the directories above `VarDir` at `0755` whatever the umask, leave one that exists as it is, and create the layout's own at `0750`, until `init` sets their modes.
+evidence: internal/infra/atomicfs/atomicfs.go:256-272
+action: decided
+```
+
+**Drift count: 3.** The review found no new drift.

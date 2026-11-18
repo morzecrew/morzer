@@ -253,6 +253,24 @@ func MkdirAll(path string, mode fs.FileMode) error {
 	return nil
 }
 
+// MkdirListable creates path and its missing parents at 0755 whatever the
+// umask, and leaves a directory that exists as it is: the directories above a
+// layout, which a Mac's Docker Desktop user lists on the way to a bind (RFC
+// 0055 decision 16).
+func MkdirListable(path string) error {
+	created := missingAncestors(path)
+	if err := MkdirAll(path, 0o755); err != nil {
+		return err
+	}
+	// The last is the ancestor that already existed.
+	for _, dir := range created[:max(len(created)-1, 0)] {
+		if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // above a layout, listable by design
+			return domain.Internal(err, "cannot set mode 0755 on %s", dir)
+		}
+	}
+	return nil
+}
+
 // MkdirFresh creates path with exactly mode, refusing a path that already
 // exists. Parents are created as needed with the same mode.
 //
