@@ -2969,7 +2969,7 @@ carries one.</p>
 </tr>
 <tr>
 <td><code>--install-units</code></td>
-<td>Install the systemd units when systemd is available, as <code>init</code> does. Default <code>true</code>.</td>
+<td>Install the init system's units, systemd's, or launchd's jobs on a Mac, when it is available, as <code>init</code> does. Default <code>true</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -3003,8 +3003,8 @@ first.</p>
 <li>Generates a <strong>new</strong> age identity for this host.</li>
 <li>Re-encrypts the state for that new key plus every non-machine recipient, and
    verifies this machine can now read it.</li>
-<li>Installs the systemd units, when systemd is available. A unit that already
-   exists keeps whatever enablement it has.</li>
+<li>Installs the init system's units, systemd's or launchd's jobs on a Mac, when
+   it is available. A unit that already exists keeps whatever enablement it has.</li>
 </ol>
 <p>The old machine's key is dropped. A decommissioned host must not retain the
 ability to decrypt — if it is being replaced because it was compromised, keeping
@@ -3178,7 +3178,7 @@ says so.</p>
 </thead>
 <tbody>
 <tr>
-<td>systemd units</td>
+<td>systemd units, or launchd's jobs on a Mac</td>
 <td>removed</td>
 <td>removed</td>
 </tr>

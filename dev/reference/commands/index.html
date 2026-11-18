@@ -3430,7 +3430,8 @@ picture: what two deployments share, and what <code>doctor</code> says about it.
 <hr />
 <h2 id="init">init<a class="headerlink" href="#init" title="Permanent link">&para;</a></h2>
 <p>Creates the directory layout, the machine's age identity, the installation
-configuration, the encrypted secret state and, optionally, the systemd units.</p>
+configuration, the encrypted secret state and, optionally, the init system's
+units: systemd's, or launchd's jobs on a Mac.</p>
 <p>It never overwrites an existing installation, and it does not start the product:
 run <code>apply</code> afterwards.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>init<span class="w"> </span>--release<span class="w"> </span>./bundle<span class="w"> </span>--profile<span class="w"> </span>embedded<span class="w"> </span>--domain<span class="w"> </span>example.com<span class="w"> </span><span class="se">\</span>
@@ -3474,7 +3475,7 @@ run <code>apply</code> afterwards.</p>
 </tr>
 <tr>
 <td><code>--install-units</code></td>
-<td>Install systemd units when systemd is available. Default <code>true</code>.</td>
+<td>Install the init system's units, systemd's, or launchd's jobs on a Mac, when it is available. Default <code>true</code>.</td>
 </tr>
 <tr>
 <td><code>--backup-schedule</code></td>
@@ -4780,9 +4781,10 @@ nothing if it has not answered within three seconds; the rest read the state
 files.</p>
 <p>Under <code>sudo</code> the completion runs as you, not as root, and cannot open an
 installation's directory. It then offers the products whose service unit the
-manager wrote in <code>/etc/systemd/system</code>, which is world-readable, described as
-not readable as this user. An installation created with
-<code>--install-units=false</code> has no unit and is not offered then; run the
+manager wrote in <code>/etc/systemd/system</code>, or on a Mac whose boot job it wrote in
+<code>/Library/LaunchDaemons</code>, both world-readable, described as not readable as
+this user. An installation created with <code>--install-units=false</code> has no unit
+and is not offered then; run the
 completion in a root shell to see it. The arguments in the table offer nothing
 under <code>sudo</code>, since they need the installation itself: <code>sudo morzer shell
 &lt;product&gt;</code> gives a root shell where they complete.</p>
