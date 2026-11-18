@@ -1391,3 +1391,67 @@ evidence: internal/lifecycle/ops/doctor.go:101-107
 action: decided
 proposal: ASSUMED — `doctor --unattended` sends the outbox before it asks the engine
 ```
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 8 and §5.6 have the catch-up: once `apply --startup` has converged and released the lock, the launchd adapter starts each of the backup, update, fleet and doctor jobs whose latest scheduled time is later than its stamp, one at a time in that order, and waits for each to exit, read from `launchctl print`. Metrics and sync are not caught up, as on Linux.
+evidence: internal/adapters/supervisor/launchd/catchup.go:37-89
+action: decided
+```
+
+```divergence
+decision: 31
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 31 has it: each scheduled run asks the engine first and stamps when it answers, and one that cannot reach it exits 7 only when the supervisor implements the catch-up. The rule reads the supervisor, not the platform.
+evidence: internal/lifecycle/ops/stamp.go:26-39
+action: decided
+```
+
+```divergence
+decision: 32
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 32 has it: every `fleet publish` but a sync's goes through the scheduled run's question and stamp.
+evidence: internal/lifecycle/ops/fleet_publish.go:110-117
+action: decided
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Linux reports what it reported: with dockerd down and a supervisor that does not catch up, the backup journals its run, `doctor --unattended` notifies `doctor.finished`, and the fleet row carries the runtime's problem. What Linux gains is one question to the engine per scheduled run, at most 30 seconds, and a stamp nothing reads.
+evidence: test/suite/catchup_test.go:142-168
+action: decided
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Decision 1 has each weaker guarantee stated. The Platforms page says a Mac now catches up a missed run, that a scheduled run, or a `fleet publish` by hand, that cannot reach the engine exits 7 and waits for the start at boot, and that a Mac whose Docker Desktop never starts therefore sends no `doctor.finished` and lets its fleet row go stale. Commands and Fleet say the exit 7 beside each run.
+evidence: pages/docs/explanation/platforms.md:145-164
+action: decided
+```
+
+**Not measured:** the catch-up waits on `runs` and `state` from `launchctl
+print`. S4 saw `state = not running` and `runs = 1` three seconds after a
+kickstart (`spikes/macos-host/report.txt:89`). It did not capture `state =
+running`, a job's `runs` before its first run, or what launchd does with a
+calendar time a clock change skips. The acceptance run on the author's Mac is
+where those are seen.
+
+**Drift count: 2.** Nothing in this pull request is drift.
