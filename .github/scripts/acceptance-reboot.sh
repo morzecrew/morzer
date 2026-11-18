@@ -14,6 +14,7 @@
 # Then it removes the installation and its jobs, whether or not they did.
 #
 #   just acceptance-record --after-reboot V   # runs this under sudo
+#   acceptance-reboot.sh --remove             # removes them, and checks nothing
 #
 set -euo pipefail
 
@@ -22,6 +23,9 @@ ROOT="${REBOOT_DIR}/root"
 MORZER="${REBOOT_DIR}/bin/morzer"
 VAR_DIR="${ROOT}/var/lib/demo"
 BOOT_JOB=dev.morzer.demo
+# The installation's own jobs, and no other product's that shares a prefix.
+JOBS=("${BOOT_JOB}" "${BOOT_JOB}-backup" "${BOOT_JOB}-update" "${BOOT_JOB}-fleet"
+	"${BOOT_JOB}-sync" "${BOOT_JOB}-doctor" "${BOOT_JOB}-metrics")
 
 step() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 info() { printf '   %s\n' "$*"; }
@@ -32,7 +36,9 @@ fail() {
 
 [ "$(uname -s)" = Darwin ] || fail "this is the second phase of a run on a Mac"
 [ "$(id -u)" = 0 ] || fail "run it with sudo, as the first phase was"
-[ -x "${MORZER}" ] || fail "no installation from the first phase in ${REBOOT_DIR}"
+if [ "${1:-}" != --remove ]; then
+	[ -x "${MORZER}" ] || fail "no installation from the first phase in ${REBOOT_DIR}"
+fi
 
 # remove takes the installation, its jobs and its directory away, as the end of
 # the run, whether or not the checks passed: it is the one installation on this
@@ -41,17 +47,17 @@ remove() {
 	local status=$?
 	step "removing the restart's installation and its jobs"
 	local id
-	id=$("${MORZER}" --root "${ROOT}" --json status 2>/dev/null | jq -r '.data.installation_id // empty' || true)
+	[ ! -x "${MORZER}" ] ||
+		id=$("${MORZER}" --root "${ROOT}" --json status 2>/dev/null | jq -r '.data.installation_id // empty' || true)
 	if [ -n "${id}" ]; then
 		"${MORZER}" --root "${ROOT}" installation remove --force --confirm "${id}" >/dev/null 2>&1 ||
 			info "installation remove failed; the jobs below are removed by hand"
 	fi
-	local plist label
-	for plist in /Library/LaunchDaemons/"${BOOT_JOB}".plist /Library/LaunchDaemons/"${BOOT_JOB}"-*.plist; do
-		[ -e "${plist}" ] || continue
-		label=$(basename "${plist}" .plist)
+	local label
+	for label in "${JOBS[@]}"; do
+		[ -e "/Library/LaunchDaemons/${label}.plist" ] || continue
 		launchctl bootout "system/${label}" >/dev/null 2>&1 || true
-		rm -f -- "${plist}"
+		rm -f -- "/Library/LaunchDaemons/${label}.plist"
 	done
 	rm -f -- /etc/newsyslog.d/"${BOOT_JOB}".conf
 	case "${REBOOT_DIR}" in
@@ -61,6 +67,7 @@ remove() {
 	return "${status}"
 }
 trap remove EXIT
+[ "${1:-}" != --remove ] || exit 0
 
 BOOT=$(sysctl -n kern.boottime | sed -E 's/^\{ sec = ([0-9]+),.*/\1/')
 [ -n "${BOOT}" ] || fail "cannot read when this Mac booted"
@@ -102,10 +109,15 @@ stamp="${VAR_DIR}/manager/stamps/backup"
 [ -f "${stamp}" ] || fail "the backup has no stamp: it never reached the engine"
 [ "$(stat -f %m "${stamp}")" -gt "${BOOT}" ] ||
 	fail "the backup's stamp, $(date -r "$(stat -f %m "${stamp}")" -u +%FT%TZ), is older than the boot"
+# The first phase takes no backup, and the job logs carry no time to tell one
+# boot from another, so the one backup there is has to be this boot's: two say
+# the Mac restarted more than once, or its schedule came round as well.
 backups=$("${MORZER}" --root "${ROOT}" --json backup list)
+count=$(printf '%s' "${backups}" | jq '.data | length')
 newer=$(printf '%s' "${backups}" | jq --argjson boot "${BOOT}" '[.data[] | select((.at | fromdateiso8601) > $boot)] | length')
-[ "${newer}" -ge 1 ] || fail "no backup was taken since the boot: $(printf '%s' "${backups}" | jq -c '[.data[] | {id, at}]')"
-info "${newer} backup(s) since the boot"
+[ "${count}" = 1 ] && [ "${newer}" = 1 ] ||
+	fail "expected the one backup this boot's catch-up took; found ${count}, ${newer} since the boot: run both phases again"
+info "one backup, taken since the boot"
 log="${VAR_DIR}/logs/${BOOT_JOB}.log"
 if ! grep 'caught up' "${log}" 2>/dev/null | grep -q "${BOOT_JOB}-backup"; then
 	fail "the boot job's log does not name the backup as caught up: $(tail -5 "${log}" 2>/dev/null)"

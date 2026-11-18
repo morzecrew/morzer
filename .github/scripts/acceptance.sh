@@ -98,6 +98,9 @@ OWNER_HTTP_PORT="${ACCEPTANCE_OWNER_HTTP_PORT:-18096}"
 # while the probe is asked about them.
 PROBE_TCP_PORT="${ACCEPTANCE_PROBE_TCP_PORT:-18094}"
 PROBE_UDP_PORT="${ACCEPTANCE_PROBE_UDP_PORT:-18093}"
+# The containers that hold them, named for this run so a container of anyone
+# else's is never the one removed.
+PROBE_NAME="morzer-probe-$$"
 
 # The restart's installation's, on a Mac: it outlives this script, so it takes
 # a port none of the others does.
@@ -145,7 +148,12 @@ cleanup() {
 	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p web down -v --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p owner down --remove-orphans >/dev/null 2>&1 || true
-	docker rm -f morzer-probe-tcp morzer-probe-udp morzer-probe-second >/dev/null 2>&1 || true
+	docker rm -f "${PROBE_NAME}-tcp" "${PROBE_NAME}-udp" "${PROBE_NAME}-second" >/dev/null 2>&1 || true
+	# A first phase that failed after it installed the restart's
+	# installation leaves no jobs for the next boot to run.
+	if [ $status -ne 0 ] && [ "${REBOOT_INSTALLED:-}" = 1 ]; then
+		ACCEPTANCE_REBOOT_DIR="${REBOOT_DIR}" "${ROOT_DIR}/.github/scripts/acceptance-reboot.sh" --remove || true
+	fi
 	if [ "${STARTED_REGISTRY}" = "1" ]; then
 		docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
@@ -456,10 +464,10 @@ PROBE_IMAGE="${REGISTRY}/demo/app:acceptance"
 # container that is gone again either way.
 publishes() {
 	local verdict=no
-	if docker run -d --name morzer-probe-second -p "$1" "${PROBE_IMAGE}" >/dev/null 2>&1; then
+	if docker run -d --name "${PROBE_NAME}-second" -p "$1" "${PROBE_IMAGE}" >/dev/null 2>&1; then
 		verdict=yes
 	fi
-	docker rm -f morzer-probe-second >/dev/null 2>&1 || true
+	docker rm -f "${PROBE_NAME}-second" >/dev/null 2>&1 || true
 	printf '%s' "${verdict}"
 }
 
@@ -489,8 +497,8 @@ agree() {
 	fi
 }
 
-docker run -d --rm --name morzer-probe-tcp -p "${PROBE_TCP_PORT}:18080" "${PROBE_IMAGE}" >/dev/null
-docker run -d --rm --name morzer-probe-udp -p "${PROBE_UDP_PORT}:18080/udp" "${PROBE_IMAGE}" >/dev/null
+docker run -d --rm --name "${PROBE_NAME}-tcp" -p "${PROBE_TCP_PORT}:18080" "${PROBE_IMAGE}" >/dev/null
+docker run -d --rm --name "${PROBE_NAME}-udp" -p "${PROBE_UDP_PORT}:18080/udp" "${PROBE_IMAGE}" >/dev/null
 info "containers publish ${PROBE_TCP_PORT} and ${PROBE_UDP_PORT}/udp"
 busy=$("${MORZER}" --root "${PROBE_ROOT}" --plain apply 2>&1) &&
 	fail "apply converged with ${PROBE_TCP_PORT} and ${PROBE_UDP_PORT}/udp held: ${busy}"
@@ -499,7 +507,7 @@ printf '%s\n' "${busy}" | grep -q 'already in use' ||
 agree "${PROBE_TCP_PORT}/tcp" "$(refuses "${busy}" "${PROBE_TCP_PORT}/tcp")" "$(publishes "${PROBE_TCP_PORT}:18080")"
 agree "${PROBE_UDP_PORT}/udp" "$(refuses "${busy}" "${PROBE_UDP_PORT}/udp")" "$(publishes "${PROBE_UDP_PORT}:18080/udp")"
 
-docker rm -f morzer-probe-tcp morzer-probe-udp >/dev/null
+docker rm -f "${PROBE_NAME}-tcp" "${PROBE_NAME}-udp" >/dev/null
 info "the containers are gone"
 free_tcp=$(publishes "${PROBE_TCP_PORT}:18080")
 free_udp=$(publishes "${PROBE_UDP_PORT}:18080/udp")
@@ -1739,14 +1747,15 @@ if [ "${OS}" = Darwin ] && [ -n "${ACCEPTANCE_REBOOT_DIR:-}" ]; then
 	DAEMONS=/Library/LaunchDaemons
 
 	step "an installation with real jobs, for the restart"
-	for plist in "${DAEMONS}"/dev.morzer.demo.plist "${DAEMONS}"/dev.morzer.demo-*.plist; do
-		[ ! -e "${plist}" ] ||
-			fail "${plist} is installed already; remove that installation's jobs first"
+	for job in "" -backup -update -fleet -sync -doctor -metrics; do
+		[ ! -e "${DAEMONS}/dev.morzer.demo${job}.plist" ] ||
+			fail "${DAEMONS}/dev.morzer.demo${job}.plist is installed already; remove that installation's jobs first"
 	done
 	[ ! -e "${REBOOT_DIR}" ] ||
 		fail "${REBOOT_DIR} is left from an earlier run: finish it with --after-reboot, or remove it"
 	install -d -m 0755 -o root -g wheel "${REBOOT_DIR}" "${REBOOT_DIR}/bin"
 	install -m 0755 -o root -g wheel "${MORZER}" "${REBOOT_MORZER}"
+	REBOOT_INSTALLED=1
 
 	"${REBOOT_MORZER}" --root "${REBOOT_ROOT}" init \
 		--release "${BUNDLED}" \
