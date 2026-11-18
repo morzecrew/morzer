@@ -58,6 +58,11 @@ type BackupOptions struct {
 // Backup coordinates a backup of the database, files, configuration, the
 // encrypted secret state and the release manifest.
 func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
+	if opts.Unattended {
+		if err := d.scheduledRun(ctx, domain.StampBackup, opts.DryRun); err != nil {
+			return Result{}, err
+		}
+	}
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return Result{}, err

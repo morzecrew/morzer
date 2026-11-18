@@ -485,6 +485,9 @@ func (r UnattendedResult) Summary() string {
 // leaves it alone (UpdateCandidate.Failed), and one that finds an operation
 // waiting for a person does nothing but say so.
 func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (UnattendedResult, error) {
+	if err := d.scheduledRun(ctx, domain.StampUpdate, opts.DryRun); err != nil {
+		return UnattendedResult{}, err
+	}
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return UnattendedResult{}, err

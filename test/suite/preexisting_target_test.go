@@ -242,8 +242,14 @@ func TestATickRefusesAFileThatAppearsAfterItsGate(t *testing.T) {
 	h.setHookEnv()
 	applyBaseline(t, h)
 	armAutoApply(t, h)
+	// The tick's first question to the engine is its own, before the gate
+	// (RFC 0055 decision 29).
+	statuses := 0
 	h.Runtime.OnCall = func(method string) {
-		if method == "Status" && target != "" {
+		if method == "Status" {
+			statuses++
+		}
+		if method == "Status" && statuses > 1 && target != "" {
 			if _, err := os.Stat(target); err != nil {
 				writeOperatorFile(t, target, "written while the update ran\n")
 			}
