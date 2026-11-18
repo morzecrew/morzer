@@ -12,3 +12,9 @@ import (
 func newSupervisor(runner exec.Runner, paths domain.Paths) ports.Supervisor {
 	return launchd.New(runner, paths)
 }
+
+// supervisedProducts names the products whose boot job the manager wrote, for a
+// completion that cannot read the installations themselves.
+func supervisedProducts(root string) []string {
+	return launchd.BootJobProducts(launchd.DaemonDir, root)
+}

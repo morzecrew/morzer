@@ -246,8 +246,9 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 		Short: "Rebuild this machine from an export and a recovery key",
 		Long: "Restores the installation with its ORIGINAL id, so backups taken by the\n" +
 			"machine that was lost remain restorable. Generates a new machine key for\n" +
-			"this host and revokes the old one, and installs the systemd units as\n" +
-			"`init` does.\n\n" +
+			"this host and revokes the old one, and installs the init system's units,\n" +
+			"systemd's or launchd's jobs on a Mac, as `init` does, unless\n" +
+			"--install-units=false.\n\n" +
 			"The identity comes from an export file, or with --from-backup out of a\n" +
 			"backup you already have — every backup carries one, encrypted to the\n" +
 			"recovery keys alone, so a recovery key and a backup are enough.\n\n" +
@@ -379,7 +380,7 @@ func newInstallationImportCommand(app *App) *cobra.Command {
 			"targets. Omitted keeps whatever the export was; a sandbox can never "+
 			"be imported as production")
 	cmd.Flags().BoolVar(&installUnits, "install-units", true,
-		"install systemd units when systemd is available")
+		"install the init system's units, systemd's or a Mac's launchd jobs, when it is available")
 	return cmd
 }
 

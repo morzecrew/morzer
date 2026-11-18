@@ -328,27 +328,50 @@ acceptance: build
 # The release PR commits a run on a Mac, and the release builds its darwin
 # archive only beside it (RFC 0055 decisions 9 and 20). So only a run that
 # passes writes the record, and only from a tree with nothing uncommitted,
-# since the record names the commit it ran at (logs/macos-host.md).
+# since the record names the commit it ran at (logs/macos-host.md). It runs in
+# two phases around a restart: the first runs the scenario and leaves an
+# installation whose jobs launchd runs, and `--after-reboot`, after a restart
+# and a login, checks what the boot did with it before the record is written.
 
-# Run the acceptance on this Mac, under sudo, and record it for a release.
-acceptance-record version: build
+# Run the acceptance on this Mac, then again with --after-reboot after a restart.
+acceptance-record *args: build
     #!/usr/bin/env bash
     set -euo pipefail
+    set -- {{args}}
+    phase=1
+    if [ "${1:-}" = --after-reboot ]; then phase=2; shift; fi
+    [ $# = 1 ] || { echo "usage: just acceptance-record [--after-reboot] <version>"; exit 1; }
+    version=$1
     [ "$(uname -s)" = Darwin ] || { echo "the record is of a run on a Mac"; exit 1; }
     [ -z "$(git status --porcelain)" ] || { echo "commit first: the record names the commit it ran at"; exit 1; }
-    record=".github/macos-acceptance/v{{version}}.txt"
+    reboot=/private/var/morzer-acceptance-reboot
+    record=".github/macos-acceptance/v${version}.txt"
     run="$(mktemp)"
     trap 'rm -f "$run"' EXIT
-    {
-        echo "morzer {{version}}, the acceptance run on macOS"
-        echo "commit $(git rev-parse HEAD)"
-        sw_vers
-        docker version --format 'engine {{{{.Server.Platform.Name}}, server {{{{.Server.Version}}'
-        echo
-    } >"$run"
     # The caller's PATH, which sudo replaces where sudoers sets secure_path:
     # Homebrew's sops and jq are on it, and root's may not have them.
-    sudo env PATH="$PATH" .github/scripts/acceptance.sh 2>&1 | tee -a "$run"
+    if [ "$phase" = 1 ]; then
+        {
+            echo "morzer ${version}, the acceptance run on macOS"
+            echo "commit $(git rev-parse HEAD)"
+            sw_vers
+            docker version --format 'engine {{{{.Server.Platform.Name}}, server {{{{.Server.Version}}'
+            echo
+        } >"$run"
+        sudo env PATH="$PATH" ACCEPTANCE_REBOOT_DIR="$reboot" .github/scripts/acceptance.sh 2>&1 | tee -a "$run"
+        sudo cp "$run" "$reboot/phase1.txt"
+        echo "the first phase passed; restart this Mac, log in, then run: just acceptance-record --after-reboot ${version}"
+        exit 0
+    fi
+    sudo test -f "$reboot/phase1.txt" ||
+        { echo "no first phase in ${reboot}: run just acceptance-record ${version} first"; exit 1; }
+    sudo cat "$reboot/phase1.txt" >"$run"
+    [ "$(head -1 "$run")" = "morzer ${version}, the acceptance run on macOS" ] ||
+        { echo "the first phase was for another version: $(head -1 "$run")"; exit 1; }
+    grep -qx "commit $(git rev-parse HEAD)" "$run" ||
+        { echo "the first phase ran at another commit: $(grep '^commit ' "$run")"; exit 1; }
+    printf '\n== after the restart ==\n' >>"$run"
+    sudo env PATH="$PATH" ACCEPTANCE_REBOOT_DIR="$reboot" .github/scripts/acceptance-reboot.sh 2>&1 | tee -a "$run"
     mkdir -p .github/macos-acceptance
     cp "$run" "$record"
     echo "recorded ${record}; commit it in the release PR"

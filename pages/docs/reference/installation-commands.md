@@ -167,7 +167,7 @@ carries one.
 | `--target` | Read the backup from a target rather than from this machine. Transfers the identity document and the manifest, not the archive. |
 | `--credentials-file` | Credentials for `--target`, for when the secret store that held them is on the machine that died. |
 | `--mode` | Rebuild as a sandbox with `dev`, which also **drops the export's backup targets**. Omitted keeps whatever the export was; a sandbox can never be imported as production. See [dev mode](../operating/unattended-updates.md#dev-mode-a-machine-that-is-a-sandbox-from-birth). |
-| `--install-units` | Install the systemd units when systemd is available, as `init` does. Default `true`. |
+| `--install-units` | Install the init system's units, systemd's, or launchd's jobs on a Mac, when it is available, as `init` does. Default `true`. |
 
 With `--from-backup` the positional argument is a backup id rather than a path.
 
@@ -202,8 +202,8 @@ What it does, in order:
 5. Generates a **new** age identity for this host.
 6. Re-encrypts the state for that new key plus every non-machine recipient, and
    verifies this machine can now read it.
-7. Installs the systemd units, when systemd is available. A unit that already
-   exists keeps whatever enablement it has.
+7. Installs the init system's units, systemd's or launchd's jobs on a Mac, when
+   it is available. A unit that already exists keeps whatever enablement it has.
 
 The old machine's key is dropped. A decommissioned host must not retain the
 ability to decrypt — if it is being replaced because it was compromised, keeping
@@ -353,7 +353,7 @@ says so.
 
 | What | Default | `--purge` |
 | --- | --- | --- |
-| systemd units | removed | removed |
+| systemd units, or launchd's jobs on a Mac | removed | removed |
 | containers and networks | removed | removed |
 | named volumes | **kept** | removed |
 | images no release left on the machine names | removed | removed |

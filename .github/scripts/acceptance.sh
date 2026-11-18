@@ -94,6 +94,18 @@ WEB_MOVED_PORT="${ACCEPTANCE_WEB_MOVED_PORT:-18092}"
 # port parameter, and a value of its own keeps it from naming another's.
 OWNER_HTTP_PORT="${ACCEPTANCE_OWNER_HTTP_PORT:-18096}"
 
+# The port probe's, one TCP and one UDP, which containers hold and then let go
+# while the probe is asked about them.
+PROBE_TCP_PORT="${ACCEPTANCE_PROBE_TCP_PORT:-18094}"
+PROBE_UDP_PORT="${ACCEPTANCE_PROBE_UDP_PORT:-18093}"
+# The containers that hold them, named for this run so a container of anyone
+# else's is never the one removed.
+PROBE_NAME="morzer-probe-$$"
+
+# The restart's installation's, on a Mac: it outlives this script, so it takes
+# a port none of the others does.
+REBOOT_HTTP_PORT="${ACCEPTANCE_REBOOT_HTTP_PORT:-18095}"
+
 # Whether this script started the registry, and so owns stopping it.
 STARTED_REGISTRY=0
 
@@ -136,6 +148,12 @@ cleanup() {
 	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p web down -v --remove-orphans >/dev/null 2>&1 || true
 	docker compose -p owner down --remove-orphans >/dev/null 2>&1 || true
+	docker rm -f "${PROBE_NAME}-tcp" "${PROBE_NAME}-udp" "${PROBE_NAME}-second" >/dev/null 2>&1 || true
+	# A first phase that failed after it installed the restart's
+	# installation leaves no jobs for the next boot to run.
+	if [ $status -ne 0 ] && [ "${REBOOT_INSTALLED:-}" = 1 ]; then
+		ACCEPTANCE_REBOOT_DIR="${REBOOT_DIR}" "${ROOT_DIR}/.github/scripts/acceptance-reboot.sh" --remove || true
+	fi
 	if [ "${STARTED_REGISTRY}" = "1" ]; then
 		docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
@@ -402,6 +420,106 @@ info "1.2.0 and 1.3.0, pinned to the pushed digests"
 
 step "release verify"
 "${MORZER}" release verify "${WORK}/bundle-1.2.0"
+
+# ----------------------------------------------------------------------------
+# The port probe, against the engine
+#
+# A release is refused at preflight when a port it needs is held, and the
+# engine is what holds it: the probe has to agree with the engine about a port
+# either way, or a release passes preflight and fails at `up` after the old
+# containers are gone, or is refused for nothing (RFC 0059 decision 10). Docker
+# Desktop binds a published port in its own process, not in a VM's kernel, and
+# RFC 0059 §8 left whether the probe agrees there to this run on a Mac
+# (logs/macos-host.md). On Linux it repeats what RFC 0059 §13 measured.
+#
+# Before the scenario's own install, while the demo project is free: the probe's
+# release is the same bundle, and so the same Compose project.
+
+step "the port probe and the engine agree on a busy port and a free one"
+PROBE_BUNDLE="${WORK}/bundle-probe"
+cp -r "${WORK}/bundle-1.2.0" "${PROBE_BUNDLE}"
+ports_floor="$(sed -n 's/^const PortsMinManagerVersion = "\(.*\)"$/\1/p' "${ROOT_DIR}/internal/domain/ports.go")"
+[ -n "${ports_floor}" ] || fail "cannot read PortsMinManagerVersion from the source"
+floor="$(sed -n 's/^  min_manager_version: "\(.*\)"$/\1/p' "${PROBE_BUNDLE}/manifest.yaml")"
+floor="$(printf '%s\n%s\n' "${floor}" "${ports_floor}" | sort -V | tail -1)"
+sed_in_place \
+	-e "s|^  ports: \[\"{{ .Parameters.http_port }}\"\]$|  ports: [\"{{ .Parameters.http_port }}\", \"${PROBE_UDP_PORT}/udp\"]|" \
+	-e "s|^  min_manager_version: \".*\"$|  min_manager_version: \"${floor}\"|" \
+	"${PROBE_BUNDLE}/manifest.yaml"
+grep -q "\"${PROBE_UDP_PORT}/udp\"" "${PROBE_BUNDLE}/manifest.yaml" ||
+	fail "the probe's bundle was not rewritten to need ${PROBE_UDP_PORT}/udp"
+
+PROBE_ROOT="${WORK}/probe-root"
+"${MORZER}" --root "${PROBE_ROOT}" init \
+	--release "${PROBE_BUNDLE}" \
+	--profile embedded \
+	--domain probe.example \
+	--no-recovery-recipient \
+	--install-units=false \
+	--set http_port="${PROBE_TCP_PORT}" >/dev/null
+
+PROBE_IMAGE="${REGISTRY}/demo/app:acceptance"
+
+# publishes reports whether the engine publishes a port now, from a second
+# container that is gone again either way.
+publishes() {
+	local verdict=no
+	if docker run -d --name "${PROBE_NAME}-second" -p "$1" "${PROBE_IMAGE}" >/dev/null 2>&1; then
+		verdict=yes
+	fi
+	docker rm -f "${PROBE_NAME}-second" >/dev/null 2>&1 || true
+	printf '%s' "${verdict}"
+}
+
+# refuses reports whether apply's preflight refused a port, spelled as it
+# spells one, `18094/tcp`, from its output.
+refuses() {
+	if printf '%s\n' "$1" | grep -Eq "port ([^ ]+, )*$2(,| already in use)"; then
+		printf yes
+	else
+		printf no
+	fi
+}
+
+# agree fails the run when the probe and the engine answer a port differently.
+agree() {
+	local port=$1 refused=$2 published=$3
+	if [ "${refused}" = yes ] && [ "${published}" = yes ]; then
+		fail "the probe refused ${port}, which the engine publishes"
+	fi
+	if [ "${refused}" = no ] && [ "${published}" = no ]; then
+		fail "the probe passed ${port}, which the engine does not publish"
+	fi
+	if [ "${refused}" = yes ]; then
+		info "${port}: the probe refuses it, and the engine does not publish it"
+	else
+		info "${port}: the probe passes it, and the engine publishes it"
+	fi
+}
+
+docker run -d --rm --name "${PROBE_NAME}-tcp" -p "${PROBE_TCP_PORT}:18080" "${PROBE_IMAGE}" >/dev/null
+docker run -d --rm --name "${PROBE_NAME}-udp" -p "${PROBE_UDP_PORT}:18080/udp" "${PROBE_IMAGE}" >/dev/null
+info "containers publish ${PROBE_TCP_PORT} and ${PROBE_UDP_PORT}/udp"
+busy=$("${MORZER}" --root "${PROBE_ROOT}" --plain apply 2>&1) &&
+	fail "apply converged with ${PROBE_TCP_PORT} and ${PROBE_UDP_PORT}/udp held: ${busy}"
+printf '%s\n' "${busy}" | grep -q 'already in use' ||
+	fail "apply failed before the port probe answered: ${busy}"
+agree "${PROBE_TCP_PORT}/tcp" "$(refuses "${busy}" "${PROBE_TCP_PORT}/tcp")" "$(publishes "${PROBE_TCP_PORT}:18080")"
+agree "${PROBE_UDP_PORT}/udp" "$(refuses "${busy}" "${PROBE_UDP_PORT}/udp")" "$(publishes "${PROBE_UDP_PORT}:18080/udp")"
+
+docker rm -f "${PROBE_NAME}-tcp" "${PROBE_NAME}-udp" >/dev/null
+info "the containers are gone"
+free_tcp=$(publishes "${PROBE_TCP_PORT}:18080")
+free_udp=$(publishes "${PROBE_UDP_PORT}:18080/udp")
+if free=$("${MORZER}" --root "${PROBE_ROOT}" --plain apply 2>&1); then
+	agree "${PROBE_TCP_PORT}/tcp" no "${free_tcp}"
+	agree "${PROBE_UDP_PORT}/udp" no "${free_udp}"
+else
+	agree "${PROBE_TCP_PORT}/tcp" "$(refuses "${free}" "${PROBE_TCP_PORT}/tcp")" "${free_tcp}"
+	agree "${PROBE_UDP_PORT}/udp" "$(refuses "${free}" "${PROBE_UDP_PORT}/udp")" "${free_udp}"
+	fail "apply failed with both ports free: ${free}"
+fi
+docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 
 step "init"
 mkdir -p "${WORK}/keys"
@@ -1608,3 +1726,65 @@ info "images.bundled is ok"
 
 step "tearing the air-gapped deployment down"
 docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
+
+# ----------------------------------------------------------------------------
+# The restart, on a Mac (RFC 0055 decision 9, logs/macos-host.md)
+#
+# A run by hand cannot carry on through a restart, so `just acceptance-record`
+# makes its record in two phases, and this is the end of the first. It leaves
+# an installation whose jobs launchd runs: the packed bundle above, which
+# carries its image and needs no registry, under a root of its own, run by a
+# copy of the manager only root can replace, since launchd runs it as root.
+# Its containers come down, and its run directory goes, as a restart leaves
+# them, so the start at boot has both to bring back. After the restart and a
+# login, acceptance-reboot.sh checks that it did, and that it caught up a
+# backup the restart missed, then removes the installation.
+
+if [ "${OS}" = Darwin ] && [ -n "${ACCEPTANCE_REBOOT_DIR:-}" ]; then
+	REBOOT_DIR="${ACCEPTANCE_REBOOT_DIR}"
+	REBOOT_ROOT="${REBOOT_DIR}/root"
+	REBOOT_MORZER="${REBOOT_DIR}/bin/morzer"
+	DAEMONS=/Library/LaunchDaemons
+
+	step "an installation with real jobs, for the restart"
+	for job in "" -backup -update -fleet -sync -doctor -metrics; do
+		[ ! -e "${DAEMONS}/dev.morzer.demo${job}.plist" ] ||
+			fail "${DAEMONS}/dev.morzer.demo${job}.plist is installed already; remove that installation's jobs first"
+	done
+	[ ! -e "${REBOOT_DIR}" ] ||
+		fail "${REBOOT_DIR} is left from an earlier run: finish it with --after-reboot, or remove it"
+	install -d -m 0755 -o root -g wheel "${REBOOT_DIR}" "${REBOOT_DIR}/bin"
+	install -m 0755 -o root -g wheel "${MORZER}" "${REBOOT_MORZER}"
+	REBOOT_INSTALLED=1
+
+	"${REBOOT_MORZER}" --root "${REBOOT_ROOT}" init \
+		--release "${BUNDLED}" \
+		--profile embedded \
+		--domain reboot.example \
+		--no-recovery-recipient \
+		--set http_port="${REBOOT_HTTP_PORT}"
+	"${REBOOT_MORZER}" --root "${REBOOT_ROOT}" apply
+	[ -f "${DAEMONS}/dev.morzer.demo.plist" ] || fail "init installed no boot job in ${DAEMONS}"
+	info "jobs: $(for f in "${DAEMONS}"/dev.morzer.demo*.plist; do basename "${f}" .plist; done | tr '\n' ' ')"
+
+	# A run by hand cannot count on the Mac being off over a scheduled time
+	# (logs/macos-host.md). So the backup runs daily at a time that passed two
+	# minutes ago, and its job's plist is dated a day back: a job with no stamp
+	# counts from its plist, so the first boot finds the backup due and the
+	# catch-up runs it, as one missed while the Mac was off.
+	step "a backup the restart will have missed"
+	"${REBOOT_MORZER}" --root "${REBOOT_ROOT}" config set backup.schedule="*-*-* $(date -v-2M +%H:%M)"
+	[ ! -e "${REBOOT_ROOT}/var/lib/demo/manager/stamps/backup" ] ||
+		fail "the backup has a stamp already, so nothing would be missed"
+	touch -t "$(date -v-1d +%Y%m%d%H%M)" "${DAEMONS}/dev.morzer.demo-backup.plist"
+	info "the backup is due since $(date -v-2M +%H:%M), and its job counts from $(date -v-1d '+%F %H:%M')"
+
+	# A restart clears /var/run, and the rendered secrets with it, but not this
+	# root's copy of it, which is under a directory that outlives the restart.
+	step "its containers down, and its run directory gone, as a restart leaves them"
+	docker compose -p demo down --remove-orphans >/dev/null
+	rm -rf -- "${REBOOT_ROOT}/var/run/demo"
+	[ ! -e "${REBOOT_ROOT}/var/run/demo" ] || fail "the restart's run directory is still there"
+
+	step "restart this Mac, log in, then run: just acceptance-record --after-reboot <version>"
+fi

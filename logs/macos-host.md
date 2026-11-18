@@ -1557,3 +1557,135 @@ design change for a later pull request; until the job's first run stamps, the
 next tick is the fallback.
 
 **Drift count: 2.** Nothing the third look found is drift.
+
+## The acceptance run's restart, and the close-out, P2
+
+On branch `rfc-0055-reboot` from `main` at `0acba199`, the last of P2's three
+pull requests: the acceptance run's restart and its port-probe step, the
+leftovers P2 named (shell completion and the `--install-units` help on a Mac),
+and RFC 0055's close-out. The plan raised five questions, which the author
+ruled on 2026-11-18 as it leaned; they are the entries below.
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:08:30Z
+attempt: 1
+claim: Decision 9's two-phase run needs an installation whose jobs launchd runs across the restart, and the acceptance run works under `--root`, where nothing does. Ruled by the author as the plan leaned: after the run's own scenario passes, phase 1 installs a second installation, persistent, under `/private/var/morzer-acceptance-reboot`, which is root's, from a copy of the manager binary inside that directory that only root can replace, with real jobs, `dev.morzer.demo` and the rest. It refuses to start while any `dev.morzer.demo*` plist is already in `/Library/LaunchDaemons`. A job runs it through `--config`, from which the manager derives the root (`internal/cli/root.go:1403`). The plan kept the throwaway registry running so nothing is pulled after the restart; the run's last stage already packs a bundle that carries its images and needs no registry, so the restart's installation installs that one, and the registry is not kept.
+evidence: .github/scripts/acceptance.sh:1559-1568
+action: decided
+```
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:08:30Z
+attempt: 1
+claim: The second phase checks that a missed backup was caught up, and a run by hand cannot count on the Mac being off over a scheduled time. Ruled by the author as the plan leaned: phase 1 sets a daily backup time that has already passed today and dates the backup job's plist to yesterday. A job installed fresh has no stamp, so the first boot finds the backup overdue and the catch-up runs it through its own path. The record says the missed backup was made so rather than waited for.
+evidence: internal/adapters/supervisor/launchd/catchup.go:143-155
+action: decided
+```
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:08:30Z
+attempt: 1
+claim: Decision 9's ruling has the second phase check that the boot converged and a missed backup was caught up, and does not say how. Ruled by the author as the plan leaned: no record is written unless the boot job ran during this boot and last exited 0, the journal holds an `apply` begun after the boot that succeeded, the backup's stamp is newer than the boot and a backup newer than the boot is listed, and the boot job's log names the job it caught up. Either way, the phase then removes the restart's installation and its jobs.
+evidence: justfile:334
+action: decided
+```
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:08:30Z
+attempt: 1
+claim: RFC 0059 §8 leaves to this RFC's acceptance run whether the port probe agrees with Docker Desktop, which binds a published port in its own process rather than in the VM. Ruled by the author as the plan leaned: the run fails when they disagree. While a container publishes a TCP port and a UDP port, `network.ports` must refuse a release that needs them, as Docker refuses a second container publishing them; once both are free, the probe must pass them, as Docker then publishes them, since RFC 0059 decision 10 has the probe agree with Docker. The step runs on every platform, so Linux's lane runs it too, where it repeats what RFC 0059 §13 measured.
+evidence: internal/lifecycle/preflight/preflight.go:383-399
+action: decided
+```
+
+The author also ruled the close-out as the plan leaned: RFC 0055 is complete
+when this pull request merges, since P0 to P2 are built and P3, the client
+bundle, is morzecrew/dotdash's. The fourteen rows the execution proposed and
+the RFC does not yet hold are appended, each citing its entry, as decisions
+33 to 46.
+
+```divergence
+decision: 29
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:21:17Z
+attempt: 2
+claim: Written after the fact, at the close-out: the third look at #390 made three decisions about what moves a stamp that the entries above did not record. A run cancelled on any path of the engine's question exits 130 and leaves its stamp, whatever the question answered. A read of the project that timed out settles nothing, so the engine's answer stands and the run defers. And a scheduled backup or tick that cannot read the installation stamps, unless it was interrupted or is a dry run, as §5.6 has every failure but the engine's stamp.
+evidence: internal/lifecycle/ops/stamp.go:27-46
+action: decided
+```
+
+The close-out of P2, after building this pull request:
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:23:29Z
+attempt: 1
+claim: Built as the rulings above have it. `just acceptance-record <version>` runs the scenario and, on a Mac, leaves the restart's installation under `/private/var/morzer-acceptance-reboot` with real jobs and a backup made due; `just acceptance-record --after-reboot <version>`, from the same commit and for the same version, checks the boot job, the journal, the backup's stamp, the backups and the boot job's log, removes the installation either way, and writes the record only when every check passed. The port step runs before the scenario's install, and passed on Linux against Docker 29.7.2, the probe and the engine agreeing on 18094/tcp and 18093/udp busy and free; a probe that passed every UDP port turned it red.
+evidence: .github/scripts/acceptance.sh:1735-1774
+action: decided
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-18T11:23:29Z
+attempt: 1
+claim: Decision 1 has each weaker guarantee stated, and the Platforms page says what a Mac's release record now proves: the run across a restart, the start at boot's convergence after a login and its catch-up of a missed backup, and the port probe agreeing with Docker Desktop. The page's warning that no release has passed the run on a Mac stays until the release pull request that commits the first record.
+evidence: pages/docs/explanation/platforms.md:173-180
+action: decided
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:23:29Z
+attempt: 1
+claim: Linux is unchanged by this pull request's product code: completion's fallback on Linux still reads systemd's units, through a per-OS function, and the `--install-units` help names launchd only beside systemd. Linux's acceptance lane gains the port step, which checks the probe Linux already runs.
+evidence: internal/cli/supervisor_linux.go:13-15
+action: decided
+```
+
+**Not measured:** the restart itself. Both phases run only on a Mac, and the
+second only after a restart and a login, so neither has run yet: the first run
+of `just acceptance-record` on the author's Mac is the one that sees them, and
+the record it writes is the release's. What launchd does with a calendar time a
+clock change skips or repeats is not measured either.
+
+**Drift count: 2.** Nothing in P2 is drift. RFC 0055 closes with the two from P1.
+
+## Review of the restart's run
+
+```divergence
+decision: 9
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T11:57:48Z
+attempt: 2
+claim: The review of this pull request tightened the restart's run. A restart clears `/var/run`, but not the restart installation's copy of it under a directory that outlives the restart, so the first phase takes its containers down and removes it, and the second fails unless the start at boot rendered the secrets again. A first phase that fails after it installed removes what it installed, so no job is left for the next boot. The removal names the installation's seven jobs, not every job under its prefix. And the second phase requires exactly one backup, taken after the boot: the first phase takes none, and the job logs carry no time to tell one boot from another, so a second backup says the Mac restarted more than once or its schedule came round as well.
+evidence: .github/scripts/acceptance-reboot.sh:110-120
+action: decided
+```
+
+**Found, not fixed:** a job's log on a Mac carries no time. The manager's JSON
+log leaves the time out unless asked for it (`internal/infra/logging/logging.go:50`),
+since journald stamps every line, and nothing asks for it; launchd writes a
+job's output to its file as it comes. So `VarDir/logs/<label>.log` cannot say
+when a line was written. It needs a decision, whether every log off journald
+carries its time or only a Mac's jobs, and is for a later pull request.

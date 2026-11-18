@@ -112,7 +112,8 @@ picture: what two deployments share, and what `doctor` says about it.
 ## init
 
 Creates the directory layout, the machine's age identity, the installation
-configuration, the encrypted secret state and, optionally, the systemd units.
+configuration, the encrypted secret state and, optionally, the init system's
+units: systemd's, or launchd's jobs on a Mac.
 
 It never overwrites an existing installation, and it does not start the product:
 run `apply` afterwards.
@@ -131,7 +132,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--no-recovery-recipient` | Proceed without one. Losing this machine then loses its secrets. |
 | `--allow-unencrypted-disk` | On a Mac, go on with FileVault off, and record [`secrets.allow_unencrypted_disk`](parameters.md#installation-settings-are-not-parameters). Without it, `init` refuses there before it writes anything, exit 6. On Linux it records the setting, and nothing reads it. |
 | `--generate-secrets` | Generate every secret the release declares a generator for. Default `true`. |
-| `--install-units` | Install systemd units when systemd is available. Default `true`. |
+| `--install-units` | Install the init system's units, systemd's, or launchd's jobs on a Mac, when it is available. Default `true`. |
 | `--backup-schedule` | systemd `OnCalendar` expression for scheduled backups. |
 | `--signing-key` | minisign public key a release signature must verify against. Repeat for several. Given one, `init` requires a signature and ignores a key the release ships. On a repair it is checked beside the installation's keys and not recorded, and requires a signature only with `--require-signature`. |
 | `--require-signature` | Refuse any release that is not signed by a trusted key. On whenever a key is trusted, given or [shipped by the release](#the-key-a-release-ships); `--require-signature=false` turns it off and trusts no key the release ships. |
@@ -1111,9 +1112,10 @@ files.
 
 Under `sudo` the completion runs as you, not as root, and cannot open an
 installation's directory. It then offers the products whose service unit the
-manager wrote in `/etc/systemd/system`, which is world-readable, described as
-not readable as this user. An installation created with
-`--install-units=false` has no unit and is not offered then; run the
+manager wrote in `/etc/systemd/system`, or on a Mac whose boot job it wrote in
+`/Library/LaunchDaemons`, both world-readable, described as not readable as
+this user. An installation created with `--install-units=false` has no unit
+and is not offered then; run the
 completion in a root shell to see it. The arguments in the table offer nothing
 under `sudo`, since they need the installation itself: `sudo morzer shell
 <product>` gives a root shell where they complete.
