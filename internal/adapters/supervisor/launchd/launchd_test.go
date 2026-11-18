@@ -3,8 +3,10 @@ package launchd_test
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -339,6 +341,69 @@ func TestStatusReadsLaunchctlPrintInSystemdsWords(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, ports.UnitState{Name: label, Loaded: true, Enabled: true,
 				Active: tc.active, Sub: tc.sub, ExitCode: tc.code}, got)
+		})
+	}
+}
+
+// macCaptures are what launchctl printed for a job on a Mac
+// (spikes/macos-host/launchd-probe.txt), by file.
+func macCaptures(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, name := range []string{"print-never-run.txt", "print-running.txt", "print-exited.txt"} {
+		b, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+		out[name] = string(b)
+	}
+	return out
+}
+
+// printedOnAMac is a capture as launchctl prints it for the job named, with its
+// run count.
+func printedOnAMac(capture, label string, runs int) string {
+	s := strings.ReplaceAll(capture, "dev.morzer.probe-catchup", label)
+	return runsLine.ReplaceAllString(s, fmt.Sprintf("\truns = %d", runs))
+}
+
+var runsLine = regexp.MustCompile(`\truns = \d+`)
+
+// The same, read from what launchctl printed on a Mac before a job's first
+// run, while it ran, and after it exited 3, with print-disabled's own layout.
+func TestStatusReadsWhatLaunchctlPrintsOnAMac(t *testing.T) {
+	for name, tc := range map[string]struct {
+		capture     string
+		boot        bool
+		active, sub string
+		code        int
+	}{
+		"never run":         {"print-never-run.txt", false, "inactive", "waiting", 0},
+		"running":           {"print-running.txt", false, "active", "running", 0},
+		"exited 3":          {"print-exited.txt", false, "failed", "exited", 3},
+		"boot job retrying": {"print-exited.txt", true, "activating", "auto-restart", 3},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			units, err := f.s.Units(ports.UnitParams{Product: "demo", ManagerPath: "/m"})
+			require.NoError(t, err)
+			require.NoError(t, os.MkdirAll(f.daemons, 0o755))
+			for _, u := range units {
+				require.NoError(t, os.WriteFile(filepath.Join(f.daemons, u.Name+".plist"), u.Contents, 0o644))
+			}
+			label := "dev.morzer.demo-backup"
+			if tc.boot {
+				label = "dev.morzer.demo"
+			}
+			f.runner.OnOutput("print-disabled", "\tdisabled services = {\n\t\t\""+label+"\" => enabled\n\t}\n")
+			f.runner.OnOutput("print system/", printedOnAMac(macCaptures(t)[tc.capture], label, 1))
+
+			got, err := f.s.Status(context.Background(), label)
+			require.NoError(t, err)
+			assert.Equal(t, ports.UnitState{Name: label, Loaded: true, Enabled: true,
+				Active: tc.active, Sub: tc.sub, ExitCode: tc.code}, got)
+
+			paths, err := f.s.UnitsManagerPaths(context.Background(), "demo")
+			require.NoError(t, err)
+			assert.Contains(t, paths, "/bin/sh", "the program launchd loaded was not read")
 		})
 	}
 }

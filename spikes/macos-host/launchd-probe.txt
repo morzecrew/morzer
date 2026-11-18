@@ -1,0 +1,355 @@
+ProductName:		macOS
+ProductVersion:		27.2.1
+BuildVersion:		26B131
+
+== launchctl print system/dev.morzer.no-such-job ==
+Bad request.
+Could not find service "dev.morzer.no-such-job" in domain for system
+exit 113
+
+== launchctl bootstrap system /Library/LaunchDaemons/dev.morzer.probe-catchup.plist ==
+exit 0
+
+== print before the first run, whole ==
+system/dev.morzer.probe-catchup = {$
+^Iactive count = 0$
+^Ipath = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist$
+^Itype = LaunchDaemon$
+^Istate = not running$
+$
+^Iprogram = /bin/sh$
+^Iarguments = {$
+^I^I/bin/sh$
+^I^I-c$
+^I^Isleep 15; exit 3$
+^I}$
+$
+^Idefault environment = {$
+^I^IPATH => /usr/bin:/bin:/usr/sbin:/sbin$
+^I}$
+$
+^Ienvironment = {$
+^I^IOSLogRateLimit => 64$
+^I^IXPC_SERVICE_NAME => dev.morzer.probe-catchup$
+^I}$
+$
+^Idomain = system$
+^Iminimum runtime = 10$
+^Iexit timeout = 5$
+^Iruns = 0$
+^Ilast exit code = (never exited)$
+$
+^Ievent triggers = {$
+^I^Idev.morzer.probe-catchup.268435473 => {$
+^I^I^Ikeepalive = 0$
+^I^I^Iservice = dev.morzer.probe-catchup$
+^I^I^Istream = com.apple.launchd.calendarinterval$
+^I^I^Imonitor = com.apple.UserEventAgent-System$
+^I^I^Idescriptor = {$
+^I^I^I^I"Minute" => 4$
+^I^I^I^I"Hour" => 4$
+^I^I^I^I"Day" => 1$
+^I^I^I^I"Month" => 1$
+^I^I^I}$
+^I^I}$
+^I}$
+$
+^Ievent channels = {$
+^I^I"com.apple.launchd.calendarinterval" = {$
+^I^I^Iport = 0x0$
+^I^I^Iactive = 0$
+^I^I^Imanaged = 1$
+^I^I^Ireset = 0$
+^I^I^Ihide = 0$
+^I^I^Iwatching = 1$
+^I^I}$
+^I}$
+$
+^Ispawn type = daemon (3)$
+^Ijetsam priority = 40$
+^Ijetsam memory limit (active) = (unlimited)$
+^Ijetsam memory limit (inactive) = (unlimited)$
+^Ijetsamproperties category = daemon$
+^Ijetsam thread limit = 32$
+^Icpumon = default$
+^Isanitizer flags = 0x0$
+$
+^Iproperties = inferred program$
+}$
+
+== launchctl disable system/dev.morzer.probe-catchup ==
+exit 0
+
+== print-disabled, probe disabled ==
+^Idisabled services = {$
+^I^I"dev.morzer.probe-catchup" => disabled$
+
+== launchctl enable system/dev.morzer.probe-catchup ==
+exit 0
+
+== print-disabled, probe enabled ==
+^I^I"dev.morzer.probe-catchup" => enabled$
+
+== launchctl kickstart system/dev.morzer.probe-catchup ==
+exit 0
+
+== at once after kickstart ==
+^Iactive count = 1$
+^Ipath = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist$
+^Itype = LaunchDaemon$
+^Istate = running$
+^Iprogram = /bin/sh$
+^Iarguments = {$
+^Idefault environment = {$
+^Ienvironment = {$
+^Idomain = system$
+^Iminimum runtime = 10$
+^Iexit timeout = 5$
+^Iruns = 1$
+^Ipid = 21972$
+^Iimmediate reason = non-ipc demand$
+^Iforks = 0$
+^Iexecs = 1$
+^Iinitialized = 1$
+^Itrampolined = 1$
+^Istarted suspended = 0$
+^Iproxy started suspended = 0$
+^Ichecked allocations = 0 (queried = 1)$
+^Ichecked allocations reason = no host$
+^Ichecked allocations flags = 0x0$
+^Ilast exit code = (never exited)$
+^Ievent triggers = {$
+^Ievent channels = {$
+^Iresource coalition = {$
+^Ijetsam coalition = {$
+^Ispawn type = daemon (3)$
+^Ijetsam priority = 40$
+^Ijetsam memory limit (active) = (unlimited)$
+^Ijetsam memory limit (inactive) = (unlimited)$
+^Ijetsamproperties category = daemon$
+^Ijetsam thread limit = 32$
+^Icpumon = default$
+^Isanitizer flags = 0x0$
+^Iproperties = inferred program$
+
+== 1 s after kickstart, whole ==
+system/dev.morzer.probe-catchup = {$
+^Iactive count = 1$
+^Ipath = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist$
+^Itype = LaunchDaemon$
+^Istate = running$
+$
+^Iprogram = /bin/sh$
+^Iarguments = {$
+^I^I/bin/sh$
+^I^I-c$
+^I^Isleep 15; exit 3$
+^I}$
+$
+^Idefault environment = {$
+^I^IPATH => /usr/bin:/bin:/usr/sbin:/sbin$
+^I}$
+$
+^Ienvironment = {$
+^I^IOSLogRateLimit => 64$
+^I^IXPC_SERVICE_NAME => dev.morzer.probe-catchup$
+^I}$
+$
+^Idomain = system$
+^Iminimum runtime = 10$
+^Iexit timeout = 5$
+^Iruns = 1$
+^Ipid = 21972$
+^Iimmediate reason = non-ipc demand$
+^Iforks = 1$
+^Iexecs = 2$
+^Iinitialized = 1$
+^Itrampolined = 1$
+^Istarted suspended = 0$
+^Iproxy started suspended = 0$
+^Ichecked allocations = 0 (queried = 1)$
+^Ichecked allocations reason = no host$
+^Ichecked allocations flags = 0x0$
+^Ilast exit code = (never exited)$
+$
+^Ievent triggers = {$
+^I^Idev.morzer.probe-catchup.268435473 => {$
+^I^I^Ikeepalive = 0$
+^I^I^Iservice = dev.morzer.probe-catchup$
+^I^I^Istream = com.apple.launchd.calendarinterval$
+^I^I^Imonitor = com.apple.UserEventAgent-System$
+^I^I^Idescriptor = {$
+^I^I^I^I"Minute" => 4$
+^I^I^I^I"Hour" => 4$
+^I^I^I^I"Day" => 1$
+^I^I^I^I"Month" => 1$
+^I^I^I}$
+^I^I}$
+^I}$
+$
+^Ievent channels = {$
+^I^I"com.apple.launchd.calendarinterval" = {$
+^I^I^Iport = 0x10d05b$
+^I^I^Iactive = 0$
+^I^I^Imanaged = 1$
+^I^I^Ireset = 0$
+^I^I^Ihide = 0$
+^I^I^Iwatching = 0$
+^I^I}$
+^I}$
+$
+^Iresource coalition = {$
+^I^IID = 2149$
+^I^Itype = resource$
+^I^Istate = active$
+^I^Iactive count = 1$
+^I^Iname = dev.morzer.probe-catchup$
+^I}$
+$
+^Ijetsam coalition = {$
+^I^IID = 2150$
+^I^Itype = jetsam$
+^I^Istate = active$
+^I^Iactive count = 1$
+^I^Iname = dev.morzer.probe-catchup$
+^I}$
+$
+^Ispawn type = daemon (3)$
+^Ijetsam priority = 40$
+^Ijetsam memory limit (active) = (unlimited)$
+^Ijetsam memory limit (inactive) = (unlimited)$
+^Ijetsamproperties category = daemon$
+^Ijetsam thread limit = 32$
+^Icpumon = default$
+^Ijob state = running$
+^Isanitizer flags = 0x0$
+$
+^Iproperties = inferred program$
+}$
+
+== launchctl kickstart system/dev.morzer.probe-catchup ==
+exit 0
+
+== 3 s after kickstart ==
+^Iactive count = 1$
+^Ipath = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist$
+^Itype = LaunchDaemon$
+^Istate = running$
+^Iprogram = /bin/sh$
+^Iarguments = {$
+^Idefault environment = {$
+^Ienvironment = {$
+^Idomain = system$
+^Iminimum runtime = 10$
+^Iexit timeout = 5$
+^Iruns = 1$
+^Ipid = 21972$
+^Iimmediate reason = non-ipc demand$
+^Iforks = 1$
+^Iexecs = 2$
+^Iinitialized = 1$
+^Itrampolined = 1$
+^Istarted suspended = 0$
+^Iproxy started suspended = 0$
+^Ichecked allocations = 0 (queried = 1)$
+^Ichecked allocations reason = no host$
+^Ichecked allocations flags = 0x0$
+^Ilast exit code = (never exited)$
+^Ievent triggers = {$
+^Ievent channels = {$
+^Iresource coalition = {$
+^Ijetsam coalition = {$
+^Ispawn type = daemon (3)$
+^Ijetsam priority = 40$
+^Ijetsam memory limit (active) = (unlimited)$
+^Ijetsam memory limit (inactive) = (unlimited)$
+^Ijetsamproperties category = daemon$
+^Ijetsam thread limit = 32$
+^Icpumon = default$
+^Ijob state = running$
+^Isanitizer flags = 0x0$
+^Iproperties = inferred program$
+
+== after it exited, whole ==
+system/dev.morzer.probe-catchup = {$
+^Iactive count = 0$
+^Ipath = /Library/LaunchDaemons/dev.morzer.probe-catchup.plist$
+^Itype = LaunchDaemon$
+^Istate = not running$
+$
+^Iprogram = /bin/sh$
+^Iarguments = {$
+^I^I/bin/sh$
+^I^I-c$
+^I^Isleep 15; exit 3$
+^I}$
+$
+^Idefault environment = {$
+^I^IPATH => /usr/bin:/bin:/usr/sbin:/sbin$
+^I}$
+$
+^Ienvironment = {$
+^I^IOSLogRateLimit => 64$
+^I^IXPC_SERVICE_NAME => dev.morzer.probe-catchup$
+^I}$
+$
+^Idomain = system$
+^Iminimum runtime = 10$
+^Iexit timeout = 5$
+^Iruns = 1$
+^Ilast exit code = 3$
+$
+^Ievent triggers = {$
+^I^Idev.morzer.probe-catchup.268435473 => {$
+^I^I^Ikeepalive = 0$
+^I^I^Iservice = dev.morzer.probe-catchup$
+^I^I^Istream = com.apple.launchd.calendarinterval$
+^I^I^Imonitor = com.apple.UserEventAgent-System$
+^I^I^Idescriptor = {$
+^I^I^I^I"Minute" => 4$
+^I^I^I^I"Hour" => 4$
+^I^I^I^I"Day" => 1$
+^I^I^I^I"Month" => 1$
+^I^I^I}$
+^I^I}$
+^I}$
+$
+^Ievent channels = {$
+^I^I"com.apple.launchd.calendarinterval" = {$
+^I^I^Iport = 0x10d05b$
+^I^I^Iactive = 0$
+^I^I^Imanaged = 1$
+^I^I^Ireset = 0$
+^I^I^Ihide = 0$
+^I^I^Iwatching = 1$
+^I^I}$
+^I}$
+$
+^Iresource coalition = {$
+^I^IID = 2149$
+^I^Itype = resource$
+^I^Istate = active$
+^I^Iactive count = 1$
+^I^Iname = dev.morzer.probe-catchup$
+^I}$
+$
+^Ijetsam coalition = {$
+^I^IID = 2150$
+^I^Itype = jetsam$
+^I^Istate = active$
+^I^Iactive count = 1$
+^I^Iname = dev.morzer.probe-catchup$
+^I}$
+$
+^Ispawn type = daemon (3)$
+^Ijetsam priority = 40$
+^Ijetsam memory limit (active) = (unlimited)$
+^Ijetsam memory limit (inactive) = (unlimited)$
+^Ijetsamproperties category = daemon$
+^Ijetsam thread limit = 32$
+^Icpumon = default$
+^Ijob state = exited$
+^Isanitizer flags = 0x0$
+$
+^Iproperties = inferred program$
+}$

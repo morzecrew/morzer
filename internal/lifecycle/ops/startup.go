@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/atomicfs"
+	"github.com/morzecrew/morzer/internal/ports"
 )
 
 // A Mac's boot job is started again after every failed exit, and launchd has
@@ -68,11 +70,26 @@ func (d *Deps) engineAnswers(ctx context.Context, rel domain.Release, inst domai
 	if err != nil {
 		return err
 	}
+	if err := d.engineStatus(ctx, cfg); err != nil {
+		if errors.Is(err, domain.ErrInterrupted) {
+			return err
+		}
+		return err.WithHint("Docker Desktop starts at login; launchd starts this again in 30 seconds")
+	}
+	return nil
+}
+
+// engineStatus is that question, bounded, which is how a Mac's jobs find out
+// whether Docker Desktop has started.
+func (d *Deps) engineStatus(ctx context.Context, cfg ports.RuntimeConfig) *domain.Error {
 	probe, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if _, err := d.Runtime.Status(probe, cfg); err != nil {
-		return domain.RuntimeError(err, "the engine does not answer yet").
-			WithHint("Docker Desktop starts at login; launchd starts this again in 30 seconds")
+		// Stopped, not unanswered: an interrupted run exits 130.
+		if ctx.Err() != nil {
+			return domain.Interrupted("interrupted while asking the engine")
+		}
+		return domain.RuntimeError(err, "the engine does not answer yet")
 	}
 	return nil
 }

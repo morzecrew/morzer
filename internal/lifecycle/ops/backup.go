@@ -60,14 +60,24 @@ type BackupOptions struct {
 func Backup(ctx context.Context, d *Deps, opts BackupOptions) (Result, error) {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
+		if opts.Unattended {
+			d.stampFailure(ctx, domain.StampBackup, opts.DryRun)
+		}
 		return Result{}, err
 	}
 	// Exit 0 and a line in the unit's journal, as the update timer's staged
 	// outcome is: a timer that failed every night of a maintenance window
-	// would train an operator to ignore it.
+	// would train an operator to ignore it. Before the engine is asked, which
+	// a stopped product does not need, and stamped, as the timer's run.
 	if opts.Unattended && inst.Stopped != nil {
+		d.stampFailure(ctx, domain.StampBackup, opts.DryRun)
 		return Result{Summary: fmt.Sprintf("scheduled backup skipped: %s is %s; `morzer backup` takes one by hand",
 			inst.Product, inst.Stopped.Describe())}, nil
+	}
+	if opts.Unattended {
+		if err := d.scheduledRun(ctx, domain.StampBackup, opts.DryRun); err != nil {
+			return Result{}, err
+		}
 	}
 	current, err := d.State.CurrentRelease(ctx)
 	if err != nil {

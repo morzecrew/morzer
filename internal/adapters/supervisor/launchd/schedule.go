@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -202,6 +203,72 @@ func field(text string, lo, hi int, what string) (int, error) {
 		return 0, fmt.Errorf("%q is not one %s", text, what)
 	}
 	return n, nil
+}
+
+// latest is the last minute at or before now at which intervals start a job,
+// in now's location, which is the one launchd reads them in. Zero when none did
+// in the last eight years, as far back as a leap day's schedule needs: 2100 has
+// none.
+func latest(intervals []interval, now time.Time) time.Time {
+	var out time.Time
+	for _, i := range intervals {
+		if t := i.latest(now); t.After(out) {
+			out = t
+		}
+	}
+	return out
+}
+
+func (i interval) latest(now time.Time) time.Time {
+	loc := now.Location()
+	y, m, d := now.Date()
+	for back := 0; back <= 8*366; back++ {
+		// Noon, so a clock change at midnight cannot move it to another day.
+		day := time.Date(y, m, d-back, 12, 0, 0, 0, loc)
+		if !i.on(day) {
+			continue
+		}
+		for h := 23; h >= 0; h-- {
+			if v, ok := i[keyHour]; ok && v != h {
+				continue
+			}
+			for minute := 59; minute >= 0; minute-- {
+				if v, ok := i[keyMinute]; ok && v != minute {
+					continue
+				}
+				if t, ok := wallClock(day, h, minute, now); ok {
+					return t
+				}
+			}
+		}
+	}
+	return time.Time{}
+}
+
+// wallClock is the latest instant at or before now that day's clock read
+// h:minute on day: none when a clock change skipped that time, and the later of
+// the two at or before now when one repeated it.
+func wallClock(day time.Time, h, minute int, now time.Time) (time.Time, bool) {
+	t := time.Date(day.Year(), day.Month(), day.Day(), h, minute, 0, 0, day.Location())
+	var out time.Time
+	for _, c := range []time.Time{t.Add(-time.Hour), t, t.Add(time.Hour)} {
+		y, m, d := c.Date()
+		if c.Hour() == h && c.Minute() == minute && y == day.Year() && m == day.Month() && d == day.Day() &&
+			!c.After(now) && c.After(out) {
+			out = c
+		}
+	}
+	return out, !out.IsZero()
+}
+
+// on is whether day is one the interval's date fields match.
+func (i interval) on(day time.Time) bool {
+	matches := func(key string, value int) bool {
+		v, ok := i[key]
+		return !ok || v == value
+	}
+	return matches(keyMonth, int(day.Month())) && matches(keyDay, day.Day()) &&
+		matches(keyWeekday, int(day.Weekday()))
 }
 
 // refuseSchedule is the error `config set` reports for a schedule launchd

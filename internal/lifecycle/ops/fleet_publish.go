@@ -107,6 +107,14 @@ func (r FleetPublishReport) Unreachable() bool {
 // every publish are refreshed first, as a task operation of their own, and the
 // row is built from what that left.
 func FleetPublish(ctx context.Context, d *Deps, opts FleetPublishOptions) (Result, error) {
+	// Every publish but a sync's is the fleet job's, an operator's included:
+	// `fleet publish` has no --unattended, and its row is fresh either way
+	// (RFC 0055 decision 32).
+	if !opts.afterOperation {
+		if err := d.scheduledRun(ctx, domain.StampFleet, opts.DryRun); err != nil {
+			return Result{}, err
+		}
+	}
 	if !opts.afterOperation && !opts.DryRun {
 		d.refreshFactsBeforePublish(ctx)
 	}

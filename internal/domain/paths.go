@@ -175,6 +175,21 @@ func (p Paths) ChannelMarksFile() string {
 	return filepath.Join(p.ManagerDir(), "channel-marks.json")
 }
 
+// The scheduled runs that stamp when they reach the engine: the four systemd
+// catches up with Persistent= (RFC 0055 decision 29). A supervisor that does
+// not catch up by itself reads the stamps at boot; Linux reads none.
+const (
+	StampBackup = "backup"
+	StampUpdate = "update"
+	StampFleet  = "fleet"
+	StampDoctor = "doctor"
+)
+
+// StampFile is a scheduled run's stamp, whose modification time is when it last
+// reached the engine, as a systemd timer's stamp is. Derived: deleting one costs
+// at most a run caught up at boot.
+func (p Paths) StampFile(job string) string { return filepath.Join(p.ManagerDir(), "stamps", job) }
+
 func (p Paths) JournalFile() string { return filepath.Join(p.ManagerDir(), "operations.jsonl") }
 func (p Paths) LockDir() string     { return filepath.Join(p.ManagerDir(), "locks") }
 func (p Paths) LockFile(name string) string {

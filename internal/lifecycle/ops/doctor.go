@@ -105,6 +105,11 @@ func DoctorUnattended(ctx context.Context, d *Deps) (DoctorReport, error) {
 	} else if sent != (OutboxReport{}) {
 		logging.FromContext(ctx).Info(sent.Summary())
 	}
+	// After the outbox, which needs no engine: a notification queued at
+	// boot leaves before a login all the same.
+	if err := d.scheduledRun(ctx, domain.StampDoctor, false); err != nil {
+		return DoctorReport{}, err
+	}
 
 	report, err := Doctor(ctx, d)
 	if err != nil {

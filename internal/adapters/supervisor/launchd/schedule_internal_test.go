@@ -3,6 +3,8 @@ package launchd
 import (
 	"context"
 	"testing"
+	"time"
+	_ "time/tzdata" // the clock change below, wherever the tests run
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,6 +82,77 @@ func TestACalendarLaunchdCannotRunIsRefusedSayingWhy(t *testing.T) {
 			err := (&Supervisor{}).ValidateSchedule(context.Background(), expr)
 			require.ErrorIs(t, err, domain.ErrValidation)
 			assert.Contains(t, err.Error(), why)
+		})
+	}
+}
+
+// The catch-up compares a job's stamp with the last time its schedule passed,
+// in the Mac's own time (RFC 0055 §5.6).
+func TestTheLatestTimeAScheduleRanIsTheLastOneAtOrBeforeNow(t *testing.T) {
+	now := time.Date(2026, time.November, 18, 10, 0, 0, 0, time.UTC) // a Wednesday
+	at := func(y int, m time.Month, d, h, min int) time.Time { return time.Date(y, m, d, h, min, 0, 0, time.UTC) }
+	for expr, want := range map[string]time.Time{
+		"*-*-* 02:30":         at(2026, time.November, 18, 2, 30),
+		"*-*-* 11:00":         at(2026, time.November, 17, 11, 0),
+		"*-*-* 10:00":         now,
+		"*:15":                at(2026, time.November, 18, 9, 15),
+		"minutely":            now,
+		"Sat,Sun *-*-* 04:00": at(2026, time.November, 15, 4, 0),
+		"Wed 10:01":           at(2026, time.November, 11, 10, 1),
+		"*-*-31 03:00":        at(2026, time.October, 31, 3, 0),
+		"*-11-* 23:59":        at(2026, time.November, 17, 23, 59),
+		"*-12-25 07:00":       at(2025, time.December, 25, 7, 0),
+		"quarterly":           at(2026, time.October, 1, 0, 0),
+		"*-02-29 00:00":       at(2024, time.February, 29, 0, 0),
+	} {
+		t.Run(expr, func(t *testing.T) {
+			times, err := calendar(expr)
+			require.NoError(t, err)
+			got := latest(times, now)
+			assert.True(t, want.Equal(got), "want %s, got %s", want, got)
+		})
+	}
+}
+
+// 2100 is not a leap year, so a leap day's schedule can last have run eight
+// years before.
+func TestTheLatestLeapDayCanBeEightYearsBack(t *testing.T) {
+	times, err := calendar("*-02-29 00:00")
+	require.NoError(t, err)
+	got := latest(times, time.Date(2101, time.March, 1, 0, 0, 0, 0, time.UTC))
+	assert.True(t, time.Date(2096, time.February, 29, 0, 0, 0, 0, time.UTC).Equal(got), "got %s", got)
+}
+
+// A time the clocks skipped did not happen that day, and a schedule runs in the
+// Mac's own time zone.
+func TestTheLatestTimeKeepsToTheMacsClock(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err)
+	times, err := calendar("*-*-* 02:30")
+	require.NoError(t, err)
+
+	// Clocks went from 02:00 to 03:00 on 29 March 2026.
+	got := latest(times, time.Date(2026, time.March, 29, 12, 0, 0, 0, berlin))
+	assert.True(t, time.Date(2026, time.March, 28, 2, 30, 0, 0, berlin).Equal(got), "got %s", got)
+
+	got = latest(times, time.Date(2026, time.November, 18, 2, 0, 0, 0, berlin))
+	assert.True(t, time.Date(2026, time.November, 17, 2, 30, 0, 0, berlin).Equal(got), "got %s", got)
+	assert.True(t, time.Date(2026, time.November, 17, 1, 30, 0, 0, time.UTC).Equal(got), "got %s", got)
+
+	// Clocks went from 03:00 back to 02:00 on 25 October 2026, so 02:30 came
+	// at 00:30 and again at 01:30 UTC: the latest is whichever has passed.
+	for _, tc := range []struct {
+		name      string
+		now, want time.Time
+	}{
+		{"the first passed", time.Date(2026, time.October, 25, 0, 45, 0, 0, time.UTC),
+			time.Date(2026, time.October, 25, 0, 30, 0, 0, time.UTC)},
+		{"the second passed", time.Date(2026, time.October, 25, 1, 45, 0, 0, time.UTC),
+			time.Date(2026, time.October, 25, 1, 30, 0, 0, time.UTC)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := latest(times, tc.now.In(berlin))
+			assert.True(t, tc.want.Equal(got), "want %s, got %s", tc.want, got)
 		})
 	}
 }

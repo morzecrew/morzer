@@ -275,7 +275,7 @@ morzer update --to 1.3.0
 | `--generate-secrets` | Generate the secrets the new release adds with a `generator`. Default `true`; `false` is recorded in the journal, and `--resume` keeps it. |
 | `--check` | Report whether a newer release exists, without installing anything. |
 | `--stage` | Follow the configured channel: fetch and verify what it points at, without installing it. |
-| `--unattended` | One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see [unattended updates](../operating/unattended-updates.md). |
+| `--unattended` | One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see [unattended updates](../operating/unattended-updates.md). On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see [what runs at boot](../explanation/platforms.md#what-runs-at-boot-and-on-schedule). |
 
 Before it converges, an update generates each secret the new release declares
 with a generator, has no value here, and the release being replaced did not
@@ -460,7 +460,9 @@ fails, and any other warns. Their messages and remedies are the vendor's words.
 `--unattended` is the [scheduled run](../operating/notifications.md#the-scheduled-doctor):
 it sends the notification outbox first, then notifies one `doctor.finished`
 naming the checks that warn or fail. A run where every check passes notifies
-nothing. Every run leaves out of `config.operations` the operation holding the
+nothing. On a Mac, once the outbox is sent, it exits 7 while the engine does
+not answer, and the start at boot runs it once it does; see
+[what runs at boot](../explanation/platforms.md#what-runs-at-boot-and-on-schedule). Every run leaves out of `config.operations` the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.
 
@@ -796,7 +798,7 @@ manifest, and verifies the checksums by re-reading what was written.
 | `--no-prune` | Skip applying the retention policy afterwards. |
 | `--no-push` | Do not copy the backup to the configured targets; it stays only on this machine. |
 | `--no-prune-remote` | Skip applying the retention policy on the targets. |
-| `--unattended` | The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is [stopped](#stop). |
+| `--unattended` | The backup timer's run, which the timer's unit passes. Skipped, exit 0, while the product is [stopped](#stop). On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see [what runs at boot](../explanation/platforms.md#what-runs-at-boot-and-on-schedule). |
 
 ### backup list
 

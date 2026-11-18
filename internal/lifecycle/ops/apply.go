@@ -36,7 +36,11 @@ func Apply(ctx context.Context, d *Deps, opts Options) (Result, error) {
 			return Result{Summary: d.heldSummary(reason)}, nil
 		}
 	}
-	return apply(ctx, d, opts, domain.OpTypeApply)
+	res, err := apply(ctx, d, opts, domain.OpTypeApply)
+	if err == nil && opts.Startup && !opts.DryRun && res.Record.Status == domain.StatusSucceeded {
+		res.Summary += d.catchUp(ctx)
+	}
+	return res, err
 }
 
 // apply is `apply` and `start`, which is `apply` and then clears the stop

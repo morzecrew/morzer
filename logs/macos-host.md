@@ -1299,3 +1299,261 @@ nothing when absent. The acceptance run on the author's Mac is where all three
 are seen.
 
 **Drift count: 2.** Nothing in P2 so far is drift.
+
+## The stamps and the catch-up, P2
+
+On branch `rfc-0055-catchup` from `main` at `e3d937db`, the second of P2's
+three pull requests: the stamps of the four persistent schedules, and the
+catch-up of a run missed while the Mac was off (§5.6, decisions 8 and 29). The
+plan raised two questions, which the author ruled on 2026-11-18 as it leaned;
+they are the first two entries below. The rest are gaps decided before code.
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 has a scheduled run that cannot reach the engine exit 7 and leave its stamp, and does not say on which platform, while decision 14 holds Linux unchanged. On Linux that exit would change what is reported while dockerd is down: the backup and update runs would no longer journal or notify their failure, `doctor --unattended` would send no `doctor.finished`, and `fleet publish` would no longer publish the row saying the runtime did not answer. Logged against decision 14, as P2's first ruling asked. Ruled by the author as the plan leaned: a run defers with exit 7 only where the supervisor catches it up later, which launchd's does; elsewhere it carries on and reports as it does today, and writes no stamp. Linux keeps its reports, and gains one question to the engine per scheduled run, of at most 30 seconds, and a stamp it does not read. The rule is keyed on the supervisor, not the platform.
+evidence: internal/lifecycle/ops/doctor.go:100-125
+action: departed
+proposal: ASSUMED (decision 29, amended) — a scheduled run that cannot reach the engine exits 7 and leaves its stamp only where the supervisor catches it up; elsewhere it runs and reports as before, with no stamp
+```
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 stamps the unattended runs of `backup`, `update`, `fleet publish` and `doctor`, and refuses a flag that only the plists set. Three of them have `--unattended`, which systemd's units pass too. `fleet publish` has no such flag, so nothing tells the fleet job's run from an operator's. Ruled by the author as the plan leaned: every `fleet publish` but a sync's is taken as the fleet job's. It stamps, and on a Mac it defers with exit 7 while the engine does not answer, an operator's run included. The stamp is right either way, since the row it publishes is fresh. Refused: `fleet publish --unattended` in both supervisors' jobs, which changes Linux's unit.
+evidence: internal/adapters/supervisor/systemd/systemd.go:742
+action: departed
+proposal: ASSUMED — every `fleet publish` but a sync's is the fleet job's run, for its stamp and for decision 29's exit 7
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 has a run write its stamp once it has reached the engine, and does not say how a run knows it has. A run that found out halfway through would already have taken the lock and journalled, which is the failure report decision 29 avoids. So a scheduled run asks the engine for the project's containers before it does anything else, as the start at boot does, bounded at 30 seconds, and stamps when the engine answers. A run that cannot read what that question needs, the installation or its release, stamps and carries on, as §5.6 has any failure but the engine's stamp. A dry run neither asks nor stamps.
+evidence: internal/lifecycle/ops/startup.go:62-78
+action: decided
+proposal: ASSUMED — a scheduled run asks the engine first, as the start at boot does, and stamps when it answers
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 catches a job up when its latest scheduled time is later than its stamp, and does not say what a job with no stamp is. That is a job installed and never run, or one installed before this release. systemd starts a persistent timer's stamp when the timer first starts, so the first run missed after installing is caught up. So a job without a stamp is taken as stamped when its plist was last written.
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:406-414
+action: decided
+proposal: ASSUMED — a job with no stamp is caught up from when its plist was last written
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 has the boot job start the overdue jobs after it converges, and does not say what its exit is when a job cannot be started or fails. launchd starts the boot job again after any failed exit, so a non-zero exit would converge the installation again every 30 seconds and catch the same jobs up each time. So the boot job's exit is its convergence's. A job that cannot be started, or cannot be waited for, is a warning in the boot job's log, and a caught-up job's own failure is in its own log and notification.
+evidence: internal/adapters/supervisor/launchd/launchd.go:262-273
+action: decided
+proposal: ASSUMED — the catch-up never fails the start at boot; what it cannot do is a warning in the boot job's log
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: §5.6 catches up each overdue job, and does not say what happens to one an operator disabled or launchd has not loaded. systemd starts no disabled timer, and kickstarting a job launchd does not have fails. So the catch-up skips a job an operator disabled, and one launchd has not loaded, which `doctor` already reports as not loaded.
+evidence: internal/adapters/supervisor/launchd/launchd.go:663-682
+action: decided
+proposal: ASSUMED — the catch-up skips a job an operator disabled or launchd has not loaded
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:03:55Z
+attempt: 1
+claim: Decision 29 has `doctor --unattended` exit 7 when the engine does not answer, and `doctor --unattended` sends the notification outbox first, which needs no engine. Asking the engine first would keep a notification queued at boot, the boot job's own exit 12 say, until a login. So it sends the outbox, then asks the engine.
+evidence: internal/lifecycle/ops/doctor.go:101-107
+action: decided
+proposal: ASSUMED — `doctor --unattended` sends the outbox before it asks the engine
+```
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 8 and §5.6 have the catch-up: once `apply --startup` has converged and released the lock, the launchd adapter starts each of the backup, update, fleet and doctor jobs whose latest scheduled time is later than its stamp, one at a time in that order, and waits for each to exit, read from `launchctl print`. Metrics and sync are not caught up, as on Linux.
+evidence: internal/adapters/supervisor/launchd/catchup.go:37-89
+action: decided
+```
+
+```divergence
+decision: 31
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 31 has it: each scheduled run asks the engine first and stamps when it answers, and one that cannot reach it exits 7 only when the supervisor implements the catch-up. The rule reads the supervisor, not the platform.
+evidence: internal/lifecycle/ops/stamp.go:26-39
+action: decided
+```
+
+```divergence
+decision: 32
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Built as decision 32 has it: every `fleet publish` but a sync's goes through the scheduled run's question and stamp.
+evidence: internal/lifecycle/ops/fleet_publish.go:110-117
+action: decided
+```
+
+```divergence
+decision: 14
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Linux reports what it reported: with dockerd down and a supervisor that does not catch up, the backup journals its run, `doctor --unattended` notifies `doctor.finished`, and the fleet row carries the runtime's problem. What Linux gains is one question to the engine per scheduled run, at most 30 seconds, and a stamp nothing reads.
+evidence: test/suite/catchup_test.go:142-168
+action: decided
+```
+
+```divergence
+decision: 1
+grade: LOCKED
+kind: resolved
+at: 2026-11-18T08:30:09Z
+attempt: 1
+claim: Decision 1 has each weaker guarantee stated. The Platforms page says a Mac now catches up a missed run, that a scheduled run, or a `fleet publish` by hand, that cannot reach the engine exits 7 and waits for the start at boot, and that a Mac whose Docker Desktop never starts therefore sends no `doctor.finished` and lets its fleet row go stale. Commands and Fleet say the exit 7 beside each run.
+evidence: pages/docs/explanation/platforms.md:145-164
+action: decided
+```
+
+**Not measured:** the catch-up waits on `runs` and `state` from `launchctl
+print`. S4 saw `state = not running` and `runs = 1` three seconds after a
+kickstart (`spikes/macos-host/report.txt:89`). It did not capture `state =
+running`, a job's `runs` before its first run, or what launchd does with a
+calendar time a clock change skips. The acceptance run on the author's Mac is
+where those are seen.
+
+**Drift count: 2.** Nothing in this pull request is drift.
+
+**Measured, 2026-11-18:** the author ran `spikes/macos-host/launchd-probe.sh`
+on macOS 27.2.1, and its output is `spikes/macos-host/launchd-probe.txt`. It
+settles what the two "Not measured" notes above left open, and agrees with each
+assumption: a job launchd does not have exits 113; a job's own properties are
+one tab in, and the coalitions below them carry a `state = active` of their own;
+before a first run it prints `runs = 0` and `last exit code = (never exited)`;
+`kickstart` returns with the job already `running` and `runs = 1`; a kickstart
+of a running job exits 0 and starts nothing; a run that exits 3 prints `last
+exit code = 3`; `print-disabled` prints `"<label>" => disabled` or `=> enabled`;
+and `program =` is the first of the arguments. The tests now read those
+captures (`internal/adapters/supervisor/launchd/testdata/print-*.txt`). What a
+calendar time a clock change skips does is still not measured.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:45:23Z
+attempt: 1
+claim: The wait the catch-up does is the one a Mac measured: a kickstarted job reads `state = running` with `runs` one more at once, a second kickstart adds no run, and it reads `state = not running` once it has exited.
+evidence: spikes/macos-host/launchd-probe.txt:96-300
+action: decided
+```
+
+## Review of the catch-up
+
+The review of the pull request found four races in the catch-up and two runs
+that asked the engine before an answer that needs none. Each was reproduced
+failing before it was fixed. The entries below are the decisions those fixes
+made that the RFC does not.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T08:58:32Z
+attempt: 2
+claim: The catch-up raced the jobs it runs. Which jobs were due was read job by job, so a caught-up update, which installs the units again and rewrites every plist, hid the jobs after it that had no stamp. A job its own schedule started during the start at boot was passed over as not due while it still ran, so the next job could start beside it and be refused the lock. And a job whose own run finished between the read and the start ran twice. Now which jobs are due is read before any starts, and before each start the catch-up waits until none of the four jobs runs, then reads the stamp and the disabled jobs again. A job whose exit cannot be read starts nothing after it, and a run that left its stamp is reported as still due.
+evidence: internal/adapters/supervisor/launchd/catchup.go:103-130
+action: decided
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: The question a scheduled run asks reads the project before it reaches the engine, so a project that will not load, a missing `env_file` say, failed it with the engine up and was taken for the engine down: no stamp, and on a Mac an exit 7 naming a login. Nothing in the runtime's port asks the engine alone. So when the question fails, the run reads the project with `Runtime.Validate`, which needs no engine; a project that will not load is the run's own failure, and it stamps and fails as it would have. The start at boot keeps its question as P1 built it.
+evidence: internal/lifecycle/ops/stamp.go:63-75
+action: decided
+proposal: ASSUMED — a scheduled run whose question fails while the project will not load is not the engine down; it stamps and fails on its own
+```
+
+```divergence
+decision: 29
+grade: ASSUMED
+class: discovery
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: Asking the engine first put it ahead of two answers that need none: a stopped product's scheduled backup, skipped with exit 0 under RFC 0040, and a tick refused while an operation waits for a person. On a Mac with Docker Desktop quit, both became an exit 7 naming a login. Both now answer first, and stamp, as the timer's run that §5.6 has every failure but the engine's stamp.
+evidence: internal/lifecycle/ops/channel.go:496-507
+action: departed
+proposal: ASSUMED (decision 29, amended) — a run whose answer needs no engine gives it before the engine is asked, and stamps
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-18T08:58:32Z
+attempt: 1
+claim: A calendar time a clock change repeats happens twice, and what launchd does with it is not measured. The latest time a schedule passed takes whichever of the two instants last passed, so a run missed at the first is still caught up, at the cost of at most one more run at the boot after the second. A leap day's schedule is looked for eight years back, since 2100 has none.
+evidence: internal/adapters/supervisor/launchd/schedule.go:248-262
+action: decided
+proposal: ASSUMED — a repeated calendar time counts at either instant
+```
+
+**Drift count: 2.** Nothing the review found is drift.
+
+```divergence
+decision: 8
+grade: ASSUMED
+kind: resolved
+at: 2026-11-18T10:06:10Z
+attempt: 3
+claim: A third look at the catch-up's races. A job seen idle could start while a later one was waited for, and the start that followed then ran beside it; the look now starts again after any wait. The stamp is read after the last look at a job, so a run its schedule finished up to that look is not started again, and a job launchd started itself is waited for and not reported as one the catch-up ran. A job whose plist is gone is not installed, whatever its stamp says. A short window remains between the last read of the stamp and `kickstart`, which only a lock every job takes could close; the jobs share none, since `fleet publish` and `doctor` take no lock.
+evidence: internal/adapters/supervisor/launchd/catchup.go:175-197
+action: decided
+```
+
+**Known limit:** a job with no stamp counts from when its plist was last
+written, and installing the units writes every plist. So a job installed
+before this release, missed while the Mac was off, caught up by a run that
+exits before it reaches the engine, and then reinstalled before its next tick,
+counts from the reinstall at the next boot and is not caught up. Keeping the
+time a job was first installed apart from its plist would close it, and is a
+design change for a later pull request; until the job's first run stamps, the
+next tick is the fallback.
+
+**Drift count: 2.** Nothing the third look found is drift.

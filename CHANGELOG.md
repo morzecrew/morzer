@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   12 until `sudo morzer apply`, and each schedule at the time it names.
   `config set` refuses a schedule launchd cannot run exactly.
 
+- On a Mac, a backup, update, fleet publish or scheduled `doctor` missed while
+  the Mac was off, or fired before Docker Desktop answered, runs once the start
+  at boot has converged, one at a time.
+
 - On a Mac, root runs a tool it finds by name only from a directory only root
   can change, such as `/usr/local/bin`, so `sops` belongs in one, and a hook
   does not find Homebrew's tools by name.
