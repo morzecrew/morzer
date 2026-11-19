@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-19
+
+An installation can run on a Mac with Apple silicon and Docker Desktop, for a
+release whose vendor declares `darwin`. There, launchd starts it at boot and
+runs its schedules, and a schedule missed while the Mac was off runs once it
+is up. A release can also name the ports it needs by address, protocol and
+profile. This release also fixes a refused `init --repair`, which could delete
+an installation's state or rewrite its release, and lets a parameter default to
+the empty string.
+
+Upgrading moves installation state from schema 21 to 22, so a 0.17 manager
+refuses a machine 0.18.0 has run on. Operators, scripts and authors may notice:
+
+- A bundle that declares platforms, gives a `requirements.ports` entry an
+  address or a protocol, or uses `.Profiles` or `has` in its manifest needs
+  `compatibility.min_manager_version: "0.18.0"`, which `release verify`
+  checks.
+
+- A bundle is refused at load where a parameter that defaults to `""` is a
+  `port`, is `required`, or is an `enum` whose `values` leave `""` out.
+
+- A release that declares no platforms is made for Linux alone, so a Mac
+  refuses every release published before its vendor declares `darwin`.
+
+Under `--json`, `config list` reports a `default` of `""`, which it used to
+leave out, and no existing field changed meaning.
+
 ### Added
 
 - `requirements.platforms` names the operating systems a release is made
@@ -1684,7 +1711,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.17.1...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/morzecrew/morzer/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/morzecrew/morzer/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/morzecrew/morzer/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/morzecrew/morzer/compare/v0.15.1...v0.16.0

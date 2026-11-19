@@ -29,7 +29,7 @@ journaled, verified afterwards, and undone.
 ## Install
 
 ```sh
-curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version 0.17.1
+curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version 0.18.0
 ```
 
 Installs for root, which runs installations; without `sudo` it installs into
