@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	osexec "os/exec"
 	"sync"
 	"sync/atomic"
@@ -73,6 +74,12 @@ func (t *stderrTail) Write(p []byte) (int, error) {
 // that does not exist both close stdout with nothing on it.
 func (s *streamCloser) Read(p []byte) (int, error) {
 	n, err := s.ReadCloser.Read(p)
+	// A child that outlived the TERM kept stdout open, and once the wait
+	// delay passed os/exec closed the pipe under this read. A stream morzer
+	// stopped has still ended.
+	if errors.Is(err, os.ErrClosed) && s.ctx.Err() != nil {
+		err = io.EOF
+	}
 	if !errors.Is(err, io.EOF) || s.cmd == nil {
 		return n, err
 	}
