@@ -1,7 +1,7 @@
 # RFC 0060 — A Mac loads a bundle's images through a relay
 
-- **Status:** 📝 Draft — proposed 2026-11-19. Decisions 3 and 8 are `OPEN`
-  for the author to rule; the rest are leans.
+- **Status:** 📝 Draft — accepted 2026-11-19, not started. Ruled by the
+  author 2026-11-19: decisions 3 and 8 as leaned.
 - **Scope:** Lets a Mac install and update a release whose images travel in
   the bundle, which 0.18.0 refuses there. The manager still serves the
   bundle's image layout from inside its own process on the Mac's loopback,
@@ -198,18 +198,20 @@ Mac loads first.
 - Whether the acceptance run's restart phase goes back to the packed bundle
   (decision 8). The author rules.
 
+Both were ruled on 2026-11-19 as leaned; decisions 3 and 8 carry the rulings.
+
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | On a Mac a bundle's images are loaded as on Linux: the daemon pulls each from the registry inside the manager's process on `127.0.0.1:0` (RFC 0011 decision 18), and its pull verifies every blob (decision 21). Only the path between them changes. |
 | 2 | `ASSUMED` | The path is a relay container: the volume helper image, `--network host`, running `nc -lk -p <relay> -e nc host.docker.internal <server>`, started before the first pull of an ingest and removed when the ingest ends, failed or not. |
-| 3 | `OPEN` | How the relay's port on the VM's loopback is chosen, and how a relay that could not bind it is caught before the pull blames the bundle. A random high port with a retry when the relay exits at start is the lean; the executor decides and logs it. |
+| 3 | `ASSUMED` | How the relay's port on the VM's loopback is chosen, and how a relay that could not bind it is caught before the pull blames the bundle: a random port in the dynamic range, and another when the relay has exited at start, which is how a port another container holds shows. The executor logs what it builds. Was `OPEN`; ruled by the author 2026-11-19: as leaned. |
 | 4 | `ASSUMED` | The helper is never pulled for an ingest. One not local is a refusal naming `docker load` of it, before the server starts; an unpinned override is refused as the file-sharing probe refuses one. Consequence: an offline Mac loads the helper before `init`, as it already must before a backup. |
 | 5 | `ASSUMED` | The relay is wired with the darwin engine (`internal/cli/engine_darwin.go`) as an option of the compose runtime. The adapter does not branch on the platform, and Linux runs today's code unchanged. |
 | 6 | `ASSUMED` | `Manifest.PlatformRefusal` loses its darwin branch for bundled images, and the platform preflight and `release ingest` with it. This supersedes the row proposed in logs/macos-host.md (UNLISTED, 2026-11-19T07:48:56Z). |
 | 7 | `ASSUMED` | Rejected: the daemon pulling `host.docker.internal` (it refuses plain HTTP; the fix is the operator's Docker configuration), and `docker load` (exit 0 over a corrupted layer; a second mechanism decision 21 withdrew). §13 holds both measurements. |
-| 8 | `OPEN` | The macOS acceptance run's restart phase: keep the 1.2.0 bundle it installs since #397, or return to the packed bundle. The lean is to keep it: the start at boot ingests nothing, and the run's bundled scenario covers the relay. |
+| 8 | `ASSUMED` | The macOS acceptance run's restart phase keeps the 1.2.0 bundle it installs since #397, rather than returning to the packed bundle: the start at boot ingests nothing, and the run's bundled scenario covers the relay. Was `OPEN`; ruled by the author 2026-11-19: as leaned. |
 
 ## 12. Phasing
 
