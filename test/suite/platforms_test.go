@@ -239,6 +239,34 @@ func TestApplyRefusesAnInstalledReleaseNotMadeForThisPlatform(t *testing.T) {
 	assert.Contains(t, check.Remedy, "Its vendor adds darwin to that list")
 }
 
+// A machine whose state names a release that carries its images, as a Linux
+// backup restored onto a Mac does, is refused by preflight before anything is
+// rendered, named by doctor, and refused by `release ingest` rather than
+// failing at the pull.
+func TestApplyRefusesAnInstalledReleaseThatCarriesItsImages(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	madeForDarwin(t, h.Release.Root)
+	h.bundleImage(t)
+	h.install()
+	h.setHookEnv()
+	h.Deps.Platform = "darwin"
+	const refusal = "the release carries app in its bundle, which a Mac cannot load yet"
+
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.Error(t, err)
+	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err), "refused after preflight: %v", err)
+	assert.Contains(t, err.Error(), refusal)
+	assert.Empty(t, h.Runtime.UpOptions, "a release whose images a Mac cannot load was deployed")
+	check := doctorCheck(t, h, "system.platform")
+	assert.Equal(t, events.CheckFail, check.Status)
+	assert.Equal(t, refusal, check.Message)
+
+	_, err = ops.IngestImages(ctx, h.Deps, ops.Options{})
+	require.ErrorIs(t, err, domain.ErrIncompatible)
+	assert.Contains(t, err.Error(), "release 1.2.0 carries app in its bundle")
+}
+
 // An update is refused a release not made for this platform, and one that
 // does not run the recorded profile here, before any step; a rollback is
 // refused a release not made for it (decisions 2 and 3).

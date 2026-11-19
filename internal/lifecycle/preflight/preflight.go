@@ -191,15 +191,17 @@ func Architecture(req domain.Requirements) Check {
 // Platform checks that the release has been made for platform, the GOOS the
 // manager runs on (RFC 0055 decision 2). `init`, `update` and `rollback`
 // refuse such a release before they start; this is for a machine whose state
-// arrived another way, such as one restored from a Linux backup.
-func Platform(req domain.Requirements, platform string) Check {
+// arrived another way, such as one restored from a Linux backup. The manifest,
+// not its requirements alone: on a Mac it also refuses images the bundle
+// carries, which its engine cannot load.
+func Platform(m domain.Manifest, platform string) Check {
 	return Check{
 		ID:          "system.platform",
 		Category:    CategorySystem,
 		Description: "the release is made for this operating system",
 		Fatal:       true,
 		Run: func(context.Context) events.CheckResult {
-			if err := req.PlatformRefusal(platform, "the release"); err != nil {
+			if err := m.PlatformRefusal(platform, "the release"); err != nil {
 				e := domain.AsError(err)
 				return Fail(e.Hint, "%s", e.Message)
 			}
