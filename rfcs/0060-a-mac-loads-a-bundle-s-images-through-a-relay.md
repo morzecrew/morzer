@@ -233,6 +233,13 @@ Both were ruled on 2026-11-19 as leaned; decisions 3 and 8 carry the rulings.
 - Whether the relay bound to `127.0.0.1` carries the pull as the unbound one of
   §13's Q3 did. The acceptance run measures it (decision 9).
 
+All three were measured on 2026-11-20, before the code (§13, S0 to B3). The relay
+ran with Docker Desktop's opt-in host networking and Enhanced Container
+Isolation both off, so it needs neither turned on. A loaded helper answers to
+its ID and not to its pinned reference on the containerd store, and to neither
+on the classic store. The bound relay carried the pull, and a bridge network
+could not reach it.
+
 ## 11. Decisions
 
 | # | Grade | Decision |
@@ -290,3 +297,57 @@ Q3 is the relay of §5.1 end to end: a registry published on the Mac's
 on the VM's host network, and the daemon pulling `127.0.0.1:5058`. The same
 probe on Linux, with the relay's target on the host's own loopback, pulled the
 same image.
+
+The third probe, on the same Mac on 2026-11-20, took the measurements
+decisions 9 to 13 ask for before the code:
+
+```
+S0  engine 28.3.2; image store: driver-type=io.containerd.snapshotter.v1
+S1  settings-store.json: "LastContainerdSnapshotterEnable": 1743608262 "UseContainerdSnapshotter": true
+H1  save wrote a oci tar; load said: Loaded image ID: sha256:9db7b599…
+H2  the loaded helper does NOT run by its pinned reference: … No such image: busybox@sha256:9db7b599…
+H3  pinned digest sha256:9db7b599…; loaded id sha256:9db7b599…; equal: yes
+H4  the loaded helper runs by its id sha256:9db7b599…
+R0  probe-relay-bound created: running exit=0
+R0  probe-relay-open created: running exit=0
+R1  the pull through the bound relay worked: … Status: Downloaded newer image for
+    127.0.0.1:5058/probe/nginx:1
+R2  from a bridge container, the bound relay: wget: can't connect to remote host
+    (172.17.0.1): Connection refused
+R3  from a bridge container, the unbound relay: reached 172.17.0.1:5059
+T1  a relay under timeout 3 ended and was removed within 6s
+```
+
+H1 to H4 are the offline page's procedure for the pinned helper itself:
+`docker save` of its reference, its removal by reference and by ID,
+`docker load`, then `docker run --pull=never`. R1 is §5.1's bound form,
+`timeout 300 nc -lk -s 127.0.0.1 -p 5058 -e nc host.docker.internal 5057`, run
+`--network host`. R2 and R3 ask the VM's bridge gateway from a container on the
+default bridge network, the bound relay first and an unbound one on 5059 as the
+control. S1 found no key for Docker Desktop's opt-in host networking or for
+Enhanced Container Isolation, and no `admin-settings.json` was present, so the
+relay ran with both at their default, off. Enhanced Container Isolation needs a
+Docker Business subscription and was not measured.
+
+The same probe on Linux, engine 29.7.2 on the classic image store, with the
+relay's target on the host's own loopback:
+
+```
+L1  save wrote a oci tar; load said: Loaded image ID: sha256:db287cb6…
+L2  the loaded helper does NOT run by its pinned reference: … No such image
+L3  pinned digest sha256:9db7b599…; loaded id sha256:db287cb6…; equal: no
+L4  the loaded helper runs by its id sha256:db287cb6…
+```
+
+Its relay lines matched R0 to T1: R2 was refused at `172.17.0.1:5058`, and R3
+reached `172.17.0.1:5059`. The pinned busybox, 1.37.0, on the same machine:
+
+```
+B1  nc -lk -s 127.0.0.1 -p <a port another relay holds>   nc: bind: Address already in use   (exit 1)
+B2  nc -lk -Z -p 5072 -e cat                               nc: invalid option -- 'Z'
+B3  command -v timeout                                     /bin/timeout
+```
+
+So the offline page's procedure leaves the helper unreachable by its pinned
+reference on both stores, on Linux as on a Mac. Only on the containerd store is
+its ID the pinned digest.

@@ -98,9 +98,9 @@ phase shipped, and a reader deciding what to work on needs the other half.
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
 - **[0060 — A Mac loads a bundle's images through a relay](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md).**
-  📝 Accepted and not started. Two measurements on a Mac come before the code:
-  the Docker Desktop settings the relay needs, and how an offline Mac's helper
-  resolves.
+  📝 Accepted and not started. The measurements that come before the code are
+  taken: the Docker Desktop settings the relay needs, and how an offline
+  machine's helper resolves on each image store.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
