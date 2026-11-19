@@ -295,6 +295,46 @@ func RunSecretStoreSuite(t *testing.T, newStore SecretStoreFactory) {
 		assertOwner(t, path, os.Geteuid(), os.Getegid())
 	})
 
+	// Compose mounts each file into the containers that read it, and through
+	// Docker Desktop's file sharing a container no longer finds a file the
+	// host replaced, until it restarts (logs/macos-host.md,
+	// 2026-11-19T05:55:52Z). Every apply renders, and most change nothing.
+	t.Run("a render that changes nothing leaves each file in place", func(t *testing.T) {
+		store := newStore(t)
+		ctx := context.Background()
+		require.NoError(t, store.Set(ctx, "db_password", domain.NewSecret("a-value")))
+		schema := domain.SecretSchema{Secrets: []domain.SecretDeclaration{
+			{Name: "db_password", Required: true},
+		}}
+		targetDir := filepath.Join(t.TempDir(), "secrets")
+		path := filepath.Join(targetDir, "db_password")
+		render := func() os.FileInfo {
+			t.Helper()
+			_, err := store.Render(ctx, targetDir, schema)
+			require.NoError(t, err)
+			info, err := os.Lstat(path)
+			require.NoError(t, err)
+			return info
+		}
+
+		first := render()
+		assert.True(t, os.SameFile(first, render()),
+			"a render that changed nothing replaced the file, which a container on a Mac then no longer finds")
+
+		// A file that differs from the store, in its value or its mode, is
+		// written again. Its owner is the case above.
+		require.NoError(t, os.Chmod(path, 0o600))
+		require.NoError(t, os.WriteFile(path, []byte("edited by hand"), 0o600))
+		require.NoError(t, os.Chmod(path, 0o400))
+		render()
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Equal(t, "a-value", string(content), "a file edited by hand was left as it was")
+
+		require.NoError(t, os.Chmod(path, 0o444))
+		assert.Equal(t, os.FileMode(0o400), render().Mode().Perm(), "a file made 0444 was left so")
+	})
+
 	t.Run("render refuses an owner it cannot give the file to", func(t *testing.T) {
 		if os.Geteuid() == 0 {
 			t.Skip("root can give a file to anyone")
