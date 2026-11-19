@@ -88,6 +88,9 @@
     "policy": {
       "additionalProperties": false,
       "properties": {
+        "allow_unencrypted_disk": {
+          "type": "boolean"
+        },
         "backup_schedule": {
           "type": "string"
         },
