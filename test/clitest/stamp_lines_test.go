@@ -22,6 +22,8 @@ func TestALineNamesItsTimeWhereNothingElseDoes(t *testing.T) {
 			"--no-recovery-recipient", "--install-units=false").ExitCode(0)
 	}
 
+	// Not whatever the shell running the test exported.
+	t.Setenv(domain.StampLinesEnv, "")
 	plain := initialise(New(t))
 	for _, line := range strings.Split(plain.Stdout+plain.Stderr, "\n") {
 		if stamp.MatchString(line) {
@@ -41,7 +43,6 @@ func TestALineNamesItsTimeWhereNothingElseDoes(t *testing.T) {
 	if !stamp.MatchString(listed.Stdout) {
 		t.Errorf("a result on stdout names no time:\n%s", listed.Stdout)
 	}
-
 	var stamped, records int
 	for _, line := range strings.Split(ran.Stdout+ran.Stderr+failed.Stderr+listed.Stdout, "\n") {
 		switch {
