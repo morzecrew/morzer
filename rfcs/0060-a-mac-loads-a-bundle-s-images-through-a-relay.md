@@ -177,7 +177,9 @@ host is still refused first.
 - The compose adapter, scripted: the relay's bound is the time left on the
   ingest's context, and with no deadline one pull's and one tag's limit for
   each pending image, so a relay outlasts the last pull of a multi-image
-  ingest (decision 15).
+  ingest (decision 15). The end-to-end request names the first pending
+  image's manifest by digest, and a server that answers it with 404 is
+  refused naming the three settings of decision 14 (decision 16).
 - The macOS acceptance run goes back to the bundled scenario in full: the
   registry stopped, the local copy of `app` removed, `init` and `apply` with no
   registry, the alias running, `doctor` content. While the relay runs, a
@@ -263,6 +265,7 @@ could not reach it.
 | 13 | `ASSUMED` | Before the first pull, the ingest checks the relay end to end: that its container was created and is running, which Enhanced Container Isolation can refuse for `--network host` at creation, and that a request through it is answered. Either failing is a refusal naming the Docker Desktop settings the measurement (§10) finds the relay needs, so a missing prerequisite is reported before the pull, not as a bundle that would not load. Added on #402's review, 2026-11-19. |
 | 14 | `ASSUMED` | A daemon on another host is caught whatever named it: `DOCKER_HOST` as today (`requireLocalDaemon`), and `DOCKER_CONTEXT` or the CLI configuration's current context by decision 13's check, since a relay started there cannot reach the Mac's loopback. The refusal names all three. Added on #402's review, 2026-11-19. |
 | 15 | `ASSUMED` | The relay's `timeout` bound covers the whole ingest, not one pull. One relay serves every pull of an ingest, and those pulls run one after another, so a bound of one pull's limit would end the relay during a later pull that fits its own. The bound is the time left on the ingest's context, which the `ingest-images` step bounds to 60 minutes for `init`, `update` and `release ingest` alike; with no deadline on the context, it is one pull's limit and one tag's for each pending image. Supersedes decision 10's bound. Found on #402's review; ruled by the author 2026-11-20: as leaned. |
+| 16 | `ASSUMED` | Decision 13's request asks for something only this ingest's server holds: the manifest of the first image the ingest pulls, by its digest, requested from inside the relay, `docker exec <relay> wget -T 5 -O /dev/null http://127.0.0.1:<relay>/v2/<repository>/manifests/<digest>`, and passed only when that manifest is served. Any other service on the port, as a remote daemon's host might run, answers 404 or nothing, and the ingest is refused naming decision 14's three settings. A registry elsewhere that served the same digest would be serving the same content, which the pull verifies. Found on #402's review; ruled by the author 2026-11-20: as leaned. |
 
 ## 12. Phasing
 
