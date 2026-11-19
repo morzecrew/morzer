@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `logs --follow` stopped by Ctrl-C ends cleanly when a process compose
+  started outlives the stop. Once the grace period ran out, it used to fail
+  with `file already closed`.
+
 - On a Mac, each line a job writes to its log names its time in UTC, which
   launchd leaves out. Jobs 0.18.0 installed gain it once
   `morzer init --repair --install-units` installs them again, and the start at

@@ -194,6 +194,29 @@ func TestAStreamThatEndedOrWasStoppedEndsCleanly(t *testing.T) {
 	}
 }
 
+// A child that outlives the group's TERM keeps stdout open, and once the wait
+// delay passes the pipe is closed under the read. A stream morzer stopped still
+// ended. Under dash, a child forked as the TERM lands is such a child.
+func TestAStreamMorzerStoppedWhileAChildHeldStdoutEndsCleanly(t *testing.T) {
+	defer func(d time.Duration) { streamWaitDelay = d }(streamWaitDelay)
+	streamWaitDelay = 50 * time.Millisecond
+
+	// The child ignores TERM and exits by itself, for the reason above.
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := startShellStream(t, ctx, "trap '' TERM; echo up; sleep 1 & wait")
+	reader := bufio.NewReader(stopped)
+	if _, err := reader.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Errorf("a stream morzer stopped while a child held stdout reported %v", err)
+	}
+	if err := stopped.Close(); err != nil {
+		t.Errorf("closing it: %v", err)
+	}
+}
+
 // Compose can exit 0 while a child it started still holds stderr open. Wait
 // then reports ErrWaitDelay rather than an exit status, and the stream did
 // end: it must read as a clean EOF, not as the runtime failing.
