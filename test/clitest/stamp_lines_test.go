@@ -43,6 +43,14 @@ func TestALineNamesItsTimeWhereNothingElseDoes(t *testing.T) {
 	if !stamp.MatchString(listed.Stdout) {
 		t.Errorf("a result on stdout names no time:\n%s", listed.Stdout)
 	}
+	// --json's envelope is one document, as its contract has it, and so is
+	// the one a failure before the command ran still owes.
+	for _, args := range [][]string{{"--json", "config", "list"}, {"--json", "--no-such-flag"}} {
+		if out := r.Run(args...).Stdout; !json.Valid([]byte(out)) {
+			t.Errorf("`%s` wrote no JSON document:\n%s", strings.Join(args, " "), out)
+		}
+	}
+
 	var stamped, records int
 	for _, line := range strings.Split(ran.Stdout+ran.Stderr+failed.Stderr+listed.Stdout, "\n") {
 		switch {
