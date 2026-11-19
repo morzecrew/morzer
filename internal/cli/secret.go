@@ -527,12 +527,14 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 		if len(written) > 0 {
 			// Not "the next apply": a template holds the secret's path,
 			// so no configuration file changes, and a container that
-			// mounts the file holds the replaced one until it restarts.
+			// mounts the file holds the replaced one until it restarts,
+			// or through Docker Desktop's file sharing finds none. A value
+			// set to what it was leaves the file in place.
 			a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
 				fmt.Sprintf("No service declares %s, so none was restarted. Its file under %s has the new value.",
 					strings.Join(written, ", "), a.Deps.Paths.SecretsRenderDir()),
-				"Whatever opens the file reads the new value. A container that mounts the file " +
-					"keeps reading the old one until it restarts.",
+				"Whatever opens the file reads the new value. If the value changed, a container that " +
+					"mounts the file reads the old one until it restarts, and on a Mac no file at all.",
 			}})
 		}
 		return nil, nil

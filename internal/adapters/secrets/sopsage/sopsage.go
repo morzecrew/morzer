@@ -556,9 +556,16 @@ func (s *Store) Render(ctx context.Context, targetDir string, schema domain.Secr
 		fileName := decl.FileName()
 		expected[fileName] = true
 
+		// Written only when it differs. Compose mounts the file into each
+		// container that reads it, and through Docker Desktop's file
+		// sharing a container no longer finds a replaced one until it
+		// restarts. Every apply renders, and most change nothing.
 		uid, gid := decl.Owner.IDs()
-		if err := atomicfs.WriteFileInAs(root, fileName, []byte(value.Reveal()), 0o400, uid, gid); err != nil {
-			return nil, decl.RenderError(err)
+		data := []byte(value.Reveal())
+		if !atomicfs.UnchangedIn(root, fileName, data, 0o400, uid, gid) {
+			if err := atomicfs.WriteFileInAs(root, fileName, data, 0o400, uid, gid); err != nil {
+				return nil, decl.RenderError(err)
+			}
 		}
 		info, err := root.Stat(fileName)
 		if err != nil {

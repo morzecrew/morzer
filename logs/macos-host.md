@@ -1750,3 +1750,19 @@ proposal: ASSUMED — `just acceptance-record <version>` runs a manager stamped 
 ```
 
 **Drift count: 3.** The version the recorded binary reports was a gap in the spec, not drift.
+
+## The rendered secrets, after the close-out
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-19T05:55:52Z
+attempt: 1
+claim: Every apply, update and restore renders the secrets, and the render replaced each file, a temp file then a rename, whether or not its value had changed. Compose mounts each file into the containers that read it. On Linux a container keeps reading the file that was replaced. On the author's Mac, through Docker Desktop's file sharing, it finds none: a container that mounted a file read `one`, then after a rename over it `cat: can't open '/run/secrets/f': No such file or directory`, then `two` after `docker restart`. So in the acceptance run the app, created by the restore and left running by the update after it, could not read `/run/secrets/db_password`. Decided: a render writes a secret's file only when it is not already the file it would write, with its value, `0400` and its owner. Refused: writing in place, which a crash leaves half written and a container can read torn. A value that changes is still a new file, and the services that declare it are restarted, which the same measurement showed brings it back. The notice for a secret no service declares now says a Mac's container finds no file until it restarts.
+evidence: internal/adapters/secrets/sopsage/sopsage.go:559-569
+action: decided
+proposal: ASSUMED — a render leaves a secret's file in place when it already holds the value, the mode and the owner it would be given, since through Docker Desktop's file sharing a container loses a bind-mounted file the host replaces, until it restarts
+```
+
+**Drift count: 3.** The replaced file was a discovery: no run before the Mac's read a secret from a container started before the last render.

@@ -10,6 +10,7 @@
 package atomicfs
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -224,6 +225,31 @@ func WriteFileInAs(root *os.Root, rel string, data []byte, mode fs.FileMode, uid
 		return domain.Internal(err, "cannot rename %s into place", rel)
 	}
 	return syncDirIn(root, filepath.Dir(rel))
+}
+
+// UnchangedIn reports whether rel inside root is already the regular file
+// WriteFileInAs would leave: data, at mode, owned by uid and gid, where -1 is
+// the writer's own id. A file whose group came from its directory instead, as
+// on a Mac, reads as changed, which costs only the write.
+func UnchangedIn(root *os.Root, rel string, data []byte, mode fs.FileMode, uid, gid int) bool {
+	// The size first, so a file of any size is read only when it is as long
+	// as data.
+	info, err := root.Lstat(rel)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != mode.Perm() ||
+		info.Size() != int64(len(data)) {
+		return false
+	}
+	if uid == -1 {
+		uid = os.Geteuid()
+	}
+	if gid == -1 {
+		gid = os.Getegid()
+	}
+	if gotUID, gotGID := Owner(info); gotUID != uid || gotGID != gid {
+		return false
+	}
+	current, err := root.ReadFile(rel)
+	return err == nil && bytes.Equal(current, data)
 }
 
 // parentDirMode derives the mode for directories WriteFile has to create from

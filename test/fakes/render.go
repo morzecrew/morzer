@@ -41,9 +41,13 @@ func renderToDisk(targetDir string, schema domain.SecretSchema, set domain.Secre
 
 		// The owner too, or the contract suite's owner cases would pass
 		// against one implementation only.
+		// Left in place when unchanged, as the real store leaves it.
 		uid, gid := decl.Owner.IDs()
-		if err := atomicfs.WriteFileInAs(root, name, []byte(value.Reveal()), 0o400, uid, gid); err != nil {
-			return nil, decl.RenderError(err)
+		data := []byte(value.Reveal())
+		if !atomicfs.UnchangedIn(root, name, data, 0o400, uid, gid) {
+			if err := atomicfs.WriteFileInAs(root, name, data, 0o400, uid, gid); err != nil {
+				return nil, decl.RenderError(err)
+			}
 		}
 		info, err := root.Stat(name)
 		if err != nil {
