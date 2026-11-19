@@ -2581,7 +2581,9 @@ image from a registry, which the Mac has to reach.</p>
 systemd runs on Linux: <code>dev.morzer.&lt;product&gt;</code>, which runs <code>apply --startup</code> at
 boot, and one for each schedule the installation sets,
 <code>dev.morzer.&lt;product&gt;-backup</code> and so on. Each job writes its output to
-<code>/var/lib/&lt;product&gt;/logs/&lt;job&gt;.log</code>, which newsyslog rotates.</p>
+<code>/var/lib/&lt;product&gt;/logs/&lt;job&gt;.log</code>, which newsyslog rotates. launchd times
+nothing there, so each line with anything on it names its own time in UTC: a
+log record in its <code>time</code> field, and any other line at its start.</p>
 <p>A restart clears <code>/var/run</code>, and the rendered secrets with it. With FileVault
 on, the Mac starts no job until somebody logs in, and Docker Desktop starts
 when its user does. Until the engine answers, the start at boot exits 7 and
