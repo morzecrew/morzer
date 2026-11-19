@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- On a Mac, every line a job writes to its log names its time in UTC, which
-  launchd leaves out. Jobs installed by 0.18.0 gain it once
-  `morzer init --repair --install-units` installs them again.
+- On a Mac, each line a job writes to its log names its time in UTC, which
+  launchd leaves out. Jobs 0.18.0 installed gain it once
+  `morzer init --repair --install-units` installs them again, and the start at
+  boot from the next boot.
 
 ## [0.18.0] - 2026-11-19
 
