@@ -2155,6 +2155,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#images-come-from-a-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Images come from a registry
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-runs-at-boot-and-on-schedule" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2321,6 +2332,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Nothing routes the Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#images-come-from-a-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Images come from a registry
       </span>
     </span>
   </a>
@@ -2548,6 +2570,12 @@ which is journalled. <code>doctor</code> still fails while FileVault is off.</p>
 VPN or TUN profile on a Mac would route the VM and look like success, so a
 release marks such a profile Linux-only, and it is refused on a Mac. No
 installation routes a Mac's own traffic.</p>
+<h2 id="images-come-from-a-registry">Images come from a registry<a class="headerlink" href="#images-come-from-a-registry" title="Permanent link">&para;</a></h2>
+<p>A release whose images travel in the bundle is refused on a Mac: <code>init</code>
+installs nothing, and <code>update</code> and <code>rollback</code> do not move to it. The manager serves
+those images from the Mac's loopback, and the daemon in Docker Desktop's VM has
+a loopback of its own, so it cannot pull them. A release for a Mac pulls every
+image from a registry, which the Mac has to reach.</p>
 <h2 id="what-runs-at-boot-and-on-schedule">What runs at boot and on schedule<a class="headerlink" href="#what-runs-at-boot-and-on-schedule" title="Permanent link">&para;</a></h2>
 <p><code>init</code> installs a LaunchDaemon in <code>/Library/LaunchDaemons</code> for each thing
 systemd runs on Linux: <code>dev.morzer.&lt;product&gt;</code>, which runs <code>apply --startup</code> at

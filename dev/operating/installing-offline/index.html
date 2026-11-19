@@ -2403,6 +2403,11 @@
 site whose uplink is unreliable — the manager can install and converge on all of
 them, but only if the two things it would otherwise fetch are already there:
 the <strong>release bundle</strong> and the <strong>container images</strong>.</p>
+<p>A Mac refuses a release that bundles its images, so on a Mac the images have to
+be pulled on it while it still has a network, or come from a registry it can
+reach, the last two ways <a href="#a-release-that-does-not-bundle-its-images">below</a>
+describes. Why is in
+<a href="../../explanation/platforms/#images-come-from-a-registry">Platforms</a>.</p>
 <div class="admonition warning">
 <p class="admonition-title"><code>docker save</code> and <code>docker load</code> do not carry an image's digest</p>
 <p>Earlier versions of this page told you to move images with
@@ -2521,7 +2526,8 @@ a digest.</p>
 <ul>
 <li><strong>Ask the vendor to bundle them.</strong> One line per image in their manifest, and
   the problem is theirs to solve once rather than yours to solve per machine.
-  Point them at <a href="../../authoring/bundled-images/">bundled images</a>.</li>
+  Point them at <a href="../../authoring/bundled-images/">bundled images</a>. Not on a Mac,
+  which refuses a release that bundles its images.</li>
 <li><strong>Pull on the machine while it still has a network.</strong> A real pull records the
   digest, so <code>morzer apply</code> while connected — or plain <code>docker pull</code> of each
   reference <code>morzer release show</code> lists — leaves images that survive losing the

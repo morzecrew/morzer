@@ -2583,6 +2583,10 @@ performs an ordinary registry pull out of it. Ordinary is the point: the runtime
 verifies every blob it fetches against the digest the manifest names, so a
 bundle whose bytes are not what its index claims is refused there rather than
 discovered later.</p>
+<p>That is why a Mac refuses a release that bundles its images: Docker Desktop's
+daemon runs in a VM whose <code>127.0.0.1</code> is its own, and cannot reach the layout.
+A release for a Mac pulls them instead; see
+<a href="../running-on-a-mac/#pull-every-image">Running a release on a Mac</a>.</p>
 <h3 id="the-image-is-deployed-under-a-name-you-did-not-publish">The image is deployed under a name you did not publish<a class="headerlink" href="#the-image-is-deployed-under-a-name-you-did-not-publish" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>registry.example/demo/app:morzer-sha256-0000000000000000…
 </code></pre></div>
