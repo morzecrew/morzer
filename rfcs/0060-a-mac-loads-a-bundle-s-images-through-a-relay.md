@@ -1,7 +1,7 @@
 # RFC 0060 — A Mac loads a bundle's images through a relay
 
 - **Status:** 📝 Draft — accepted 2026-11-19, not started. Ruled by the
-  author 2026-11-19: decisions 3 and 8 as leaned. Decisions 9 to 13 were added
+  author 2026-11-19: decisions 3 and 8 as leaned. Decisions 9 to 14 were added
   on #402's review, as the leans the author asked to be recorded; 12 and 13
   are measured before the code.
 - **Scope:** Lets a Mac install and update a release whose images travel in
@@ -169,9 +169,16 @@ host is still refused first.
   today's, byte for byte.
 - `domain`, suite and doctor tests that pinned the refusal now pin its absence
   on darwin, and the refusal of a release not made for darwin is unchanged.
+- The compose adapter, scripted too: an ingest after one killed once its relay
+  started removes that installation's leftover relay before starting its own,
+  and leaves one relay at most; a relay that exits at start, or that is not
+  created, is refused before the first pull, naming what it needs (decisions
+  10, 11 and 13).
 - The macOS acceptance run goes back to the bundled scenario in full: the
   registry stopped, the local copy of `app` removed, `init` and `apply` with no
-  registry, the alias running, `doctor` content.
+  registry, the alias running, `doctor` content. While the relay runs, a
+  connection to a non-loopback address of the VM is refused (decision 9); its
+  result is the measurement of the bound form, which §13's Q3 did not take.
 
 ## 7. Docs
 
@@ -185,7 +192,8 @@ Mac loads first.
 - A relay for a daemon on another host. `DOCKER_HOST=tcp://…` stays refused;
   the relay closes the gap between a VM and the Mac it runs on, not a network.
 - Docker Desktop's opt-in host networking for the Mac's own interfaces. The
-  relay uses the VM's namespace, which `--network host` gives by default.
+  relay uses the VM's namespace, which `--network host` gave on §13's Mac;
+  whether it does with every Docker Desktop setting is measured (§10).
 
 ## 9. Risks
 
@@ -220,14 +228,17 @@ Both were ruled on 2026-11-19 as leaned; decisions 3 and 8 carry the rulings.
   and, where available, under Enhanced Container Isolation, and builds the
   check of decision 13 on what it finds.
 - Whether a helper an offline Mac loads as the offline page says answers to its
-  pinned reference (decision 12). P2 suggests it does not.
+  pinned reference, on each image store (decision 12). P2 shows it does not on
+  the containerd store.
+- Whether the relay bound to `127.0.0.1` carries the pull as the unbound one of
+  §13's Q3 did. The acceptance run measures it (decision 9).
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | On a Mac a bundle's images are loaded as on Linux: the daemon pulls each from the registry inside the manager's process on `127.0.0.1:0` (RFC 0011 decision 18), and its pull verifies every blob (decision 21). Only the path between them changes. |
-| 2 | `ASSUMED` | The path is a relay container: the volume helper image, `--network host`, running `nc -lk -p <relay> -e nc host.docker.internal <server>`, started before the first pull of an ingest and removed when the ingest ends, failed or not. |
+| 2 | `ASSUMED` | The path is a relay container: the volume helper image, `--network host`, labelled with its installation, running `timeout <bound> nc -lk -s 127.0.0.1 -p <relay> -e nc host.docker.internal <server>`, started before the first pull of an ingest and removed when the ingest ends, failed or not. Decisions 9 and 10 say why the bind and the bound. |
 | 3 | `ASSUMED` | How the relay's port on the VM's loopback is chosen, and how a relay that could not bind it is caught before the pull blames the bundle: a random port in the dynamic range, and another when the relay has exited at start, which is how a port another container holds shows. The executor logs what it builds. Was `OPEN`; ruled by the author 2026-11-19: as leaned. |
 | 4 | `ASSUMED` | The helper is never pulled for an ingest. One not local is a refusal naming `docker load` of it, before the server starts; an unpinned override is refused as the file-sharing probe refuses one. Consequence: an offline Mac loads the helper before `init`, as it already must before a backup. |
 | 5 | `ASSUMED` | The relay is wired with the darwin engine (`internal/cli/engine_darwin.go`) as an option of the compose runtime. The adapter does not branch on the platform, and Linux runs today's code unchanged. |
@@ -237,8 +248,9 @@ Both were ruled on 2026-11-19 as leaned; decisions 3 and 8 carry the rulings.
 | 9 | `ASSUMED` | The relay listens on `127.0.0.1` alone, `nc -s 127.0.0.1`: an unbound `nc -l` takes every address in the VM's host network, the bridge gateway among them, from which any container could read the bundle's images. The acceptance run checks that a connection to a non-loopback address of the VM is refused. Added on #402's review, 2026-11-19. |
 | 10 | `ASSUMED` | A relay carries a label naming its installation and runs under busybox `timeout`, bounded by the ingest's own pull timeout. Each ingest first removes any relay of the same installation, which the deployment lock makes a leftover, never a live one; `timeout` ends one in any case. A relay never outlives its manager by more than that bound. Added on #402's review, 2026-11-19. |
 | 11 | `ASSUMED` | The relay needs the helper to carry busybox's `nc`, with `-l`, `-k`, `-s`, `-p` and `-e`, and `timeout`. The pinned default has the `nc` flags (§13, P7); the executor checks it has `timeout` too. A relay that exits at start is told apart from a port in use by what it printed, and refused naming the requirement, so an override without them fails before the pull, not during it. The `MORZER_VOLUME_HELPER_IMAGE` docs say so. Added on #402's review, 2026-11-19. |
-| 12 | `ASSUMED` | Before the code, the executor measures on a Mac whether the helper, loaded as the offline page prescribes, answers to its pinned reference. P2 suggests it does not, which would make the page wrong for backups already. If it does not, the relay and volume capture run the helper by the ID the image store gave it, which on the containerd store is the pinned digest (§13, Q1), and the offline page is corrected in the same change. Added on #402's review, 2026-11-19. |
-| 13 | `ASSUMED` | Before the first pull, the ingest checks the relay end to end with a request through it, and refuses with the Docker Desktop settings it found the relay needs (§10) when it does not answer, so a missing prerequisite is reported before the pull, not as a bundle that would not load. Added on #402's review, 2026-11-19. |
+| 12 | `ASSUMED` | Before the code, the executor measures, on each image store a Mac can run (containerd and classic), whether the helper loaded as the offline page prescribes, `docker save` of its pinned reference and `docker load`, answers to that reference, and whether its ID is the pinned digest. P2 was that procedure on the containerd store, and the image did not answer to its reference; the classic store is unmeasured. Where it does not answer, the relay and volume capture run the helper by its ID only on a store where the measurement shows the ID is the pinned digest, and the offline page is corrected in the same change. A store where neither holds needs the helper pulled while the Mac has a network, and the refusal says so. Added on #402's review, 2026-11-19. |
+| 13 | `ASSUMED` | Before the first pull, the ingest checks the relay end to end: that its container was created and is running, which Enhanced Container Isolation can refuse for `--network host` at creation, and that a request through it is answered. Either failing is a refusal naming the Docker Desktop settings the measurement (§10) finds the relay needs, so a missing prerequisite is reported before the pull, not as a bundle that would not load. Added on #402's review, 2026-11-19. |
+| 14 | `ASSUMED` | A daemon on another host is caught whatever named it: `DOCKER_HOST` as today (`requireLocalDaemon`), and `DOCKER_CONTEXT` or the CLI configuration's current context by decision 13's check, since a relay started there cannot reach the Mac's loopback. The refusal names all three. Added on #402's review, 2026-11-19. |
 
 ## 12. Phasing
 
