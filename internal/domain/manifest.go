@@ -867,6 +867,14 @@ const (
 // design gives it one (RFC 0055 §4).
 var KnownPlatforms = []Platform{PlatformLinux, PlatformDarwin}
 
+// StampLinesEnv is the variable that, set to 1, puts its time on every line the
+// manager writes. A launchd job's plist sets it: launchd writes the output to
+// the job's log as it comes, and nothing times a line there, as journald does
+// on Linux (logs/macos-host.md). A log record carries the time in its own
+// field, so a JSON record stays one parseable line; every other line starts
+// with it.
+const StampLinesEnv = "MORZER_STAMP_LINES"
+
 // PlatformsMinManagerVersion is the manager release that reads
 // `requirements.platforms` and `runtimes.<name>.platforms`, which an older one
 // refuses as unknown fields. RFC 0055 decision 15 named 0.16.0, the next minor

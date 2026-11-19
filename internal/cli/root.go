@@ -95,6 +95,13 @@ type App struct {
 	json  *jsonout.Presenter
 	plain *plain.Presenter
 	log   *slog.Logger
+	// logTo is where log records go, each with its own time, when every
+	// line is stamped (domain.StampLinesEnv); nil sends them to Stream.Err
+	// untimed.
+	logTo io.Writer
+	// stampers time stdout's and stderr's lines, and are turned off for
+	// --json, whose envelope is one document.
+	stampers []*ui.Stamper
 
 	// bus and redactor are retained so a command that learns the product
 	// name only from its arguments -- `init` -- can rebuild the adapters
@@ -185,11 +192,21 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	if streams.In == nil {
 		streams.In = os.Stdin
 	}
+	var (
+		logTo    io.Writer
+		stampers []*ui.Stamper
+	)
+	if os.Getenv(domain.StampLinesEnv) == "1" {
+		logTo = streams.Err
+		out, errOut := ui.StampLines(streams.Out, time.Now), ui.StampLines(streams.Err, time.Now)
+		streams.Out, streams.Err = out, errOut
+		stampers = []*ui.Stamper{out, errOut}
+	}
 	// Derived here so the live view can cancel it; see App.cancelOperation.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	app := &App{Build: build, Stream: streams, cancelOperation: cancel}
+	app := &App{Build: build, Stream: streams, cancelOperation: cancel, logTo: logTo, stampers: stampers}
 
 	// Recorded before any manifest is read, so a release built for a newer
 	// manager reports that rather than an unknown field. A build with no
@@ -289,6 +306,7 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	// that produced no `ok:false` at all, and a consumer parsing stdout got
 	// empty input rather than an error it could read.
 	if err != nil && app.json == nil && wantsJSON(app.Flags.json, flagLookup(root, args), args) {
+		app.unstamp()
 		app.json = jsonout.New(jsonout.Options{
 			Out:            app.Stream.Out,
 			ManagerVersion: app.Build.Version,
@@ -857,6 +875,14 @@ func grouped(id string, cmd *cobra.Command) *cobra.Command {
 	return cmd
 }
 
+// unstamp leaves --json's output as its contract has it, one document, where
+// every line would otherwise name its time (domain.StampLinesEnv).
+func (a *App) unstamp() {
+	for _, s := range a.stampers {
+		s.Off()
+	}
+}
+
 // setup resolves the output mode, builds the logger, and wires every adapter.
 func (a *App) setup(ctx context.Context) error {
 	f := a.Flags
@@ -871,6 +897,9 @@ func (a *App) setup(ctx context.Context) error {
 		Stdout: a.Stream.Out,
 		Stderr: a.Stream.Err,
 	})
+	if a.Mode == ui.ModeJSON {
+		a.unstamp()
+	}
 
 	// The logger writes to stderr always. stdout is the result.
 	var logFormat logging.Format
@@ -886,6 +915,9 @@ func (a *App) setup(ctx context.Context) error {
 			WithHint("valid formats: text, json")
 	}
 	logWriter := a.Stream.Err
+	if a.logTo != nil {
+		logWriter = a.logTo
+	}
 	if a.Mode == ui.ModeJSON && !f.verbose {
 		// In JSON mode the envelope is the contract; log narration on
 		// stderr would be noise for a consumer that is not reading it.
@@ -893,9 +925,10 @@ func (a *App) setup(ctx context.Context) error {
 	}
 
 	logger, redactor := logging.New(logging.Options{
-		Level:  logging.ParseLevel(f.verbose, f.quiet),
-		Format: logFormat,
-		Writer: logWriter,
+		Level:   logging.ParseLevel(f.verbose, f.quiet),
+		Format:  logFormat,
+		Writer:  logWriter,
+		AddTime: a.logTo != nil,
 	})
 	a.log = logger
 

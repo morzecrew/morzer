@@ -1794,3 +1794,19 @@ proposal: ASSUMED (decision 9, unchanged) — on a Mac the restart's installatio
 ```
 
 **Drift count: 3.** Neither was drift: the first was a gap in RFC 0055, the second a discovery the first forced.
+
+## A job's log on a Mac, after 0.18.0
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-19T14:21:05Z
+attempt: 1
+claim: Decision 30 sends each job's output to `VarDir/logs/<label>.log`, and the close-out found that nothing in it says when a line was written: the manager's log leaves its time out because journald stamps every line, and launchd writes a job's output as it comes. Ruled by the author on 2026-11-19: every line of a Mac job's log carries its time. Decided: each plist sets `MORZER_STAMP_LINES=1`, and under it the manager writes each line of stdout and stderr with a UTC RFC 3339 prefix, except its log records, which carry the time in their own `time` field so a JSON record stays one parseable line. Nothing changes where the variable is unset: Linux, a terminal, a script. An existing installation's jobs gain it when their units are next installed.
+evidence: internal/infra/logging/logging.go:50
+action: decided
+proposal: ASSUMED — a job launchd runs carries `MORZER_STAMP_LINES=1`, under which every line the manager writes names its time in UTC, inside a log record and before any other line. Ruled by the author 2026-11-19
+```
+
+**Drift count: 3.** The missing time was a gap in the spec, not drift.

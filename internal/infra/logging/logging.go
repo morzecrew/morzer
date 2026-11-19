@@ -47,15 +47,21 @@ func New(opts Options) (*slog.Logger, *Redactor) {
 	}
 
 	handlerOpts := &slog.HandlerOptions{Level: opts.Level}
-	if !opts.AddTime {
-		// Under systemd the journal timestamps every line itself, so a
-		// second timestamp is noise.
-		handlerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
-			if len(groups) == 0 && a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
+	handlerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+		if len(groups) > 0 || a.Key != slog.TimeKey {
 			return a
 		}
+		if !opts.AddTime {
+			// Under systemd the journal timestamps every line itself,
+			// so a second timestamp is noise.
+			return slog.Attr{}
+		}
+		// In UTC, as the lines stamped beside it are, whatever zone the
+		// machine is set to.
+		if a.Value.Kind() == slog.KindTime {
+			a.Value = slog.TimeValue(a.Value.Time().UTC())
+		}
+		return a
 	}
 
 	var base slog.Handler

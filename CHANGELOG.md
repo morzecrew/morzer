@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started outlives the stop. Once the grace period ran out, it used to fail
   with `file already closed`.
 
+- On a Mac, each line a job writes to its log names its time in UTC, which
+  launchd leaves out. Jobs 0.18.0 installed gain it once
+  `morzer init --repair --install-units` installs them again, and the start at
+  boot from the next boot.
+
 ## [0.18.0] - 2026-11-19
 
 An installation can run on a Mac with Apple silicon and Docker Desktop, for a

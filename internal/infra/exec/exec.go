@@ -536,7 +536,12 @@ func excerpt(s string, limit int) string {
 // applied. Variables holding secrets are never added here: secrets reach
 // tools as files, not as environment.
 func BaseEnv(overrides map[string]string) []string {
-	env := os.Environ()
+	// How this process writes its own lines, which is no child's business: a
+	// hook that runs `port=$(morzer config get http_port)` in a Mac job would
+	// otherwise capture a time ahead of the port.
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		return strings.HasPrefix(kv, domain.StampLinesEnv+"=")
+	})
 	return MergeEnv(env, overrides)
 }
 
