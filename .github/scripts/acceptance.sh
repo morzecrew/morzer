@@ -1659,82 +1659,108 @@ info "$(find "${BUNDLED}/images" -type f | wc -l) file(s) under images/"
 step "release verify accepts the packed bundle"
 "${MORZER}" release verify "${BUNDLED}"
 
-step "the registry goes away, and so does the local copy of app"
-docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
-STARTED_REGISTRY=0
-if curl -fsS "http://${REGISTRY}/v2/" >/dev/null 2>&1; then
-	fail "the registry is still answering, so this proves nothing"
-fi
-# Every local reference to the image the bundle carries. Without this the
-# converge below could succeed on a copy the earlier steps left behind.
-docker rmi "${REGISTRY}/demo/app:acceptance" >/dev/null 2>&1 || true
-docker rmi "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 || true
-if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
-	fail "the app image is still local, so the install would not be proving anything"
-fi
-info "registry stopped, app gone from the local store"
-
-step "init installs it with no registry to reach"
-AIR_ROOT="${WORK}/airgapped-root"
-"${MORZER}" --root "${AIR_ROOT}" init \
-	--release "${BUNDLED}" \
-	--profile embedded \
-	--domain airgapped.example \
-	--no-recovery-recipient \
-	--install-units=false \
-	--set http_port="${AIRGAP_HTTP_PORT}" \
-	--set log_level=debug
-
-"${MORZER}" --root "${AIR_ROOT}" apply
-
-running=$(($(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)))
-[ "${running}" = "2" ] ||
-	fail "expected 2 running container(s) after the air-gapped install, found ${running}"
-info "2 container(s) running, with no registry in existence"
-
-step "the deployment runs the alias, not the reference no daemon can resolve"
-image=$(docker compose -p demo ps --format '{{.Image}}' | grep -F 'demo/app' | head -1)
-case "${image}" in
-*:morzer-sha256-*) info "app runs as ${image}" ;;
-*) fail "app is running as ${image}, which is not the alias ingest creates" ;;
-esac
-# The other half, and the one that would rot silently: on the classic image
-# store the reference the manifest pins must still not resolve. If this ever
-# starts passing, the measurement RFC 0011 decision 19 rests on has changed, and
-# the design can be revisited rather than worked around. On the containerd image
-# store, a fresh Docker 29 install's default, it resolves after ingest (Docker
-# 29.4.2 in CI); the alias above is still what runs.
-if docker info --format '{{range .DriverStatus}}{{index . 0}}={{index . 1}} {{end}}' |
-	grep -q 'driver-type=io.containerd.snapshotter.v1'; then
-	docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 ||
-		fail "the containerd store no longer resolves the manifest's reference after ingest"
-	info "the containerd store resolves the manifest reference; app still runs as the alias"
+if [ "${OS}" = Darwin ]; then
+	# A Mac refuses it where it refuses a release not made for darwin: its
+	# images are served from this machine's loopback, and Docker Desktop's
+	# daemon runs in a VM with a loopback of its own (logs/macos-host.md). The
+	# registry stays up, for the restart's installation below.
+	step "a Mac refuses a bundle that carries its images, and installs nothing"
+	AIR_ROOT="${WORK}/airgapped-root"
+	refused=$("${MORZER}" --root "${AIR_ROOT}" init \
+		--release "${BUNDLED}" \
+		--profile embedded \
+		--domain airgapped.example \
+		--no-recovery-recipient \
+		--install-units=false \
+		--set http_port="${AIRGAP_HTTP_PORT}" \
+		--set log_level=debug 2>&1) && fail "a Mac installed a bundle that carries its images"
+	case "${refused}" in
+	*"carries app in its bundle, which a Mac cannot load yet"*) ;;
+	*) fail "the refusal does not say why: ${refused}" ;;
+	esac
+	[ ! -e "${AIR_ROOT}/etc/demo/installation.yaml" ] ||
+		fail "the refused init left an installation in ${AIR_ROOT}"
+	info "refused: release 1.2.0 carries app in its bundle"
 else
-	if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
-		fail "the manifest's own reference resolves locally, which contradicts decision 19"
+	step "the registry goes away, and so does the local copy of app"
+	docker rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
+	STARTED_REGISTRY=0
+	if curl -fsS "http://${REGISTRY}/v2/" >/dev/null 2>&1; then
+		fail "the registry is still answering, so this proves nothing"
 	fi
-	info "the manifest reference still resolves nowhere, as measured"
+	# Every local reference to the image the bundle carries. Without this the
+	# converge below could succeed on a copy the earlier steps left behind.
+	docker rmi "${REGISTRY}/demo/app:acceptance" >/dev/null 2>&1 || true
+	docker rmi "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 || true
+	if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
+		fail "the app image is still local, so the install would not be proving anything"
+	fi
+	info "registry stopped, app gone from the local store"
+
+	step "init installs it with no registry to reach"
+	AIR_ROOT="${WORK}/airgapped-root"
+	"${MORZER}" --root "${AIR_ROOT}" init \
+		--release "${BUNDLED}" \
+		--profile embedded \
+		--domain airgapped.example \
+		--no-recovery-recipient \
+		--install-units=false \
+		--set http_port="${AIRGAP_HTTP_PORT}" \
+		--set log_level=debug
+
+	"${MORZER}" --root "${AIR_ROOT}" apply
+
+	running=$(($(docker compose -p demo ps --status running --format '{{.Name}}' | wc -l)))
+	[ "${running}" = "2" ] ||
+		fail "expected 2 running container(s) after the air-gapped install, found ${running}"
+	info "2 container(s) running, with no registry in existence"
+
+	step "the deployment runs the alias, not the reference no daemon can resolve"
+	image=$(docker compose -p demo ps --format '{{.Image}}' | grep -F 'demo/app' | head -1)
+	case "${image}" in
+	*:morzer-sha256-*) info "app runs as ${image}" ;;
+	*) fail "app is running as ${image}, which is not the alias ingest creates" ;;
+	esac
+	# The other half, and the one that would rot silently: on the classic image
+	# store the reference the manifest pins must still not resolve. If this ever
+	# starts passing, the measurement RFC 0011 decision 19 rests on has changed, and
+	# the design can be revisited rather than worked around. On the containerd image
+	# store, a fresh Docker 29 install's default, it resolves after ingest (Docker
+	# 29.4.2 in CI); the alias above is still what runs.
+	if docker info --format '{{range .DriverStatus}}{{index . 0}}={{index . 1}} {{end}}' |
+		grep -q 'driver-type=io.containerd.snapshotter.v1'; then
+		docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1 ||
+			fail "the containerd store no longer resolves the manifest's reference after ingest"
+		info "the containerd store resolves the manifest reference; app still runs as the alias"
+	else
+		if docker image inspect "${REGISTRY}/demo/app@${APP_DIGEST}" >/dev/null 2>&1; then
+			fail "the manifest's own reference resolves locally, which contradicts decision 19"
+		fi
+		info "the manifest reference still resolves nowhere, as measured"
+	fi
+
+	step "doctor is content with an installation that pulls nothing it cannot reach"
+	"${MORZER}" --root "${AIR_ROOT}" --json doctor >"${WORK}/airgapped-doctor.json" 2>&1 ||
+		fail "doctor failed on the air-gapped installation: $(cat "${WORK}/airgapped-doctor.json")"
+	jq -e '[.data.results[] | select(.id == "images.bundled")] | length == 1 and .[0].status == "ok"' \
+		"${WORK}/airgapped-doctor.json" >/dev/null ||
+		fail "doctor did not report the bundled images as loaded: $(jq -c '.data.results[] | select(.id == "images.bundled")' "${WORK}/airgapped-doctor.json")"
+	info "images.bundled is ok"
+
+	step "tearing the air-gapped deployment down"
+	docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 fi
-
-step "doctor is content with an installation that pulls nothing it cannot reach"
-"${MORZER}" --root "${AIR_ROOT}" --json doctor >"${WORK}/airgapped-doctor.json" 2>&1 ||
-	fail "doctor failed on the air-gapped installation: $(cat "${WORK}/airgapped-doctor.json")"
-jq -e '[.data.results[] | select(.id == "images.bundled")] | length == 1 and .[0].status == "ok"' \
-	"${WORK}/airgapped-doctor.json" >/dev/null ||
-	fail "doctor did not report the bundled images as loaded: $(jq -c '.data.results[] | select(.id == "images.bundled")' "${WORK}/airgapped-doctor.json")"
-info "images.bundled is ok"
-
-step "tearing the air-gapped deployment down"
-docker compose -p demo down --remove-orphans >/dev/null 2>&1 || true
 
 # ----------------------------------------------------------------------------
 # The restart, on a Mac (RFC 0055 decision 9, logs/macos-host.md)
 #
 # A run by hand cannot carry on through a restart, so `just acceptance-record`
 # makes its record in two phases, and this is the end of the first. It leaves
-# an installation whose jobs launchd runs: the packed bundle above, which
-# carries its image and needs no registry, under a root of its own, run by a
-# copy of the manager only root can replace, since launchd runs it as root.
+# an installation whose jobs launchd runs: the 1.2.0 bundle the run began
+# with, installed while the run's registry is up, so its images are in the
+# engine's store before the restart and the start at boot pulls nothing. A Mac
+# refuses the packed bundle above. It is under a root of its own, run by a copy
+# of the manager only root can replace, since launchd runs it as root.
 # Its containers come down, and its run directory goes, as a restart leaves
 # them, so the start at boot has both to bring back. After the restart and a
 # login, acceptance-reboot.sh checks that it did, and that it caught up a
@@ -1758,7 +1784,7 @@ if [ "${OS}" = Darwin ] && [ -n "${ACCEPTANCE_REBOOT_DIR:-}" ]; then
 	REBOOT_INSTALLED=1
 
 	"${REBOOT_MORZER}" --root "${REBOOT_ROOT}" init \
-		--release "${BUNDLED}" \
+		--release "${WORK}/bundle-1.2.0" \
 		--profile embedded \
 		--domain reboot.example \
 		--no-recovery-recipient \

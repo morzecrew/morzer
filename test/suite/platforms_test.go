@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -288,6 +289,47 @@ func TestUpdateAndRollbackRefuseWhatThisPlatformCannotRun(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrIncompatible)
 	assert.Contains(t, err.Error(), "release 1.2.0 is not made for darwin")
 	assert.Equal(t, "1.3.1", current())
+}
+
+// A Mac refuses a release whose images travel in the bundle where it refuses
+// one not made for darwin: init's plan and its stage step, and an update
+// before it starts. Docker Desktop's daemon cannot reach the loopback they are
+// served on (logs/macos-host.md, 2026-11-19T07:48:56Z).
+func TestAMacRefusesAReleaseThatCarriesItsImages(t *testing.T) {
+	ctx := context.Background()
+	const refusal = "release %s carries app in its bundle, which a Mac cannot load yet"
+	for dryRun, exit := range map[bool]int{true: domain.ExitIncompatible, false: domain.ExitCompensated} {
+		h := newHarness(t)
+		h.setHookEnv()
+		realIdentity(t, h)
+		h.Deps.Platform = "darwin"
+		src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+		copyBundle(t, testBundlePath(t), src)
+		retargetManifest(t, src, h.Root)
+		bundleImageIn(t, madeForDarwin(t, src))
+
+		_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
+			Product: "demo", ReleasePath: src, NoRecoveryKey: true, GenerateSecrets: true,
+			Options: ops.Options{DryRun: dryRun},
+		})
+		require.ErrorIs(t, err, domain.ErrIncompatible, "dry run %t", dryRun)
+		assert.Equal(t, exit, domain.ExitCode(err), "dry run %t", dryRun)
+		assert.Contains(t, err.Error(), fmt.Sprintf(refusal, "1.2.0"))
+		assert.Contains(t, domain.AsError(err).Hint, "runs in a VM with a loopback of its own")
+		exists, err := h.Deps.State.InstallationExists(ctx)
+		require.NoError(t, err)
+		assert.False(t, exists, "a refused release left an installation behind")
+	}
+
+	h := onDarwin(t)
+	src := madeForDarwin(t, stageUpgradeSource(t, h))
+	bundleImageIn(t, src)
+	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
+	require.ErrorIs(t, err, domain.ErrIncompatible)
+	assert.Contains(t, err.Error(), fmt.Sprintf(refusal, "1.3.0"))
+	rec, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2.0", rec.Version.String())
 }
 
 // Starting a selection this platform does not run is refused whether or not

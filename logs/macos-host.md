@@ -1766,3 +1766,31 @@ proposal: ASSUMED — a render leaves a secret's file in place when it already h
 ```
 
 **Drift count: 3.** The replaced file was a discovery: no run before the Mac's read a secret from a container started before the last render.
+
+## Bundled images on a Mac, after the close-out
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-19T07:48:56Z
+attempt: 1
+claim: RFC 0055 does not mention a release whose images travel in the bundle. RFC 0011 decision 18 serves them from a registry in the manager's process, on `127.0.0.1:0`, and the daemon pulls them from it. Docker Desktop's daemon runs in a VM whose loopback is its own, so on the author's Mac the acceptance run's `init` of the bundle it packs failed at `ingest-images` with `cannot load localhost:5000/demo/app out of the bundle`, and rolled back. The ingest's own hint already said a daemon in a VM cannot reach it, so this could have been known before any code. RFC 0011's table is ungraded, so its rows were treated as locked and the run halted, and the author ruled on 2026-11-19 that a Mac refuses such a release for now. Decided: on darwin, a release whose images travel in the bundle is refused wherever a release not made for darwin is: before it is adopted, in a plan, and before an update, a rollback or a start, naming the images and why. Refused for now: serving the layout where the VM can reach it, and loading it with `docker load`, which depart from RFC 0011 decisions 18 and 21 and need measuring first.
+evidence: internal/adapters/runtime/compose/ingest.go:132-138
+action: decided
+proposal: ASSUMED — on darwin a release whose images travel in the bundle is refused, as one not made for darwin is, since Docker Desktop's daemon cannot reach the loopback RFC 0011 decision 18 serves them on. Ruled by the author 2026-11-19
+```
+
+```divergence
+decision: 9
+grade: ASSUMED
+class: discovery
+at: 2026-11-19T07:48:56Z
+attempt: 1
+claim: The entry of 2026-11-18T11:08:30Z had the restart's installation install the bundle the run packs, which carries its image and needs no registry. A Mac now refuses that bundle, by the entry above, so on a Mac the restart's installation installs the 1.2.0 bundle the run began with, while the throwaway registry is still up. Its images are in the engine's store before the restart and stay there across it, and the start at boot pulls nothing, which is what the packed bundle was there to ensure. The phase after the restart reads no image.
+evidence: .github/scripts/acceptance-reboot.sh:1-127
+action: departed
+proposal: ASSUMED (decision 9, unchanged) — on a Mac the restart's installation installs a release that pulls its images, while the run's registry is up, and the start at boot pulls nothing
+```
+
+**Drift count: 3.** Neither was drift: the first was a gap in RFC 0055, the second a discovery the first forced.

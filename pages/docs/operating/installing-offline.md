@@ -11,6 +11,11 @@ site whose uplink is unreliable — the manager can install and converge on all 
 them, but only if the two things it would otherwise fetch are already there:
 the **release bundle** and the **container images**.
 
+A Mac refuses a release that bundles its images, so on a Mac the images have to
+be pulled while it still has a network, as
+[below](#a-release-that-does-not-bundle-its-images) describes. Why is in
+[Platforms](../explanation/platforms.md#images-come-from-a-registry).
+
 !!! warning "`docker save` and `docker load` do not carry an image's digest"
 
     Earlier versions of this page told you to move images with

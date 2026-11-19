@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
@@ -42,6 +43,29 @@ func TestAReleaseThatDeclaresNoPlatformsRunsOnLinuxAlone(t *testing.T) {
 	err = req.PlatformRefusal("linux", "release 1.2.0")
 	require.ErrorIs(t, err, ErrIncompatible)
 	assert.Contains(t, AsError(err).Hint, "its requirements.platforms lists darwin")
+}
+
+// A Mac refuses a release whose images travel in the bundle, after the check
+// that it is made for darwin at all, and Linux takes it.
+func TestAMacRefusesAReleaseThatCarriesItsImages(t *testing.T) {
+	sha := "sha256:" + strings.Repeat("a", 64)
+	m := manifestForPlatforms([]Platform{PlatformLinux, PlatformDarwin}, nil)
+	m.Images = map[string]ImageSpec{
+		"app": {Ref: "registry.example/demo/app@" + sha, From: ImageFromBundle},
+		"db":  {Ref: "postgres@" + sha},
+	}
+	require.NoError(t, m.PlatformRefusal("linux", "release 1.2.0"))
+	err := m.PlatformRefusal("darwin", "release 1.2.0")
+	require.ErrorIs(t, err, ErrIncompatible)
+	assert.Equal(t, "release 1.2.0 carries app in its bundle, which a Mac cannot load yet", AsError(err).Message)
+
+	m.Requirements.Platforms = nil
+	assert.Equal(t, "release 1.2.0 is not made for darwin",
+		AsError(m.PlatformRefusal("darwin", "release 1.2.0")).Message)
+
+	m.Requirements.Platforms = []Platform{PlatformLinux, PlatformDarwin}
+	m.Images["app"] = ImageSpec{Ref: "registry.example/demo/app@" + sha}
+	require.NoError(t, m.PlatformRefusal("darwin", "release 1.2.0"), "a release that pulls every image runs on a Mac")
 }
 
 // A profile narrowed to Linux is refused on darwin wherever a selection is

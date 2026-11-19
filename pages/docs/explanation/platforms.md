@@ -129,6 +129,14 @@ VPN or TUN profile on a Mac would route the VM and look like success, so a
 release marks such a profile Linux-only, and it is refused on a Mac. No
 installation routes a Mac's own traffic.
 
+## Images come from a registry
+
+A release whose images travel in the bundle is refused on a Mac: `init`
+installs nothing, and `update` and `rollback` do not move to it. The manager serves
+those images from the Mac's loopback, and the daemon in Docker Desktop's VM has
+a loopback of its own, so it cannot pull them. A release for a Mac pulls every
+image from a registry, which the Mac has to reach.
+
 ## What runs at boot and on schedule
 
 `init` installs a LaunchDaemon in `/Library/LaunchDaemons` for each thing
