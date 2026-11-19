@@ -529,12 +529,14 @@ func (a *App) restartDependents(ctx context.Context, names []string) (restarted 
 			// so no configuration file changes, and a container that
 			// mounts the file holds the replaced one until it restarts,
 			// or through Docker Desktop's file sharing finds none. A value
-			// set to what it was leaves the file in place.
+			// set to what it was leaves the file in place, unless its mode
+			// or owner had changed.
 			a.notice(ui.Callout{Title: "nothing restarted", Body: []string{
 				fmt.Sprintf("No service declares %s, so none was restarted. Its file under %s has the new value.",
 					strings.Join(written, ", "), a.Deps.Paths.SecretsRenderDir()),
-				"Whatever opens the file reads the new value. If the value changed, a container that " +
-					"mounts the file reads the old one until it restarts, and on a Mac no file at all.",
+				"Whatever opens the file reads the new value. Where the file was replaced, as it is " +
+					"whenever the value changes, a container that mounts it reads the old one until it " +
+					"restarts, and on a Mac no file at all.",
 			}})
 		}
 		return nil, nil
