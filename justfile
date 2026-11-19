@@ -334,7 +334,7 @@ acceptance: build
 # and a login, checks what the boot did with it before the record is written.
 
 # Run the acceptance on this Mac, then again with --after-reboot after a restart.
-acceptance-record *args: build
+acceptance-record *args:
     #!/usr/bin/env bash
     set -euo pipefail
     set -- {{args}}
@@ -344,6 +344,9 @@ acceptance-record *args: build
     version=$1
     [ "$(uname -s)" = Darwin ] || { echo "the record is of a run on a Mac"; exit 1; }
     [ -z "$(git status --porcelain)" ] || { echo "commit first: the record names the commit it ran at"; exit 1; }
+    # Stamped with the version it records, as the tag's build will be: the run
+    # comes before the tag, and on a Mac the bundles' floor is that release.
+    "{{just_executable()}}" --justfile "{{justfile()}}" version="${version}" build
     reboot=/private/var/morzer-acceptance-reboot
     record=".github/macos-acceptance/v${version}.txt"
     run="$(mktemp)"
