@@ -128,7 +128,7 @@ Each says so at its head.
 
 ## Allocating a number
 
-The next free number is **0060**. Before creating an RFC, glance at the table
+The next free number is **0061**. Before creating an RFC, glance at the table
 below (or `ls` this directory) and take the next unused integer — numbers
 collide when minted in parallel. Update this table in the same change.
 
@@ -198,6 +198,7 @@ number in the filename in sync.
 | [0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md) | Desired state an installation pulls and applies to itself | ✅ Complete | An installation pulling a signed, encrypted change addressed to it from a target, and applying it to itself as one operation, so one authority can manage many machines without anything listening. |
 | [0058](0058-values-a-document-gives-the-release-an-installation-updates-to.md) | Values a document gives the release an installation updates to | 📝 Draft | A desired-state document giving values for names the staged release manages and the installed one does not, kept pending until the update to that release takes them. |
 | [0059](0059-ports-a-release-needs-by-address-protocol-and-profile.md) | Ports a release needs, by address, protocol and profile | ✅ Complete | A `requirements.ports` entry naming its address, protocol and profile, so preflight and `machine.ports` check what a release really publishes. |
+| [0060](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md) | A Mac loads a bundle's images through a relay | 📝 Draft | Loading a bundle's own images on a Mac, where Docker Desktop's daemon cannot reach the manager's loopback, by relaying its pull through a container. |
 
 ## Status legend
 
