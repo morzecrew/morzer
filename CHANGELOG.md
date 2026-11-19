@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An installation runs on a Mac with Apple silicon and Docker Desktop, for a
   release that declares `darwin`, from the `darwin/arm64` archive
   `install.sh` and `self-update` take. The Platforms page says how a Mac is
-  weaker: secrets on disk need FileVault, and `owner` is not enforced.
+  weaker: secrets on disk need FileVault, `owner` is not enforced, and
+  bundled images are refused.
 
 - On a Mac, `init` installs launchd jobs: `apply --startup` at boot, started
   again every 30 seconds until Docker Desktop answers and held after an exit

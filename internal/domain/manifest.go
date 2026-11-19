@@ -906,6 +906,27 @@ func (r Requirements) PlatformRefusal(platform, release string) error {
 		WithHint("%s. Its vendor adds %s to that list once the release runs there", declares, platform)
 }
 
+// PlatformRefusal is why the release this manifest describes cannot run on
+// platform: one not made for it, or on a Mac one whose images travel in the
+// bundle. Those are served from this machine's loopback (RFC 0011 decision
+// 18), and Docker Desktop's daemon runs in a VM with a loopback of its own
+// (logs/macos-host.md, 2026-11-19T07:48:56Z).
+func (m Manifest) PlatformRefusal(platform, release string) error {
+	if err := m.Requirements.PlatformRefusal(platform, release); err != nil {
+		return err
+	}
+	// shortcut: refused rather than loaded, until a way to serve the layout
+	// to a daemon in a VM is measured.
+	if bundled := m.BundledImages(); platform == string(PlatformDarwin) && len(bundled) > 0 {
+		return IncompatibleError(nil, "%s carries %s in its bundle, which a Mac cannot load yet",
+			release, strings.Join(bundled, ", ")).
+			WithHint("a bundle's images are served from this machine's loopback, and on macOS the " +
+				"container engine runs in a VM with a loopback of its own. Its vendor ships a release " +
+				"for a Mac that pulls them from a registry")
+	}
+	return nil
+}
+
 // declaresPlatforms reports whether the manifest writes either platforms key,
 // empty included: an older manager refuses the key, not its contents.
 func (m Manifest) declaresPlatforms() bool {

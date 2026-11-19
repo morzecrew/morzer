@@ -60,6 +60,11 @@ func IngestImages(ctx context.Context, d *Deps, opts Options) (Result, error) {
 			"%s %s bundles no images; nothing to load",
 			rel.Name(), rel.Version())}, nil
 	}
+	// A release restored onto a Mac: its engine cannot reach the loopback the
+	// images are served on, which says more than the pull's failure would.
+	if err := rel.PlatformRefusal(d.platform()); err != nil {
+		return Result{}, err
+	}
 
 	opID := d.newOpID()
 	op := engine.Operation{

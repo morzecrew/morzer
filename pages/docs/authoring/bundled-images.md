@@ -133,6 +133,11 @@ verifies every blob it fetches against the digest the manifest names, so a
 bundle whose bytes are not what its index claims is refused there rather than
 discovered later.
 
+That is why a Mac refuses a release that bundles its images: Docker Desktop's
+daemon runs in a VM whose `127.0.0.1` is its own, and cannot reach the layout.
+A release for a Mac pulls them instead; see
+[Running a release on a Mac](running-on-a-mac.md#pull-every-image).
+
 ### The image is deployed under a name you did not publish
 
 ```text

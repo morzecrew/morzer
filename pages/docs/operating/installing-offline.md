@@ -11,6 +11,12 @@ site whose uplink is unreliable — the manager can install and converge on all 
 them, but only if the two things it would otherwise fetch are already there:
 the **release bundle** and the **container images**.
 
+A Mac refuses a release that bundles its images, so on a Mac the images have to
+be pulled on it while it still has a network, or come from a registry it can
+reach, the last two ways [below](#a-release-that-does-not-bundle-its-images)
+describes. Why is in
+[Platforms](../explanation/platforms.md#images-come-from-a-registry).
+
 !!! warning "`docker save` and `docker load` do not carry an image's digest"
 
     Earlier versions of this page told you to move images with
@@ -154,7 +160,8 @@ What works:
 
 - **Ask the vendor to bundle them.** One line per image in their manifest, and
   the problem is theirs to solve once rather than yours to solve per machine.
-  Point them at [bundled images](../authoring/bundled-images.md).
+  Point them at [bundled images](../authoring/bundled-images.md). Not on a Mac,
+  which refuses a release that bundles its images.
 - **Pull on the machine while it still has a network.** A real pull records the
   digest, so `morzer apply` while connected — or plain `docker pull` of each
   reference `morzer release show` lists — leaves images that survive losing the
