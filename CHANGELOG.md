@@ -18,8 +18,8 @@ an installation's state or rewrite its release, and lets a parameter default to
 the empty string.
 
 Upgrading moves installation state from schema 21 to 22, so a 0.17 manager
-refuses a machine once 0.18.0 has written its state, as any command that
-changes the installation does. Operators, scripts and authors may notice:
+refuses a machine once 0.18.0 has written its state. Operators, scripts and
+authors may notice:
 
 - A bundle that declares platforms, gives a `requirements.ports` entry an
   address or a protocol, or uses `.Profiles` or `has` in its manifest needs
