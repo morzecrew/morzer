@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- On a Mac, every line a job writes to its log names its time in UTC, which
+  launchd leaves out. Jobs installed by 0.18.0 gain it once
+  `morzer init --repair --install-units` installs them again.
+
 ## [0.18.0] - 2026-11-19
 
 An installation can run on a Mac with Apple silicon and Docker Desktop, for a

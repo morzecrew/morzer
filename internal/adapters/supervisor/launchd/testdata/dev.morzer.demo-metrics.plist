@@ -20,6 +20,8 @@
 	<dict>
 		<key>PATH</key>
 		<string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>MORZER_STAMP_LINES</key>
+		<string>1</string>
 	</dict>
 	<key>StartCalendarInterval</key>
 	<dict/>

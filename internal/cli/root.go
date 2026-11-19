@@ -95,6 +95,10 @@ type App struct {
 	json  *jsonout.Presenter
 	plain *plain.Presenter
 	log   *slog.Logger
+	// logTo is where log records go, each with its own time, when every
+	// line is stamped (domain.StampLinesEnv); nil sends them to Stream.Err
+	// untimed.
+	logTo io.Writer
 
 	// bus and redactor are retained so a command that learns the product
 	// name only from its arguments -- `init` -- can rebuild the adapters
@@ -185,11 +189,17 @@ func ExecuteWith(ctx context.Context, build BuildInfo, args []string, streams ui
 	if streams.In == nil {
 		streams.In = os.Stdin
 	}
+	var logTo io.Writer
+	if os.Getenv(domain.StampLinesEnv) == "1" {
+		logTo = streams.Err
+		streams.Out = ui.StampLines(streams.Out, time.Now)
+		streams.Err = ui.StampLines(streams.Err, time.Now)
+	}
 	// Derived here so the live view can cancel it; see App.cancelOperation.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	app := &App{Build: build, Stream: streams, cancelOperation: cancel}
+	app := &App{Build: build, Stream: streams, cancelOperation: cancel, logTo: logTo}
 
 	// Recorded before any manifest is read, so a release built for a newer
 	// manager reports that rather than an unknown field. A build with no
@@ -886,6 +896,9 @@ func (a *App) setup(ctx context.Context) error {
 			WithHint("valid formats: text, json")
 	}
 	logWriter := a.Stream.Err
+	if a.logTo != nil {
+		logWriter = a.logTo
+	}
 	if a.Mode == ui.ModeJSON && !f.verbose {
 		// In JSON mode the envelope is the contract; log narration on
 		// stderr would be noise for a consumer that is not reading it.
@@ -893,9 +906,10 @@ func (a *App) setup(ctx context.Context) error {
 	}
 
 	logger, redactor := logging.New(logging.Options{
-		Level:  logging.ParseLevel(f.verbose, f.quiet),
-		Format: logFormat,
-		Writer: logWriter,
+		Level:   logging.ParseLevel(f.verbose, f.quiet),
+		Format:  logFormat,
+		Writer:  logWriter,
+		AddTime: a.logTo != nil,
 	})
 	a.log = logger
 

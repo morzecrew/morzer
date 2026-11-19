@@ -284,6 +284,9 @@ func (s *Supervisor) plist(j job) []byte {
 	b.WriteString("\t<dict>\n")
 	key("\t\t", "PATH")
 	str("\t\t", jobPath)
+	// launchd times no line of the log below, so the manager does.
+	key("\t\t", domain.StampLinesEnv)
+	str("\t\t", "1")
 	b.WriteString("\t</dict>\n")
 
 	switch {

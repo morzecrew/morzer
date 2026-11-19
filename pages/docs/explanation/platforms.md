@@ -143,7 +143,9 @@ image from a registry, which the Mac has to reach.
 systemd runs on Linux: `dev.morzer.<product>`, which runs `apply --startup` at
 boot, and one for each schedule the installation sets,
 `dev.morzer.<product>-backup` and so on. Each job writes its output to
-`/var/lib/<product>/logs/<job>.log`, which newsyslog rotates.
+`/var/lib/<product>/logs/<job>.log`, which newsyslog rotates. launchd times
+nothing there, so every line names its own time in UTC: a log record in its
+`time` field, and any other line at its start.
 
 A restart clears `/var/run`, and the rendered secrets with it. With FileVault
 on, the Mac starts no job until somebody logs in, and Docker Desktop starts
