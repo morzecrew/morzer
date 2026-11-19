@@ -87,7 +87,7 @@ secret only into the services that need it.
 A Mac refuses a release whose images travel in the bundle. The manager serves
 [bundled images](bundled-images.md) from the Mac's loopback, and Docker
 Desktop's daemon runs in a VM with a loopback of its own, so it cannot pull
-them. Ship a Mac a release that marks no image `from: bundle`.
+them. Ship a release for a Mac that marks no image `from: bundle`.
 
 ## Check it
 

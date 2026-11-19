@@ -921,8 +921,8 @@ func (m Manifest) PlatformRefusal(platform, release string) error {
 		return IncompatibleError(nil, "%s carries %s in its bundle, which a Mac cannot load yet",
 			release, strings.Join(bundled, ", ")).
 			WithHint("a bundle's images are served from this machine's loopback, and on macOS the " +
-				"container engine runs in a VM with a loopback of its own. Its vendor ships a Mac " +
-				"a release that pulls them from a registry")
+				"container engine runs in a VM with a loopback of its own. Its vendor ships a release " +
+				"for a Mac that pulls them from a registry")
 	}
 	return nil
 }
