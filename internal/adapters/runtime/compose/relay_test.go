@@ -104,7 +104,8 @@ func TestARelayCarriesTheIngestOnAMac(t *testing.T) {
 	assert.True(t, s.Ran("rmi "+relayAddr+"/demo/app@"+appDigest), s.CommandLines())
 
 	got := verbs(s)
-	assert.Equal(t, []string{"ps", "run", "exec", "pull", "tag", "rmi", "rm"}, got[slices.Index(got, "ps"):])
+	// The sweep, the helper's lookup, then the relay's life.
+	assert.Equal(t, []string{"ps", "image", "run", "exec", "pull", "tag", "rmi", "rm"}, got[slices.Index(got, "ps"):])
 	last := s.Calls()[len(s.Calls())-1].Argv
 	assert.Equal(t, []string{"docker", "rm", "--force", name}, last)
 }
@@ -166,6 +167,17 @@ func TestAnIngestRemovesTheRelaysAKilledOneLeft(t *testing.T) {
 		require.Positive(t, removed, s.CommandLines())
 		assert.Less(t, removed, run)
 	}
+}
+
+// One killed after its last image was named leaves a relay too, and the next
+// ingest has nothing to load: it removes the relay, and starts none.
+func TestAnIngestWithNothingToLoadRemovesALeftRelay(t *testing.T) {
+	s := fakes.NewScripted()
+	s.OnOutput("ps --all --quiet --filter label=dev.morzer.ingest-relay="+relayFor, "abc\n")
+	r := New(s, WithRelay(relayFor))
+	require.NoError(t, r.IngestImages(context.Background(), t.TempDir(), []string{appRef}))
+	assert.True(t, s.Ran("rm --force abc"), s.CommandLines())
+	assert.False(t, s.Ran("run -d"), s.CommandLines())
 }
 
 // The bound covers the whole ingest: the time left on its context, or with no

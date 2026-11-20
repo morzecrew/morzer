@@ -72,9 +72,6 @@ func (r *Runtime) startRelay(ctx context.Context, helper, server string, pending
 	if err != nil {
 		return relay{}, domain.RuntimeError(err, "cannot read the bundle's registry address %s", server)
 	}
-	// Best effort: a leftover listens on another port, and its timeout ends
-	// it in any case.
-	r.sweepRelays(ctx)
 
 	digest, _ := domain.ImageSpec{Ref: pending[0]}.Digest()
 	path := "/v2/" + repositoryPath(pending[0]) + "/manifests/" + digest

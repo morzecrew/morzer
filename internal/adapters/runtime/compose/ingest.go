@@ -52,6 +52,13 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 	if err != nil {
 		return err
 	}
+	// Before anything else, and also when nothing is pending: a manager
+	// killed after it named its last image leaves a relay as well (RFC 0060
+	// decision 10). Best effort, since a leftover listens on a port of its
+	// own and its timeout ends it in any case.
+	if r.relayFor != "" {
+		r.sweepRelays(ctx)
+	}
 	if len(pending) == 0 {
 		return nil
 	}
