@@ -164,13 +164,20 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref
 		if serveErr := srv.ServeError(); serveErr != nil {
 			return serveErr
 		}
-		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle",
-			"the image is served from this machine's loopback, so nothing was "+
-				"fetched over a network: either the layout is damaged, which "+
-				"`morzer release verify` checks, or the container runtime cannot "+
-				"reach this machine -- a daemon in a VM or behind a socket that "+
-				"fronts one has its own loopback, and this needs the daemon to "+
-				"share ours")
+		hint := "the image is served from this machine's loopback, so nothing was " +
+			"fetched over a network: either the layout is damaged, which " +
+			"`morzer release verify` checks, or the container runtime cannot " +
+			"reach this machine -- a daemon in a VM or behind a socket that " +
+			"fronts one has its own loopback, and this needs the daemon to " +
+			"share ours"
+		if r.relayFor != "" {
+			hint = "the image is served from this machine's loopback, through a relay " +
+				"that reached this manager before the first pull: either the layout is " +
+				"damaged, which `morzer release verify` checks, or the relay stopped " +
+				"while the image was loading -- Docker Desktop restarted, or the ingest " +
+				"outlasted its bound"
+		}
+		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle", hint)
 	}
 
 	// The alias is what the deployment resolves through, so a failure here

@@ -123,10 +123,17 @@ func TestWithoutTheRelayTheIngestIsLinuxs(t *testing.T) {
 func TestARelayIsRemovedWhenAPullFails(t *testing.T) {
 	r, s := relayRuntime(nil)
 	s.OnExit(" pull ", 1, "filesystem layer verification failed")
-	require.Error(t, r.IngestImages(context.Background(), emptyLayout(t), []string{appRef}))
+	err := r.IngestImages(context.Background(), emptyLayout(t), []string{appRef})
+	require.Error(t, err)
 	last := s.Calls()[len(s.Calls())-1].Argv
 	assert.Equal(t, "rm", last[1], s.CommandLines())
 	assert.True(t, strings.HasPrefix(last[3], "morzer-ingest-"), s.CommandLines())
+
+	// The relay reached this manager before the pull, so the hint does not
+	// send a Mac to share a loopback it has no way to share.
+	hint := domain.AsError(err).Hint
+	assert.Contains(t, hint, "relay")
+	assert.NotContains(t, hint, "share ours")
 }
 
 // The helper is found before anything is served or started, never pulled, and
