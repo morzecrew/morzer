@@ -140,13 +140,18 @@ func (r *Runtime) checkRelay(ctx context.Context, rl relay, helper, path string)
 			return wrapExit(err, "the relay was interrupted", "")
 		}
 
-		if running, printed := r.relayState(ctx, rl); !running {
+		running, printed, stateErr := r.relayState(checkCtx, rl)
+		if stateErr != nil {
+			return wrapExit(stateErr, "cannot tell whether the relay a Mac loads a bundle's images through still runs",
+				"the engine did not answer `docker inspect` of it; run the command again once `docker info` answers")
+		}
+		if !running {
 			if strings.Contains(printed, "Address already in use") {
 				return errPortHeld
 			}
 			return lacksRelayTools(helper, printed)
 		}
-		printed := res.Stdout + res.Stderr
+		printed = res.Stdout + res.Stderr
 		var exitErr *exec.ExitError
 		if asExit(err, &exitErr) {
 			printed += exitErr.Stderr
@@ -171,20 +176,25 @@ func (r *Runtime) checkRelay(ctx context.Context, rl relay, helper, path string)
 }
 
 // relayState reports whether the relay still runs, and when it does not, the
-// first line it printed that says why.
-func (r *Runtime) relayState(ctx context.Context, rl relay) (running bool, printed string) {
+// first line it printed that says why. A relay is never removed while it is
+// checked, so an engine that cannot inspect it has not answered, which is an
+// error rather than a relay that stopped.
+func (r *Runtime) relayState(ctx context.Context, rl relay) (running bool, printed string, err error) {
 	res, err := r.runner.Run(ctx, r.relayCommand(30*time.Second,
 		"inspect", "--format", "{{.State.Running}}", rl.name))
-	if err == nil && strings.TrimSpace(res.Stdout) == "true" {
-		return true, ""
+	if err != nil {
+		return false, "", err
+	}
+	if strings.TrimSpace(res.Stdout) == "true" {
+		return true, "", nil
 	}
 	res, _ = r.runner.Run(ctx, r.relayCommand(30*time.Second, "logs", rl.name))
 	for _, line := range strings.Split(res.Stdout+"\n"+res.Stderr, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
-			return false, line
+			return false, line, nil
 		}
 	}
-	return false, "nothing"
+	return false, "nothing", nil
 }
 
 // relayNotStarted is a `docker run` of the relay that failed: a helper without

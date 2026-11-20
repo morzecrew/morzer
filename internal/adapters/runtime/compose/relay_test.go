@@ -180,6 +180,39 @@ func TestAnIngestWithNothingToLoadRemovesALeftRelay(t *testing.T) {
 	assert.False(t, s.Ran("run -d"), s.CommandLines())
 }
 
+// deadlines records the deadline each docker command ran under.
+type deadlines struct {
+	hooked
+	at map[string]time.Time
+}
+
+func (d deadlines) Run(ctx context.Context, cmd exec.Command) (exec.Result, error) {
+	d.at[cmd.Argv[1]], _ = ctx.Deadline()
+	return d.hooked.Run(ctx, cmd)
+}
+
+// The check's limit bounds the whole check: what it asks the engine about a
+// relay that stopped answering runs under it too (decision 16).
+func TestARelaysCheckIsBoundedAsAWhole(t *testing.T) {
+	_, s := relayRuntime(nil)
+	d := deadlines{hooked: hooked{Scripted: s, answer: func(argv []string) (exec.Result, error, bool) {
+		switch argv[1] {
+		case "exec":
+			return exitWith(1, "Error response from daemon: container is not running")
+		case "inspect":
+			return exec.Result{Stdout: "false\n"}, nil, true
+		}
+		return exec.Result{}, nil, false
+	}}, at: map[string]time.Time{}}
+	r := New(d, WithRelay(relayFor))
+	limit := time.Now().Add(relayCheckLimit)
+	require.Error(t, r.IngestImages(context.Background(), emptyLayout(t), []string{appRef}))
+	for _, verb := range []string{"exec", "inspect", "logs"} {
+		require.False(t, d.at[verb].IsZero(), "%s ran with no deadline", verb)
+		assert.False(t, d.at[verb].After(limit.Add(time.Second)), "%s outlived the check", verb)
+	}
+}
+
 // The bound covers the whole ingest: the time left on its context, or with no
 // deadline the check's limit and each image's pull, tag and untag (decision
 // 15).
@@ -305,6 +338,15 @@ func TestARelayThatCannotWorkIsRefusedBeforeThePull(t *testing.T) {
 			}
 			return exec.Result{}, nil, false
 		}, domain.ErrUnsupported, "DOCKER_CONTEXT", 3},
+		{"the engine cannot say whether it runs", func(argv []string) (exec.Result, error, bool) {
+			switch argv[1] {
+			case "exec":
+				return exitWith(1, "Error response from daemon: i/o timeout")
+			case "inspect":
+				return exitWith(1, "Error response from daemon: i/o timeout")
+			}
+			return exec.Result{}, nil, false
+		}, nil, "docker inspect", 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -313,6 +355,8 @@ func TestARelayThatCannotWorkIsRefusedBeforeThePull(t *testing.T) {
 			require.Error(t, err)
 			if c.is != nil {
 				require.ErrorIs(t, err, c.is)
+			} else {
+				require.NotErrorIs(t, err, domain.ErrToolMissing)
 			}
 			assert.Contains(t, domain.AsError(err).Hint, c.says)
 			assert.Equal(t, c.execs, strings.Count(s.CommandLines(), " exec "))
