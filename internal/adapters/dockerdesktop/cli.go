@@ -40,7 +40,7 @@ const (
 // Verified is the Docker Desktop releases, major.minor, the acceptance run last
 // passed on (decision 9), filled by the release pull request that records one.
 // File sharing and ownership are the least documented part of it.
-var Verified []string
+var Verified = []string{"4.44"}
 
 // defaultStore is the credential helper the docker CLI looks for on PATH when
 // its config names no store and no credentials, on a Mac.

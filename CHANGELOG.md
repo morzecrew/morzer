@@ -38,6 +38,10 @@ machine 0.19.0 has run on. Operators may notice:
 
 ### Fixed
 
+- On a Mac, `doctor` no longer warns `runtime.engine-version` on Docker
+  Desktop 4.44, the release the acceptance runs passed on. 0.18.0 shipped
+  without naming it, so it warned there too.
+
 - A volume helper image loaded from an archive, as Installing without a
   network says, is found by its ID on the containerd image store, so backups
   can capture volumes there. It was reported missing on every store. On the

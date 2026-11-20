@@ -734,3 +734,37 @@ func TestADirectoryThatCannotBeCheckedIsLeftOffPATH(t *testing.T) {
 	_, err := Runner{Runner: exec.New(), Engine: engine}.Look("sops")
 	require.ErrorContains(t, err, "root does not run sops at "+filepath.Join(unchecked, "sops")+": "+unchecked+" cannot be checked")
 }
+
+// The release pull request that records a run on a Mac fills Verified with the
+// Docker Desktop release it passed on (decision 9). 0.18.0 shipped its record
+// and left the list empty, so `doctor` warned on the very release it named.
+// The newest record's Docker Desktop, major.minor, is one Verified names.
+func TestVerifiedNamesTheDockerDesktopOfTheNewestRecord(t *testing.T) {
+	records, err := filepath.Glob("../../../.github/macos-acceptance/v*.txt")
+	require.NoError(t, err)
+	require.NotEmpty(t, records, "no record of a run on a Mac")
+
+	var newest string
+	var newestVersion domain.Version
+	for _, path := range records {
+		v, err := domain.ParseVersion(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "v"), ".txt"))
+		require.NoError(t, err, path)
+		if newest == "" || newestVersion.LessThan(v) {
+			newest, newestVersion = path, v
+		}
+	}
+	body, err := os.ReadFile(newest)
+	require.NoError(t, err)
+	var desktop string
+	for _, line := range strings.Split(string(body), "\n") {
+		if rest, ok := strings.CutPrefix(line, "engine Docker Desktop "); ok {
+			desktop = strings.Fields(rest)[0]
+			break
+		}
+	}
+	require.NotEmpty(t, desktop, "%s names no Docker Desktop release", newest)
+	parts := strings.SplitN(desktop, ".", 3)
+	require.GreaterOrEqual(t, len(parts), 2, desktop)
+	assert.Contains(t, Verified, parts[0]+"."+parts[1],
+		"%s passed on Docker Desktop %s, which Verified does not name", filepath.Base(newest), desktop)
+}

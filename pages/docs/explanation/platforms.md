@@ -12,13 +12,14 @@ than a Linux server, and this page names each way it is weaker: who can read
 what, where secrets sit, what runs without you, and what has been checked.
 `doctor` reports each of them on the machine.
 
-!!! warning "No manager release has passed the acceptance run on a Mac yet"
+!!! note "Verified on macOS 27.2.1 with Docker Desktop 4.44"
 
     A manager release ships a macOS archive only when its acceptance run has
-    passed on a Mac with Docker Desktop, and none has yet. Until one does,
-    `install.sh` on a Mac says the release publishes no `darwin/arm64`
-    archive. The first release that ships one names here the macOS and Docker
-    Desktop releases it was verified on.
+    passed on a Mac with Docker Desktop. 0.18.0 was the first, and each
+    release that ships one has passed on macOS 27.2.1 with Docker Desktop
+    4.44.1. `doctor` warns on a Docker Desktop release the latest run did not
+    pass on. For a release without a macOS archive, `install.sh` on a Mac
+    says the release publishes no `darwin/arm64` archive.
 
 ## The shape of it
 
