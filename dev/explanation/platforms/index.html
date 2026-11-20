@@ -2448,13 +2448,14 @@ Desktop, for a release whose vendor made it for one. A Mac is a weaker host
 than a Linux server, and this page names each way it is weaker: who can read
 what, where secrets sit, what runs without you, and what has been checked.
 <code>doctor</code> reports each of them on the machine.</p>
-<div class="admonition warning">
-<p class="admonition-title">No manager release has passed the acceptance run on a Mac yet</p>
+<div class="admonition note">
+<p class="admonition-title">Verified on macOS 27.2.1 with Docker Desktop 4.44</p>
 <p>A manager release ships a macOS archive only when its acceptance run has
-passed on a Mac with Docker Desktop, and none has yet. Until one does,
-<code>install.sh</code> on a Mac says the release publishes no <code>darwin/arm64</code>
-archive. The first release that ships one names here the macOS and Docker
-Desktop releases it was verified on.</p>
+passed on a Mac with Docker Desktop. 0.18.0 was the first, and each
+release that ships one has passed on macOS 27.2.1 with Docker Desktop
+4.44.1. <code>doctor</code> warns on a Docker Desktop release the latest run did not
+pass on. For a release without a macOS archive, <code>install.sh</code> on a Mac
+says the release publishes no <code>darwin/arm64</code> archive.</p>
 </div>
 <h2 id="the-shape-of-it">The shape of it<a class="headerlink" href="#the-shape-of-it" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
