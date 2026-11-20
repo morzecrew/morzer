@@ -2,12 +2,14 @@ package suite
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
@@ -161,6 +163,45 @@ func TestAMalformedHelperOverrideIsNotPulled(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, h.Runtime.PulledImages, "busybox@not-a-digest",
 		"an override every capture refuses was pulled, and its failure warned on every apply")
+}
+
+// foundHelper finds the helper as the Compose adapter does: here by its ID,
+// as one loaded from an archive on the containerd image store is, or not at
+// all (RFC 0060 decision 18).
+type foundHelper struct {
+	*fakes.Runtime
+	local bool
+}
+
+func (r foundHelper) LocalHelperImage(context.Context) (string, bool, error) {
+	if !r.local {
+		return r.HelperImage(), false, nil
+	}
+	return "sha256:" + strings.Repeat("f", 64), true, nil
+}
+
+// A helper local by its ID alone is not pulled on every apply, which an
+// offline machine would be warned of each time, and doctor says it is local;
+// one not found is warned of with both remedies.
+func TestAHelperLocalByItsIDIsNotPulledAndDoctorFindsIt(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+	h.setHookEnv()
+	h.Deps.Runtime = foundHelper{Runtime: h.Runtime, local: true}
+
+	_, err := ops.Apply(context.Background(), h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotContains(t, h.Runtime.PulledImages, h.Runtime.HelperImage(),
+		"a helper local by its ID was pulled")
+	check := doctorCheck(t, h, "backup.volume-helper")
+	assert.Equal(t, events.CheckOK, check.Status, check.Message)
+	assert.Equal(t, h.Runtime.HelperImage()+" is local, by its ID", check.Message)
+
+	h.Deps.Runtime = foundHelper{Runtime: h.Runtime}
+	check = doctorCheck(t, h, "backup.volume-helper")
+	assert.Equal(t, events.CheckWarn, check.Status, check.Message)
+	assert.Contains(t, check.Remedy, "docker pull "+h.Runtime.HelperImage())
+	assert.Contains(t, check.Remedy, "`docker load` an archive of it")
 }
 
 // upper is the same transformation runtimeConfig applies to an image key.

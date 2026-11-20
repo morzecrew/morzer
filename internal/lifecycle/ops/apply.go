@@ -944,6 +944,14 @@ func (d *Deps) pullVolumeHelper(ctx context.Context, st *engine.State, cfg ports
 	if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
 		return
 	}
+	// One local by its ID alone, loaded from an archive, is what a capture
+	// runs, and an offline machine would be warned of it on every apply
+	// (logs/mac-bundle-relay.md).
+	if resolver, ok := d.Runtime.(helperResolver); ok {
+		if _, local, err := resolver.LocalHelperImage(ctx); err == nil && local {
+			return
+		}
+	}
 	if err := d.Runtime.Pull(ctx, cfg, []string{ref}); err != nil {
 		st.Warn("cannot pull the volume helper image %s, so a backup cannot capture volumes "+
 			"until it is here: %s", domain.ShortImageRef(ref), domain.AsError(err).Message)

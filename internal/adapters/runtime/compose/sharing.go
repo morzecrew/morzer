@@ -39,11 +39,16 @@ var (
 // Through the volume helper image, pinned as it always is, with no network.
 // Unlike a backup, the probe lets the engine pull it: it runs on the first
 // apply, before anything else would have, and a pull that fails is a probe
-// that did not run rather than a refusal.
+// that did not run rather than a refusal. One local by its ID alone runs by it
+// (RFC 0060 decision 18; logs/mac-bundle-relay.md).
 func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) error {
 	ref := r.HelperImage()
 	if !digestPinned.MatchString(ref) {
 		return unpinnedHelper(ref)
+	}
+	image := ref
+	if found, local, err := r.LocalHelperImage(ctx); err == nil && local {
+		image = found
 	}
 
 	argv := []string{r.docker, "run", "--rm", "--network", "none"}
@@ -73,7 +78,7 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	// Last, so an image that ran something other than the script cannot
 	// pass for one that found nothing.
 	script.WriteString("echo probed\n")
-	argv = append(argv, ref, "sh", "-c", script.String())
+	argv = append(argv, image, "sh", "-c", script.String())
 
 	res, err := r.runner.Run(ctx, exec.Command{
 		Argv:          argv,

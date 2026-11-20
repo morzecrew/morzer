@@ -392,6 +392,46 @@ func TestAnAbsentHelperImageIsRefusedBeforeAnythingRuns(t *testing.T) {
 	hint := domain.AsError(err).Hint
 	assert.Contains(t, hint, "docker pull")
 	assert.Contains(t, hint, DefaultHelperImage)
+	assert.Contains(t, hint, "`docker load` an archive of it")
+}
+
+// A helper loaded from an archive answers to no reference, and on the
+// containerd image store its ID is the pinned digest: it is found by that ID,
+// and every volume operation and the file-sharing probe run it by it (RFC
+// 0060 decision 18).
+func TestAHelperLocalByItsIDAloneRunsByIt(t *testing.T) {
+	id := DefaultHelperImage[strings.Index(DefaultHelperImage, "@")+1:]
+	runner := fakes.NewScripted()
+	runner.OnExit("image inspect "+DefaultHelperImage, 1, "Error: No such image: "+DefaultHelperImage)
+	r := New(runner)
+
+	image, local, err := r.LocalHelperImage(context.Background())
+	require.NoError(t, err)
+	assert.True(t, local)
+	assert.Equal(t, id, image)
+
+	src := filepath.Join(t.TempDir(), "uploads.tar")
+	require.NoError(t, os.WriteFile(src, nil, 0o600))
+	require.NoError(t, r.CaptureVolume(context.Background(), ports.RuntimeConfig{},
+		"demo_uploads", filepath.Join(t.TempDir(), "out.tar")))
+	require.NoError(t, r.RestoreVolume(context.Background(), ports.RuntimeConfig{}, "demo_uploads", src))
+	_ = r.ProbeFileSharing(context.Background(), []string{t.TempDir()}, nil)
+	runs := 0
+	for _, cmd := range runner.Calls() {
+		if len(cmd.Argv) > 1 && cmd.Argv[1] == "run" {
+			runs++
+			assert.Contains(t, cmd.Argv, id, "a helper run named something else: %v", cmd.Argv)
+			assert.NotContains(t, cmd.Argv, DefaultHelperImage)
+		}
+	}
+	assert.Equal(t, 3, runs, runner.CommandLines())
+
+	// Neither: not local, and the reference is what it names.
+	runner.OnExit("image inspect sha256:", 1, "Error: No such image")
+	image, local, err = r.LocalHelperImage(context.Background())
+	require.NoError(t, err)
+	assert.False(t, local)
+	assert.Equal(t, DefaultHelperImage, image)
 }
 
 // A failed capture must not leave a zero-length tarball that a checksum would
