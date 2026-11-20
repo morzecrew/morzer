@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A Mac installs and updates a release whose images travel in the bundle,
+  which 0.18.0 refuses there. A container of the volume helper image relays
+  Docker Desktop's VM to the manager for the length of the load, so an offline
+  Mac loads the helper before `init`.
+
 ### Fixed
+
+- A volume helper image loaded from an archive, as Installing without a
+  network says, is found by its ID on the containerd image store, so backups
+  can capture volumes there. It was reported missing on every store. On the
+  classic store it has to be pulled, which the refusal and `doctor` now say.
 
 - `logs --follow` stopped by Ctrl-C ends cleanly when a process compose
   started outlives the stop. Once the grace period ran out, it used to fail

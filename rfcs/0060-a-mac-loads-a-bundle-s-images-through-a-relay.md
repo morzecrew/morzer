@@ -1,7 +1,9 @@
 # RFC 0060 — A Mac loads a bundle's images through a relay
 
-- **Status:** 📝 Draft — accepted 2026-11-19, not started. Ruled by the
-  author 2026-11-19: decisions 3 and 8 as leaned. Decisions 9 to 14 were added
+- **Status:** ✅ Complete — shipped 2026-11-20 in #403; its record is the next
+  macOS acceptance run. What execution departed from, and the row it
+  proposes, are in [logs/mac-bundle-relay.md](../logs/mac-bundle-relay.md).
+  Ruled by the author 2026-11-19: decisions 3 and 8 as leaned. Decisions 9 to 14 were added
   on #402's review, as the leans the author asked to be recorded; 12 and 13
   were measured on 2026-11-20, before the code (§13). Decisions 15 to 21 were
   added that day, from those measurements and #402's review, and ruled by the

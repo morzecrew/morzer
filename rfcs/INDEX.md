@@ -97,10 +97,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
-- **[0060 — A Mac loads a bundle's images through a relay](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md).**
-  📝 Accepted and not started. The measurements that come before the code are
-  taken: the Docker Desktop settings the relay needs, and how an offline
-  machine's helper resolves on each image store.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -202,7 +198,7 @@ number in the filename in sync.
 | [0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md) | Desired state an installation pulls and applies to itself | ✅ Complete | An installation pulling a signed, encrypted change addressed to it from a target, and applying it to itself as one operation, so one authority can manage many machines without anything listening. |
 | [0058](0058-values-a-document-gives-the-release-an-installation-updates-to.md) | Values a document gives the release an installation updates to | 📝 Draft | A desired-state document giving values for names the staged release manages and the installed one does not, kept pending until the update to that release takes them. |
 | [0059](0059-ports-a-release-needs-by-address-protocol-and-profile.md) | Ports a release needs, by address, protocol and profile | ✅ Complete | A `requirements.ports` entry naming its address, protocol and profile, so preflight and `machine.ports` check what a release really publishes. |
-| [0060](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md) | A Mac loads a bundle's images through a relay | 📝 Draft | Loading a bundle's own images on a Mac, where Docker Desktop's daemon cannot reach the manager's loopback, by relaying its pull through a container. |
+| [0060](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md) | A Mac loads a bundle's images through a relay | ✅ Complete | Loading a bundle's own images on a Mac, where Docker Desktop's daemon cannot reach the manager's loopback, by relaying its pull through a container. |
 
 ## Status legend
 
