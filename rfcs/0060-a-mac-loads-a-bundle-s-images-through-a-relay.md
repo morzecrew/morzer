@@ -107,7 +107,7 @@ On a Mac, `IngestImages` starts `ociserve` as today, on the Mac's
 `127.0.0.1:<server>`, then a relay before the first pull:
 
 ```sh
-docker run -d --name morzer-ingest-<random> --network host \
+docker run -d --pull=never --name morzer-ingest-<random> --network host \
   --label dev.morzer.ingest-relay=<installation> <helper> \
   timeout <bound> nc -lk -s 127.0.0.1 -p <relay> -e nc host.docker.internal <server>
 ```
@@ -272,7 +272,7 @@ could not reach it.
 | 1 | `ASSUMED` | On a Mac a bundle's images are loaded as on Linux: the daemon pulls each from the registry inside the manager's process on `127.0.0.1:0` (RFC 0011 decision 18), and its pull verifies every blob (decision 21). Only the path between them changes. |
 | 2 | `ASSUMED` | The path is a relay container: the volume helper image, `--network host`, labelled with its installation, running `timeout <bound> nc -lk -s 127.0.0.1 -p <relay> -e nc host.docker.internal <server>`, started before the first pull of an ingest and removed when the ingest ends, failed or not. Decisions 9 and 10 say why the bind and the bound. |
 | 3 | `ASSUMED` | How the relay's port on the VM's loopback is chosen, and how a relay that could not bind it is caught before the pull blames the bundle: a random port in the dynamic range, and another when the relay has exited at start, which is how a port another container holds shows. The executor logs what it builds. Was `OPEN`; ruled by the author 2026-11-19: as leaned. |
-| 4 | `ASSUMED` | The helper is never pulled for an ingest. One not local is a refusal naming `docker load` of it, before the server starts; an unpinned override is refused as the file-sharing probe refuses one. Consequence: an offline Mac loads the helper before `init`, as it already must before a backup. Decision 18 says what the refusal names. |
+| 4 | `ASSUMED` | The helper is never pulled for an ingest. One not local is a refusal naming `docker load` of it, before the server starts; an unpinned override is refused as the file-sharing probe refuses one. Consequence: an offline Mac loads the helper before `init`, as it already must before a backup. Decision 18 says what the refusal names. The relay runs `--pull=never`, so a helper removed between that check and the relay's start fails there instead of being pulled. |
 | 5 | `ASSUMED` | The relay is wired with the darwin engine (`internal/cli/engine_darwin.go`) as an option of the compose runtime. The adapter does not branch on the platform, and Linux runs today's code unchanged. |
 | 6 | `ASSUMED` | `Manifest.PlatformRefusal` loses its darwin branch for bundled images, and the platform preflight and `release ingest` with it. This supersedes the row proposed in logs/macos-host.md (UNLISTED, 2026-11-19T07:48:56Z). |
 | 7 | `ASSUMED` | Rejected: the daemon pulling `host.docker.internal` (it refuses plain HTTP; the fix is the operator's Docker configuration), and `docker load` (exit 0 over a corrupted layer; a second mechanism decision 21 withdrew). §13 holds both measurements. |
