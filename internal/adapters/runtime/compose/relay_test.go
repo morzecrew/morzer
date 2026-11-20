@@ -161,9 +161,11 @@ func TestAnIngestRemovesTheRelaysAKilledOneLeft(t *testing.T) {
 	}
 	run := at("run -d")
 	require.Positive(t, run, s.CommandLines())
-	assert.Positive(t, at("rm --force abc"))
-	assert.Less(t, at("rm --force abc"), run)
-	assert.Less(t, at("rm --force def"), run)
+	for _, id := range []string{"abc", "def"} {
+		removed := at("rm --force " + id)
+		require.Positive(t, removed, s.CommandLines())
+		assert.Less(t, removed, run)
+	}
 }
 
 // The bound covers the whole ingest: the time left on its context, or with no
