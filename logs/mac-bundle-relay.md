@@ -155,3 +155,11 @@ claim: Built as ruled: the bound is the time left on the ingest's context when e
 evidence: internal/lifecycle/ops/ingest.go:134
 action: decided
 ```
+
+## Corrections
+
+2026-11-20T16:32:43Z. The decision 18 entry above credits RFC 0055 decision 16 with
+the probe pulling an absent helper. That decision sets the darwin layout's
+paths and modes, and has nothing on pulls. The probe's pull was settled in
+RFC 0055's execution, in logs/macos-host.md (unlisted, 2026-11-16T01:35:36Z),
+and RFC 0055's table has no row for it. The entry is left as written.
