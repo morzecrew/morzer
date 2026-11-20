@@ -301,7 +301,7 @@ func stepPreflight(d *Deps, inst domain.Installation, rel domain.Release, opts O
 		Execute: func(ctx context.Context, st *engine.State) error {
 			checks := []preflight.Check{
 				preflight.Architecture(rel.Manifest.Requirements),
-				preflight.Platform(rel.Manifest, d.platform()),
+				preflight.Platform(rel.Manifest.Requirements, d.platform()),
 				preflight.OperatingSystem(rel.Manifest.Requirements),
 			}
 			checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
@@ -943,6 +943,14 @@ func (d *Deps) pullVolumeHelper(ctx context.Context, st *engine.State, cfg ports
 	// is the adapter's, not the port's.
 	if pinner, ok := d.Runtime.(interface{ HelperImagePinned() bool }); ok && !pinner.HelperImagePinned() {
 		return
+	}
+	// One local by its ID alone, loaded from an archive, is what a capture
+	// runs, and an offline machine would be warned of it on every apply
+	// (logs/mac-bundle-relay.md).
+	if resolver, ok := d.Runtime.(helperResolver); ok {
+		if _, local, err := resolver.LocalHelperImage(ctx); err == nil && local {
+			return
+		}
 	}
 	if err := d.Runtime.Pull(ctx, cfg, []string{ref}); err != nil {
 		st.Warn("cannot pull the volume helper image %s, so a backup cannot capture volumes "+

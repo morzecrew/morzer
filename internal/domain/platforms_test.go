@@ -45,27 +45,23 @@ func TestAReleaseThatDeclaresNoPlatformsRunsOnLinuxAlone(t *testing.T) {
 	assert.Contains(t, AsError(err).Hint, "its requirements.platforms lists darwin")
 }
 
-// A Mac refuses a release whose images travel in the bundle, after the check
-// that it is made for darwin at all, and Linux takes it.
-func TestAMacRefusesAReleaseThatCarriesItsImages(t *testing.T) {
+// A Mac takes a release whose images travel in the bundle, as Linux does (RFC
+// 0060 decision 6), and still refuses one not made for darwin.
+func TestAMacTakesAReleaseThatCarriesItsImages(t *testing.T) {
 	sha := "sha256:" + strings.Repeat("a", 64)
-	m := manifestForPlatforms([]Platform{PlatformLinux, PlatformDarwin}, nil)
-	m.Images = map[string]ImageSpec{
+	rel := Release{Manifest: manifestForPlatforms([]Platform{PlatformLinux, PlatformDarwin}, nil)}
+	rel.Manifest.Images = map[string]ImageSpec{
 		"app": {Ref: "registry.example/demo/app@" + sha, From: ImageFromBundle},
 		"db":  {Ref: "postgres@" + sha},
 	}
-	require.NoError(t, m.PlatformRefusal("linux", "release 1.2.0"))
-	err := m.PlatformRefusal("darwin", "release 1.2.0")
+	require.NotEmpty(t, rel.Manifest.BundledImages())
+	require.NoError(t, rel.PlatformRefusal("darwin"))
+	require.NoError(t, rel.PlatformRefusal("linux"))
+
+	rel.Manifest.Requirements.Platforms = nil
+	err := rel.PlatformRefusal("darwin")
 	require.ErrorIs(t, err, ErrIncompatible)
-	assert.Equal(t, "release 1.2.0 carries app in its bundle, which a Mac cannot load yet", AsError(err).Message)
-
-	m.Requirements.Platforms = nil
-	assert.Equal(t, "release 1.2.0 is not made for darwin",
-		AsError(m.PlatformRefusal("darwin", "release 1.2.0")).Message)
-
-	m.Requirements.Platforms = []Platform{PlatformLinux, PlatformDarwin}
-	m.Images["app"] = ImageSpec{Ref: "registry.example/demo/app@" + sha}
-	require.NoError(t, m.PlatformRefusal("darwin", "release 1.2.0"), "a release that pulls every image runs on a Mac")
+	assert.Contains(t, AsError(err).Message, "is not made for darwin")
 }
 
 // A profile narrowed to Linux is refused on darwin wherever a selection is

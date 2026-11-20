@@ -11,11 +11,10 @@ site whose uplink is unreliable — the manager can install and converge on all 
 them, but only if the two things it would otherwise fetch are already there:
 the **release bundle** and the **container images**.
 
-A Mac refuses a release that bundles its images, so on a Mac the images have to
-be pulled on it while it still has a network, or come from a registry it can
-reach, the last two ways [below](#a-release-that-does-not-bundle-its-images)
-describes. Why is in
-[Platforms](../explanation/platforms.md#images-come-from-a-registry).
+On a Mac the bundle's images reach Docker Desktop through a container of the
+manager's volume helper image, so an offline Mac needs the helper before `init`
+as well as before a backup. Why is in
+[Platforms](../explanation/platforms.md#bundled-images-go-through-a-relay).
 
 !!! warning "`docker save` and `docker load` do not carry an image's digest"
 
@@ -106,10 +105,14 @@ docker pull "$HELPER"
 docker save -o helper.tar "$HELPER"
 ```
 
-`docker save` is fine for the helper and wrong for the release's images, and the
-difference is not arbitrary. The manager finds the helper **by tag**, which a
-save tarball carries; it finds a release image **by digest**, which a save
-tarball does not.
+A loaded `helper.tar` answers to no reference, as the warning above says of any
+image, and the image store on the target machine decides whether the manager
+can use it. On the containerd image store, Docker Desktop's and a fresh Docker
+29 install's default, a loaded image's ID is the digest the helper is pinned
+by, and the manager runs the helper by that ID. On the classic store it is
+not, so there the helper has to be pulled on the target machine itself while
+it has a network. `docker info` names the store:
+`driver-type=io.containerd.snapshotter.v1` is the containerd one.
 
 Copy `demo-1.3.0.tar.zst` and `helper.tar` to the target machine, along with the
 vendor's signing key. A bundle that ships its key is trusted without it, but is
@@ -120,7 +123,9 @@ ships](../reference/commands.md#the-key-a-release-ships).
 ## Install on the disconnected machine
 
 ```sh
-# 1. The volume helper, so backups can capture volumes later.
+# 1. The volume helper, so backups can capture volumes later, and on a Mac so
+#    `init` can load the bundle's images. On the classic image store, pull it
+#    while the machine has a network instead.
 docker load < helper.tar
 
 # 2. Install the manager's own state. No network needed: the bundle is a file,
@@ -160,8 +165,7 @@ What works:
 
 - **Ask the vendor to bundle them.** One line per image in their manifest, and
   the problem is theirs to solve once rather than yours to solve per machine.
-  Point them at [bundled images](../authoring/bundled-images.md). Not on a Mac,
-  which refuses a release that bundles its images.
+  Point them at [bundled images](../authoring/bundled-images.md).
 - **Pull on the machine while it still has a network.** A real pull records the
   digest, so `morzer apply` while connected — or plain `docker pull` of each
   reference `morzer release show` lists — leaves images that survive losing the

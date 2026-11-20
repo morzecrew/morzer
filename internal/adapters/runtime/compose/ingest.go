@@ -52,6 +52,13 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 	if err != nil {
 		return err
 	}
+	// Before anything else, and also when nothing is pending: a manager
+	// killed after it named its last image leaves a relay as well (RFC 0060
+	// decision 10). Best effort, since a leftover listens on a port of its
+	// own and its timeout ends it in any case.
+	if r.relayFor != "" {
+		r.sweepRelays(ctx)
+	}
 	if len(pending) == 0 {
 		return nil
 	}
@@ -64,19 +71,49 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 		return err
 	}
 
+	// The relay's helper is found before anything is served: it is never
+	// pulled for an ingest (RFC 0060 decision 4).
+	var helper string
+	if r.relayFor != "" {
+		if helper, err = r.requireHelper(ctx, relayNeedsHelper); err != nil {
+			return err
+		}
+	}
+
 	srv, err := ociserve.Start(layoutDir)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = srv.Close() }()
 
+	addr := srv.Addr()
+	if r.relayFor != "" {
+		rl, err := r.startRelay(ctx, helper, addr, pending)
+		if err != nil {
+			return err
+		}
+		defer r.removeRelay(ctx, rl)
+		addr = rl.addr()
+	}
+
 	for _, ref := range pending {
-		if err := r.ingestOne(ctx, srv, ref); err != nil {
+		if err := r.ingestOne(ctx, srv, addr, ref); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+// What one image's ingest may take, which a relay's bound adds up (RFC 0060
+// decision 15).
+const (
+	// 45 minutes, matching the pull step: the bytes are local, but the
+	// daemon unpacks every layer as it arrives and a multi-gigabyte image
+	// on a slow disk is not quick.
+	ingestPullTimeout  = 45 * time.Minute
+	ingestTagTimeout   = 2 * time.Minute
+	ingestUntagTimeout = 2 * time.Minute
+)
 
 // pendingIngest drops the images that are already here.
 func (r *Runtime) pendingIngest(ctx context.Context, refs []string) ([]string, error) {
@@ -101,20 +138,18 @@ func (r *Runtime) pendingIngest(ctx context.Context, refs []string) ([]string, e
 	return pending, nil
 }
 
-// ingestOne pulls one image out of the served layout and names it locally.
-func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref string) error {
+// ingestOne pulls one image out of the served layout, reached at addr, and
+// names it locally.
+func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref string) error {
 	spec := domain.ImageSpec{Ref: ref}
 	digest, ok := spec.Digest()
 	if !ok {
 		return unpinned(ref)
 	}
 	alias, _ := spec.LocalAlias()
-	loopback := srv.Addr() + "/" + repositoryPath(ref) + "@" + digest
+	loopback := addr + "/" + repositoryPath(ref) + "@" + digest
 
-	// 45 minutes, matching the pull step: the bytes are local, but the
-	// daemon unpacks every layer as it arrives and a multi-gigabyte image
-	// on a slow disk is not quick.
-	pull := r.command(ports.RuntimeConfig{}, 45*time.Minute, r.docker, "pull", loopback)
+	pull := r.command(ports.RuntimeConfig{}, ingestPullTimeout, r.docker, "pull", loopback)
 	if _, err := r.runner.Run(ctx, pull); err != nil {
 		// The server's own diagnosis first, when it has one. The
 		// daemon refuses a blob that does not match its digest -- that
@@ -129,19 +164,26 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 		if serveErr := srv.ServeError(); serveErr != nil {
 			return serveErr
 		}
-		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle",
-			"the image is served from this machine's loopback, so nothing was "+
-				"fetched over a network: either the layout is damaged, which "+
-				"`morzer release verify` checks, or the container runtime cannot "+
-				"reach this machine -- a daemon in a VM or behind a socket that "+
-				"fronts one has its own loopback, and this needs the daemon to "+
-				"share ours")
+		hint := "the image is served from this machine's loopback, so nothing was " +
+			"fetched over a network: either the layout is damaged, which " +
+			"`morzer release verify` checks, or the container runtime cannot " +
+			"reach this machine -- a daemon in a VM or behind a socket that " +
+			"fronts one has its own loopback, and this needs the daemon to " +
+			"share ours"
+		if r.relayFor != "" {
+			hint = "the image is served from this machine's loopback, through a relay " +
+				"that reached this manager before the first pull: either the layout is " +
+				"damaged, which `morzer release verify` checks, or the relay stopped " +
+				"while the image was loading -- Docker Desktop restarted, or the ingest " +
+				"outlasted its bound"
+		}
+		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle", hint)
 	}
 
 	// The alias is what the deployment resolves through, so a failure here
 	// leaves an image nothing can name -- reported rather than swallowed,
 	// even though the bytes are safely in the store.
-	tag := r.command(ports.RuntimeConfig{}, 2*time.Minute, r.docker, "tag", loopback, alias)
+	tag := r.command(ports.RuntimeConfig{}, ingestTagTimeout, r.docker, "tag", loopback, alias)
 	if _, err := r.runner.Run(ctx, tag); err != nil {
 		return wrapExit(err, "cannot name "+domain.ShortImageRef(ref)+" locally", "")
 	}
@@ -151,7 +193,7 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, ref strin
 	// `docker images` for the life of the machine. Untagging one of an
 	// image's several names does not remove the image, and best-effort
 	// because tidiness is not worth failing an install over.
-	untag := r.command(ports.RuntimeConfig{}, 2*time.Minute, r.docker, "rmi", loopback)
+	untag := r.command(ports.RuntimeConfig{}, ingestUntagTimeout, r.docker, "rmi", loopback)
 	_, _ = r.runner.Run(ctx, untag)
 	return nil
 }

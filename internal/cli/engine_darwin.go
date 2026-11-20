@@ -6,6 +6,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/dirservice"
 	"github.com/morzecrew/morzer/internal/adapters/dockerdesktop"
 	"github.com/morzecrew/morzer/internal/adapters/filevault"
+	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -29,6 +30,12 @@ func engineRunner(runner exec.Runner, paths domain.Paths) (
 	_ = engine.Prepare()
 	return dockerdesktop.Runner{Runner: runner, Engine: engine}, engine.Settle, engine.BeforeHook
 }
+
+// ingestRelay has an ingest reach the manager's registry through a relay on
+// Docker Desktop's host network, since the daemon's loopback is its VM's (RFC
+// 0060). Its relays are labelled with the layout's manager directory, which the
+// deployment lock covers.
+func ingestRelay(paths domain.Paths) compose.Option { return compose.WithRelay(paths.ManagerDir()) }
 
 // engineUser is who the engine reads the host's files as: on a Mac, the user
 // who runs Docker Desktop, read at every call (RFC 0055 decision 19).

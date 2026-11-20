@@ -7,7 +7,7 @@ summary: Declaring that a release runs on macOS, and what in a bundle decides wh
 # Running a release on a Mac
 
 A release is refused on a Mac until it declares `darwin`. Before you declare
-it, check five things in the bundle that work on Linux and not on a Mac. What
+it, check four things in the bundle that work on Linux and not on a Mac. What
 a Mac changes for the operator, and why, is in
 [Platforms](../explanation/platforms.md).
 
@@ -81,13 +81,6 @@ On a Mac, a secret's `owner` is not enforced: every container that mounts a
 secret can read it, whatever uid it runs as. A release that keeps one service
 from another's secret by `owner` alone keeps nothing apart there. Mount each
 secret only into the services that need it.
-
-## Pull every image
-
-A Mac refuses a release whose images travel in the bundle. The manager serves
-[bundled images](bundled-images.md) from the Mac's loopback, and Docker
-Desktop's daemon runs in a VM with a loopback of its own, so it cannot pull
-them. Ship a release for a Mac that marks no image `from: bundle`.
 
 ## Check it
 

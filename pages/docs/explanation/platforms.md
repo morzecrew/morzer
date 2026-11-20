@@ -129,13 +129,22 @@ VPN or TUN profile on a Mac would route the VM and look like success, so a
 release marks such a profile Linux-only, and it is refused on a Mac. No
 installation routes a Mac's own traffic.
 
-## Images come from a registry
+## Bundled images go through a relay
 
-A release whose images travel in the bundle is refused on a Mac: `init`
-installs nothing, and `update` and `rollback` do not move to it. The manager serves
-those images from the Mac's loopback, and the daemon in Docker Desktop's VM has
-a loopback of its own, so it cannot pull them. A release for a Mac pulls every
-image from a registry, which the Mac has to reach.
+A release whose images travel in the bundle loads them on a Mac as it does on
+Linux: the daemon pulls each from the registry the manager serves on the
+loopback, and verifies every blob. The daemon in Docker Desktop's VM has a
+loopback of its own, so for the length of the load a container of the volume
+helper image, on the VM's host network, relays it to the Mac's loopback
+through `host.docker.internal`. It listens on the VM's `127.0.0.1` alone, so a
+container on a bridge network cannot reach it, but one on the host network
+could read the images while it runs.
+
+The helper is never pulled for it. An offline Mac loads the helper before
+`init`, as [Installing without a network](../operating/installing-offline.md)
+says, and one that cannot run the relay is refused before anything is pulled.
+A daemon on another host, named by `DOCKER_HOST`, `DOCKER_CONTEXT` or the CLI's
+current context, is refused too: a relay there cannot reach the Mac.
 
 ## What runs at boot and on schedule
 

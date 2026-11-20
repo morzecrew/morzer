@@ -565,7 +565,7 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	// already in hand -- so a plan makes them for free, and one that skipped
 	// them approved an invocation the operation refuses. That is D-055
 	// arriving through the parameters instead of the manifest.
-	if err := m.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
+	if err := m.Requirements.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
 		return false, err
 	}
 	// And the selection, as the write-installation step checks it against the

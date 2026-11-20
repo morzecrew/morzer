@@ -262,7 +262,10 @@ a POSIX `tar`, `du`, `find`, `wc` and `sh` will do — `find` and `wc` are for t
 size check, which counts a volume's entries to bound what `tar` adds on top of
 them. An image missing them measures nothing, and a backup that cannot be
 measured is refused rather than started. On a Mac it needs `ls`, `mktemp` and
-`rm` too, for `doctor`'s [file-sharing check](../reference/commands.md#on-a-mac):
+`rm` too, for `doctor`'s [file-sharing check](../reference/commands.md#on-a-mac),
+and `timeout`, `wget` and busybox's `nc` with `-l`, `-k`, `-s`, `-p` and `-e`,
+for the relay a release's [bundled images](../authoring/bundled-images.md)
+load through:
 
 ```sh
 MORZER_VOLUME_HELPER_IMAGE=registry.internal/toolbox@sha256:... morzer backup

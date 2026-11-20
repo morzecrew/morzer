@@ -3,7 +3,6 @@ package suite
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -239,32 +238,26 @@ func TestApplyRefusesAnInstalledReleaseNotMadeForThisPlatform(t *testing.T) {
 	assert.Contains(t, check.Remedy, "Its vendor adds darwin to that list")
 }
 
-// A machine whose state names a release that carries its images, as a Linux
-// backup restored onto a Mac does, is refused by preflight before anything is
-// rendered, named by doctor, and refused by `release ingest` rather than
-// failing at the pull.
-func TestApplyRefusesAnInstalledReleaseThatCarriesItsImages(t *testing.T) {
+// A Mac whose state names a release that carries its images, as a Linux backup
+// restored onto one does, passes doctor's platform check, loads the images
+// with `release ingest`, and applies (RFC 0060 decision 6).
+func TestAMacAppliesAnInstalledReleaseThatCarriesItsImages(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
 	madeForDarwin(t, h.Release.Root)
-	h.bundleImage(t)
+	ref, _ := h.bundleImage(t)
 	h.install()
 	h.setHookEnv()
 	h.Deps.Platform = "darwin"
-	const refusal = "the release carries app in its bundle, which a Mac cannot load yet"
 
-	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
-	require.Error(t, err)
-	assert.Equal(t, domain.ExitPreflight, domain.ExitCode(err), "refused after preflight: %v", err)
-	assert.Contains(t, err.Error(), refusal)
-	assert.Empty(t, h.Runtime.UpOptions, "a release whose images a Mac cannot load was deployed")
 	check := doctorCheck(t, h, "system.platform")
-	assert.Equal(t, events.CheckFail, check.Status)
-	assert.Equal(t, refusal, check.Message)
-
-	_, err = ops.IngestImages(ctx, h.Deps, ops.Options{})
-	require.ErrorIs(t, err, domain.ErrIncompatible)
-	assert.Contains(t, err.Error(), "release 1.2.0 carries app in its bundle")
+	assert.Equal(t, events.CheckOK, check.Status, check.Message)
+	_, err := ops.IngestImages(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{ref}, h.Runtime.IngestedRefs)
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+	assert.NotEmpty(t, h.Runtime.UpOptions, "a release whose images a Mac loaded was not deployed")
 }
 
 // An update is refused a release not made for this platform, and one that
@@ -319,14 +312,12 @@ func TestUpdateAndRollbackRefuseWhatThisPlatformCannotRun(t *testing.T) {
 	assert.Equal(t, "1.3.1", current())
 }
 
-// A Mac refuses a release whose images travel in the bundle where it refuses
-// one not made for darwin: init's plan and its stage step, and an update
-// before it starts. Docker Desktop's daemon cannot reach the loopback they are
-// served on (logs/macos-host.md, 2026-11-19T07:48:56Z).
-func TestAMacRefusesAReleaseThatCarriesItsImages(t *testing.T) {
+// A Mac installs a release whose images travel in the bundle, in a plan and
+// for real, and updates to one, loading the images as Linux does (RFC 0060
+// decision 6).
+func TestAMacInstallsAReleaseThatCarriesItsImages(t *testing.T) {
 	ctx := context.Background()
-	const refusal = "release %s carries app in its bundle, which a Mac cannot load yet"
-	for dryRun, exit := range map[bool]int{true: domain.ExitIncompatible, false: domain.ExitCompensated} {
+	for _, dryRun := range []bool{true, false} {
 		h := newHarness(t)
 		h.setHookEnv()
 		realIdentity(t, h)
@@ -334,30 +325,30 @@ func TestAMacRefusesAReleaseThatCarriesItsImages(t *testing.T) {
 		src := filepath.Join(t.TempDir(), "bundle-1.2.0")
 		copyBundle(t, testBundlePath(t), src)
 		retargetManifest(t, src, h.Root)
-		bundleImageIn(t, madeForDarwin(t, src))
+		ref, _ := bundleImageIn(t, madeForDarwin(t, src))
 
 		_, err := ops.Init(ctx, h.Deps, ops.InitOptions{
 			Product: "demo", ReleasePath: src, NoRecoveryKey: true, GenerateSecrets: true,
 			Options: ops.Options{DryRun: dryRun},
 		})
-		require.ErrorIs(t, err, domain.ErrIncompatible, "dry run %t", dryRun)
-		assert.Equal(t, exit, domain.ExitCode(err), "dry run %t", dryRun)
-		assert.Contains(t, err.Error(), fmt.Sprintf(refusal, "1.2.0"))
-		assert.Contains(t, domain.AsError(err).Hint, "runs in a VM with a loopback of its own")
+		require.NoError(t, err, "dry run %t", dryRun)
 		exists, err := h.Deps.State.InstallationExists(ctx)
 		require.NoError(t, err)
-		assert.False(t, exists, "a refused release left an installation behind")
+		assert.Equal(t, !dryRun, exists, "dry run %t", dryRun)
+		if !dryRun {
+			assert.Equal(t, []string{ref}, h.Runtime.IngestedRefs)
+		}
 	}
 
 	h := onDarwin(t)
 	src := madeForDarwin(t, stageUpgradeSource(t, h))
-	bundleImageIn(t, src)
+	ref, _ := bundleImageIn(t, src)
 	_, err := ops.Update(ctx, h.Deps, ops.UpdateOptions{Ref: src})
-	require.ErrorIs(t, err, domain.ErrIncompatible)
-	assert.Contains(t, err.Error(), fmt.Sprintf(refusal, "1.3.0"))
+	require.NoError(t, err)
+	assert.Contains(t, h.Runtime.IngestedRefs, ref)
 	rec, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "1.2.0", rec.Version.String())
+	assert.Equal(t, "1.3.0", rec.Version.String())
 }
 
 // Starting a selection this platform does not run is refused whether or not

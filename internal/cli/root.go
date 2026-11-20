@@ -1033,6 +1033,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// scheduled one, and a systemd `Environment=` override reaches
 		// that without regenerating a unit or migrating any state.
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
+		ingestRelay(paths),
 	)
 	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}

@@ -239,7 +239,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkDefinitionDrift(inst, domain.Release{}, "the installed release cannot be read"))
 	} else {
 		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements),
-			preflight.Platform(rel.Manifest, d.platform()))
+			preflight.Platform(rel.Manifest.Requirements, d.platform()))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
 		checks = append(checks,
 			preflight.CPUs(rel.Manifest.Requirements.CPUs),
@@ -2098,6 +2098,13 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 //
 // A warning rather than a failure, matching runtime.images-local: needing a
 // pull is the normal state of a machine that has just been installed.
+// helperResolver finds the volume helper image as a capture does, by its
+// reference or by its ID (RFC 0060 decision 18). The rule is the adapter's, so
+// it is asked of the runtime rather than of a port.
+type helperResolver interface {
+	LocalHelperImage(ctx context.Context) (image string, local bool, err error)
+}
+
 // volumeHelperImageEnv is the variable an operator sets to override the image
 // volumes are read through.
 //
@@ -2138,7 +2145,15 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 						"backup will refuse to capture volumes", ref)
 			}
 
-			present, err := inspector.HasImage(ctx, ref)
+			// As the capture finds it: by its ID too, where that is
+			// the pinned digest (RFC 0060 decision 18).
+			image, present := ref, false
+			var err error
+			if resolver, ok := d.Runtime.(helperResolver); ok {
+				image, present, err = resolver.LocalHelperImage(ctx)
+			} else {
+				present, err = inspector.HasImage(ctx, ref)
+			}
 			if err != nil {
 				return preflight.Warn("check that the Docker daemon is running: `docker info`",
 					"cannot tell whether %s is here: %s", domain.ShortImageRef(ref), domain.AsError(err).Message)
@@ -2146,9 +2161,13 @@ func (d *Deps) checkVolumeHelperImage(inst domain.Installation, rel domain.Relea
 			if !present {
 				return preflight.Warn(
 					fmt.Sprintf("run `docker pull %s` -- do it now rather than "+
-						"during a backup on a machine that has lost its network", ref),
+						"during a backup on a machine that has lost its network -- or, "+
+						"offline on the containerd image store, `docker load` an archive of it", ref),
 					"%s is not on this machine, so a backup cannot capture volumes",
 					domain.ShortImageRef(ref))
+			}
+			if image != ref {
+				return preflight.OK("%s is local, by its ID", ref)
 			}
 			// The full pinned reference, not shortRef. Every other
 			// check abbreviates because it names several images for
