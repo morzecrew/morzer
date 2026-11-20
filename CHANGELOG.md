@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-20
+
+A Mac can install and update a release whose images travel in the bundle,
+which 0.18.0 refuses there. This release also finds a volume helper image
+loaded from an archive, which was reported missing on every image store, and
+ends `logs --follow` cleanly when Ctrl-C stops it. On a Mac, each line of a
+job's log now carries its time.
+
+Installation state is unchanged from 0.18.0, so a 0.18 manager still reads a
+machine 0.19.0 has run on. Operators may notice:
+
+- On a Mac, a release that bundles its images loads them through a container
+  of the volume helper image. An offline Mac loads the helper before `init`,
+  and a helper named by `MORZER_VOLUME_HELPER_IMAGE` needs busybox's
+  `timeout`, `nc` and `wget` there.
+
+- On the classic image store, a helper loaded from an archive is still not
+  found, so it has to be pulled while the machine has a network.
+
+- Jobs 0.18.0 installed on a Mac stamp their log lines once
+  `morzer init --repair --install-units` installs them again.
+
 ### Added
 
 - A Mac installs and updates a release whose images travel in the bundle,
@@ -1735,7 +1757,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.18.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/morzecrew/morzer/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/morzecrew/morzer/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/morzecrew/morzer/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/morzecrew/morzer/compare/v0.16.0...v0.17.0
