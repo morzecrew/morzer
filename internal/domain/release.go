@@ -92,7 +92,7 @@ func (r Release) Selection(runtime string, names []string, platform string) ([]s
 
 // PlatformRefusal is why this release cannot run on platform, or nil.
 func (r Release) PlatformRefusal(platform string) error {
-	return r.Manifest.PlatformRefusal(platform, "release "+r.Version().String())
+	return r.Manifest.Requirements.PlatformRefusal(platform, "release "+r.Version().String())
 }
 
 func (r Release) runtimeDecl(runtime string) (RuntimeDecl, error) {

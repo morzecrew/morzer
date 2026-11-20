@@ -50,6 +50,12 @@ type Runtime struct {
 	// helperImage is the container a volume's contents are read and
 	// written through. Empty means DefaultHelperImage.
 	helperImage string
+
+	// relayFor is the installation an ingest's relay is labelled with;
+	// empty means no relay (see WithRelay). relayWait spaces its check's
+	// tries.
+	relayFor  string
+	relayWait time.Duration
 }
 
 // New returns a Compose runtime.
