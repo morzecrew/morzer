@@ -1392,17 +1392,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pull-every-image" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Pull every image
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#check-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2306,17 +2295,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pull-every-image" class="md-nav__link">
-    <span class="md-ellipsis">
-      <span class="md-typeset">
-        Pull every image
-      </span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#check-it" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2400,7 +2378,7 @@
 
 <h1 id="running-a-release-on-a-mac">Running a release on a Mac<a class="headerlink" href="#running-a-release-on-a-mac" title="Permanent link">&para;</a></h1>
 <p>A release is refused on a Mac until it declares <code>darwin</code>. Before you declare
-it, check five things in the bundle that work on Linux and not on a Mac. What
+it, check four things in the bundle that work on Linux and not on a Mac. What
 a Mac changes for the operator, and why, is in
 <a href="../../explanation/platforms/">Platforms</a>.</p>
 <h2 id="declare-it">Declare it<a class="headerlink" href="#declare-it" title="Permanent link">&para;</a></h2>
@@ -2457,11 +2435,6 @@ Linux's, and no <code>/proc</code> or <code>systemctl</code>.</p>
 secret can read it, whatever uid it runs as. A release that keeps one service
 from another's secret by <code>owner</code> alone keeps nothing apart there. Mount each
 secret only into the services that need it.</p>
-<h2 id="pull-every-image">Pull every image<a class="headerlink" href="#pull-every-image" title="Permanent link">&para;</a></h2>
-<p>A Mac refuses a release whose images travel in the bundle. The manager serves
-<a href="../bundled-images/">bundled images</a> from the Mac's loopback, and Docker
-Desktop's daemon runs in a VM with a loopback of its own, so it cannot pull
-them. Ship a release for a Mac that marks no image <code>from: bundle</code>.</p>
 <h2 id="check-it">Check it<a class="headerlink" href="#check-it" title="Permanent link">&para;</a></h2>
 <p><code>release verify</code> checks that the keys are well formed. It cannot tell you that
 a release runs on a Mac. Install it on one, with Docker Desktop, run

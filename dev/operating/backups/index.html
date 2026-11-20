@@ -2951,7 +2951,10 @@ a POSIX <code>tar</code>, <code>du</code>, <code>find</code>, <code>wc</code> an
 size check, which counts a volume's entries to bound what <code>tar</code> adds on top of
 them. An image missing them measures nothing, and a backup that cannot be
 measured is refused rather than started. On a Mac it needs <code>ls</code>, <code>mktemp</code> and
-<code>rm</code> too, for <code>doctor</code>'s <a href="../../reference/commands/#on-a-mac">file-sharing check</a>:</p>
+<code>rm</code> too, for <code>doctor</code>'s <a href="../../reference/commands/#on-a-mac">file-sharing check</a>,
+and <code>timeout</code>, <code>wget</code> and busybox's <code>nc</code> with <code>-l</code>, <code>-k</code>, <code>-s</code>, <code>-p</code> and <code>-e</code>,
+for the relay a release's <a href="../../authoring/bundled-images/">bundled images</a>
+load through:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">MORZER_VOLUME_HELPER_IMAGE</span><span class="o">=</span>registry.internal/toolbox@sha256:...<span class="w"> </span>morzer<span class="w"> </span>backup
 </code></pre></div>
 <p>An environment variable rather than a setting, because the backup that needs it

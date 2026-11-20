@@ -2403,11 +2403,10 @@
 site whose uplink is unreliable — the manager can install and converge on all of
 them, but only if the two things it would otherwise fetch are already there:
 the <strong>release bundle</strong> and the <strong>container images</strong>.</p>
-<p>A Mac refuses a release that bundles its images, so on a Mac the images have to
-be pulled on it while it still has a network, or come from a registry it can
-reach, the last two ways <a href="#a-release-that-does-not-bundle-its-images">below</a>
-describes. Why is in
-<a href="../../explanation/platforms/#images-come-from-a-registry">Platforms</a>.</p>
+<p>On a Mac the bundle's images reach Docker Desktop through a container of the
+manager's volume helper image, so an offline Mac needs the helper before <code>init</code>
+as well as before a backup. Why is in
+<a href="../../explanation/platforms/#bundled-images-go-through-a-relay">Platforms</a>.</p>
 <div class="admonition warning">
 <p class="admonition-title"><code>docker save</code> and <code>docker load</code> do not carry an image's digest</p>
 <p>Earlier versions of this page told you to move images with
@@ -2481,17 +2480,23 @@ morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w
 docker<span class="w"> </span>pull<span class="w"> </span><span class="s2">"</span><span class="nv">$HELPER</span><span class="s2">"</span>
 docker<span class="w"> </span>save<span class="w"> </span>-o<span class="w"> </span>helper.tar<span class="w"> </span><span class="s2">"</span><span class="nv">$HELPER</span><span class="s2">"</span>
 </code></pre></div>
-<p><code>docker save</code> is fine for the helper and wrong for the release's images, and the
-difference is not arbitrary. The manager finds the helper <strong>by tag</strong>, which a
-save tarball carries; it finds a release image <strong>by digest</strong>, which a save
-tarball does not.</p>
+<p>A loaded <code>helper.tar</code> answers to no reference, as the warning above says of any
+image, and the image store on the target machine decides whether the manager
+can use it. On the containerd image store, Docker Desktop's and a fresh Docker
+29 install's default, a loaded image's ID is the digest the helper is pinned
+by, and the manager runs the helper by that ID. On the classic store it is
+not, so there the helper has to be pulled on the target machine itself while
+it has a network. <code>docker info</code> names the store:
+<code>driver-type=io.containerd.snapshotter.v1</code> is the containerd one.</p>
 <p>Copy <code>demo-1.3.0.tar.zst</code> and <code>helper.tar</code> to the target machine, along with the
 vendor's signing key. A bundle that ships its key is trusted without it, but is
 then checked only against the key it came with; passing the vendor's key as
 <code>--signing-key</code> checks this first install too. See <a href="../../reference/commands/#the-key-a-release-ships">the key a release
 ships</a>.</p>
 <h2 id="install-on-the-disconnected-machine">Install on the disconnected machine<a class="headerlink" href="#install-on-the-disconnected-machine" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># 1. The volume helper, so backups can capture volumes later.</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. The volume helper, so backups can capture volumes later, and on a Mac so</span>
+<span class="c1">#    `init` can load the bundle's images. On the classic image store, pull it</span>
+<span class="c1">#    while the machine has a network instead.</span>
 docker<span class="w"> </span>load<span class="w"> </span>&lt;<span class="w"> </span>helper.tar
 
 <span class="c1"># 2. Install the manager's own state. No network needed: the bundle is a file,</span>
@@ -2526,8 +2531,7 @@ a digest.</p>
 <ul>
 <li><strong>Ask the vendor to bundle them.</strong> One line per image in their manifest, and
   the problem is theirs to solve once rather than yours to solve per machine.
-  Point them at <a href="../../authoring/bundled-images/">bundled images</a>. Not on a Mac,
-  which refuses a release that bundles its images.</li>
+  Point them at <a href="../../authoring/bundled-images/">bundled images</a>.</li>
 <li><strong>Pull on the machine while it still has a network.</strong> A real pull records the
   digest, so <code>morzer apply</code> while connected — or plain <code>docker pull</code> of each
   reference <code>morzer release show</code> lists — leaves images that survive losing the
