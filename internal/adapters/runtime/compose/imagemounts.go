@@ -16,15 +16,16 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 	`{{range .Mounts}}{{.Type}} {{end}}`
 
 // recreateLostImageMounts re-creates, without starting them, the services
-// whose container has an image mount and does not run.
+// that have a stopped container with an image mount and none that runs.
 //
 // The daemon mounts an image when it creates the container, and records where.
 // A reboot takes the mount away and `start` does not make it again, so the
 // `up` that starts the container fails with "cannot access path" until it is
-// re-created, and every reboot leaves such a service down. One that runs had
-// its mount when it started, and is left alone. Re-created rather than
-// removed: Compose carries a container's anonymous volumes over to the one
-// that replaces it. Measured with Docker 29.7.2 and Compose 5.5.1.
+// re-created, and every reboot leaves such a service down. A service with a
+// container that runs is left alone: the re-create would replace that one
+// too. Re-created rather than removed: Compose carries a container's anonymous
+// volumes over to the one that replaces it. Measured with Docker 29.7.2 and
+// Compose 5.5.1.
 //
 // Best effort up to the re-create: a daemon that cannot list or inspect
 // containers fails the `up` that follows, which says so.
@@ -66,20 +67,25 @@ func (r *Runtime) quiet(ctx context.Context, cfg ports.RuntimeConfig, argv []str
 	return res.Stdout
 }
 
-// lostImageMounts reads inspectImageMounts' lines and returns, sorted and once
-// each, the services with a container that does not run and has an image
-// mount. A `compose run` container is left out: `up` never starts it.
+// lostImageMounts reads inspectImageMounts' lines and returns, sorted, the
+// services with a container that does not run and has an image mount, and no
+// container that runs. A `compose run` container counts for neither: `up`
+// never starts it.
 func lostImageMounts(raw string) []string {
-	var out []string
+	var stopped, running []string
 	for line := range strings.SplitSeq(raw, "\n") {
 		fields := strings.Split(line, "\t")
-		if len(fields) != 4 || fields[0] == "" || fields[1] == "True" || fields[2] != "false" {
+		if len(fields) != 4 || fields[0] == "" || fields[1] == "True" {
 			continue
 		}
-		if slices.Contains(strings.Fields(fields[3]), "image") && !slices.Contains(out, fields[0]) {
-			out = append(out, fields[0])
+		switch {
+		case fields[2] == "true":
+			running = append(running, fields[0])
+		case fields[2] == "false" && slices.Contains(strings.Fields(fields[3]), "image"):
+			stopped = append(stopped, fields[0])
 		}
 	}
-	slices.Sort(out)
-	return out
+	stopped = slices.DeleteFunc(stopped, func(s string) bool { return slices.Contains(running, s) })
+	slices.Sort(stopped)
+	return slices.Compact(stopped)
 }

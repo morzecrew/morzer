@@ -244,11 +244,12 @@ func TestUpReportsAServiceThatWillNotStart(t *testing.T) {
 
 // A reboot takes an image mount away, and `start` does not make it again, so a
 // stopped container with one is re-created before the `up` that would start it.
-// A running one, one without an image mount, a `compose run` container and an
-// orphan's are left as they are.
+// A running one, one without an image mount, a `compose run` container, an
+// orphan's, and a stopped replica of a service with one that runs, which the
+// re-create would replace too, are left as they are.
 func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
 	r, runner := newRuntime()
-	runner.OnOutput("ps --all --quiet", "a1\nb2\nc3\nd4\ne5\nf6\n")
+	runner.OnOutput("ps --all --quiet", "a1\nb2\nc3\nd4\ne5\nf6\ng7\nh8\n")
 	runner.OnOutput("inspect", strings.Join([]string{
 		"web\tFalse\tfalse\timage bind ",
 		"web\tFalse\tfalse\timage ", // a second replica, named once
@@ -256,8 +257,10 @@ func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
 		"db\tFalse\tfalse\tvolume ",
 		"tools\tTrue\tfalse\timage ",
 		"gone\tFalse\tfalse\timage ",
+		"api\tFalse\tfalse\timage ",
+		"api\tFalse\ttrue\timage ",
 	}, "\n"))
-	runner.OnOutput("config --services", "db\nproxy\ntools\nweb\n")
+	runner.OnOutput("config --services", "api\ndb\nproxy\ntools\nweb\n")
 
 	if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
 		t.Fatalf("Up: %v", err)
@@ -268,7 +271,7 @@ func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
 		t.Fatalf("want ps, inspect, config, a re-create and the up, got:\n%s", runner.CommandLines())
 	}
 	inspect := strings.Join(calls[1].Argv, " ")
-	if !strings.HasPrefix(inspect, "docker inspect --format ") || !strings.HasSuffix(inspect, " a1 b2 c3 d4 e5 f6") {
+	if !strings.HasPrefix(inspect, "docker inspect --format ") || !strings.HasSuffix(inspect, " a1 b2 c3 d4 e5 f6 g7 h8") {
 		t.Errorf("not every listed container was inspected: %s", inspect)
 	}
 	recreate := strings.Join(calls[3].Argv, " ")
