@@ -339,6 +339,24 @@ func TestAnUpOfNamedServicesRecreatesWhatItStartsAlone(t *testing.T) {
 	}
 }
 
+// A migration runs before start-services, and `run` starts what it depends on,
+// so that is re-created first too.
+func TestARunRecreatesALostDependencyFirst(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "db\tFalse\tfalse\timage \n").
+		OnOutput("config --format json migrate", `{"services":{"db":{},"migrate":{}}}`)
+
+	if _, err := r.RunOneShot(context.Background(), cfg(), "migrate", ports.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	calls := runner.Calls()
+	recreate, run := strings.Join(calls[len(calls)-2].Argv, " "), strings.Join(calls[len(calls)-1].Argv, " ")
+	if !strings.HasSuffix(recreate, "up --no-start --force-recreate --no-deps db") || !strings.HasSuffix(run, " run migrate") {
+		t.Errorf("the dependency was not re-created before the run:\n%s", runner.CommandLines())
+	}
+}
+
 // A forced re-create of the whole project replaces every container, so nothing
 // is asked first.
 func TestAForcedUpDoesNotLookForLostImageMounts(t *testing.T) {
@@ -499,7 +517,8 @@ func TestRunOneShotMountsATaskInputReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := strings.Join(runner.Calls()[0].Argv, " ")
+	calls := runner.Calls()
+	line := strings.Join(calls[len(calls)-1].Argv, " ")
 	want := "--volume /var/lib/demo/manager/inputs/op_1/snapshot:/morzer/inputs/snapshot:ro worker restore"
 	if !strings.Contains(line, want) {
 		t.Errorf("the input is not mounted read-only before the service:\n%s", line)
@@ -924,7 +943,7 @@ func TestARunThatKeepsItsContainerRemovesNothing(t *testing.T) {
 	if _, err := r.RunOneShot(context.Background(), cfg(), "reset", ports.RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if runner.Ran(" config ") || runner.Ran(" ps ") || runner.Ran("docker rm") {
+	if runner.Ran(" config ") || runner.Ran("ps --all --format json") || runner.Ran("docker rm") {
 		t.Errorf("a run without Remove cleaned up:\n%s", runner.CommandLines())
 	}
 

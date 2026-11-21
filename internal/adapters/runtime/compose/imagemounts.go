@@ -22,7 +22,7 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 //
 // The daemon mounts an image when it creates the container, and records where.
 // A reboot takes the mount away and `start` does not make it again, so the
-// `up` that starts the container fails with "cannot access path"
+// `up` or `run` that starts the container fails with "cannot access path"
 // until it is re-created, and every reboot leaves such a service down. A
 // service with a container that runs is left alone: the re-create would
 // replace that one too. Re-created rather than removed: Compose carries a
@@ -30,7 +30,7 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 // with Docker 29.7.2 and Compose 5.5.1.
 //
 // Best effort up to the re-create: a daemon that cannot list or inspect
-// containers fails the `up` that follows, which says so.
+// containers fails the command that follows, which says so.
 func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
 	ids := strings.Fields(r.quiet(ctx, cfg, r.args(cfg, "ps", "--all", "--quiet")))
 	if len(ids) == 0 {

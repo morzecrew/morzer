@@ -646,6 +646,12 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	argv = append(argv, service)
 	argv = append(argv, opts.Argv...)
 
+	// What the run starts first needs its image mounts, as `up` does: a
+	// migration runs before start-services.
+	if err := r.recreateLostImageMounts(ctx, cfg, []string{service}); err != nil {
+		return ports.ExitResult{}, err
+	}
+
 	cmd, tail := withOutputTail(r.command(cfg, opts.Timeout, argv...))
 	// Compose's own progress for the services it starts first -- "Container
 	// demo-db-1 Healthy" -- goes to stderr with the container's, and the
