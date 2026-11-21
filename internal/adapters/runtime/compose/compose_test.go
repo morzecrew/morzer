@@ -260,7 +260,7 @@ func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
 		"api\tFalse\tfalse\timage ",
 		"api\tFalse\ttrue\timage ",
 	}, "\n"))
-	runner.OnOutput("config --services", "api\ndb\nproxy\ntools\nweb\n")
+	runner.OnOutput("config --format json", `{"services":{"api":{},"db":{},"proxy":{},"tools":{},"web":{}}}`)
 
 	if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
 		t.Fatalf("Up: %v", err)
@@ -278,6 +278,9 @@ func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
 	if _, services, _ := strings.Cut(recreate, " up --no-start --force-recreate --no-deps "); services != "web" {
 		t.Errorf("the re-create is not of the stopped service with an image mount alone: %s", recreate)
 	}
+	if config := strings.Join(calls[2].Argv, " "); !strings.HasSuffix(config, "config --format json") {
+		t.Errorf("an unnamed up does not look at every declared service: %s", config)
+	}
 	if up := strings.Join(calls[4].Argv, " "); !strings.HasSuffix(up, "up --detach") {
 		t.Errorf("the up did not follow the re-create: %s", up)
 	}
@@ -294,7 +297,7 @@ func TestUpRecreatesNothingWhenNoImageMountIsLost(t *testing.T) {
 		},
 		"only an orphan's": func(s *fakes.Scripted) {
 			s.OnOutput("ps --all --quiet", "a1\n").OnOutput("inspect", "gone\tFalse\tfalse\timage \n").
-				OnOutput("config --services", "web\n")
+				OnOutput("config --format json", `{"services":{"web":{}}}`)
 		},
 	}
 	for name, script := range cases {
@@ -311,19 +314,28 @@ func TestUpRecreatesNothingWhenNoImageMountIsLost(t *testing.T) {
 	}
 }
 
-// A forced re-create of named services leaves what they depend on as it is, so
-// a stopped dependency with an image mount is still re-created first.
-func TestAForcedUpOfNamedServicesRecreatesALostDependency(t *testing.T) {
-	r, runner := newRuntime()
-	runner.OnOutput("ps --all --quiet", "a1\n").
-		OnOutput("inspect", "db\tFalse\tfalse\timage \n").
-		OnOutput("config --services", "db\nweb\n")
+// An up of named services looks at them and what they depend on, which
+// `config` of those names is, and at nothing else. A forced one too: it does not
+// re-create what they depend on.
+func TestAnUpOfNamedServicesRecreatesWhatItStartsAlone(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		r, runner := newRuntime()
+		runner.OnOutput("ps --all --quiet", "a1\nb2\n").
+			OnOutput("inspect", "db\tFalse\tfalse\timage \nworker\tFalse\tfalse\timage \n").
+			OnOutput("config --format json web", `{"services":{"db":{},"web":{}}}`)
 
-	if err := r.Up(context.Background(), cfg(), ports.UpOptions{Services: []string{"web"}, ForceRecreate: true}); err != nil {
-		t.Fatalf("Up: %v", err)
-	}
-	if !runner.Ran("up --no-start --force-recreate --no-deps db") {
-		t.Errorf("the dependency was not re-created:\n%s", runner.CommandLines())
+		if err := r.Up(context.Background(), cfg(), ports.UpOptions{Services: []string{"web"}, ForceRecreate: force}); err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		recreate := ""
+		for _, c := range runner.Calls() {
+			if line := strings.Join(c.Argv, " "); strings.Contains(line, "--no-start") {
+				recreate = line
+			}
+		}
+		if _, services, _ := strings.Cut(recreate, " --no-deps "); services != "db" {
+			t.Errorf("force %v: the re-create is not of the lost dependency alone:\n%s", force, runner.CommandLines())
+		}
 	}
 }
 
@@ -343,7 +355,7 @@ func TestUpReportsARecreateThatFailed(t *testing.T) {
 	r, runner := newRuntime()
 	runner.OnOutput("ps --all --quiet", "a1\n").
 		OnOutput("inspect", "web\tFalse\tfalse\timage \n").
-		OnOutput("config --services", "web\n").
+		OnOutput("config --format json", `{"services":{"web":{}}}`).
 		OnExit("--no-start", 1, "Error response from daemon: conflict")
 
 	err := r.Up(context.Background(), cfg(), ports.UpOptions{})

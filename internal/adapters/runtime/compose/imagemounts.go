@@ -16,20 +16,22 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 	`{{range .Mounts}}{{.Type}} {{end}}`
 
 // recreateLostImageMounts re-creates, without starting them, the services
-// that have a stopped container with an image mount and none that runs.
+// that have a stopped container with an image mount and none that runs. It
+// looks at the named services and what they depend on, or at every declared
+// one when none is named.
 //
 // The daemon mounts an image when it creates the container, and records where.
 // A reboot takes the mount away and `start` does not make it again, so the
-// `up` that starts the container fails with "cannot access path" until it is
-// re-created, and every reboot leaves such a service down. A service with a
-// container that runs is left alone: the re-create would replace that one
-// too. Re-created rather than removed: Compose carries a container's anonymous
-// volumes over to the one that replaces it. Measured with Docker 29.7.2 and
-// Compose 5.5.1.
+// `up` that starts the container fails with "cannot access path"
+// until it is re-created, and every reboot leaves such a service down. A
+// service with a container that runs is left alone: the re-create would
+// replace that one too. Re-created rather than removed: Compose carries a
+// container's anonymous volumes over to the one that replaces it. Measured
+// with Docker 29.7.2 and Compose 5.5.1.
 //
 // Best effort up to the re-create: a daemon that cannot list or inspect
 // containers fails the `up` that follows, which says so.
-func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.RuntimeConfig) error {
+func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
 	ids := strings.Fields(r.quiet(ctx, cfg, r.args(cfg, "ps", "--all", "--quiet")))
 	if len(ids) == 0 {
 		return nil
@@ -38,10 +40,14 @@ func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.Runtime
 	if len(lost) == 0 {
 		return nil
 	}
-	// `ps` lists an orphan's container too, and `up` refuses a service the
-	// configuration does not declare.
-	declared := strings.Fields(r.quiet(ctx, cfg, r.args(cfg, "config", "--services")))
-	lost = slices.DeleteFunc(lost, func(s string) bool { return !slices.Contains(declared, s) })
+	// `config` of named services is them and what they depend on, under the
+	// profiles `up` enables for them. It also leaves out an orphan, whose
+	// container `ps` lists and whose name `up` refuses.
+	scope, err := serviceNames(r.quiet(ctx, cfg, append(r.args(cfg, "config", "--format", "json"), services...)))
+	if err != nil {
+		return nil
+	}
+	lost = slices.DeleteFunc(lost, func(s string) bool { return !slices.Contains(scope, s) })
 	if len(lost) == 0 {
 		return nil
 	}
