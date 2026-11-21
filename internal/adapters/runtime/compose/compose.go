@@ -468,6 +468,14 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	}
 	waitNamed := len(wait) > 0 && len(opts.Services) > 0
 
+	// A forced re-create of the whole project replaces every container
+	// already. One of named services does not re-create what they depend on.
+	if !opts.ForceRecreate || len(opts.Services) > 0 {
+		if err := r.recreateLostImageMounts(ctx, cfg); err != nil {
+			return err
+		}
+	}
+
 	argv := r.args(cfg, "up", "--detach")
 	if !waitNamed {
 		argv = append(argv, wait...)

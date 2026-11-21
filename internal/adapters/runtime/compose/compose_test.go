@@ -208,11 +208,16 @@ func TestUpWaitsOnTheNamedServicesAlone(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	calls := runner.Calls()
+	var calls []string
+	for _, c := range runner.Calls() {
+		if line := strings.Join(c.Argv, " "); strings.Contains(line, " up ") {
+			calls = append(calls, line)
+		}
+	}
 	if len(calls) != 2 {
 		t.Fatalf("want a re-create and then a wait, got:\n%s", runner.CommandLines())
 	}
-	recreate, wait := strings.Join(calls[0].Argv, " "), strings.Join(calls[1].Argv, " ")
+	recreate, wait := calls[0], calls[1]
 	if !strings.HasSuffix(recreate, "up --detach --force-recreate web") {
 		t.Errorf("the re-create is not a plain up of the named service: %s", recreate)
 	}
@@ -234,6 +239,119 @@ func TestUpReportsAServiceThatWillNotStart(t *testing.T) {
 	// In the message, which is what the step line shows (#351).
 	if msg := domain.AsError(err).Message; !strings.Contains(msg, "demo-db-1 is unhealthy") {
 		t.Errorf("the daemon's reason is not in the message: %q", msg)
+	}
+}
+
+// A reboot takes an image mount away, and `start` does not make it again, so a
+// stopped container with one is re-created before the `up` that would start it.
+// A running one, one without an image mount, a `compose run` container and an
+// orphan's are left as they are.
+func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\nb2\nc3\nd4\ne5\nf6\n")
+	runner.OnOutput("inspect", strings.Join([]string{
+		"web\tFalse\tfalse\timage bind ",
+		"web\tFalse\tfalse\timage ", // a second replica, named once
+		"proxy\tFalse\ttrue\timage ",
+		"db\tFalse\tfalse\tvolume ",
+		"tools\tTrue\tfalse\timage ",
+		"gone\tFalse\tfalse\timage ",
+	}, "\n"))
+	runner.OnOutput("config --services", "db\nproxy\ntools\nweb\n")
+
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	calls := runner.Calls()
+	if len(calls) != 5 {
+		t.Fatalf("want ps, inspect, config, a re-create and the up, got:\n%s", runner.CommandLines())
+	}
+	inspect := strings.Join(calls[1].Argv, " ")
+	if !strings.HasPrefix(inspect, "docker inspect --format ") || !strings.HasSuffix(inspect, " a1 b2 c3 d4 e5 f6") {
+		t.Errorf("not every listed container was inspected: %s", inspect)
+	}
+	recreate := strings.Join(calls[3].Argv, " ")
+	if _, services, _ := strings.Cut(recreate, " up --no-start --force-recreate --no-deps "); services != "web" {
+		t.Errorf("the re-create is not of the stopped service with an image mount alone: %s", recreate)
+	}
+	if up := strings.Join(calls[4].Argv, " "); !strings.HasSuffix(up, "up --detach") {
+		t.Errorf("the up did not follow the re-create: %s", up)
+	}
+}
+
+func TestUpRecreatesNothingWhenNoImageMountIsLost(t *testing.T) {
+	cases := map[string]func(*fakes.Scripted){
+		"no container yet": func(*fakes.Scripted) {},
+		"every one runs": func(s *fakes.Scripted) {
+			s.OnOutput("ps --all --quiet", "a1\n").OnOutput("inspect", "web\tFalse\ttrue\timage \n")
+		},
+		"the daemon does not answer": func(s *fakes.Scripted) {
+			s.OnExit("ps --all --quiet", 1, "Cannot connect to the Docker daemon")
+		},
+		"only an orphan's": func(s *fakes.Scripted) {
+			s.OnOutput("ps --all --quiet", "a1\n").OnOutput("inspect", "gone\tFalse\tfalse\timage \n").
+				OnOutput("config --services", "web\n")
+		},
+	}
+	for name, script := range cases {
+		t.Run(name, func(t *testing.T) {
+			r, runner := newRuntime()
+			script(runner)
+			if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+			if runner.Ran("--no-start") {
+				t.Errorf("a container was re-created:\n%s", runner.CommandLines())
+			}
+		})
+	}
+}
+
+// A forced re-create of named services leaves what they depend on as it is, so
+// a stopped dependency with an image mount is still re-created first.
+func TestAForcedUpOfNamedServicesRecreatesALostDependency(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "db\tFalse\tfalse\timage \n").
+		OnOutput("config --services", "db\nweb\n")
+
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{Services: []string{"web"}, ForceRecreate: true}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if !runner.Ran("up --no-start --force-recreate --no-deps db") {
+		t.Errorf("the dependency was not re-created:\n%s", runner.CommandLines())
+	}
+}
+
+// A forced re-create of the whole project replaces every container, so nothing
+// is asked first.
+func TestAForcedUpDoesNotLookForLostImageMounts(t *testing.T) {
+	r, runner := newRuntime()
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{ForceRecreate: true}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if runner.Ran(" ps ") || runner.Ran("inspect") {
+		t.Errorf("a forced up looked for containers:\n%s", runner.CommandLines())
+	}
+}
+
+func TestUpReportsARecreateThatFailed(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "web\tFalse\tfalse\timage \n").
+		OnOutput("config --services", "web\n").
+		OnExit("--no-start", 1, "Error response from daemon: conflict")
+
+	err := r.Up(context.Background(), cfg(), ports.UpOptions{})
+	if err == nil {
+		t.Fatal("a failed re-create was reported as success")
+	}
+	if msg := domain.AsError(err).Message; !strings.Contains(msg, "cannot re-create web") {
+		t.Errorf("the message does not name the service: %q", msg)
+	}
+	if runner.Ran("up --detach") {
+		t.Errorf("the up ran after the re-create failed:\n%s", runner.CommandLines())
 	}
 }
 
