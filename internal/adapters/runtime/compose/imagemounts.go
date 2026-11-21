@@ -18,7 +18,8 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 // recreateLostImageMounts re-creates, without starting them, the services
 // that have a stopped container with an image mount and none that runs. It
 // looks at the named services and what they depend on, or at every declared
-// one when none is named.
+// one when none is named, and never at skip: the service a `run` makes a
+// container of its own for, which needs nothing of the stopped one.
 //
 // The daemon mounts an image when it creates the container, and records where.
 // A reboot takes the mount away and `start` does not make it again, so the
@@ -31,7 +32,7 @@ const inspectImageMounts = `{{index .Config.Labels "com.docker.compose.service"}
 //
 // Best effort up to the re-create: a daemon that cannot list or inspect
 // containers fails the command that follows, which says so.
-func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.RuntimeConfig, services []string) error {
+func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.RuntimeConfig, services []string, skip string) error {
 	ids := strings.Fields(r.quiet(ctx, cfg, r.args(cfg, "ps", "--all", "--quiet")))
 	if len(ids) == 0 {
 		return nil
@@ -47,7 +48,7 @@ func (r *Runtime) recreateLostImageMounts(ctx context.Context, cfg ports.Runtime
 	if err != nil {
 		return nil
 	}
-	lost = slices.DeleteFunc(lost, func(s string) bool { return !slices.Contains(scope, s) })
+	lost = slices.DeleteFunc(lost, func(s string) bool { return s == skip || !slices.Contains(scope, s) })
 	if len(lost) == 0 {
 		return nil
 	}

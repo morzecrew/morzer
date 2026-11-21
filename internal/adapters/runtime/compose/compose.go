@@ -471,7 +471,7 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	// A forced re-create of the whole project replaces every container
 	// already. One of named services does not re-create what they depend on.
 	if !opts.ForceRecreate || len(opts.Services) > 0 {
-		if err := r.recreateLostImageMounts(ctx, cfg, opts.Services); err != nil {
+		if err := r.recreateLostImageMounts(ctx, cfg, opts.Services, ""); err != nil {
 			return err
 		}
 	}
@@ -648,7 +648,7 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 
 	// What the run starts first needs its image mounts, as `up` does: a
 	// migration runs before start-services.
-	if err := r.recreateLostImageMounts(ctx, cfg, []string{service}); err != nil {
+	if err := r.recreateLostImageMounts(ctx, cfg, []string{service}, service); err != nil {
 		return ports.ExitResult{}, err
 	}
 

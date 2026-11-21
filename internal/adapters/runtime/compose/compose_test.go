@@ -357,6 +357,23 @@ func TestARunRecreatesALostDependencyFirst(t *testing.T) {
 	}
 }
 
+// `run` makes a container of its own, so the stopped one of the service it runs
+// is not re-created: a task that runs `app` with another command would replace
+// it for nothing, and lose what it wrote.
+func TestARunLeavesTheContainerOfItsOwnServiceAlone(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "app\tFalse\tfalse\timage \n").
+		OnOutput("config --format json app", `{"services":{"app":{}}}`)
+
+	if _, err := r.RunOneShot(context.Background(), cfg(), "app", ports.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.Ran("--no-start") {
+		t.Errorf("the run's own service was re-created:\n%s", runner.CommandLines())
+	}
+}
+
 // A forced re-create of the whole project replaces every container, so nothing
 // is asked first.
 func TestAForcedUpDoesNotLookForLostImageMounts(t *testing.T) {
