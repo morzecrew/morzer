@@ -468,6 +468,14 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 	}
 	waitNamed := len(wait) > 0 && len(opts.Services) > 0
 
+	// A forced re-create of the whole project replaces every container
+	// already. One of named services does not re-create what they depend on.
+	if !opts.ForceRecreate || len(opts.Services) > 0 {
+		if err := r.recreateLostImageMounts(ctx, cfg, opts.Services, ""); err != nil {
+			return err
+		}
+	}
+
 	argv := r.args(cfg, "up", "--detach")
 	if !waitNamed {
 		argv = append(argv, wait...)
@@ -637,6 +645,12 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 	}
 	argv = append(argv, service)
 	argv = append(argv, opts.Argv...)
+
+	// What the run starts first needs its image mounts, as `up` does: a
+	// migration runs before start-services.
+	if err := r.recreateLostImageMounts(ctx, cfg, []string{service}, service); err != nil {
+		return ports.ExitResult{}, err
+	}
 
 	cmd, tail := withOutputTail(r.command(cfg, opts.Timeout, argv...))
 	// Compose's own progress for the services it starts first -- "Container

@@ -208,11 +208,16 @@ func TestUpWaitsOnTheNamedServicesAlone(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	calls := runner.Calls()
+	var calls []string
+	for _, c := range runner.Calls() {
+		if line := strings.Join(c.Argv, " "); strings.Contains(line, " up ") {
+			calls = append(calls, line)
+		}
+	}
 	if len(calls) != 2 {
 		t.Fatalf("want a re-create and then a wait, got:\n%s", runner.CommandLines())
 	}
-	recreate, wait := strings.Join(calls[0].Argv, " "), strings.Join(calls[1].Argv, " ")
+	recreate, wait := calls[0], calls[1]
 	if !strings.HasSuffix(recreate, "up --detach --force-recreate web") {
 		t.Errorf("the re-create is not a plain up of the named service: %s", recreate)
 	}
@@ -234,6 +239,169 @@ func TestUpReportsAServiceThatWillNotStart(t *testing.T) {
 	// In the message, which is what the step line shows (#351).
 	if msg := domain.AsError(err).Message; !strings.Contains(msg, "demo-db-1 is unhealthy") {
 		t.Errorf("the daemon's reason is not in the message: %q", msg)
+	}
+}
+
+// A reboot takes an image mount away, and `start` does not make it again, so a
+// stopped container with one is re-created before the `up` that would start it.
+// A running one, one without an image mount, a `compose run` container, an
+// orphan's, and a stopped replica of a service with one that runs, which the
+// re-create would replace too, are left as they are.
+func TestUpRecreatesAStoppedContainerWithAnImageMount(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\nb2\nc3\nd4\ne5\nf6\ng7\nh8\n")
+	runner.OnOutput("inspect", strings.Join([]string{
+		"web\tFalse\tfalse\timage bind ",
+		"web\tFalse\tfalse\timage ", // a second replica, named once
+		"proxy\tFalse\ttrue\timage ",
+		"db\tFalse\tfalse\tvolume ",
+		"tools\tTrue\tfalse\timage ",
+		"gone\tFalse\tfalse\timage ",
+		"api\tFalse\tfalse\timage ",
+		"api\tFalse\ttrue\timage ",
+	}, "\n"))
+	runner.OnOutput("config --format json", `{"services":{"api":{},"db":{},"proxy":{},"tools":{},"web":{}}}`)
+
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	calls := runner.Calls()
+	if len(calls) != 5 {
+		t.Fatalf("want ps, inspect, config, a re-create and the up, got:\n%s", runner.CommandLines())
+	}
+	inspect := strings.Join(calls[1].Argv, " ")
+	if !strings.HasPrefix(inspect, "docker inspect --format ") || !strings.HasSuffix(inspect, " a1 b2 c3 d4 e5 f6 g7 h8") {
+		t.Errorf("not every listed container was inspected: %s", inspect)
+	}
+	recreate := strings.Join(calls[3].Argv, " ")
+	if _, services, _ := strings.Cut(recreate, " up --no-start --force-recreate --no-deps "); services != "web" {
+		t.Errorf("the re-create is not of the stopped service with an image mount alone: %s", recreate)
+	}
+	if config := strings.Join(calls[2].Argv, " "); !strings.HasSuffix(config, "config --format json") {
+		t.Errorf("an unnamed up does not look at every declared service: %s", config)
+	}
+	if up := strings.Join(calls[4].Argv, " "); !strings.HasSuffix(up, "up --detach") {
+		t.Errorf("the up did not follow the re-create: %s", up)
+	}
+}
+
+func TestUpRecreatesNothingWhenNoImageMountIsLost(t *testing.T) {
+	cases := map[string]func(*fakes.Scripted){
+		"no container yet": func(*fakes.Scripted) {},
+		"every one runs": func(s *fakes.Scripted) {
+			s.OnOutput("ps --all --quiet", "a1\n").OnOutput("inspect", "web\tFalse\ttrue\timage \n")
+		},
+		"the daemon does not answer": func(s *fakes.Scripted) {
+			s.OnExit("ps --all --quiet", 1, "Cannot connect to the Docker daemon")
+		},
+		"only an orphan's": func(s *fakes.Scripted) {
+			s.OnOutput("ps --all --quiet", "a1\n").OnOutput("inspect", "gone\tFalse\tfalse\timage \n").
+				OnOutput("config --format json", `{"services":{"web":{}}}`)
+		},
+	}
+	for name, script := range cases {
+		t.Run(name, func(t *testing.T) {
+			r, runner := newRuntime()
+			script(runner)
+			if err := r.Up(context.Background(), cfg(), ports.UpOptions{}); err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+			if runner.Ran("--no-start") {
+				t.Errorf("a container was re-created:\n%s", runner.CommandLines())
+			}
+		})
+	}
+}
+
+// An up of named services looks at them and what they depend on, which
+// `config` of those names is, and at nothing else. A forced one too: it does not
+// re-create what they depend on.
+func TestAnUpOfNamedServicesRecreatesWhatItStartsAlone(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		r, runner := newRuntime()
+		runner.OnOutput("ps --all --quiet", "a1\nb2\n").
+			OnOutput("inspect", "db\tFalse\tfalse\timage \nworker\tFalse\tfalse\timage \n").
+			OnOutput("config --format json web", `{"services":{"db":{},"web":{}}}`)
+
+		if err := r.Up(context.Background(), cfg(), ports.UpOptions{Services: []string{"web"}, ForceRecreate: force}); err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		recreate := ""
+		for _, c := range runner.Calls() {
+			if line := strings.Join(c.Argv, " "); strings.Contains(line, "--no-start") {
+				recreate = line
+			}
+		}
+		if _, services, _ := strings.Cut(recreate, " --no-deps "); services != "db" {
+			t.Errorf("force %v: the re-create is not of the lost dependency alone:\n%s", force, runner.CommandLines())
+		}
+	}
+}
+
+// A migration runs before start-services, and `run` starts what it depends on,
+// so that is re-created first too.
+func TestARunRecreatesALostDependencyFirst(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "db\tFalse\tfalse\timage \n").
+		OnOutput("config --format json migrate", `{"services":{"db":{},"migrate":{}}}`)
+
+	if _, err := r.RunOneShot(context.Background(), cfg(), "migrate", ports.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	calls := runner.Calls()
+	recreate, run := strings.Join(calls[len(calls)-2].Argv, " "), strings.Join(calls[len(calls)-1].Argv, " ")
+	if !strings.HasSuffix(recreate, "up --no-start --force-recreate --no-deps db") || !strings.HasSuffix(run, " run migrate") {
+		t.Errorf("the dependency was not re-created before the run:\n%s", runner.CommandLines())
+	}
+}
+
+// `run` makes a container of its own, so the stopped one of the service it runs
+// is not re-created: a task that runs `app` with another command would replace
+// it for nothing, and lose what it wrote.
+func TestARunLeavesTheContainerOfItsOwnServiceAlone(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "app\tFalse\tfalse\timage \n").
+		OnOutput("config --format json app", `{"services":{"app":{}}}`)
+
+	if _, err := r.RunOneShot(context.Background(), cfg(), "app", ports.RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.Ran("--no-start") {
+		t.Errorf("the run's own service was re-created:\n%s", runner.CommandLines())
+	}
+}
+
+// A forced re-create of the whole project replaces every container, so nothing
+// is asked first.
+func TestAForcedUpDoesNotLookForLostImageMounts(t *testing.T) {
+	r, runner := newRuntime()
+	if err := r.Up(context.Background(), cfg(), ports.UpOptions{ForceRecreate: true}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if runner.Ran(" ps ") || runner.Ran("inspect") {
+		t.Errorf("a forced up looked for containers:\n%s", runner.CommandLines())
+	}
+}
+
+func TestUpReportsARecreateThatFailed(t *testing.T) {
+	r, runner := newRuntime()
+	runner.OnOutput("ps --all --quiet", "a1\n").
+		OnOutput("inspect", "web\tFalse\tfalse\timage \n").
+		OnOutput("config --format json", `{"services":{"web":{}}}`).
+		OnExit("--no-start", 1, "Error response from daemon: conflict")
+
+	err := r.Up(context.Background(), cfg(), ports.UpOptions{})
+	if err == nil {
+		t.Fatal("a failed re-create was reported as success")
+	}
+	if msg := domain.AsError(err).Message; !strings.Contains(msg, "cannot re-create web") {
+		t.Errorf("the message does not name the service: %q", msg)
+	}
+	if runner.Ran("up --detach") {
+		t.Errorf("the up ran after the re-create failed:\n%s", runner.CommandLines())
 	}
 }
 
@@ -366,7 +534,8 @@ func TestRunOneShotMountsATaskInputReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := strings.Join(runner.Calls()[0].Argv, " ")
+	calls := runner.Calls()
+	line := strings.Join(calls[len(calls)-1].Argv, " ")
 	want := "--volume /var/lib/demo/manager/inputs/op_1/snapshot:/morzer/inputs/snapshot:ro worker restore"
 	if !strings.Contains(line, want) {
 		t.Errorf("the input is not mounted read-only before the service:\n%s", line)
@@ -791,7 +960,7 @@ func TestARunThatKeepsItsContainerRemovesNothing(t *testing.T) {
 	if _, err := r.RunOneShot(context.Background(), cfg(), "reset", ports.RunOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if runner.Ran(" config ") || runner.Ran(" ps ") || runner.Ran("docker rm") {
+	if runner.Ran(" config ") || runner.Ran("ps --all --format json") || runner.Ran("docker rm") {
 		t.Errorf("a run without Remove cleaned up:\n%s", runner.CommandLines())
 	}
 

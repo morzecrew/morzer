@@ -266,6 +266,60 @@ services:
 	assert.Contains(t, err.Error(), "start")
 }
 
+// TestComposeUpRecreatesAStoppedServiceWithAnImageMount: a reboot takes an
+// image mount away, and `start` does not make it again, so Up re-creates a
+// container with one that does not run. A test cannot reboot the daemon's host;
+// the stop stands in for it, since a container that does not run is what Up
+// keys on. The service without an image mount keeps its container.
+func TestComposeUpRecreatesAStoppedServiceWithAnImageMount(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	cfg := dockerlab.Project(t, fmt.Sprintf(`
+services:
+  mounted:
+    image: %[1]s
+    init: true
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    volumes:
+      - type: image
+        source: %[1]s
+        target: /from-image
+  plain:
+    image: %[1]s
+    init: true
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+`, dockerlab.ImageBusybox))
+
+	rt := compose.New(infraexec.New())
+	ctx := context.Background()
+	ids := func() map[string]string {
+		t.Helper()
+		states, err := rt.Status(ctx, cfg)
+		require.NoError(t, err)
+		out := map[string]string{}
+		for _, s := range states {
+			require.Equal(t, "running", s.State, "%s does not run", s.Name)
+			id, err := osexec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Id}}", s.Container).Output()
+			require.NoError(t, err)
+			out[s.Name] = strings.TrimSpace(string(id))
+		}
+		require.Len(t, out, 2)
+		return out
+	}
+
+	require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{}))
+	before := ids()
+	require.NoError(t, rt.Stop(ctx, cfg, nil, time.Second))
+	require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{}))
+	after := ids()
+
+	assert.NotEqual(t, before["mounted"], after["mounted"],
+		"a stopped container with an image mount was started rather than re-created")
+	assert.Equal(t, before["plain"], after["plain"],
+		"a container without an image mount was re-created")
+}
+
 // TestComposeValidateAgainstRealCompose checks the parse this project depends
 // on for the plan view and the health checks alike.
 func TestComposeValidateAgainstRealCompose(t *testing.T) {

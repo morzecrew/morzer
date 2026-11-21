@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A service with an image mount starts again after the machine restarts.
+  Docker does not make the mount again, so `apply` failed with
+  `cannot access path` until the container was removed by hand. `apply`,
+  `update` and the start at boot now re-create such a stopped container.
+
 ## [0.19.0] - 2026-11-20
 
 A Mac can install and update a release whose images travel in the bundle,
