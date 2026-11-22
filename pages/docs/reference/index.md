@@ -91,7 +91,7 @@ here. The reference column points at the section that documents it; the
 | `morzer release build` | Stamp a version, regenerate the checksum list, and check the result | [release-commands](release-commands.md#release-build) |
 | `morzer release archive` | Pack a bundle directory into a release archive | [release-commands](release-commands.md#release-archive) |
 | `morzer release push` | Publish a release archive to an OCI registry | [release-commands](release-commands.md#release-push) |
-| `morzer release index` | Sign and publish a channel's index, so machines can tell a freeze | [release-commands](release-commands.md#release-index) |
+| `morzer release index` | Sign and publish a channel's index, naming its release and expiry | [release-commands](release-commands.md#release-index) |
 | `morzer release fetch` | Fetch a release bundle into the release store | [release-commands](release-commands.md#release-fetch) |
 | `morzer release ingest` | Load the images the installed release carries into the local store | [release-commands](release-commands.md#release-ingest) |
 | `morzer release prune` | Remove old releases beyond the retention policy | [release-commands](release-commands.md#release-prune) |

@@ -48,11 +48,11 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "index <oci-reference>",
-		Short: "Sign and publish a channel's index, so machines can tell a freeze",
+		Short: "Sign and publish a channel's index, naming its release and expiry",
 		Long: "Writes a signed statement of which release a channel points at, and\n" +
-			"until when, beside the channel as the tag <channel>.index. A machine\n" +
-			"that pins your key warns once that statement expires, which is how it\n" +
-			"tells a channel that is quiet from one an attacker froze.\n\n" +
+			"until when, beside the channel as the tag <channel>.index. Its expiry is\n" +
+			"how a machine that pins your key is to tell a channel that is quiet\n" +
+			"from one an attacker froze. Machines do not read the index yet.\n\n" +
 			"The release is the bundle the channel tag points at now, named by its\n" +
 			"content digest. The sequence is the time in milliseconds, and a\n" +
 			"sequence not higher than the index already published, signed by this\n" +

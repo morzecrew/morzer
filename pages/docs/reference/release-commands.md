@@ -498,8 +498,9 @@ morzer release index oci://<registry>/<repository>:<channel> --key FILE \
 Signs a statement of which release a channel points at, and until when, and
 publishes it beside the channel under the tag `<channel>.index`. A channel that
 stops moving looks the same whether nothing was released or someone froze it
-on an old release, and the index's expiry is what tells the two apart. How to
-keep one fresh is in the [publishing guide](../authoring/publishing.md#signing-the-channels-index).
+on an old release, and the index's expiry is what tells the two apart.
+Machines do not read it yet. How to keep one fresh is in the
+[publishing guide](../authoring/publishing.md#signing-the-channels-index).
 
 The release is the bundle the channel tag points at when the command runs. It
 is pulled and named by its [content digest](#verification), never the
