@@ -149,6 +149,20 @@ func TestReleaseIndexRefusesASequenceNotHigherThanItsOwn(t *testing.T) {
 	}
 }
 
+// An index this key signed for another channel is one no machine following
+// this channel would accept, so it does not count either.
+func TestReleaseIndexReplacesAnIndexForAnotherChannel(t *testing.T) {
+	r, _, channel, contentDigest, keyPath, pub := indexFixture(t)
+	plantIndex(t, channel, keyPath, domain.NewChannelIndex("beta", domain.MustParseVersion("1.2.0"),
+		contentDigest, time.Now().Add(time.Hour), time.Hour))
+
+	r.Run("release", "index", channel, "--key", keyPath).ExitCode(0).
+		StderrContains("names the channel beta, so it is replaced")
+	if idx := publishedIndex(t, channel, pub); idx.Channel != "stable" {
+		t.Errorf("the index names %q", idx.Channel)
+	}
+}
+
 // A registry that refuses to show the index has not said there is none. The
 // command stops rather than skip the sequence check and push over it.
 func TestReleaseIndexStopsWhenTheRegistryRefusesTheIndex(t *testing.T) {

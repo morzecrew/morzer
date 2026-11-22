@@ -181,7 +181,7 @@ func publishChannelIndex(ctx context.Context, source *oci.Source, key *signer.Si
 	}
 	var warning string
 	if found {
-		prior, problem := checkedIndex(published, publicKey)
+		prior, problem := checkedIndex(published, publicKey, channel)
 		switch {
 		case problem != "":
 			// Only an index this key signed counts: the tag is anyone's
@@ -224,8 +224,9 @@ func indexKeyError(err error, path string) error {
 }
 
 // checkedIndex is the published index when its signature verifies against
-// publicKey and it reads as an index; otherwise problem says why not.
-func checkedIndex(published oci.PublishedIndex, publicKey string) (domain.ChannelIndex, string) {
+// publicKey and it reads as an index of channel; otherwise problem says why
+// not. Each of those is one a machine following the channel would refuse.
+func checkedIndex(published oci.PublishedIndex, publicKey, channel string) (domain.ChannelIndex, string) {
 	if published.Problem != "" {
 		return domain.ChannelIndex{}, "cannot be read: " + published.Problem
 	}
@@ -235,6 +236,9 @@ func checkedIndex(published oci.PublishedIndex, publicKey string) (domain.Channe
 	idx, err := domain.ParseChannelIndex(published.Index)
 	if err != nil {
 		return domain.ChannelIndex{}, "cannot be read: " + domain.AsError(err).Message
+	}
+	if idx.Channel != channel {
+		return domain.ChannelIndex{}, "names the channel " + idx.Channel
 	}
 	return idx, ""
 }

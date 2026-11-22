@@ -54,3 +54,22 @@ evidence: rfcs/0037-freshness-of-a-signed-release.md:223-225
 action: decided
 proposal: ASSUMED — the index is an artifact of type `application/vnd.morzer.channel.index.v1` with two layers, `index.json` as `application/vnd.morzer.channel.index.v1+json` and its signature as `application/vnd.morzer.channel.index.v1.minisig`, each titled by its file name as `oras push` titles it. Each layer is read up to 64 KiB, and a layer over that is refused.
 ```
+
+Found on review, refining the first entry above. An index this key signed for
+another channel is one no machine following this channel would accept, so it
+should not count either. And a read the registry refuses is not an unreadable
+index: it says nothing about what is there, so replacing it would skip the
+check the entry exists for. The channel comparison is in
+`internal/cli/release_index.go:246`.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-22T23:40:54Z
+attempt: 2
+claim: the first entry counted a same-key index that names another channel, and treated a read the registry refused as an unreadable index that is replaced
+evidence: internal/adapters/source/oci/index.go:60-70
+action: decided
+proposal: ASSUMED — `release index` compares its sequence only with a published index whose signature verifies against the public half of `--key` and which names the same channel. Any other index under the tag, one that cannot be read, one another key signed, or one for another channel, is replaced, and the command warns that it was. A read the registry refuses, or cannot answer, stops the command before anything is pushed.
+```
