@@ -5,7 +5,7 @@
   entries its build and review wrote in [logs/version-floor.md](../logs/version-floor.md)
   are decisions 18–22. P2 was gated on a vendor asking, and the author ruled
   2026-11-23 to build it now: decision 23 lifts the gate, and decisions 24–32
-  settle what the design left open.
+  settle what the design left open. Decision 33 was added on #410's review.
 - **Scope:** What stops a correctly signed but *stale* release from being
   installed, or from being the newest thing a machine ever learns of. Covers
   two threats SECURITY.md lists as one known gap: a rollback to an older signed
@@ -377,6 +377,7 @@ document signed with the same minisign key that signs their bundles:
 | 30 | `ASSUMED` | Only the channel follower reads an index: the scheduled tick and `update --stage`. An `update` of a reference and `update --check` do not, which keeps decision 3's manual path open. `status` and `doctor` report what the last poll recorded. Agreed by the author 2026-11-23. |
 | 31 | `ASSUMED` | **Refines decisions 5 and 21.** An export carries each channel's accepted index as recorded: its sequence, the digest decision 16 compares, the release it names and its expiry. An import replaces them as it replaces the marks. A rebuilt machine that forgot the sequence would accept a replayed older index. Agreed by the author 2026-11-23. |
 | 32 | `ASSUMED` | An index's expiry is judged by the machine's clock, with no allowance for skew, as a sync document's expiry is (`sync.go:325`). Agreed by the author 2026-11-23. |
+| 33 | `ASSUMED` | Decision 24's check and its push are not atomic. OCI distribution has no conditional tag write, so two runs of `release index` for one channel can both pass the sequence check, and the tag write that lands last wins. No mechanism the registry offers closes that, and the risk is accepted as RFC 0039 §9 accepted it for `release push`: the publishing guide runs every `release index` and `release push` of a repository in one CI concurrency group, so a scheduled re-sign never overlaps a release. An older index that lands last is refused as a replay by each machine that accepted the newer one (decision 16), and the next re-sign publishes a higher sequence. Added on #410's review, 2026-11-23. |
 
 ## 12. Phasing
 
