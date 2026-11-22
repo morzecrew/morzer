@@ -97,7 +97,7 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 			source := oci.New()
 			defer func() { _ = source.Close() }()
 			report, warning, err := publishChannelIndex(ctx, source, key, pub.Line,
-				ref, channel, time.Now(), validFor, app.Flags.dryRun)
+				ref, channel, validFor, app.Flags.dryRun)
 			if warning != "" {
 				fmt.Fprintf(app.Stream.Err, "warning: %s\n", warning)
 			}
@@ -160,7 +160,7 @@ func isVersion(s string) bool {
 // sequence against the index already there, and signs and pushes a new one.
 // The warning is for the caller to print whether or not err is set.
 func publishChannelIndex(ctx context.Context, source *oci.Source, key *signer.Signer, publicKey string,
-	ref ports.Ref, channel string, now time.Time, validFor time.Duration, dryRun bool,
+	ref ports.Ref, channel string, validFor time.Duration, dryRun bool,
 ) (releaseIndexReport, string, error) {
 	shown := ports.RedactRefCredentials(ref.String())
 	report := releaseIndexReport{Channel: channel, Reference: shown + domain.ChannelIndexTagSuffix, DryRun: dryRun}
@@ -176,7 +176,9 @@ func publishChannelIndex(ctx context.Context, source *oci.Source, key *signer.Si
 		return report, "", err
 	}
 
-	idx := domain.NewChannelIndex(channel, resolved.Version, resolved.Digest, now, validFor)
+	// Issued after the pull, so a slow download does not eat into the
+	// validity the vendor asked for.
+	idx := domain.NewChannelIndex(channel, resolved.Version, resolved.Digest, time.Now(), validFor)
 	report.Sequence, report.IssuedAt, report.ExpiresAt, report.Release = idx.Sequence, idx.IssuedAt, idx.ExpiresAt, idx.Release
 
 	published, found, err := source.FetchIndex(ctx, ref)
