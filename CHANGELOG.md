@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-22
+
+A service with an image mount starts again after the machine restarts, which
+0.19.0 left down until its container was removed by hand. Installation state
+is unchanged, so 0.19.0 and 0.19.1 run the same machine.
+
 ### Fixed
 
 - A service with an image mount starts again after the machine restarts.
@@ -1768,7 +1774,8 @@ bundle in the field are in place.
 
 - An installation export is refused when the only key that can open it belongs to the machine being exported. Such a file looks like an insurance policy and is not one, and the moment to discover that is not during a recovery.
 
-[unreleased]: https://github.com/morzecrew/morzer/compare/v0.19.0...HEAD
+[unreleased]: https://github.com/morzecrew/morzer/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/morzecrew/morzer/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/morzecrew/morzer/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/morzecrew/morzer/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/morzecrew/morzer/compare/v0.17.0...v0.17.1
