@@ -1,7 +1,11 @@
 # RFC 0058 — Values a document gives the release an installation updates to
 
-- **Status:** 📝 Draft — proposed 2026-11-12, and ruled by the author the
-  same day: decisions 1–4, 6 and 12 as recommended. Nothing is built.
+- **Status:** ✅ Complete — shipped 2026-11-14 in #358. Proposed 2026-11-12,
+  and ruled by the author the same day: decisions 1–4, 6 and 12 as
+  recommended. Decisions 14 to 20 record what execution added and the one
+  decision it departed from, from
+  [logs/pending-values.md](../logs/pending-values.md), accepted by the author
+  2026-11-23.
 - **Scope:** Lets a desired-state document
   ([RFC 0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md))
   give values for the parameters and secrets that a staged release manages and
@@ -385,6 +389,13 @@ how `config list` lays out the pending section.
 | 11 | `ASSUMED` | `InstallationSchemaVersion` is bumped, for RFC 0007 decision 9's reason: an older manager would read the file and drop `pending` silently. |
 | 12 | `ASSUMED` | Who writes pending. **Recommended:** only a sync. A local operator gives the value to the update that needs it, with `update --set`, so local `config apply` and `config set` keep refusing a name the installed release does not declare. Alternative: local `config apply` writes pending too, through the same operation, which is #346's option 2 at the cost of a second way to give an update its values. Was `OPEN`; ruled by the author 2026-11-12: as recommended. |
 | 13 | `ASSUMED` | A resume reads pending as it is when it runs, and is held to the digests its run journalled (RFC 0007 decision 14). A resume after a sync changed a pending value is refused naming it, and a fresh update takes the new value. |
+| 14 | `ASSUMED` | The fleet row's `staged` and `sync.pending` are fleet row schema 3: `FleetSchemaVersion` goes from 2 to 3. `FleetRow.Validate` refuses a row from a newer schema whole (RFC 0026 decision 4), so an older `fleet ls` reports an upgraded machine's row as written by a newer manager, and the authority's manager is upgraded before the machines that write the rows. Decision 11 named a bump for installation state alone. Added by execution and ruled by the author 2026-11-13, see logs/pending-values.md (unlisted, 2026-11-13T20:44:00Z, the fleet row's schema); accepted by the author 2026-11-23. |
+| 15 | `ASSUMED` | Decision 9's `sync.pending` names the parameters pending holds, and no secret. A secret a document gives the staged release is stored (§5.2), so it waits for nothing, and the applied serial already tells the authority the document landed. Added by execution, see logs/pending-values.md (unlisted, 2026-11-13T20:44:00Z, the row's pending names); accepted by the author 2026-11-23. |
+| 16 | `ASSUMED` | An update that waited for the deployment lock is refused when the pending values for its release changed meanwhile, naming them, as it is refused when a parameter it renders changed (#348). It planned with the values it read, and would record those under a pending section that says otherwise. Added by execution, see logs/pending-values.md (unlisted, 2026-11-13T20:44:00Z, an update that waited for the lock); accepted by the author 2026-11-23. |
+| 17 | `ASSUMED` | Decision 6's `--force` is the one global flag. On `update` it already lets `--skip-backup` through, so one `--force` lets that and a `--set` of a managed or pending name through together, as `config set` has the single flag under RFC 0057 decision 29. Added by execution, see logs/pending-values.md (unlisted, 2026-11-13T20:44:00Z, `update`'s `--force`); accepted by the author 2026-11-23. |
+| 18 | `ASSUMED` | A secret the staged release manages is stored for it only when the installed release does not declare it. One the installed release declares and does not manage refuses the document whole, as it does today: the store is the one the installed release reads, so storing it would change what that release runs on, which its managed list does not allow. Refines decision 4. Added by execution, see logs/pending-values.md (unlisted, 2026-11-13T20:57:55Z); accepted by the author 2026-11-23. |
+| 19 | `ASSUMED` | A document that applies a value for a name now, set or unset, removes what an earlier document left pending for that name: it is the authority's later word for it. Otherwise an update that converged and stopped in its record step keeps the older pending value, and its resume and every later update record it over the newer one. Found by the suite's resume case. Added by execution, see logs/pending-values.md (unlisted, 2026-11-13T21:21:03Z); accepted by the author 2026-11-23. |
+| 20 | `ASSUMED` | A resume after a sync changed a pending value is refused, naming it, and a fresh update takes the new value, as decision 13 says, for a run journaled as interrupted or failed. A run its process left journaled as running blocks every new operation, so the refusal's hint also names `morzer status --clear-intervention`, which writes that run off first. Supersedes decision 13's claim that a fresh update always follows. Departed from decision 13 in execution, see logs/pending-values.md (decision 13, attempt 2, which corrects attempt 1); accepted by the author 2026-11-23. |
 
 ## 12. Phasing
 
