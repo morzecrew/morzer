@@ -346,9 +346,10 @@ oras push registry.example/demo/bundle:stable.index \
     index.json.minisig:application/vnd.morzer.channel.index.v1.minisig
 ```
 
-`date -d` is GNU's; on macOS, `date -u -v+7d` gives the expiry. Each re-sign
-needs a sequence higher than the last one, which the time gives you as long as
-the clock does not go back.
+`date -d` is GNU's. On macOS, write the expiry as
+`$(date -u -v+7d +%Y-%m-%dT%H:%M:%SZ)`. Each re-sign needs a sequence higher
+than the last one, which the time gives you as long as the clock does not go
+back.
 
 ## Tell them the digest
 
