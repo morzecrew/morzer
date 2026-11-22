@@ -79,17 +79,24 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 				return domain.Usage("--valid-for must be at least 1m")
 			}
 
+			ctx := cmd.Context()
+			if app.Flags.timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, app.Flags.timeout)
+				defer cancel()
+			}
+
 			// The key first: a missing or encrypted one is the vendor's to
 			// fix, and the registry has nothing to say about it.
 			key := signer.New(keyPath, "vendor")
-			pub, err := key.PublicKey(cmd.Context())
+			pub, err := key.PublicKey(ctx)
 			if err != nil {
 				return indexKeyError(err, keyPath)
 			}
 
 			source := oci.New()
 			defer func() { _ = source.Close() }()
-			report, warning, err := publishChannelIndex(cmd.Context(), source, key, pub.Line,
+			report, warning, err := publishChannelIndex(ctx, source, key, pub.Line,
 				ref, channel, time.Now(), validFor, app.Flags.dryRun)
 			if warning != "" {
 				fmt.Fprintf(app.Stream.Err, "warning: %s\n", warning)

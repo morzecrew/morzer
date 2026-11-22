@@ -2,6 +2,7 @@ package clitest_test
 
 import (
 	"context"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -175,6 +176,34 @@ func TestReleaseIndexStopsWhenTheRegistryRefusesTheIndex(t *testing.T) {
 		OutputContains("was refused")
 	if after, _ := reg.Tagged("stable.index"); after != before {
 		t.Error("the index was replaced although it could not be read")
+	}
+}
+
+// --timeout bounds the whole run, as it bounds every operation: a registry
+// that accepts the connection and never answers must not hold it forever.
+func TestReleaseIndexHonoursTheTimeout(t *testing.T) {
+	r := clitest.New(t)
+	keyPath, _ := indexKey(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+		}
+	}()
+
+	start := time.Now()
+	r.Run("--timeout", "300ms", "release", "index", "oci://"+ln.Addr().String()+"/demo/bundle:stable",
+		"--key", keyPath).ExitCode(7)
+	if took := time.Since(start); took > 10*time.Second {
+		t.Errorf("the run took %s under --timeout 300ms", took)
 	}
 }
 
