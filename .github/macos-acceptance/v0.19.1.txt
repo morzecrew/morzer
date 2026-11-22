@@ -1,0 +1,1090 @@
+morzer 0.19.1, the acceptance run on macOS
+commit f2432801928917a64995ce719cdc8ba87cfd3d9c
+ProductName:		macOS
+ProductVersion:		27.2.1
+BuildVersion:		26B131
+engine Docker Desktop 4.44.1 (201842), server 28.3.2
+
+
+[1m== checking prerequisites ==[0m
+   Docker version 28.3.2, build 578ccf6
+   sops 3.13.3 (latest)
+   work directory /private/var/morzer-acceptance.QJRMHo
+   volume helper busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 (already local)
+
+[1m== starting a throwaway registry at localhost:5000 ==[0m
+   ready
+
+[1m== building and pushing the stub images ==[0m
+   app sha256:77e28e6eca08d0fd252ba9d145d81c1f7312b2a33505c3efb904732259a617f5
+   db  sha256:c71e055dba17f9c6b3e90e31545b554512d4ae73f3b4b3b29130540194abaec3
+
+[1m== preparing the bundles ==[0m
+   1.2.0 and 1.3.0, pinned to the pushed digests
+
+[1m== release verify ==[0m
+demo 1.2.0
+  digest  sha256:86ce7a4ff38f61201757e709716f224fad6f01d2cbb7dd9c5c14e20bc18bfb54
+
+bundle is valid
+
+[1m== the port probe and the engine agree on a busy port and a free one ==[0m
+initialise demo (8 steps)  op_01M81MBJVDZNAK5W3Z5KKCR824
+[1/8] create system directories
+        ok (6ms)
+[2/8] create machine age identity
+        ok (20ms)
+[3/8] create machine signing key
+        ok (13ms)
+[4/8] stage release bundle
+warning: release 1.2.0 is not signed, so this installation trusts no signing key and will not check the releases after it either
+        ok (105ms)
+[5/8] write installation configuration
+        ok (45ms)
+[6/8] load images from the bundle
+        skipped (already satisfied)
+[7/8] create secret state
+        ok (117ms)
+[8/8] add offline recovery recipient
+        skipped (already satisfied)
+done in 0s
+
+installation inst_01M81MBK2VHE9ZZMB8B6GY1FMA created for demo
+nothing runs yet: `morzer --product demo apply --dry-run` shows what would happen, `morzer --product demo apply` starts it
+   containers publish 18094 and 18093/udp
+   18094/tcp: the probe refuses it, and the engine does not publish it
+   18093/udp: the probe refuses it, and the engine does not publish it
+   the containers are gone
+   18094/tcp: the probe passes it, and the engine publishes it
+   18093/udp: the probe passes it, and the engine publishes it
+
+[1m== init ==[0m
+  KEEP THIS:
+    The private key is at /private/var/morzer-acceptance.QJRMHo/keys/recovery.key (0400).
+    Move it off this machine. If this VM is lost, this key is how its secrets are recovered — and it
+    is the only way.
+   recovery recipient age1580e33g6yyk20ulph92za8d39qr9t3vv5gsykdam298de3hvv3rs548ycx
+initialise demo (8 steps)  op_01M81MC4AF9RNM9XYQNAJCPV16
+[1/8] create system directories
+        ok (5ms)
+[2/8] create machine age identity
+        ok (12ms)
+[3/8] create machine signing key
+        ok (13ms)
+[4/8] stage release bundle
+warning: release 1.2.0 is not signed, so this installation trusts no signing key and will not check the releases after it either
+        ok (90ms)
+[5/8] write installation configuration
+        ok (22ms)
+[6/8] load images from the bundle
+        skipped (already satisfied)
+[7/8] create secret state
+        ok (114ms)
+[8/8] add offline recovery recipient
+        ok (71ms)
+done in 0s
+
+installation inst_01M81MC4G9P8KCVZ6X4NQJKY75 created for demo
+nothing runs yet: `morzer --product demo apply --dry-run` shows what would happen, `morzer --product demo apply` starts it
+
+[1m== an undeclared parameter is refused ==[0m
+   a typo in --set is refused
+
+[1m== apply ==[0m
+apply 1.2.0 (11 steps)  op_01M81MC51PNCCCP9SRNPX90J06
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 746.1GiB free on /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/root/etc/demo, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo, /private/var/morzer-acceptance.QJRMHo/root/opt/demo, /private/var/morzer-acceptance.QJRMHo/root/var/run/demo and writes /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data
+  [ok  ] required ports are available: 1 port(s) available
+        ok (1.6s)
+[2/11] decrypt secrets
+        ok (21ms)
+[3/11] render secrets to /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets
+        ok (98ms)
+[4/11] render configuration
+        ok (13ms)
+[5/11] validate compose configuration
+        ok (78ms)
+[6/11] pull images
+        ok (78ms)
+[7/11] run migrations
+        ok (138ms)
+[8/11] start services
+        ok (11s)
+[9/11] wait for health checks
+        ok (144ms)
+[10/11] smoke test
+        ok (156ms)
+[11/11] record installed release
+        ok (20ms)
+done in 13s
+
+demo 1.2.0 applied
+   2 container(s) running
+
+[1m== the deployment is published on the port that was set ==[0m
+   app is published and answering on 18099
+
+[1m== an operator value reaches the container, a default fills the rest ==[0m
+   DEMO_LOG_LEVEL=debug inside the container
+
+[1m== config set moves the published port on a running deployment ==[0m
+set http_port (4 steps)  op_01M81MCJMTW6MM9CFXRHA4BNFT
+[1/4] record parameters
+        ok (21ms)
+[2/4] render configuration
+        skipped (already satisfied)
+[3/4] re-create app
+        ok (10.6s)
+[4/4] wait for health checks
+        ok (17ms)
+done in 10s
+
+set http_port; re-created app
+   config set moved the published port to 18098
+
+[1m== config get reports it, and doctor still passes ==[0m
+
+[1m== config unset returns it to the release default ==[0m
+set http_port (unset) (4 steps)  op_01M81MCYQPF3BSCSSAY1MY3JMF
+[1/4] record parameters
+        ok (22ms)
+[2/4] render configuration
+        skipped (already satisfied)
+[3/4] re-create app
+        ok (10.6s)
+[4/4] wait for health checks
+        ok (17ms)
+done in 11s
+
+set http_port; re-created app
+   config unset restored the release default and re-created the service
+
+[1m== a hand edit to installation.yaml is reported, not obeyed ==[0m
+set log_level (4 steps)  op_01M81MDANHF574QNB5CKBQGPB9
+[1/4] record parameters
+        ok (20ms)
+[2/4] render configuration
+        skipped (already satisfied)
+[3/4] re-create app
+        ok (10.6s)
+[4/4] wait for health checks
+        ok (17ms)
+done in 11s
+
+set log_level; re-created app
+   the drift is reported and the next config set corrects the file
+
+[1m== installation settings are settable and are not release parameters ==[0m
+
+set update.check
+
+set update.check
+   update.check toggles, and mixing a setting with a parameter is refused
+
+[1m== the rendered configuration holds paths, never values ==[0m
+   no secret value in /private/var/morzer-acceptance.QJRMHo/root/etc/demo/application.yaml
+
+[1m== apply is idempotent ==[0m
+apply 1.2.0 (11 steps)  op_01M81MDNSKSE86TESHXCS359KA
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 746.1GiB free on /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/root/etc/demo, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo, /private/var/morzer-acceptance.QJRMHo/root/opt/demo, /private/var/morzer-acceptance.QJRMHo/root/var/run/demo and writes /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data
+        ok (362ms)
+[2/11] decrypt secrets
+        ok (20ms)
+[3/11] render secrets to /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets
+        ok (73ms)
+[4/11] render configuration
+        skipped (already satisfied)
+[5/11] validate compose configuration
+        ok (73ms)
+[6/11] pull images
+        ok (76ms)
+[7/11] run migrations
+        ok (17ms)
+[8/11] start services
+        ok (865ms)
+[9/11] wait for health checks
+        ok (13ms)
+[10/11] smoke test
+        ok (11ms)
+[11/11] record installed release
+        ok (18ms)
+done in 2s
+
+demo 1.2.0 applied
+   2 container(s) running
+
+[1m== status and doctor ==[0m
+demo
+  installation  inst_01M81MC4G9P8KCVZ6X4NQJKY75
+  release       1.2.0
+  profile       embedded
+  url           https://acceptance.example
+  support       https://support.example/demo
+
+  services
+    + app  running, healthy
+    + db   running, healthy
+
+  health
+    + api  ok  HTTP 200
+    + db   ok  schema at 12
+
+  last backup     none
+  last operation  apply succeeded (op_01M81MDNSKSE86TESHXCS359KA)
+  configuration  + 8 checks
+  machine        + 2 checks
+  storage        + 4 checks
+  secrets
+    ! decrypted secrets live on memory-backed storage
+      /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets is apfs: decrypted secrets are
+      written to disk
+  runtime
+    ! root runs a docker CLI only root can replace
+      runs the docker CLI on PATH at /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/manager/docker/bin/docker, without the credential helper
+      desktop of root's config: someone other than root can replace it
+  system
+    ! launchd jobs are installed and enabled
+      dev.morzer.demo: not installed; dev.morzer.demo-backup: not installed
+  tools          + 2 checks
+  network
+    ! container registry is reachable
+      cannot reach the registry for localhost:5000/demo/app: no such manifest:
+      localhost:5000/demo/app@sha256:77e28e6eca08d0fd252ba9d145d81c1f7312b2a33505c3efb904732259a617f
+      5
+  backup
+    ! every named volume is covered by a backup
+      1 of 1 named volume(s) captured -- /private/var/morzer-
+      acceptance.QJRMHo/root/etc/demo/application.yaml, /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/data, /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/data/db are bind mounts and are never captured
+    ! a recent backup exists
+      no backups exist
+  manager        + 2 checks
+
+  what to do
+    decrypted secrets live on memory-backed storage
+      nothing to mount: this platform has no memory-backed filesystem, and secrets.disk-encryption
+      reports what protects the disk
+    root runs a docker CLI only root can replace
+      remove the helper from /Users/misery7100/.docker/config.json and run `sudo docker --config
+      /Users/misery7100/.docker login <registry>`, which then stores the credential where the
+      manager reads it
+    container registry is reachable
+      check network access and registry credentials (`docker login`); updates will fail while this
+      is unreachable
+    every named volume is covered by a backup
+      an excluded volume is the vendor saying its backup hook owns that data; a bind mount is yours
+      to copy. Make sure something does.
+    launchd jobs are installed and enabled
+      run `morzer init --repair --install-units` to put it back, or `morzer config set
+      backup.scheduled=false` if this machine's backups are handled elsewhere
+    a recent backup exists
+      take one with `morzer backup`, and enable the backup timer
+
+  42 ok, 6 warning, 0 failed
+
+[1m== into the running deployment: ps, logs, stats, exec ==[0m
+SERVICE  CONTAINER   STATE    HEALTH   IMAGE                    STATUS
++ app    demo-app-1  running  healthy  localhost:5000/demo/app  Up 13 seconds (healthy)
++ db     demo-db-1   running  healthy  localhost:5000/demo/db   Up 50 seconds (healthy)
+ Container demo-db-1  Stopping
+ Container demo-db-1  Stopped
+
+error: service db is exited, so there is no container to run a command in
+hint:  `morzer logs db` says why; `morzer apply` brings it back
+ Container demo-db-1  Starting
+ Container demo-db-1  Started
+
+[1m== exec -i: stdin through a pipe, and a TTY at a terminal ==[0m
+   a session at a terminal got a TTY
+
+[1m== exec -i: Ctrl-C and SIGTERM end the session, and it is journalled ==[0m
+   a group signal ended the session with status 130, journalled
+   a manager signal ended the session with status 130, journalled
+
+[1m== restart re-creates one service and journals it ==[0m
+restart app (3 steps)  op_01M81ME7ZPD5A6NMZD45PSGFMF
+[1/3] check the bundled images are loaded
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+        ok (4ms)
+[2/3] re-create app
+        ok (10.6s)
+[3/3] wait for health checks
+        ok (24ms)
+done in 11s
+
+re-created app from 1.2.0
+   2 container(s) running
+
+error: 1.2.0 does not start a service named "nosuch"
+hint:  the services it starts are app, db
+
+[1m== a reboot: services stopped, then apply --startup ==[0m
+ Container demo-app-1  Stopping
+ Container demo-db-1  Stopping
+ Container demo-app-1  Stopped
+ Container demo-db-1  Stopped
+   0 container(s) running
+apply 1.2.0 (11 steps)  op_01M81MEKE43YZYJY8GPQ7WT1P0
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 746.1GiB free on /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/root/etc/demo, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo, /private/var/morzer-acceptance.QJRMHo/root/opt/demo, /private/var/morzer-acceptance.QJRMHo/root/var/run/demo and writes /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data
+  [ok  ] required ports are available: 1 port(s) available
+        ok (331ms)
+[2/11] decrypt secrets
+        ok (22ms)
+[3/11] render secrets to /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets
+        ok (72ms)
+[4/11] render configuration
+        skipped (already satisfied)
+[5/11] validate compose configuration
+        ok (70ms)
+[6/11] pull images
+        skipped (already satisfied)
+[7/11] run migrations
+        ok (19ms)
+[8/11] start services
+        ok (11s)
+[9/11] wait for health checks
+        ok (15ms)
+[10/11] smoke test
+        ok (12ms)
+[11/11] record installed release
+        ok (18ms)
+done in 11s
+
+demo 1.2.0 applied
+   2 container(s) running
+
+[1m== a backup target off this machine ==[0m
+
+backup target file:///private/var/morzer-acceptance.QJRMHo/root/offsite added; the next backup will be copied there
+TARGET                                                     STATE        LATEST
+file:///private/var/morzer-acceptance.QJRMHo/root/offsite  0 backup(s)
+
+[1m== backup ==[0m
+backup demo (5 steps)  op_01M81MEZ5GW548JAJ4K753GG7V
+[1/5] create backup
+        ok (874ms)
+[2/5] verify backup checksums
+        ok (5ms)
+[3/5] copy the backup to 1 target
+        ok (81ms)
+[4/5] apply retention policy
+        ok (8ms)
+[5/5] apply retention on the backup targets
+        ok (13ms)
+done in 1s
+
+backup 20261122T124226Z created (28.1KiB), 1 volume(s) captured hot, not captured: /private/var/morzer-acceptance.QJRMHo/root/etc/demo/application.yaml, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data/db, copied to file:///private/var/morzer-acceptance.QJRMHo/root/offsite
+ID                TAKEN                    SIZE
+20261122T124226Z  2026-11-22 12:42:27Z  28.1KiB
+
+[1m== the backup left the machine ==[0m
+   20261122T124226Z is on /private/var/morzer-acceptance.QJRMHo/root/offsite
+   everything on the target except its manifest is encrypted
+
+[1m== the copy on the target verifies without a key ==[0m
+
+1 backup(s) on file:///private/var/morzer-acceptance.QJRMHo/root/offsite verified
+
+[1m== doctor is satisfied that the backup arrived ==[0m
+
+[1m== restore ==[0m
+   installation inst_01M81MC4G9P8KCVZ6X4NQJKY75
+restore demo from 20261122T124226Z (7 steps)  op_01M81MF1Q3SP4FYNXQA8WJSCXX
+[1/7] verify backup integrity
+        ok (5ms)
+[2/7] check release compatibility
+        ok (4ms)
+[3/7] stop services
+        ok (568ms)
+[4/7] restore volumes
+        ok (332ms)
+[5/7] restore database and files
+        ok (384ms)
+[6/7] re-apply the release
+        ok (10.8s)
+[7/7] smoke test after restore
+        ok (14ms)
+done in 13s
+
+restored demo from backup 20261122T124226Z
+   data restored
+
+[1m== restore refuses without the typed confirmation ==[0m
+
+error: restore requires confirming the installation id
+hint:  re-run with --confirm inst_01M81MC4G9P8KCVZ6X4NQJKY75
+
+[1m== a restore killed while it writes a volume is finished with --resume ==[0m
+backup demo (5 steps)  op_01M81MFFFX9Z345CBQ8RFX7VJ9
+[1/5] create backup
+        ok (3.1s)
+[2/5] verify backup checksums
+        ok (61ms)
+[3/5] copy the backup to 1 target
+        ok (129ms)
+[4/5] apply retention policy
+        ok (5ms)
+[5/5] apply retention on the backup targets
+        ok (4ms)
+done in 3s
+
+backup 20261122T124243Z created (128.1MiB), 1 volume(s) captured hot, not captured: /private/var/morzer-acceptance.QJRMHo/root/etc/demo/application.yaml, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data/db, copied to file:///private/var/morzer-acceptance.QJRMHo/root/offsite
+   killed mid-volume; the journal holds the wreck
+resuming restore from step 4 of 7 (restore-volumes)
+restore demo from 20261122T124243Z (7 steps)  op_01M81MFMG1FSXY9Y0S967H595W
+[3/7] stop services
+        ok (109ms)
+[4/7] restore volumes
+        ok (1.6s)
+[5/7] restore database and files
+        ok (46ms)
+[6/7] re-apply the release
+        ok (10.8s)
+[7/7] smoke test after restore
+        ok (13ms)
+done in 14s
+
+restored demo from backup 20261122T124243Z
+   2 container(s) running
+   resumed; the volume reads back whole
+
+[1m== an update is killed mid-flight, after its pre-update backup ==[0m
+   killed mid-update; the journal holds the wreck
+
+[1m== a plain update refuses to drive over the wreck ==[0m
+   refused, naming the way forward
+
+[1m== update --resume rescues the machine to 1.3.0 ==[0m
+resuming update from step 5 of 21 (stage-release)
+update 1.2.0 → 1.3.0 (21 steps)  op_01M81MG3JEPH6YW8W961NPDPPA
+[1/21] verify bundle
+        ok (5ms)
+[2/21] check compatibility
+        ok (4ms)
+[4/21] keep 1.2.0 to bring back on failure
+        ok (12ms)
+[5/21] stage release 1.3.0
+        ok (76ms)
+[6/21] load images from the bundle
+        skipped (already satisfied)
+[7/21] generate secrets the release adds
+        skipped (already satisfied)
+[8/21] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 745.9GiB free on /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/root/etc/demo, /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo, /private/var/morzer-acceptance.QJRMHo/root/opt/demo, /private/var/morzer-acceptance.QJRMHo/root/var/run/demo and writes /private/var/morzer-acceptance.QJRMHo/root/var/lib/demo/data
+        ok (377ms)
+[9/21] decrypt secrets
+        ok (21ms)
+[10/21] render secrets to /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets
+        ok (63ms)
+[11/21] render configuration
+        ok (16ms)
+[12/21] validate compose configuration
+        ok (66ms)
+[13/21] pull images
+        ok (75ms)
+[14/21] run migrations
+        ok (266ms)
+[15/21] start services
+        ok (896ms)
+[16/21] wait for health checks
+        ok (136ms)
+[17/21] smoke test
+        ok (146ms)
+[18/21] record installed release
+        ok (30ms)
+[19/21] retire parameters the release does not declare
+        skipped (already satisfied)
+[20/21] apply retention policy
+        skipped (already satisfied)
+[21/21] apply retention on the backup targets
+        ok (4ms)
+done in 3s
+
+updated demo from 1.2.0 to 1.3.0
+   2 container(s) running
+   running 1.3.0
+
+[1m== rollback is refused: the schema has moved past what 1.2.0 can read ==[0m
+rollback 1.3.0 → 1.2.0: containers reversible: yes, schema compatible: no, restore required: yes
+
+error: cannot roll back 1.3.0 to 1.2.0: the database schema is at 14, past what 1.2.0 can read
+hint:  restore from a backup instead, most recently 20261122T124302Z: `morzer restore --backup 20261122T124302Z --force --confirm <installation-id>`
+   2 container(s) running
+   still running 1.3.0, as a refusal should leave it
+
+[1m== --force does not override the refusal ==[0m
+rollback 1.3.0 → 1.2.0: containers reversible: yes, schema compatible: no, restore required: yes
+
+error: cannot roll back 1.3.0 to 1.2.0: the database schema is at 14, past what 1.2.0 can read
+hint:  restore from a backup instead, most recently 20261122T124302Z: `morzer restore --backup 20261122T124302Z --force --confirm <installation-id>`
+   still 1.3.0
+
+[1m== the refusal names the backup to restore from instead ==[0m
+   restore from a backup instead, most recently 20261122T124302Z: `morzer restore --backup 20261122T124302Z --force --confirm <installation-id>`
+
+[1m== doctor, after everything ==[0m
+  configuration  + 8 checks
+  machine        + 2 checks
+  storage        + 4 checks
+  secrets
+    ! decrypted secrets live on memory-backed storage
+      /private/var/morzer-acceptance.QJRMHo/root/var/run/demo/secrets is apfs: decrypted secrets are
+      written to disk
+  runtime
+    ! root runs a docker CLI only root can replace
+      runs the docker CLI on PATH at /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/manager/docker/bin/docker, without the credential helper
+      desktop of root's config: someone other than root can replace it
+  system
+    ! launchd jobs are installed and enabled
+      dev.morzer.demo: not installed; dev.morzer.demo-backup: not installed; dev.morzer.demo-fleet:
+      not installed
+  tools          + 2 checks
+  network
+    ! container registry is reachable
+      cannot reach the registry for localhost:5000/demo/app: no such manifest:
+      localhost:5000/demo/app@sha256:77e28e6eca08d0fd252ba9d145d81c1f7312b2a33505c3efb904732259a617f
+      5
+  backup
+    ! every named volume is covered by a backup
+      1 of 1 named volume(s) captured -- /private/var/morzer-
+      acceptance.QJRMHo/root/etc/demo/application.yaml, /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/data, /private/var/morzer-
+      acceptance.QJRMHo/root/var/lib/demo/data/db are bind mounts and are never captured
+    ! attestations have left this machine
+      6 of 9 attestation(s) are only on this machine
+  manager        + 2 checks
+
+  what to do
+    decrypted secrets live on memory-backed storage
+      nothing to mount: this platform has no memory-backed filesystem, and secrets.disk-encryption
+      reports what protects the disk
+    root runs a docker CLI only root can replace
+      remove the helper from /Users/misery7100/.docker/config.json and run `sudo docker --config
+      /Users/misery7100/.docker login <registry>`, which then stores the credential where the
+      manager reads it
+    container registry is reachable
+      check network access and registry credentials (`docker login`); updates will fail while this
+      is unreachable
+    every named volume is covered by a backup
+      an excluded volume is the vendor saying its backup hook owns that data; a bind mount is yours
+      to copy. Make sure something does.
+    launchd jobs are installed and enabled
+      run `morzer init --repair --install-units` to put it back, or `morzer config set
+      backup.scheduled=false` if this machine's backups are handled elsewhere
+    attestations have left this machine
+      run `morzer attest push`
+
+  43 ok, 6 warning, 0 failed
+
+[1m== support bundle --preview writes nothing and says what would leave ==[0m
+   11 component(s) named, nothing written
+
+[1m== support bundle produces an archive a stranger can open ==[0m
+
+[1m== the same run, as an operator sees it ==[0m
+11 component(s), 37.7 KiB
+  FILE               COMPONENT                            SIZE      REDACTIONS
+  manifest.yaml      The resolved manifest                3.0 KiB   0
+  installation.yaml  Installation state                   906 B     0
+  parameters.json    Parameters and their values          636 B     0
+  config-diff.txt    Configuration drift                  71 B      0
+  journal.jsonl      The operation journal                17.6 KiB  1
+  doctor.json        Diagnostic checks                    11.6 KiB  0
+  releases.json      Version history                      319 B     0
+  services.json      Service and health state             520 B     0
+  manager.json       Manager version and build            85 B      0
+  logs/app-1.log     Container logs                       1.0 KiB   0
+  meta.json          The archive's own account of itself  2.0 KiB   0
+
+  written
+/private/var/morzer-acceptance.QJRMHo/support-demo-inst_01M81MC4G9P8KCVZ6X4NQJKY75-20261122T124312Z.tar.zst
+
+  this archive is not encrypted: anyone who receives it can read all of it
+
+  signed, with the signature beside it
+/private/var/morzer-acceptance.QJRMHo/support-demo-inst_01M81MC4G9P8KCVZ6X4NQJKY75-20261122T124312Z.tar.zst.minisig
+   archive 8430 B compressed; journal 18024 B; logs 917 B uncompressed
+
+[1m== a target to publish the row to ==[0m
+
+backup target file:///private/var/morzer-acceptance.QJRMHo/fleet-target added; the next backup will be copied there
+
+[1m== fleet publish --dry-run shows the row and writes nothing ==[0m
+
+[1m== fleet publish writes the row and its signature ==[0m
+   minisign is not installed; the row's signature was not checked with it
+
+[1m== the row carries no parameter value and no secret ==[0m
+          2 parameter value(s) checked against the row
+
+[1m== publishing again declines to replace a newer row ==[0m
+
+[1m== fleet ls reads the row back ==[0m
+
+[1m== a row nobody can read is a row, not an omission ==[0m
+
+[1m== the same listing, as an operator sees it ==[0m
+1 row(s) on file:///private/var/morzer-acceptance.QJRMHo/fleet-target
+  PRODUCT  VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
+  demo     1.3.0    2/2 up  0s ago     none   signed
+
+  a row is called stale once it is older than 24h0m0s
+
+  no roster was given, so no row below is authenticated and no absent installation can be shown;
+  both need the roster that binds an installation id to a public key
+   the published row is 960 B
+
+[1m== the three-tier example: building its images ==[0m
+web 1.0.0
+  digest  sha256:2408b00c312dc26990be12d80d2a993175c4ec983a96bc390274e2d8f0bc3c5c
+
+bundle is valid
+
+[1m== the three-tier example: install and converge ==[0m
+initialise web (8 steps)  op_01M81MGK0HZYFJR6BN52X410E0
+[1/8] create system directories
+        ok (5ms)
+[2/8] create machine age identity
+        ok (12ms)
+[3/8] create machine signing key
+        ok (13ms)
+[4/8] stage release bundle
+warning: release 1.0.0 is not signed, so this installation trusts no signing key and will not check the releases after it either
+        ok (85ms)
+[5/8] write installation configuration
+        ok (24ms)
+[6/8] load images from the bundle
+        skipped (already satisfied)
+[7/8] create secret state
+        ok (116ms)
+[8/8] add offline recovery recipient
+        skipped (already satisfied)
+done in 0s
+
+installation inst_01M81MGK69S0Q5W01ZHPJ1KNR9 created for web
+nothing runs yet: `morzer --product web apply --dry-run` shows what would happen, `morzer --product web apply` starts it
+apply 1.0.0 (11 steps)  op_01M81MGKDPMG1GVBAH9J1XX94E
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release states no OS requirement
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 745.7GiB free on /private/var/morzer-acceptance.QJRMHo/web-root/var/lib/web
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/web-root/etc/web, /private/var/morzer-acceptance.QJRMHo/web-root/var/lib/web, /private/var/morzer-acceptance.QJRMHo/web-root/opt/web, /private/var/morzer-acceptance.QJRMHo/web-root/var/run/web and writes /private/var/morzer-acceptance.QJRMHo/web-root/var/lib/web/data
+  [ok  ] required ports are available: 2 port(s) available
+        ok (1.7s)
+[2/11] decrypt secrets
+        ok (29ms)
+[3/11] render secrets to /private/var/morzer-acceptance.QJRMHo/web-root/var/run/web/secrets
+        ok (81ms)
+[4/11] render configuration
+        ok (13ms)
+[5/11] validate compose configuration
+        ok (76ms)
+[6/11] pull images
+        ok (92ms)
+[7/11] run migrations
+        ok (248ms)
+[8/11] start services
+        ok (11.3s)
+[9/11] wait for health checks
+        ok (9ms)
+[10/11] smoke test
+        ok (241ms)
+[11/11] record installed release
+        ok (19ms)
+done in 14s
+
+web 1.0.0 applied
+
+[1m== each tier answers on the port its own parameter set ==[0m
+   frontend on 18090, backend on 18091
+
+[1m== only the backend holds the database credential ==[0m
+   the credential reaches the backend and not the frontend
+
+[1m== changing one tier's port leaves the other tiers alone ==[0m
+set http_port (4 steps)  op_01M81MH1JPVVDYT32DSZHDFP7D
+[1/4] record parameters
+        ok (21ms)
+[2/4] render configuration
+        ok (13ms)
+[3/4] re-create frontend
+        ok (10.6s)
+[4/4] wait for health checks
+        ok (6ms)
+done in 11s
+
+set http_port; re-created frontend
+   the frontend moved; the backend and database were untouched
+
+[1m== the three-tier example: doctor and journal ==[0m
+  configuration  + 8 checks
+  machine        + 2 checks
+  storage        + 4 checks
+  secrets
+    ! an offline recovery recipient is configured
+      no offline recovery recipient: if this VM is lost, its secrets are lost
+    ! decrypted secrets live on memory-backed storage
+      /private/var/morzer-acceptance.QJRMHo/web-root/var/run/web/secrets is apfs: decrypted secrets
+      are written to disk
+  runtime
+    ! root runs a docker CLI only root can replace
+      runs the docker CLI on PATH at /private/var/morzer-acceptance.QJRMHo/web-
+      root/var/lib/web/manager/docker/bin/docker, without the credential helper desktop of root's
+      config: someone other than root can replace it
+  system
+    ! launchd jobs are installed and enabled
+      dev.morzer.web: not installed; dev.morzer.web-backup: not installed
+  tools          + 2 checks
+  network
+    ! container registry is reachable
+      cannot reach the registry for localhost:5000/web/backend: no such manifest:
+      localhost:5000/web/backend@sha256:54d83e40a4622a0f7a5a138322a4d9e9a19ea9a862a8a874182ff48df5a3
+      48e2
+  backup
+    ! every named volume is covered by a backup
+      this project declares no named volumes -- /private/var/morzer-acceptance.QJRMHo/web-
+      root/etc/web/application.yaml, /private/var/morzer-acceptance.QJRMHo/web-
+      root/var/lib/web/data, /private/var/morzer-acceptance.QJRMHo/web-root/var/lib/web/data/db are
+      bind mounts and are never captured
+    ! a recent backup exists
+      no backups exist
+  manager        + 2 checks
+
+  what to do
+    an offline recovery recipient is configured
+      add one with `morzer secret recipients add <age1...> --kind recovery`, and keep the private
+      key off this machine
+    decrypted secrets live on memory-backed storage
+      nothing to mount: this platform has no memory-backed filesystem, and secrets.disk-encryption
+      reports what protects the disk
+    root runs a docker CLI only root can replace
+      remove the helper from /Users/misery7100/.docker/config.json and run `sudo docker --config
+      /Users/misery7100/.docker login <registry>`, which then stores the credential where the
+      manager reads it
+    container registry is reachable
+      check network access and registry credentials (`docker login`); updates will fail while this
+      is unreachable
+    every named volume is covered by a backup
+      an excluded volume is the vendor saying its backup hook owns that data; a bind mount is yours
+      to copy. Make sure something does.
+    launchd jobs are installed and enabled
+      run `morzer init --repair --install-units` to put it back, or `morzer config set
+      backup.scheduled=false` if this machine's backups are handled elsewhere
+    a recent backup exists
+      take one with `morzer backup`, and enable the backup timer
+
+  41 ok, 7 warning, 0 failed
+   three tiers, three parameters, one journal
+
+[1m== a second installation publishes to the same target ==[0m
+
+backup target file:///private/var/morzer-acceptance.QJRMHo/fleet-target added; the next backup will be copied there
+
+[1m== two machines, read from one of them ==[0m
+2 row(s) on file:///private/var/morzer-acceptance.QJRMHo/fleet-target
+  PRODUCT  VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
+  demo     1.3.0    2/2 up  1m0s ago   none   signed
+  web      1.0.0    3/3 up  0s ago     none   signed
+
+  a row is called stale once it is older than 24h0m0s
+
+  no roster was given, so no row below is authenticated and no absent installation can be shown;
+  both need the roster that binds an installation id to a public key
+
+[1m== a roster, built the way the documentation says to build one ==[0m
+
+[1m== with a roster, a row is verified rather than merely signed ==[0m
+
+[1m== an installation that never published is the row the roster exists for ==[0m
+
+[1m== a row signed by a key the roster does not name ==[0m
+
+[1m== a signature removed is not the same as a machine that never had one ==[0m
+
+[1m== the fleet, with a roster, as an operator sees it ==[0m
+
+error: 1 row(s) carry a problem
+2 row(s) on file:///private/var/morzer-acceptance.QJRMHo/fleet-target
+  PRODUCT                          VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
+  demo/inst_01ACCEPTANCEWENTQUIET  —        —       —          —      —
+  demo                             1.3.0    2/2 up  1m0s ago   none   verified
+  web                              1.0.0    3/3 up  0s ago     none   verified
+  ROW                              WHAT IT SAYS
+  demo/inst_01ACCEPTANCEWENTQUIET  the roster expects this installation; no target holds a row
+
+  the roster expects 3 installation(s); 2 published a row and 1 did not
+
+  a row is called stale once it is older than 24h0m0s
+
+  every verdict below is against the roster you supplied: it is what says which installations exist
+  and which key each one signs with, and nothing here can check that it is right
+
+  the roster binds no key to demo/inst_01ACCEPTANCEWENTQUIET, so nothing published under it can be
+  authenticated; `morzer fleet publish --dry-run --json` prints the key on the machine itself
+   plain fleet ls renders the absent installation and exits 3
+
+[1m== a container that is not root reads the secret given to its user ==[0m
+   SKIPPED on macOS: the next step checks the owner a Mac gives secrets
+
+[1m== a service reads a secret rendered for the user who runs the engine ==[0m
+   the secrets are misery7100's, 0700 and 0400, and the app reads db_password
+
+[1m== the journal recorded every operation ==[0m
+exec
+   init, apply, backup, restore, update and rollback are all journaled
+
+[1m== the earlier deployment comes down first ==[0m
+   the demo project is down
+
+[1m== packing app into a bundle, and leaving db to be pulled ==[0m
+
+packed 1 image(s) into /private/var/morzer-acceptance.QJRMHo/bundle-bundled; sign it with `minisign -Sm /private/var/morzer-acceptance.QJRMHo/bundle-bundled/SHA256SUMS`
+         11 file(s) under images/
+
+[1m== release verify accepts the packed bundle ==[0m
+demo 1.2.0
+  digest  sha256:ef07d6023d9f4bc2dfe800b1b08795a1e6097d298c5dbf7a20f615a695091bf3
+
+bundle is valid
+
+[1m== the registry goes away, and so does the local copy of app ==[0m
+   registry stopped, app gone from the local store
+
+[1m== init installs it with no registry to reach ==[0m
+initialise demo (8 steps)  op_01M81MHGN9Q32CZ8PXMGR30PGW
+[1/8] create system directories
+        ok (5ms)
+[2/8] create machine age identity
+        ok (12ms)
+[3/8] create machine signing key
+        ok (13ms)
+[4/8] stage release bundle
+warning: release 1.2.0 is not signed, so this installation trusts no signing key and will not check the releases after it either
+        ok (159ms)
+[5/8] write installation configuration
+        ok (22ms)
+[6/8] load images from the bundle
+        ok (1.3s)
+[7/8] create secret state
+        ok (98ms)
+[8/8] add offline recovery recipient
+        skipped (already satisfied)
+done in 2s
+
+installation inst_01M81MHGXHNFZ4YJ7V4QQVN0DT created for demo
+nothing runs yet: `morzer --product demo apply --dry-run` shows what would happen, `morzer --product demo apply` starts it
+apply 1.2.0 (11 steps)  op_01M81MHJC8N3DKTWBSVKSYW2MY
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 745.6GiB free on /private/var/morzer-acceptance.QJRMHo/airgapped-root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: all 1 bundled image(s) are loaded
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance.QJRMHo/airgapped-root/etc/demo, /private/var/morzer-acceptance.QJRMHo/airgapped-root/var/lib/demo, /private/var/morzer-acceptance.QJRMHo/airgapped-root/opt/demo, /private/var/morzer-acceptance.QJRMHo/airgapped-root/var/run/demo and writes /private/var/morzer-acceptance.QJRMHo/airgapped-root/var/lib/demo/data
+  [ok  ] required ports are available: 1 port(s) available
+        ok (1s)
+[2/11] decrypt secrets
+        ok (20ms)
+[3/11] render secrets to /private/var/morzer-acceptance.QJRMHo/airgapped-root/var/run/demo/secrets
+        ok (89ms)
+[4/11] render configuration
+        ok (13ms)
+[5/11] validate compose configuration
+        ok (76ms)
+[6/11] pull images
+        ok (51ms)
+[7/11] run migrations
+        ok (138ms)
+[8/11] start services
+        ok (11s)
+[9/11] wait for health checks
+        ok (205ms)
+[10/11] smoke test
+        ok (202ms)
+[11/11] record installed release
+        ok (20ms)
+done in 13s
+
+demo 1.2.0 applied
+   2 container(s) running, with no registry in existence
+
+[1m== the deployment runs the alias, not the reference no daemon can resolve ==[0m
+   app runs as localhost:5000/demo/app:morzer-sha256-77e28e6eca08d0fd252ba9d145d81c1f7312b2a33505c3efb904732259a617f5
+   the containerd store resolves the manifest reference; app still runs as the alias
+
+[1m== doctor is content with an installation that pulls nothing it cannot reach ==[0m
+   images.bundled is ok
+
+[1m== tearing the air-gapped deployment down ==[0m
+
+[1m== an installation with real jobs, for the restart ==[0m
+initialise demo (9 steps)  op_01M81MJ1M2QXQFKAVFNBGDW971
+[1/9] create system directories
+        ok (6ms)
+[2/9] create machine age identity
+        ok (14ms)
+[3/9] create machine signing key
+        ok (13ms)
+[4/9] stage release bundle
+warning: release 1.2.0 is not signed, so this installation trusts no signing key and will not check the releases after it either
+        ok (98ms)
+[5/9] write installation configuration
+        ok (25ms)
+[6/9] load images from the bundle
+        skipped (already satisfied)
+[7/9] create secret state
+        ok (114ms)
+[8/9] add offline recovery recipient
+        skipped (already satisfied)
+[9/9] install launchd jobs
+        ok (56ms)
+done in 0s
+
+installation inst_01M81MJ1TVAKK58Q8F1D7EMH0V created for demo
+nothing runs yet: `morzer --product demo apply --dry-run` shows what would happen, `morzer --product demo apply` starts it
+apply 1.2.0 (11 steps)  op_01M81MJ24T47F9J9W6V8J3HBR3
+[1/11] preflight checks
+  [ok  ] CPU architecture is supported by the release: arm64
+  [ok  ] the release is made for this operating system: darwin
+  [ok  ] host OS is one the release was tested against: the release's OS list names Linux distributions, and this host is macOS
+  [ok  ] required tool: compose >=2.30: 2.39.1
+  [ok  ] required tool: docker >=24: 28.3.2
+  [ok  ] free disk space: 745.5GiB free on /private/var/morzer-acceptance-reboot/root/var/lib/demo
+  [ok  ] system memory meets the release requirement: 36GiB
+  [ok  ] available CPUs meet the release requirement: 14 CPU(s)
+  [ok  ] every required parameter has a value: all required parameters are set
+  [ok  ] managed directories exist with correct permissions: all 15 managed directories are correct
+  [ok  ] images the bundle carries are loaded: the release bundles no images
+  [ok  ] a container can list the managed directories and write the data directory: a container lists /private/var/morzer-acceptance-reboot/root/etc/demo, /private/var/morzer-acceptance-reboot/root/var/lib/demo, /private/var/morzer-acceptance-reboot/root/opt/demo, /private/var/morzer-acceptance-reboot/root/var/run/demo and writes /private/var/morzer-acceptance-reboot/root/var/lib/demo/data
+  [ok  ] required ports are available: 1 port(s) available
+        ok (1.7s)
+[2/11] decrypt secrets
+        ok (21ms)
+[3/11] render secrets to /private/var/morzer-acceptance-reboot/root/var/run/demo/secrets
+        ok (105ms)
+[4/11] render configuration
+        ok (14ms)
+[5/11] validate compose configuration
+        ok (82ms)
+[6/11] pull images
+        ok (75ms)
+[7/11] run migrations
+        ok (131ms)
+[8/11] start services
+        ok (11s)
+[9/11] wait for health checks
+        ok (210ms)
+[10/11] smoke test
+        ok (144ms)
+[11/11] record installed release
+        ok (19ms)
+done in 14s
+
+demo 1.2.0 applied
+   jobs: dev.morzer.demo-backup dev.morzer.demo 
+
+[1m== a backup the restart will have missed ==[0m
+
+set backup.schedule
+   the backup is due since 15:42, and its job counts from 2026-11-21 15:44
+
+[1m== its containers down, and its run directory gone, as a restart leaves them ==[0m
+ Container demo-app-1  Stopping
+ Container demo-db-1  Stopping
+ Container demo-db-1  Stopped
+ Container demo-db-1  Removing
+ Container demo-db-1  Removed
+ Container demo-app-1  Stopped
+ Container demo-app-1  Removing
+ Container demo-app-1  Removed
+ Network demo_default  Removing
+ Network demo_default  Removed
+
+[1m== restart this Mac, log in, then run: just acceptance-record --after-reboot <version> ==[0m
+
+[1m== cleaning up ==[0m
+
+[32macceptance passed[0m
+
+== after the restart ==
+   booted at 2026-11-22T16:25:33Z
+
+[1m== the boot job ran during this boot and last exited 0 ==[0m
+   runs = 2, last exit code = 0, state = not running
+
+[1m== the journal holds an apply begun after the boot, which succeeded ==[0m
+   1 apply(ies) since the boot
+
+[1m== the start at boot rendered the run directory again ==[0m
+   /private/var/morzer-acceptance-reboot/root/var/run/demo/secrets rendered at 2026-11-22T16:39:11Z
+
+[1m== the backup the restart missed was caught up ==[0m
+   one backup, taken since the boot
+   2026-11-22T16:39:25Z demo 1.2.0 applied; caught up dev.morzer.demo-backup
+
+[32mthe restart converged and caught up the backup[0m
+
+[1m== removing the restart's installation and its jobs ==[0m
