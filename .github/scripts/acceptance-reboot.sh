@@ -79,9 +79,14 @@ print() { launchctl print "system/$1" 2>/dev/null | sed -n "s/^	$2 = //p" | head
 step "the boot job ran during this boot and last exited 0"
 # launchd counts a job's runs from the boot, so one is a run since it. The boot
 # job waits for each caught-up job before it exits, so it may still be running.
+# A run before Docker Desktop answers exits 7, and launchd starts the job again
+# after its ThrottleInterval, showing it as spawn scheduled until then
+# (logs/macos-host.md, decision 8, 2026-11-17T22:15:08Z).
 for _ in $(seq 1 120); do
-	[ "$(print "${BOOT_JOB}" state)" = running ] || break
-	sleep 5
+	case "$(print "${BOOT_JOB}" state)" in
+	running | "spawn scheduled") sleep 5 ;;
+	*) break ;;
+	esac
 done
 runs=$(print "${BOOT_JOB}" runs)
 code=$(print "${BOOT_JOB}" "last exit code")
