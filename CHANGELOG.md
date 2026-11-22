@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `morzer release index` signs a channel's index, naming the release the
+  channel points at and when that statement expires, and publishes it beside
+  the channel. Re-sign it after each channel move and before it expires,
+  seven days unless `--valid-for` says otherwise.
+
 ## [0.19.1] - 2026-11-22
 
 A service with an image mount starts again after the machine restarts, which

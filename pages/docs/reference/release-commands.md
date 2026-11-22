@@ -488,6 +488,76 @@ newer version do not follow a channel backwards.
 | The registry refuses the credentials | 2 |
 | The registry cannot be reached, or fails | 7 |
 
+## release index
+
+```sh
+morzer release index oci://<registry>/<repository>:<channel> --key FILE \
+    [--valid-for DURATION]
+```
+
+Signs a statement of which release a channel points at, and until when, and
+publishes it beside the channel under the tag `<channel>.index`. A channel that
+stops moving looks the same whether nothing was released or someone froze it
+on an old release, and the index's expiry is what tells the two apart. How to
+keep one fresh is in the [publishing guide](../authoring/publishing.md#signing-the-channels-index).
+
+The release is the bundle the channel tag points at when the command runs. It
+is pulled and named by its [content digest](#verification), never the
+manifest digest. The index is `index.json`:
+
+```json
+{
+  "schema": 1,
+  "channel": "stable",
+  "sequence": 1793260800123,
+  "issued_at": "2026-10-29T08:00:00Z",
+  "expires_at": "2026-11-05T08:00:00Z",
+  "release": {
+    "version": "1.3.0",
+    "digest": "sha256:bcca96e8020143562b3040e9c443f36ae57d8e2594c59b7f2499902416b211c5"
+  }
+}
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--key` | The minisign secret key your bundles are signed with. It must have no password: a scheduled re-sign has no one to type it. |
+| `--valid-for` | How long the index stays valid, at least `1m`. Default `168h`. |
+| `--dry-run` | Pull, check and sign, and push nothing. |
+
+The sequence is the issue time in milliseconds. If the index already under the
+tag is signed by this key and has a sequence at least as high, the command
+refuses, since a machine that accepted that index would refuse this one as a
+replay. An index under the tag that this key did not sign, or that is not an
+index, does not count: it is replaced, with a warning naming why. Anyone who
+can push to the repository can write the tag, so an index planted there with a
+high sequence cannot stop you re-signing.
+
+The artifact has type `application/vnd.morzer.channel.index.v1` and two
+layers:
+
+| Layer | Media type |
+| --- | --- |
+| `index.json` | `application/vnd.morzer.channel.index.v1+json` |
+| `index.json.minisig` | `application/vnd.morzer.channel.index.v1.minisig` |
+
+Each layer is read up to 64 KiB. `--json` carries `channel`, `reference`,
+`sequence`, `issued_at`, `expires_at`, `release` with its `version` and
+`digest`, `key_id`, `manifest_digest`, and `replaced` when an index was
+replaced, with the reason.
+
+### What it refuses
+
+| Situation | Exit |
+| --- | --- |
+| A reference that is not `oci://`, names no tag, names a digest, a version, or a tag ending in `.index` | 2 |
+| No `--key`, no file at its path, or `--valid-for` under `1m` | 2 |
+| A key with a password, or a file that is not a minisign secret key | 6 |
+| A sequence not higher than the index this key already signed under the tag | 2 |
+| No artifact under the channel tag, or a bundle there that does not extract | 2 |
+| The registry refuses the credentials | 2 |
+| The registry cannot be reached, or fails | 7 |
+
 ## release fetch
 
 ```sh

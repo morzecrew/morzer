@@ -38,7 +38,8 @@ func newReleaseCommand(app *App) *cobra.Command {
 	// `ingest` and `prune` read or write *this* installation's release
 	// store, so they need to know which installation that is; the six
 	// authoring commands act on a directory or an archive named on the
-	// command line and would work on a laptop with no installation at all.
+	// command line, and `index` on a registry reference, and would work on a
+	// laptop with no installation at all.
 	//
 	// `release list` is why the split is declared rather than inherited: it
 	// read the store without loading the installation, so on a machine with
@@ -60,6 +61,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 		machineScope(newReleaseBuildCommand(app)),
 		machineScope(newReleaseArchiveCommand(app)),
 		machineScope(newReleasePushCommand(app)),
+		machineScope(newReleaseIndexCommand(app)),
 		installationScope(newReleaseFetchCommand(app)),
 		installationScope(newReleaseIngestCommand(app)),
 		installationScope(newReleasePruneCommand(app)),

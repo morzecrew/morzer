@@ -210,7 +210,7 @@ they name themselves:
 `morzer ls` · `morzer version` · `morzer init` · `morzer doctor` ·
 `morzer installation import` · `morzer release new` · `morzer release verify` ·
 `morzer release pack` · `morzer release build` · `morzer release archive` ·
-`morzer release push`
+`morzer release push` · `morzer release index`
 
 `morzer release show ./bundle` joins them, because the argument decides: a
 directory is inspected without an installation, while `release show` and
