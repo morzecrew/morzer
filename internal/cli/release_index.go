@@ -73,9 +73,6 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 			if keyPath == "" {
 				return domain.Usage("release index needs --key, the minisign secret key your bundles are signed with")
 			}
-			if validFor == 0 {
-				validFor = defaultIndexValidity
-			}
 			if validFor < time.Minute {
 				// The index's times are whole seconds, and one that
 				// expires as it is issued warns on every machine.
@@ -106,7 +103,7 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&keyPath, "key", "", "the minisign secret key your bundles are signed with, unencrypted")
-	f.DurationVar(&validFor, "valid-for", 0, "how long the index stays valid, at least 1m (default 168h)")
+	f.DurationVar(&validFor, "valid-for", defaultIndexValidity, "how long the index stays valid, at least 1m")
 	return cmd
 }
 

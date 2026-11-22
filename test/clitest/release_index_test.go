@@ -195,6 +195,7 @@ func TestReleaseIndexRefusesWhatItCannotPublishBeforeAnyRequest(t *testing.T) {
 		{"no key", []string{repo + ":stable"}, "needs --key"},
 		{"no file at the key's path", []string{repo + ":stable", "--key", keyPath + ".missing"}, "no key at"},
 		{"too short a validity", []string{repo + ":stable", "--key", keyPath, "--valid-for", "30s"}, "at least 1m"},
+		{"no validity", []string{repo + ":stable", "--key", keyPath, "--valid-for", "0"}, "at least 1m"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
