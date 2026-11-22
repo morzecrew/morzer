@@ -386,3 +386,5 @@ document signed with the same minisign key that signs their bundles:
   *(2026-11-02: row 1 was ruled yes, and P1 was built in #254.)*
 - **P2 — the signed index** (§5.2), gated on a vendor asking (row 2). The
   verifier side, the `status`/`doctor` lines, and the vendor's publishing guide.
+  *(2026-11-23: decision 23 superseded row 2, and P2 is built now; decisions
+  24–33 settle what it left open.)*
