@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,18 @@ func TestAnArtifactThatIsNotAnIndexIsFoundAndUnreadable(t *testing.T) {
 		assert.Empty(t, got.Index)
 	})
 
+	t.Run("a layer the registry does not hold", func(t *testing.T) {
+		_, repo := pushRegistry(t)
+		pushIndexManifest(t, repo, ocispec.Descriptor{
+			MediaType: oci.IndexMediaType, Digest: digest.FromString("absent"), Size: 6,
+		}, []byte("sig"))
+
+		got, found, err := newPushSource(t).FetchIndex(context.Background(), channelRef(repo))
+		require.NoError(t, err)
+		require.True(t, found)
+		assert.Contains(t, got.Problem, "missing")
+	})
+
 	t.Run("a layer over the bound", func(t *testing.T) {
 		reg, repo := pushRegistry(t)
 		pushIndexLayers(t, repo, bytes.Repeat([]byte("x"), oci.MaxIndexLayerSize+1), []byte("sig"))
@@ -92,22 +105,30 @@ func TestAnArtifactThatIsNotAnIndexIsFoundAndUnreadable(t *testing.T) {
 // with whatever bytes the test supplies.
 func pushIndexLayers(t *testing.T, repoRef string, index, sig []byte) {
 	t.Helper()
+	repo := plainRepository(t, repoRef)
+	desc, err := oras.PushBytes(context.Background(), repo, oci.IndexMediaType, index)
+	require.NoError(t, err)
+	pushIndexManifest(t, repoRef, desc, sig)
+}
+
+// pushIndexManifest publishes an index artifact whose index layer is the
+// descriptor given, pushed or not, beside a signature layer that is.
+func pushIndexManifest(t *testing.T, repoRef string, index ocispec.Descriptor, sig []byte) {
+	t.Helper()
 	ctx := context.Background()
+	repo := plainRepository(t, repoRef)
+	sigDesc, err := oras.PushBytes(ctx, repo, oci.IndexSignatureMediaType, sig)
+	require.NoError(t, err)
+	manifest, err := oras.PackManifest(ctx, repo, oras.PackManifestVersion1_1, oci.IndexArtifactType,
+		oras.PackManifestOptions{Layers: []ocispec.Descriptor{index, sigDesc}})
+	require.NoError(t, err)
+	require.NoError(t, repo.Tag(ctx, manifest, "stable.index"))
+}
+
+func plainRepository(t *testing.T, repoRef string) *remote.Repository {
+	t.Helper()
 	repo, err := remote.NewRepository(repoRef)
 	require.NoError(t, err)
 	repo.PlainHTTP = true
-
-	var layers []ocispec.Descriptor
-	for _, part := range []struct {
-		mediaType string
-		data      []byte
-	}{{oci.IndexMediaType, index}, {oci.IndexSignatureMediaType, sig}} {
-		desc, err := oras.PushBytes(ctx, repo, part.mediaType, part.data)
-		require.NoError(t, err)
-		layers = append(layers, desc)
-	}
-	manifest, err := oras.PackManifest(ctx, repo, oras.PackManifestVersion1_1, oci.IndexArtifactType,
-		oras.PackManifestOptions{Layers: layers})
-	require.NoError(t, err)
-	require.NoError(t, repo.Tag(ctx, manifest, "stable.index"))
+	return repo
 }

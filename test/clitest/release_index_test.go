@@ -149,6 +149,21 @@ func TestReleaseIndexRefusesASequenceNotHigherThanItsOwn(t *testing.T) {
 	}
 }
 
+// A registry that refuses to show the index has not said there is none. The
+// command stops rather than skip the sequence check and push over it.
+func TestReleaseIndexStopsWhenTheRegistryRefusesTheIndex(t *testing.T) {
+	r, reg, channel, _, keyPath, _ := indexFixture(t)
+	r.Run("release", "index", channel, "--key", keyPath).ExitCode(0)
+	before, _ := reg.Tagged("stable.index")
+	reg.DenyRead = "stable.index"
+
+	r.Run("release", "index", channel, "--key", keyPath).ExitCode(2).
+		OutputContains("was refused")
+	if after, _ := reg.Tagged("stable.index"); after != before {
+		t.Error("the index was replaced although it could not be read")
+	}
+}
+
 func TestReleaseIndexRefusesWhatItCannotPublishBeforeAnyRequest(t *testing.T) {
 	r, reg, _, repo := pushFixture(t)
 	keyPath, _ := indexKey(t)

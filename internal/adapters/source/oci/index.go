@@ -9,6 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/registry/remote/errcode"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -43,7 +44,7 @@ type PublishedIndex struct {
 // FetchIndex reads the index published beside the channel ref names. found is
 // false when the tag does not exist. An artifact that exists and is not a
 // readable index is found, with its Problem set, so the caller decides what
-// that means; err is a registry that cannot be reached.
+// that means; err is a registry that cannot be reached or refused the read.
 func (s *Source) FetchIndex(ctx context.Context, ref ports.Ref) (PublishedIndex, bool, error) {
 	reference, err := indexReference(ref)
 	if err != nil {
@@ -61,7 +62,9 @@ func (s *Source) FetchIndex(ctx context.Context, ref ports.Ref) (PublishedIndex,
 	switch {
 	case errors.Is(err, domain.ErrReleaseNotFound):
 		return out, false, nil
-	case errors.Is(err, domain.ErrRuntime):
+	case errors.Is(err, domain.ErrRuntime), errors.As(err, new(*errcode.ErrorResponse)):
+		// Unreachable, or refused: the registry has not said what is
+		// there, so it is not an artifact's problem to report.
 		return out, false, err
 	case err != nil:
 		out.Problem = domain.AsError(err).Message
@@ -105,7 +108,11 @@ func readIndexLayer(ctx context.Context, repo Registry, layer ocispec.Descriptor
 	}
 	body, err := repo.Fetch(ctx, layer)
 	if err != nil {
-		return nil, "", registryError(err, reference)
+		err = registryError(err, reference)
+		if errors.Is(err, domain.ErrReleaseNotFound) {
+			return nil, fmt.Sprintf("a layer of %s is missing from the registry", reference), nil
+		}
+		return nil, "", err
 	}
 	defer func() { _ = body.Close() }()
 

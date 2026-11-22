@@ -532,6 +532,8 @@ replay. An index under the tag that this key did not sign, or that is not an
 index, does not count: it is replaced, with a warning naming why. Anyone who
 can push to the repository can write the tag, so an index planted there with a
 high sequence cannot stop you re-signing.
+A read of the tag that the registry refuses stops the command, since it says
+nothing about what is there.
 
 The artifact has type `application/vnd.morzer.channel.index.v1` and two
 layers:

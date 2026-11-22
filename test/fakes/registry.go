@@ -39,6 +39,10 @@ type Registry struct {
 	Retag string
 	Decoy string
 
+	// DenyRead answers a manifest read under this tag with 403, as a
+	// registry does for credentials that may not pull it.
+	DenyRead string
+
 	requests  atomic.Int64
 	writes    atomic.Int64
 	uploads   atomic.Int64
@@ -188,7 +192,14 @@ func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, ref string
 	r.mu.Lock()
 	dgst := r.resolve(ref)
 	m, ok := r.manifests[dgst]
+	denied := r.DenyRead != "" && ref == r.DenyRead
 	r.mu.Unlock()
+	if denied {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"errors":[{"code":"DENIED","message":"requested access to the resource is denied"}]}`))
+		return
+	}
 	if !ok {
 		http.NotFound(w, req)
 		return
