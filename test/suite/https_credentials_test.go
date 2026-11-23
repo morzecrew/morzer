@@ -126,6 +126,16 @@ func TestAConfiguredServerReceivesItsCredential(t *testing.T) {
 		want := "Basic " + base64.StdEncoding.EncodeToString([]byte("customer:pa:ss"))
 		assert.Equal(t, []string{want}, rec.saw("downloads.vendor.example"))
 	})
+	t.Run("an IPv6 server spelled otherwise than its entry", func(t *testing.T) {
+		entry := domain.HTTPSSource{Host: "[2001:db8::1]", Auth: domain.SourceAuthBearer, Secret: "vendor_token"}
+		creds := credentialsFor(entry)
+		creds.values["vendor_token"] = "tok-123"
+		source, rec := serveCredentialed(t, serveArchive(t), creds)
+		_, err := source.Resolve(ctx, ports.Ref{Scheme: "https", Location: "[2001:0db8:0:0:0:0:0:1]/b.tar.zst"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"Bearer tok-123"}, rec.saw("[2001:0db8:0:0:0:0:0:1]"),
+			"the entry did not answer for another spelling of its address")
+	})
 	t.Run("a server with no entry", func(t *testing.T) {
 		creds := credentialsFor(vendorToken())
 		creds.values["vendor_token"] = "tok-123"
