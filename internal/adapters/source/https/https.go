@@ -255,19 +255,22 @@ func (s *Source) fetchInto(ctx context.Context, target, shown, path string) erro
 // for a message that never mentions the certificate. There is deliberately no
 // flag to skip verification: a bundle fetched over a connection nothing
 // authenticated is a bundle from nobody in particular.
-func certificateProblem(err error, shown string) error {
+//
+// It is judged by err and wraps cause, which is err with nothing left in it
+// that a credential could be read from.
+func certificateProblem(err, cause error, shown string) error {
 	var certErr *tls.CertificateVerificationError
 	var hostErr x509.HostnameError
 	var authorityErr x509.UnknownAuthorityError
 
 	switch {
 	case errors.As(err, &certErr), errors.As(err, &authorityErr):
-		return domain.ValidationError(err,
+		return domain.ValidationError(cause,
 			"the TLS certificate for %s is not trusted by this machine", shown).
 			WithHint("install the issuing CA, or fetch the bundle out of band and " +
 				"install it from a path. There is no option to skip verification.")
 	case errors.As(err, &hostErr):
-		return domain.ValidationError(err,
+		return domain.ValidationError(cause,
 			"the TLS certificate for %s is issued for a different name", shown).
 			WithHint("check the URL; a certificate for another host proves nothing about this one")
 	default:
@@ -330,15 +333,17 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 		if errors.As(err, &typed) {
 			return typed
 		}
-		if certErr := certificateProblem(err, shown); certErr != nil {
-			return certErr
-		}
-		// A refused connection or a reset mid-handshake is what retrying
-		// is for.
+		// What the client quotes is the server's to choose, so it is
+		// cleared of anything this fetch sent before any refusal wraps it.
 		cause := withoutCredentials(err, target)
 		if cause != nil && sent.in(cause.Error()) {
 			cause = nil
 		}
+		if certErr := certificateProblem(err, cause, shown); certErr != nil {
+			return certErr
+		}
+		// A refused connection or a reset mid-handshake is what retrying
+		// is for.
 		return retryable{domain.RuntimeError(cause, "cannot reach %s", shown)}
 	}
 	defer func() { _ = resp.Body.Close() }()

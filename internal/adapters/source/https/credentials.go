@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -72,15 +73,22 @@ type sentCredentials struct {
 type sentKey struct{}
 
 // add records a credential in each form an echo could take: as stored, as
-// sent in the header, and for basic, the password alone.
+// sent in the header, and for basic, the password alone. Each is kept as
+// written, as the client's %q quoting escapes it, and URL-encoded, since a
+// server may echo it any of those ways.
 func (s *sentCredentials) add(value, header string) {
 	value = strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r")
-	forms := []string{value, header}
+	parts := []string{value, header}
 	if _, encoded, ok := strings.Cut(header, " "); ok {
-		forms = append(forms, encoded)
+		parts = append(parts, encoded)
 	}
 	if _, password, ok := strings.Cut(value, ":"); ok && password != "" {
-		forms = append(forms, password)
+		parts = append(parts, password)
+	}
+	var forms []string
+	for _, p := range parts {
+		quoted := strconv.Quote(p)
+		forms = append(forms, p, quoted[1:len(quoted)-1], url.PathEscape(p), url.QueryEscape(p))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

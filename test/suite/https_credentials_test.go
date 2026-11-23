@@ -263,26 +263,60 @@ func TestACredentialThatCannotBeReadStopsTheFetch(t *testing.T) {
 func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
 	ctx := context.Background()
 	basic := domain.HTTPSSource{Host: "downloads.vendor.example", Auth: domain.SourceAuthBasic, Secret: "vendor_login"}
-	for name, tc := range map[string]struct {
-		entry  domain.HTTPSSource
-		value  string
-		echoes []string
+	for _, tc := range []struct {
+		name  string
+		entry domain.HTTPSSource
+		value string
+		// echo is what the server puts in the Location; secret is the part
+		// of the credential that must not come back, in the form the
+		// client's error would quote it.
+		echo, secret string
 	}{
-		"bearer": {vendorToken(), "tok-echoed", []string{"tok-echoed"}},
-		"basic":  {basic, "customer:pw-echoed", []string{"pw-echoed", base64.StdEncoding.EncodeToString([]byte("customer:pw-echoed"))}},
+		{"a bearer token", vendorToken(), "tok-echoed", "tok-echoed", "tok-echoed"},
+		{"a basic password", basic, "customer:pw-echoed", "pw-echoed", "pw-echoed"},
+		{"a basic header", basic, "customer:pw-echoed",
+			base64.StdEncoding.EncodeToString([]byte("customer:pw-echoed")),
+			base64.StdEncoding.EncodeToString([]byte("customer:pw-echoed"))},
+		// The client quotes the Location with %q, which escapes a quote.
+		{"a token holding a quote", vendorToken(), `tok"echoed`, `tok"echoed`, `tok\"echoed`},
+		{"a password holding a quote", basic, `customer:pw"echoed`, `pw"echoed`, `pw\"echoed`},
+		// And a server may echo it URL-encoded.
+		{"a token URL-encoded", vendorToken(), "tok echoed", "tok%20echoed", "tok%20echoed"},
 	} {
-		for _, echo := range tc.echoes {
-			t.Run(name+" "+echo, func(t *testing.T) {
-				creds := credentialsFor(tc.entry)
-				creds.values[tc.entry.Secret] = tc.value
-				source, _ := serveCredentialed(t, func(w http.ResponseWriter, _ *http.Request) {
-					w.Header().Set("Location", "https://%zz/"+echo)
-					w.WriteHeader(http.StatusFound)
-				}, creds)
-				_, err := source.Resolve(ctx, ports.Ref{Scheme: "https", Location: "downloads.vendor.example/b.tar.zst"})
-				require.ErrorContains(t, err, "cannot reach")
-				assert.NotContains(t, err.Error()+domain.AsError(err).Hint, echo)
-			})
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			creds := credentialsFor(tc.entry)
+			creds.values[tc.entry.Secret] = tc.value
+			source, _ := serveCredentialed(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "https://%zz/"+tc.echo)
+				w.WriteHeader(http.StatusFound)
+			}, creds)
+			_, err := source.Resolve(ctx, ports.Ref{Scheme: "https", Location: "downloads.vendor.example/b.tar.zst"})
+			require.ErrorContains(t, err, "cannot reach")
+			text := err.Error() + domain.AsError(err).Hint
+			assert.NotContains(t, text, tc.secret)
+			assert.NotContains(t, text, "echoed", "a part of the credential came back")
+		})
 	}
+}
+
+// A redirect to a server whose certificate this machine does not trust is
+// named as a certificate problem, and the URL it quotes may carry what the
+// first server was sent: the refusal keeps neither.
+func TestACertificateRefusalAfterACredentialDoesNotPrintIt(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// localhost is a name the test certificate is not issued for.
+		port := r.Host[strings.LastIndex(r.Host, ":")+1:]
+		http.Redirect(w, r, "https://localhost:"+port+"/b.tar.zst?token=tok-echoed", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	authority := strings.TrimPrefix(srv.URL, "https://")
+	creds := credentialsFor(domain.HTTPSSource{Host: authority, Auth: domain.SourceAuthBearer, Secret: "vendor_token"})
+	creds.values["vendor_token"] = "tok-echoed"
+	source := https.New(https.WithTransport(srv.Client().Transport), https.WithCredentials(creds),
+		https.WithBackoff(time.Millisecond))
+	t.Cleanup(func() { _ = source.Close() })
+
+	_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https", Location: authority + "/b.tar.zst"})
+	require.ErrorContains(t, err, "TLS certificate")
+	assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "tok-echoed")
 }
