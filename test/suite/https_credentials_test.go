@@ -302,6 +302,39 @@ func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
 	}
 }
 
+// A redirect the client follows and then cannot fetch is quoted in its error,
+// and its path is the server's to fill with any spelling of what it was sent:
+// the error names the server it was sent to and not the path.
+func TestARedirectThatFailsDoesNotQuoteItsPath(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct{ name, path string }{
+		{"a token with a lower-case escape", "/tok%2fechoed"},
+		{"a token with an escape no encoder writes", "/%74ok/echoed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			creds := credentialsFor(vendorToken())
+			creds.values["vendor_token"] = "tok/echoed"
+			source, _ := serveCredentialed(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Host == "downloads.vendor.example" {
+					w.Header().Set("Location", "https://mirror.example"+tc.path)
+					w.WriteHeader(http.StatusFound)
+					return
+				}
+				// The mirror drops the connection before it answers.
+				conn, _, err := http.NewResponseController(w).Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+			}, creds)
+			_, err := source.Resolve(ctx, ports.Ref{Scheme: "https", Location: "downloads.vendor.example/b.tar.zst"})
+			require.ErrorContains(t, err, "cannot reach")
+			text := err.Error() + domain.AsError(err).Hint
+			assert.Contains(t, text, "mirror.example", "the error no longer names the server that failed")
+			assert.NotContains(t, text, "echoed", "a part of the credential came back")
+		})
+	}
+}
+
 // A redirect to a server whose certificate this machine does not trust is
 // named as a certificate problem, and the URL it quotes may carry what the
 // first server was sent: the refusal keeps neither.

@@ -292,11 +292,16 @@ func withoutCredentials(err error, target string) error {
 		return err
 	}
 	// Whatever the reference's own query: after a redirect, the URL the
-	// client quotes is the server's, and its query can be another server's
-	// signed URL.
+	// client quotes is the server's. Its query can be another server's
+	// signed URL, and its path any spelling of what the server was sent,
+	// so a URL whose path is not the one requested is quoted by its server
+	// alone.
 	var quoted *url.Error
 	if errors.As(err, &quoted) {
 		quoted.URL = source.Shown(quoted.URL)
+		if q, qerr := url.Parse(quoted.URL); qerr == nil && q.EscapedPath() != u.EscapedPath() {
+			quoted.URL = (&url.URL{Scheme: q.Scheme, Host: q.Host}).String()
+		}
 	}
 	if u.User == nil {
 		return err
