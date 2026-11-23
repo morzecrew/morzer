@@ -368,7 +368,7 @@ func (d *Deps) pollChannelIndex(
 	if err != nil {
 		return domain.ChannelIndexRecord{}, err
 	}
-	judge := func() (domain.ChannelIndexRecords, domain.ChannelIndexRecord, bool, bool, error) {
+	judge := func(inst domain.Installation) (domain.ChannelIndexRecords, domain.ChannelIndexRecord, bool, bool, error) {
 		records, err := d.channelIndexRecords()
 		if err != nil {
 			return nil, domain.ChannelIndexRecord{}, false, false, err
@@ -383,13 +383,19 @@ func (d *Deps) pollChannelIndex(
 		return records, next, notify, !sameIndexRecord(prev, next), nil
 	}
 
-	_, next, _, changed, err := judge()
+	_, next, _, changed, err := judge(inst)
 	if err != nil || !changed || opts.DryRun {
 		return next, err
 	}
 	notify := false
-	err = d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts, func(context.Context) error {
-		records, fresh, due, moved, err := judge()
+	err = d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts, func(ctx context.Context) error {
+		// The keys as they stand now: a key removed while this waited
+		// must not set the replay floor.
+		current, err := d.loadInstallation(ctx)
+		if err != nil {
+			return err
+		}
+		records, fresh, due, moved, err := judge(current)
 		if err != nil {
 			return err
 		}

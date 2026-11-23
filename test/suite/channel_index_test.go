@@ -548,3 +548,25 @@ func TestAnUnattendedInstallIsRefusedWhenTheFollowedChannelChanged(t *testing.T)
 	assert.False(t, res.Applied)
 	assert.Contains(t, err.Error(), "the followed channel changed")
 }
+
+// Keys changed while a poll waited for the lock: the index is judged by the
+// keys in force once it holds the lock, so a key just removed sets no floor.
+func TestAnIndexIsJudgedByTheKeysInForceUnderTheLock(t *testing.T) {
+	h, vendor, _ := indexedChannel(t)
+	vendor.publish(1000, vendor.release)
+	ctx := context.Background()
+	otherKey := filepath.Join(t.TempDir(), "other.key")
+	other, err := signer.New(otherKey, "other").EnsureKey(ctx)
+	require.NoError(t, err)
+
+	h.Locker.BeforeAcquire = func() {
+		now, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		now.Policy.SigningKeys = []string{other.Line}
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, now))
+	}
+	res := followOnce(t, h)
+	require.NotNil(t, res.Index)
+	assert.Nil(t, res.Index.Accepted, "an index accepted against a key removed meanwhile")
+	assert.Contains(t, res.Index.Problem, "not signed by a key this installation trusts")
+}
