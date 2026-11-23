@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -51,10 +52,51 @@ func (t credentialTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil {
 		return nil, err
 	}
+	if sent, ok := req.Context().Value(sentKey{}).(*sentCredentials); ok {
+		sent.add(value, header)
+	}
 	// A RoundTripper must not change the request it is handed.
-	sent := req.Clone(req.Context())
-	sent.Header.Set("Authorization", header)
-	return t.base.RoundTrip(sent)
+	out := req.Clone(req.Context())
+	out.Header.Set("Authorization", header)
+	return t.base.RoundTrip(out)
+}
+
+// sentCredentials is every credential one fetch sent, so that an error quoting
+// what the server answered can be checked for it: a server may echo what it
+// was sent in a Location the client cannot parse, and the client quotes that.
+type sentCredentials struct {
+	mu     sync.Mutex
+	values []string
+}
+
+type sentKey struct{}
+
+// add records a credential in each form an echo could take: as stored, as
+// sent in the header, and for basic, the password alone.
+func (s *sentCredentials) add(value, header string) {
+	value = strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r")
+	forms := []string{value, header}
+	if _, encoded, ok := strings.Cut(header, " "); ok {
+		forms = append(forms, encoded)
+	}
+	if _, password, ok := strings.Cut(value, ":"); ok && password != "" {
+		forms = append(forms, password)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values = append(s.values, forms...)
+}
+
+// in reports whether text carries any credential this fetch sent.
+func (s *sentCredentials) in(text string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, v := range s.values {
+		if v != "" && strings.Contains(text, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // authorityOf is a URL's server in domain.SourceAuthority's form.

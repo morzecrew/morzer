@@ -256,3 +256,33 @@ func TestACredentialThatCannotBeReadStopsTheFetch(t *testing.T) {
 	assert.True(t, errors.Is(err, domain.ErrInstallation), "got: %v", err)
 	assert.Empty(t, rec.saw("downloads.vendor.example"), "the fetch went out without the credential it was meant to carry")
 }
+
+// A server can echo the credential it was sent in a Location the client
+// cannot parse, which the client quotes in its error. The refusal keeps
+// neither the value nor the header built from it.
+func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
+	ctx := context.Background()
+	basic := domain.HTTPSSource{Host: "downloads.vendor.example", Auth: domain.SourceAuthBasic, Secret: "vendor_login"}
+	for name, tc := range map[string]struct {
+		entry  domain.HTTPSSource
+		value  string
+		echoes []string
+	}{
+		"bearer": {vendorToken(), "tok-echoed", []string{"tok-echoed"}},
+		"basic":  {basic, "customer:pw-echoed", []string{"pw-echoed", base64.StdEncoding.EncodeToString([]byte("customer:pw-echoed"))}},
+	} {
+		for _, echo := range tc.echoes {
+			t.Run(name+" "+echo, func(t *testing.T) {
+				creds := credentialsFor(tc.entry)
+				creds.values[tc.entry.Secret] = tc.value
+				source, _ := serveCredentialed(t, func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Location", "https://%zz/"+echo)
+					w.WriteHeader(http.StatusFound)
+				}, creds)
+				_, err := source.Resolve(ctx, ports.Ref{Scheme: "https", Location: "downloads.vendor.example/b.tar.zst"})
+				require.ErrorContains(t, err, "cannot reach")
+				assert.NotContains(t, err.Error()+domain.AsError(err).Hint, echo)
+			})
+		}
+	}
+}

@@ -314,6 +314,8 @@ func isRetryable(err error) bool {
 }
 
 func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) error {
+	sent := &sentCredentials{}
+	ctx = context.WithValue(ctx, sentKey{}, sent)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return domain.Usage("cannot build a request for %s", shown)
@@ -333,7 +335,11 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 		}
 		// A refused connection or a reset mid-handshake is what retrying
 		// is for.
-		return retryable{domain.RuntimeError(withoutCredentials(err, target), "cannot reach %s", shown)}
+		cause := withoutCredentials(err, target)
+		if cause != nil && sent.in(cause.Error()) {
+			cause = nil
+		}
+		return retryable{domain.RuntimeError(cause, "cannot reach %s", shown)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
