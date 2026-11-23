@@ -132,3 +132,17 @@ Sabotage, each run against the suite and restored:
 - The fake runtime's `HasImage` still found a name `RemoveImage` had taken.
   It now answers as the daemon would until the name is pulled or ingested
   again. `TestTheFakeStoreForgetsARemovedImage` was red before.
+
+## Reconciled, 2026-11-23
+
+The first entry, an already-absent name counting as removed, is RFC 0031
+decision 15.
+
+The second entry's proposal has been overtaken. The plan for RFC 0023 P3
+measured the port on 2026-11-13 at 14 core methods and 12 optional
+capabilities, `ImageRemover` among them, and made that P3's baseline
+([logs/quadlet-adapter.md](quadlet-adapter.md), "Baseline for §6"). On
+2026-11-23 the port has 14 core methods and 13 optional capabilities, with
+`FileSharingProber` added on 2026-11-17 (#377). A count written into RFC 0023
+now goes out of date with the next capability, so recording it is left to
+P3's reconciliation, and RFC 0031 adds no row for it.
