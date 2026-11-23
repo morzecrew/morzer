@@ -129,15 +129,14 @@ func installationDocumentSchema() map[string]any {
 	// A source's scheme is one of two, and an entry has all three fields,
 	// as domain.HTTPSSource.Validate requires: shape alone would accept a
 	// `digest` the manager refuses.
-	if entry := nested(props, "sources", "https"); entry != nil {
-		if items, ok := entry["items"].(map[string]any); ok {
-			if fields, ok := items["properties"].(map[string]any); ok {
-				fields["auth"] = withEnum(fields["auth"],
-					[]string{string(domain.SourceAuthBearer), string(domain.SourceAuthBasic)})
-			}
-			items["required"] = []string{"host", "auth", "secret"}
-		}
+	items, _ := nested(props, "sources", "https")["items"].(map[string]any)
+	fields, _ := items["properties"].(map[string]any)
+	if fields == nil {
+		panic("installation schema: no sources.https entries; a pinned property was renamed or removed")
 	}
+	fields["auth"] = withEnum(fields["auth"],
+		[]string{string(domain.SourceAuthBearer), string(domain.SourceAuthBasic)})
+	items["required"] = []string{"host", "auth", "secret"}
 
 	return s
 }
