@@ -216,6 +216,15 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 	// question the whole feature answers.
 	const known = "the-value-that-must-survive"
 	require.NoError(t, origin.Deps.Secrets.Set(ctx, "db_password", domain.NewSecret(known)))
+	// And the credential the vendor's server wants, which a rebuilt machine
+	// needs for its next update without a reissued token (RFC 0038
+	// decision 9).
+	const token = "the-vendor-token-that-must-survive"
+	require.NoError(t, origin.Deps.Secrets.Set(ctx, "vendor_token", domain.NewSecret(token)))
+	_, err := ops.SourceAdd(ctx, origin.Deps, ops.SourceAddOptions{
+		URL: "https://downloads.vendor.example", Auth: domain.SourceAuthBearer, Secret: "vendor_token",
+	})
+	require.NoError(t, err)
 
 	originInst, err := origin.Deps.State.LoadInstallation(ctx)
 	require.NoError(t, err)
@@ -254,6 +263,7 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), known,
 		"an export must never carry a plaintext secret; it is a file operators copy around")
+	assert.NotContains(t, string(raw), token, "an export carries a source credential in the clear")
 
 	info, err := os.Stat(exportPath)
 	require.NoError(t, err)
@@ -281,6 +291,17 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 		var got domain.ChannelMarks
 		require.NoError(t, json.Unmarshal(raw, &got))
 		assert.Equal(t, "1.4.0", got[channel].Version.String())
+	})
+
+	t.Run("the source credentials survive", func(t *testing.T) {
+		got, err := rebuilt.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, originInst.Sources, got.Sources)
+		set, err := rebuilt.Deps.Secrets.Load(ctx)
+		require.NoError(t, err)
+		value, ok := set.Get("vendor_token")
+		require.True(t, ok, "the rebuilt machine lost the credential's secret")
+		assert.Equal(t, token, value.Reveal())
 	})
 
 	t.Run("the accepted channel indexes survive", func(t *testing.T) {

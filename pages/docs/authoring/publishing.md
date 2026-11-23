@@ -209,8 +209,11 @@ installation on the machine, so it belongs in your CI as a required check.
 
 **HTTPS** is a static file on any web server. TLS is not optional on the client
 side and a redirect out of it is refused, so a plain-HTTP mirror will not work.
-No credentials are sent, so a bundle behind authentication needs the registry
-route or an out-of-band download.
+A server that serves bundles only to customers who log in works too: a customer
+stores the token or login you give them as a secret and names your server with
+`morzer release source add`, and `morzer init --source-secret-file` takes it for
+the first install. It is sent only to that server, so a redirect to a CDN on
+another host carries nothing.
 
 **An OCI registry** is the remote transport that lets `morzer update --check`
 find your newer versions, and the only one an installation can follow as a

@@ -124,7 +124,10 @@ import (
 // stay refused for want of them.
 // Bumped to 22 for `policy.allow_unencrypted_disk` (RFC 0055 decision 5), for
 // the write path, as every field added to the state has been.
-const InstallationSchemaVersion = 22
+// Bumped to 23 for `sources` (RFC 0038 decision 17). An older manager would
+// drop the entries on its next write, and the next fetch from a server that
+// wants a credential would be refused.
+const InstallationSchemaVersion = 23
 
 // profilesSchemaVersion is the schema `profiles` replaced `profile` at.
 const profilesSchemaVersion = 18
@@ -445,6 +448,11 @@ type Installation struct {
 	// Sync is how this installation follows desired-state documents an
 	// authority publishes for it, and what it last did with one (RFC 0057).
 	Sync SyncConfig `yaml:"sync" json:"sync,omitempty"`
+
+	// Sources is how the manager authenticates to the servers it fetches
+	// release bundles from: one credential, by secret name, per HTTPS host
+	// (RFC 0038).
+	Sources SourcesConfig `yaml:"sources,omitempty" json:"sources,omitzero"`
 
 	// Signing is this machine's signing identity. Every field in it may be
 	// empty on a real installation -- see Signing.
@@ -1176,6 +1184,7 @@ func (i Installation) Validate() error {
 	} else if err := ValidateProductName(i.Product); err != nil {
 		v.add("product", "%s", AsError(err).Message)
 	}
+	validateSources(i.Sources, &v)
 	for idx, target := range i.Notify.Targets {
 		if err := target.Validate(); err != nil {
 			v.add(fmt.Sprintf("notify.targets[%d]", idx), "%s", AsError(err).Message)

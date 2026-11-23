@@ -411,10 +411,11 @@ func TestEveryInstallationFieldIsClassifiedForARepair(t *testing.T) {
 			"set carries what was there",
 		"Pending": "carried: values a document left for a staged release, which the next update takes",
 
-		"Update": "carried: a channel configured after `init` is not this command's to drop",
-		"Notify": "carried: alerting configured after `init` is not this command's to drop",
-		"Backup": "carried: targets configured after `init` are not this command's to drop",
-		"Sync":   "carried: the authority and target are set locally after `init`, and the serials are a record",
+		"Update":  "carried: a channel configured after `init` is not this command's to drop",
+		"Notify":  "carried: alerting configured after `init` is not this command's to drop",
+		"Backup":  "carried: targets configured after `init` are not this command's to drop",
+		"Sync":    "carried: the authority and target are set locally after `init`, and the serials are a record",
+		"Sources": "carried: servers configured after `init` with `release source add`, and `--repair` refuses the flags that would set one",
 
 		"Signing":         "carried, except when this run minted a key -- see buildInstallation",
 		"AttestationSalt": "carried: re-minting breaks the configuration-digest chain",

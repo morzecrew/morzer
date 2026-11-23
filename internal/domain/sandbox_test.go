@@ -131,6 +131,11 @@ func sandboxClassification() map[string]sandboxVerdict {
 		"Sync.LastFetch":   keep("cleared with sync.target by the same drop: production's record"),
 		"Sync.LastReached": keep("cleared with sync.target by the same drop: production's record"),
 
+		"Sources": keep("how this machine fetches releases from its vendor; a read, " +
+			"reaching nothing production owns"),
+		"Sources.HTTPS": keep("credentials by secret name; the secrets travel in the export " +
+			"as every secret does"),
+
 		// Not on the drop list, and handled harder than dropping would
 		// be: `installation import` calls SucceedSigning, which retires
 		// the key as a predecessor and clears the current one, so the

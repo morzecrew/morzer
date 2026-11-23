@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepted from its channel, for a vendor who stopped publishing one. It is
   recorded in the journal.
 
+- `morzer release source add` sends an HTTPS server that serves bundles only
+  to customers who log in the token or login held in a secret, and only that
+  server. `morzer init --source-secret-file` takes one for the first install.
+
+- `installation describe` lists the HTTPS servers sent a credential, by secret
+  name, and `doctor` warns when one's secret is not set.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index
@@ -25,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundle the index does not name and a replayed index. An expired index is
   reported by `status` and `doctor`, notified once, and holds an unattended
   install.
+
+- A bundle behind HTTPS authentication no longer needs its password in the
+  URL, where argv and shell history keep it. A credential goes only to the
+  server it names, never across a redirect. Installation state moves to schema
+  23, so an older manager refuses a machine this one ran on.
 
 ### Fixed
 

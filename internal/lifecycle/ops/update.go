@@ -77,6 +77,7 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	WarnPasswordInRef(d, opts.Ref)
 	if err := refuseWhileStopped(inst, "`morzer update`"); err != nil {
 		return Result{}, err
 	}

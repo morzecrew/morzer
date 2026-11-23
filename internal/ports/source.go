@@ -146,9 +146,9 @@ func ParseRef(s string) (Ref, error) {
 			return Ref{}, domain.Usage("oci reference %q carries credentials", shown).
 				WithHint("remove them from the reference and run `docker login` for the registry")
 		}
-		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+		return Ref{Scheme: u.Scheme, Location: afterScheme(s, u.Scheme)}, nil
 	case "https":
-		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+		return Ref{Scheme: u.Scheme, Location: afterScheme(s, u.Scheme)}, nil
 	case "http":
 		return Ref{}, domain.Usage("refusing plaintext http reference %q", shown).
 			WithHint("use https, or fetch the bundle out of band and pass a path")
@@ -156,6 +156,16 @@ func ParseRef(s string) (Ref, error) {
 		return Ref{}, domain.Usage("unsupported release reference scheme %q", u.Scheme).
 			WithHint("supported schemes: file, https, oci")
 	}
+}
+
+// afterScheme is s without its `scheme://`, which url.Parse reads in any case
+// and reports lower-cased: `HTTPS://host/b` is `host/b`, not itself.
+func afterScheme(s, scheme string) string {
+	prefix := scheme + "://"
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):]
+	}
+	return s
 }
 
 // ChannelPeeker asks what a mutable reference points at, without fetching what
@@ -174,6 +184,20 @@ type ChannelPeeker interface {
 	// Peek reports what the reference currently addresses. The cost is one
 	// manifest request; nothing the manifest points at is fetched.
 	Peek(ctx context.Context, ref Ref) (ChannelState, error)
+}
+
+// SourceCredentials is the credential each HTTPS server is configured with
+// (RFC 0038). The HTTPS source asks per request, each hop of a redirect
+// included, so a server is only ever sent its own (decision 7).
+type SourceCredentials interface {
+	// SourceFor returns the entry configured for an authority in
+	// domain.SourceAuthority's form, and found=false when there is none,
+	// as on a machine with no installation. It reads no secret.
+	SourceFor(ctx context.Context, authority string) (entry domain.HTTPSSource, found bool, err error)
+
+	// RevealSource returns the value of the secret an entry names. A secret
+	// that is not set is an error naming it, never an empty credential.
+	RevealSource(ctx context.Context, entry domain.HTTPSSource) (string, error)
 }
 
 // ChannelIndexReader reads the signed index a vendor publishes beside a channel

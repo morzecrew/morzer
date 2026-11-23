@@ -455,6 +455,16 @@ func EquivalentCommand(opts ops.InitOptions) string {
 	add("sync-target", opts.SyncTarget)
 	add("sync-authority", opts.SyncAuthority)
 	add("sync-recipient", opts.SyncRecipient)
+	// The file the credential came from, never the credential.
+	if src := opts.Source; src != nil {
+		add("source-secret-file", src.File)
+		if src.Entry.Auth != domain.SourceAuthBearer {
+			add("source-auth", string(src.Entry.Auth))
+		}
+		if src.Entry.Secret != domain.DefaultSourceSecret(src.Entry.Host) {
+			add("source-secret", src.Entry.Secret)
+		}
+	}
 	if opts.RequireSignature {
 		args = append(args, "--require-signature")
 	}

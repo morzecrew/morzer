@@ -99,6 +99,10 @@ here. The reference column points at the section that documents it; the
 | `morzer release trust add` | Trust release signatures made with a key | [release-commands](release-commands.md#release-trust) |
 | `morzer release trust remove` | Stop trusting release signatures made with a key | [release-commands](release-commands.md#release-trust) |
 | `morzer release trust list` | List the trusted release signing keys | [release-commands](release-commands.md#release-trust) |
+| `morzer release source` | Manage the credentials sent to HTTPS servers that serve bundles | [release-commands](release-commands.md#release-source) |
+| `morzer release source add` | Send a server a credential from a secret | [release-commands](release-commands.md#release-source) |
+| `morzer release source remove` | Stop sending a server a credential | [release-commands](release-commands.md#release-source) |
+| `morzer release source list` (also `ls`) | List the servers that are sent a credential | [release-commands](release-commands.md#release-source) |
 | `morzer ls` | List the installations on this machine | [installation-commands](installation-commands.md#installation-list) |
 | `morzer shell` | Start a shell pinned to one installation | [installation-commands](installation-commands.md#shell) |
 | `morzer installation` | List, export, rebuild and remove installations on this machine | [installation-commands](installation-commands.md#morzer-installation) |

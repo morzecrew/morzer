@@ -108,6 +108,11 @@ type InitOptions struct {
 	// this machine's facts are encrypted to (RFC 0057 §5.10).
 	SyncRecipient string
 
+	// Source is the credential for the HTTPS server ReleasePath names, from
+	// `--source-secret-file` (RFC 0038 decision 12): written as the
+	// installation's entry, and stored as its secret.
+	Source *InitSource
+
 	// ParameterFiles are the paths `--set-file` read values from, by
 	// parameter name. Init reads only Parameters, which already holds the
 	// values; these are for the wizard's equivalent command, which prints the
@@ -452,10 +457,11 @@ func initSteps(d *Deps, opts InitOptions, trust releaseTrust) []engine.Step {
 		steps = append(steps, stepIngestImages(d, stagedRelease()))
 	}
 
-	steps = append(steps,
-		stepInitSecrets(d, opts),
-		stepAddRecoveryRecipient(d, opts),
-	)
+	steps = append(steps, stepInitSecrets(d, opts))
+	if opts.Source != nil {
+		steps = append(steps, stepStoreSourceCredential(d, opts.Source))
+	}
+	steps = append(steps, stepAddRecoveryRecipient(d, opts))
 
 	if opts.InstallUnits {
 		// EnableAll, unlike the reconciliation, and the pair is the
@@ -746,6 +752,9 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 			Target: opts.SyncTarget, Authority: opts.SyncAuthority, Recipient: opts.SyncRecipient,
 		},
 	}
+	if opts.Source != nil {
+		inst.Sources.HTTPS = []domain.HTTPSSource{opts.Source.Entry}
+	}
 	runtime, err := d.runtimeForNewInstallation(st)
 	if err != nil {
 		return domain.Installation{}, err
@@ -882,6 +891,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		inst.Update = existing.Update
 		inst.Notify = existing.Notify
 		inst.Backup = existing.Backup
+		inst.Sources = existing.Sources
 
 		// And the authority this machine follows, with its serials. The
 		// flags outrank it when given, as --backup-schedule outranks the
@@ -1279,6 +1289,36 @@ func stepInitSecrets(d *Deps, opts InitOptions) engine.Step {
 				// without the secrets is the right division.
 				st.Warn("secret(s) still to be set before `apply`: %v", manual)
 			}
+			return nil
+		},
+	}
+}
+
+// stepStoreSourceCredential stores the credential `init` fetched the release
+// with, under the secret its entry names, so the next update sends it too
+// (RFC 0038 decision 12). Refused when the release declares a secret of that
+// name, which this would overwrite.
+func stepStoreSourceCredential(d *Deps, src *InitSource) engine.Step {
+	return engine.Step{
+		ID:          "store-source-credential",
+		Description: "store the credential for https://" + src.Entry.Host,
+		Idempotent:  true,
+		OnFailure:   engine.Compensate,
+		Timeout:     5 * time.Minute,
+		Execute: func(ctx context.Context, st *engine.State) error {
+			if schema, err := d.secretSchema(st); err == nil {
+				for _, decl := range schema.Secrets {
+					if decl.Name == src.Entry.Secret {
+						return domain.Usage("the release declares a secret named %s, which the credential "+
+							"for https://%s would overwrite", src.Entry.Secret, src.Entry.Host).
+							WithHint("name the credential's secret with `--source-secret <name>`")
+					}
+				}
+			}
+			if err := d.Secrets.Set(ctx, src.Entry.Secret, domain.NewSecret(src.Value)); err != nil {
+				return err
+			}
+			st.Detail("stored as %s", src.Entry.Secret)
 			return nil
 		},
 	}

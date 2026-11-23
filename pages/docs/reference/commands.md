@@ -139,6 +139,9 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | `--sync-target` | Target an authority publishes this installation's [desired state](desired-state.md) to, as `config set sync.target` takes it. Sync stays off until `sync.enabled` is set. |
 | `--sync-authority` | minisign public key a desired-state document must be signed with, as `config set sync.authority` takes it. |
 | `--sync-recipient` | The authority's age recipient, which this machine's [facts](desired-state.md#facts) are encrypted to, as `config set sync.recipient` takes it. |
+| `--source-secret-file` | A file holding the credential the `https://` `--release`'s server wants: a token, or `user:password`. It is sent for every fetch from that server, the one that reads the product's name included, then stored as a secret and configured as with [`release source add`](release-commands.md#release-source), so updates send it too. Refused beside `--repair`, or with a `--release` that is not `https://`. |
+| `--source-auth` | How `--source-secret-file`'s credential is sent: `bearer`, the default, or `basic`. |
+| `--source-secret` | The secret `--source-secret-file`'s credential is stored as: by default `source_` and the server's name, as `source_downloads_vendor_example`. Refused when the release declares a secret of that name. |
 | `--product` | Product name, when no `--release` is given to take it from. |
 | `--set` | Set a release parameter, as `name=value`. Repeat for several. Needs `--release` to validate against. See [Parameters](parameters.md). |
 | `--set-file` | Read a release parameter's value from a file, as `name=path`, or from standard input with `-`. Repeat for several. Refuses a file holding a NUL byte or invalid UTF-8. See [Text values](parameters.md#text-values). |
@@ -468,7 +471,7 @@ not answer, and the start at boot runs it once it does; see
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.
 
-Seven checks are advisory by design, and warn rather than fail:
+Eight checks are advisory by design, and warn rather than fail:
 
 | Check | What it means |
 | --- | --- |
@@ -478,6 +481,7 @@ Seven checks are advisory by design, and warn rather than fail:
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
 | `release.channel-index` | The followed channel's [signed index](../operating/updating.md#a-channel-that-stops-moving), as the last poll found it: ok with its sequence, release and expiry, and a warning when it has expired, when the channel's tag still serves another release than it names, when the last index found was not accepted, or when the channel publishes one this machine pins no key to check. It reads no registry. Present only on a machine that follows a channel. |
+| `release.source-credentials` | A server in [`release source list`](release-commands.md#release-source) names a secret that is not set, so the next fetch from it will be refused. The machine runs meanwhile. Present only when a server is configured. |
 | `runtime.images-local` | Some of the release's **pulled** images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is `images.bundled` below. See [Installing without a network](../operating/installing-offline.md). |
 
 The rotation remedy names the command that will actually work: `secret rotate`

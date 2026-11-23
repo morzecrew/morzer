@@ -126,6 +126,18 @@ func installationDocumentSchema() map[string]any {
 	props["kind"] = withEnum(props["kind"], []string{domain.KindInstallationDocument})
 	s["required"] = []string{"api_version", "kind", "id", "product", "release", "policy"}
 
+	// A source's scheme is one of two, and an entry has all three fields,
+	// as domain.HTTPSSource.Validate requires: shape alone would accept a
+	// `digest` the manager refuses.
+	items, _ := nested(props, "sources", "https")["items"].(map[string]any)
+	fields, _ := items["properties"].(map[string]any)
+	if fields == nil {
+		panic("installation schema: no sources.https entries; a pinned property was renamed or removed")
+	}
+	fields["auth"] = withEnum(fields["auth"],
+		[]string{string(domain.SourceAuthBearer), string(domain.SourceAuthBasic)})
+	items["required"] = []string{"host", "auth", "secret"}
+
 	return s
 }
 
@@ -629,4 +641,22 @@ func clone(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+// nested walks object properties by name, nil where one is missing.
+func nested(props map[string]any, path ...string) map[string]any {
+	var node map[string]any
+	for i, name := range path {
+		next, ok := props[name].(map[string]any)
+		if !ok {
+			return nil
+		}
+		node = next
+		if i < len(path)-1 {
+			if props, ok = node["properties"].(map[string]any); !ok {
+				return nil
+			}
+		}
+	}
+	return node
 }
