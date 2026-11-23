@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -573,6 +574,32 @@ func TestAutoApplyOffLeavesEverythingStaged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.2.0", current.Version.String(),
 		"a machine that never opted in installed a release by itself")
+}
+
+// A tick on a channel that has not moved, with a release an earlier tick
+// staged still waiting, says what is waiting and why. "Unchanged" alone reads
+// as a quiet night, which is the one thing it is not: on most nights after a
+// release is held, this is the line the journal carries.
+func TestAQuietTickSaysWhatIsStillWaitingAndWhy(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, recoverableUpdate)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	first, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	require.True(t, first.Follow.Candidate.IsStaged(), "the first tick staged nothing: %s", first.Summary())
+	staged := first.Follow.Candidate.Version.String()
+
+	h.tick(time.Hour)
+	quiet, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	require.False(t, quiet.Follow.Moved)
+	assert.False(t, quiet.Applied)
+	assert.Contains(t, quiet.Summary(), "unchanged", "the line no longer says the channel was read")
+	assert.Contains(t, quiet.Summary(), staged+" is staged and was not installed")
+	assert.Contains(t, quiet.Summary(), "auto_apply", "the line does not say why the release waits")
+	assert.Equal(t, staged, quiet.Staged.Version.String(), "--json does not name the release that waits")
 }
 
 // TestATickThatCannotTakeTheLockDoesNotFailTheUnit.

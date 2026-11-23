@@ -535,6 +535,12 @@ type UnattendedResult struct {
 	// when nothing was waiting.
 	Assessment domain.UnattendedAssessment `json:"assessment,omitzero"`
 
+	// Staged is the staged release the tick judged, whether this poll or an
+	// earlier one staged it. Zero when nothing was waiting. Follow carries a
+	// candidate only when the channel moved, and a release held on an
+	// earlier tick is still waiting on every quiet one after it.
+	Staged domain.UpdateCandidate `json:"staged,omitzero"`
+
 	// Update is the operation record, when one ran.
 	Update *Result `json:"update,omitempty"`
 
@@ -558,6 +564,10 @@ func (r UnattendedResult) Summary() string {
 	case r.Follow.Candidate.IsStaged():
 		return fmt.Sprintf("%s is staged and was not installed: %s",
 			r.Follow.Candidate.Version, r.Assessment.Why())
+	case !r.Follow.Moved && r.Staged.IsStaged() && len(r.Assessment.Reasons) > 0:
+		// "Unchanged" alone would read as nothing waiting.
+		return fmt.Sprintf("%s is unchanged; %s is staged and was not installed: %s",
+			r.Follow.Ref, r.Staged.Version, r.Assessment.Why())
 	default:
 		return r.Follow.Summary()
 	}
@@ -619,6 +629,7 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 	if !candidate.IsStaged() {
 		return out, nil
 	}
+	out.Staged = candidate
 
 	if !inst.Update.AutoApply {
 		// Not a refusal to report as a failure: staging *is* the
