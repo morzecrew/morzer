@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -598,7 +599,15 @@ func TestAQuietTickSaysWhatIsStillWaitingAndWhy(t *testing.T) {
 	assert.Contains(t, quiet.Summary(), "unchanged", "the line no longer says the channel was read")
 	assert.Contains(t, quiet.Summary(), staged+" is staged and was not installed")
 	assert.Contains(t, quiet.Summary(), "auto_apply", "the line does not say why the release waits")
-	assert.Equal(t, staged, quiet.Staged.Version.String(), "--json does not name the release that waits")
+	raw, err := json.Marshal(quiet)
+	require.NoError(t, err)
+	var shown struct {
+		Staged struct {
+			Version string `json:"version"`
+		} `json:"staged"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &shown))
+	assert.Equal(t, staged, shown.Staged.Version, "--json does not name the release that waits")
 }
 
 // A planned tick on a channel that has not moved, over a staged release the
