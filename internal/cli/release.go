@@ -683,8 +683,9 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 		Short: "Fetch a release bundle into the release store",
 		Long: "Resolves a reference, verifies it, and copies it into the release store\n" +
 			"without making it current. Use `morzer apply` to activate it.\n\n" +
-			"Takes a bundle directory or a tar.zst archive; https and oci arrive in a\n" +
-			"later milestone.",
+			"Takes a bundle directory, a tar.zst archive, an https:// URL or an oci://\n" +
+			"reference. An HTTPS server that wants a credential is sent the one\n" +
+			"`morzer release source add` configured for it.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := ports.ParseRef(args[0])

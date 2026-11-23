@@ -291,7 +291,7 @@ It is reviewable, diffable, and safe to commit.
 Every credential in an installation is already a *reference*: a backup target
 names the secret holding its credentials, a notification target names the secret
 holding its URL, and a [source](release-commands.md#release-source) names the
-secret holding the token an HTTPS server is sent. The document carries those names. `secrets` is a list of names
+secret holding the credential an HTTPS server is sent, a token or a login. The document carries those names. `secrets` is a list of names
 too — what `secret set` would have to be run for, never what was set.
 
 That is a property of the configuration rather than a filter applied on the way
