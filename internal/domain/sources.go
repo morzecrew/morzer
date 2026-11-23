@@ -79,8 +79,17 @@ func (s HTTPSSource) Validate() error {
 // that two spellings of one server are one entry: the host lower-cased, and
 // the port kept only when it is not 443, which both sides default to
 // (decision 7).
+//
+// A port is written as its number, so `:0443` is the default port too. An IPv6
+// zone keeps its escape, `%25`, so that what is written parses back.
 func SourceAuthority(host, port string) string {
 	host = strings.ToLower(host)
+	if n, err := strconv.Atoi(port); err == nil {
+		port = strconv.Itoa(n)
+	}
+	if strings.Contains(host, ":") {
+		host = strings.Replace(host, "%", "%25", 1)
+	}
 	if port == "" || port == "443" {
 		if strings.Contains(host, ":") {
 			return "[" + host + "]"
@@ -94,10 +103,11 @@ func SourceAuthority(host, port string) string {
 // SourceAuthority's form, and nothing more.
 func isSourceAuthority(s string) bool {
 	u, err := url.Parse("https://" + s)
-	if err != nil || u.Hostname() == "" {
+	if err != nil || u.Hostname() == "" || !validPort(u.Port()) {
 		return false
 	}
-	// A path, a user or a default port makes the rewrite differ from s.
+	// A path, a user, a default port or a leading zero makes the rewrite
+	// differ from s.
 	return SourceAuthority(u.Hostname(), u.Port()) == s
 }
 
@@ -106,27 +116,36 @@ func isSourceAuthority(s string) bool {
 // would suggest that the entry is narrower than its server, or carries what
 // the secret is for, and neither is so.
 func ParseSourceURL(raw string) (string, error) {
+	// Every refusal quotes it this way: a URL that parses oddly, as an
+	// opaque one with no host does, can still carry a password.
+	shown := RedactURLCredentials(raw)
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", Usage("%q is not a URL", RedactURLCredentials(raw))
+		return "", Usage("%q is not a URL", shown)
 	}
 	switch {
 	case u.Scheme != "https":
-		return "", Usage("%q is not an https:// URL: credentials are sent over TLS only", RedactURLCredentials(raw))
+		return "", Usage("%q is not an https:// URL: credentials are sent over TLS only", shown)
 	case u.User != nil:
-		return "", Usage("%q carries a user: the credential belongs in the secret, not the URL", RedactURLCredentials(raw))
+		return "", Usage("%q carries a user: the credential belongs in the secret, not the URL", shown)
 	case u.Hostname() == "":
-		return "", Usage("%q names no host", raw)
+		return "", Usage("%q names no host", shown)
 	case u.Path != "" && u.Path != "/", u.RawQuery != "", u.Fragment != "", u.Opaque != "":
 		return "", Usage("%q names more than a server: a credential is configured per host and port, "+
-			"for every path on it", raw)
-	}
-	if p := u.Port(); p != "" {
-		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
-			return "", Usage("%q names no usable port", raw)
-		}
+			"for every path on it", shown)
+	case !validPort(u.Port()):
+		return "", Usage("%q names no usable port", shown)
 	}
 	return SourceAuthority(u.Hostname(), u.Port()), nil
+}
+
+// validPort accepts no port, or a number a TCP port can be.
+func validPort(p string) bool {
+	if p == "" {
+		return true
+	}
+	n, err := strconv.Atoi(p)
+	return err == nil && n >= 1 && n <= 65535
 }
 
 // DefaultSourceSecret is the secret `init` stores a source's credential under
