@@ -692,7 +692,9 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 
 	unattended := opts.Options
 	unattended.Unattended = true
-	result, err := Update(ctx, d, UpdateOptions{Options: unattended, To: candidate.Version.String()})
+	result, err := Update(ctx, d, UpdateOptions{
+		Options: unattended, To: candidate.Version.String(), Channel: channelKey(inst.Update.Channel),
+	})
 	out.Update = &result
 	out.Applied = err == nil
 	if err != nil && result.Record.ID != "" {

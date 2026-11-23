@@ -512,3 +512,39 @@ func TestARecordsFileThatIsNullIsRefused(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, domain.ErrInstallation)
 }
+
+// A channel changed while the tick waited for the lock: the release it
+// staged from the old channel is not installed against the new one's index.
+func TestAnUnattendedInstallIsRefusedWhenTheFollowedChannelChanged(t *testing.T) {
+	h, registry := recoverableChannel(t)
+	ctx := context.Background()
+	keyPath := filepath.Join(t.TempDir(), "vendor.key")
+	pub, err := signer.New(keyPath, "vendor").EnsureKey(ctx)
+	require.NoError(t, err)
+	h.Deps.Checker = signer.NewChecker()
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.SigningKeys = []string{pub.Line}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	ref, err := ports.ParseRef(inst.Update.Channel)
+	require.NoError(t, err)
+	resolved, err := h.Deps.Source.Resolve(ctx, ref)
+	require.NoError(t, err)
+	vendor := indexVendor{t: t, registry: registry, keyPath: keyPath, issued: h.Deps.Now().Add(-time.Hour),
+		release: domain.ChannelIndexRelease{Version: resolved.Version, Digest: resolved.Digest}}
+	vendor.publish(1000, vendor.release)
+	require.True(t, followOnce(t, h).Candidate.IsStaged())
+
+	beta := strings.TrimSuffix(inst.Update.Channel, ":stable") + ":beta"
+	h.Locker.BeforeAcquire = func() {
+		now, err := h.Deps.State.LoadInstallation(ctx)
+		require.NoError(t, err)
+		now.Update.Channel = beta
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, now))
+	}
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err)
+	assert.False(t, res.Applied)
+	assert.Contains(t, err.Error(), "the followed channel changed")
+}

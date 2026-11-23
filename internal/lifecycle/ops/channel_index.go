@@ -476,14 +476,21 @@ func (d *Deps) forgetChannelIndex(ctx context.Context, opts Options, inst domain
 // the followed channel's index whatever the candidate record now says, since
 // the same poll may have replaced it. Only an unattended update asks, since an
 // operator's update does not read the index (decision 30).
-func (d *Deps) refuseHeldForIndex(ctx context.Context, staged domain.Release) error {
+//
+// channel is the channel the tick staged the release from. Changed since, the
+// release is not installed: the new channel's index says nothing about it.
+func (d *Deps) refuseHeldForIndex(ctx context.Context, staged domain.Release, channel string) error {
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return err
 	}
-	installing := domain.UpdateCandidate{
-		SourceRef: channelKey(inst.Update.Channel), Version: staged.Version(), Digest: staged.Digest,
+	if followed := channelKey(inst.Update.Channel); followed != channel {
+		return domain.ValidationError(nil,
+			"the followed channel changed while the tick waited, so %s from %s is not installed",
+			staged.Version(), channel).
+			WithHint("the next tick follows %s", followed)
 	}
+	installing := domain.UpdateCandidate{SourceRef: channel, Version: staged.Version(), Digest: staged.Digest}
 	if held := d.heldForIndex(inst, installing); held != "" {
 		return domain.ValidationError(nil, "%s", held)
 	}
