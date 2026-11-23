@@ -146,9 +146,9 @@ func ParseRef(s string) (Ref, error) {
 			return Ref{}, domain.Usage("oci reference %q carries credentials", shown).
 				WithHint("remove them from the reference and run `docker login` for the registry")
 		}
-		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+		return Ref{Scheme: u.Scheme, Location: afterScheme(s, u.Scheme)}, nil
 	case "https":
-		return Ref{Scheme: u.Scheme, Location: strings.TrimPrefix(s, u.Scheme+"://")}, nil
+		return Ref{Scheme: u.Scheme, Location: afterScheme(s, u.Scheme)}, nil
 	case "http":
 		return Ref{}, domain.Usage("refusing plaintext http reference %q", shown).
 			WithHint("use https, or fetch the bundle out of band and pass a path")
@@ -156,6 +156,16 @@ func ParseRef(s string) (Ref, error) {
 		return Ref{}, domain.Usage("unsupported release reference scheme %q", u.Scheme).
 			WithHint("supported schemes: file, https, oci")
 	}
+}
+
+// afterScheme is s without its `scheme://`, which url.Parse reads in any case
+// and reports lower-cased: `HTTPS://host/b` is `host/b`, not itself.
+func afterScheme(s, scheme string) string {
+	prefix := scheme + "://"
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):]
+	}
+	return s
 }
 
 // ChannelPeeker asks what a mutable reference points at, without fetching what

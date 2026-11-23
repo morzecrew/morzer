@@ -300,3 +300,26 @@ func TestDoctorWarnsWhenASourceCredentialIsNotSet(t *testing.T) {
 	check = doctorCheck(t, h, "release.source-credentials")
 	assert.Equal(t, "ok", string(check.Status))
 }
+
+// A reference ParseRef accepts is warned about whatever its scheme's case,
+// and with the space around it ParseRef trims (decision 16).
+func TestAPasswordInAnyReferenceParseRefAcceptsIsWarnedAbout(t *testing.T) {
+	for _, ref := range []string{
+		"https://someone:hunter2@downloads.vendor.example/b.tar.zst",
+		"HTTPS://someone:hunter2@downloads.vendor.example/b.tar.zst",
+		"  https://someone:hunter2@downloads.vendor.example/b.tar.zst",
+	} {
+		t.Run(ref, func(t *testing.T) {
+			_, err := ports.ParseRef(ref)
+			require.NoError(t, err, "the reference is not one the manager fetches")
+			h := newHarness(t)
+			ops.WarnPasswordInRef(h.Deps, ref)
+			warned := false
+			for _, e := range h.Events.Events() {
+				warned = warned || (e.Level == events.LevelWarn && strings.Contains(e.Message, "carries a password"))
+				assert.NotContains(t, e.Message, "hunter2")
+			}
+			assert.True(t, warned)
+		})
+	}
+}

@@ -315,11 +315,13 @@ func WarnPasswordInRef(d *Deps, ref string) {
 	if d == nil {
 		return
 	}
-	rest, ok := strings.CutPrefix(ref, "https://")
-	if !ok {
+	// Read as the source will read it: ParseRef trims the reference and
+	// takes its scheme in any case.
+	parsed, err := ports.ParseRef(ref)
+	if err != nil || parsed.Scheme != "https" {
 		return
 	}
-	u, err := url.Parse("https://" + rest)
+	u, err := url.Parse("https://" + parsed.Location)
 	if err != nil || u.User == nil {
 		return
 	}

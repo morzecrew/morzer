@@ -23,6 +23,10 @@ func TestParseRefAcceptsEverySupportedForm(t *testing.T) {
 		"file://LOCALHOST/opt/demo":         {"file", "/opt/demo"},
 		"https://example.com/b.tar.zst":     {"https", "example.com/b.tar.zst"},
 		"oci://registry.example/demo:1.2.0": {"oci", "registry.example/demo:1.2.0"},
+		// A scheme is case-insensitive, and what follows it is the
+		// location whatever case it was written in.
+		"HTTPS://example.com/b.tar.zst":     {"https", "example.com/b.tar.zst"},
+		"Oci://registry.example/demo:1.2.0": {"oci", "registry.example/demo:1.2.0"},
 	}
 
 	for input, want := range cases {
