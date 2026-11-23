@@ -136,3 +136,55 @@ proposal: ASSUMED — the listing is `release source list`, with `ls` as its ali
 Correction: the four planning entries above give `at: 2026-11-23T16:05:00Z`,
 which is wrong. They were written before the plan was committed at
 2026-11-23T15:08:58Z (`090277c1`), and before any code.
+
+Found on the review of #417, and decided there. Each refines an entry above
+or a decision. They are written here after the fixes landed, so that the rows
+reconciled from this log carry them.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T21:46:40Z
+attempt: 3
+claim: the third planning entry stores an authority lower-cased with the default port left out, without saying how a port with a leading zero, an IPv6 zone, or an entry hand-edited into another form is read
+evidence: internal/domain/sources.go:85-115
+action: decided
+proposal: ASSUMED — refines the third entry of attempt 1. A port is written as its number, so `:0443` is the default port and `:08443` is `:8443`. An IPv6 zone keeps its `%25` escape, as a request's host is written, so `https://[fe80::1%25eth0]` is stored as `[fe80::1%25eth0]` and matches. An entry read from state that is not in this form, or whose port is out of range, is refused as installation state.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-23T21:46:40Z
+attempt: 3
+claim: §5.4 scrubs a credential's value from what the manager prints, and the client's errors quote text the server chose, a redirect's Location and URL among it, which the server may fill with any spelling of what it was sent
+evidence: internal/adapters/source/https/https.go:289-349
+action: decided
+proposal: ASSUMED — refines §5.4. A fetch records each credential it sent: the value, the header, and for basic the base64 of the login and the password, each as written, as `%q` escapes it, and path- and query-encoded. An error whose text carries one loses its cause. Once a credential was sent, so does an error quoting a `Location`, where no list of known forms can be complete. Every URL an error quotes loses its query, and a URL whose path is not the one requested is quoted by its server alone. A certificate refusal is classed by the original error and wraps the cleared one. A source URL that does not parse is quoted with its password removed.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T21:46:40Z
+attempt: 3
+claim: decision 12 reads the credential from `--source-secret-file` without saying what file it takes, and takes it with `--release https://…` without saying which spellings of that reference count
+evidence: internal/cli/release_source.go:139-161
+action: decided
+proposal: ASSUMED — refines decision 12. The file is opened without blocking and refused unless it is a regular file, so a named pipe cannot hang `init`, and it is read through a 64 KiB bound, since a file may grow after its size is looked at. The flag applies to every reference `ParseRef` reads as https, whatever the scheme's case or the space around it.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T21:46:40Z
+attempt: 3
+claim: decision 16 names the commands that warn about a password in a reference without saying when, and `release fetch` and `init` fetch in the CLI before any operation runs, `init` to read the product's name
+evidence: internal/cli/commands.go:77
+action: decided
+proposal: ASSUMED — refines decision 16. Each command warns before its first fetch, so a fetch that fails still carries the warning. It reads the reference as the source does, with `ParseRef`, so the scheme's case and the space around it do not hide the password.
+```
