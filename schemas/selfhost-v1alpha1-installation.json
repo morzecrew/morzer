@@ -200,6 +200,10 @@
             "additionalProperties": false,
             "properties": {
               "auth": {
+                "enum": [
+                  "bearer",
+                  "basic"
+                ],
                 "type": "string"
               },
               "host": {
@@ -209,6 +213,11 @@
                 "type": "string"
               }
             },
+            "required": [
+              "host",
+              "auth",
+              "secret"
+            ],
             "type": "object"
           },
           "type": "array"
