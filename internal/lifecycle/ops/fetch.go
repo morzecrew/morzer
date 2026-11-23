@@ -26,7 +26,6 @@ import (
 func FetchIntoStore(
 	ctx context.Context, d *Deps, ref ports.Ref, resolved ports.ResolvedRelease,
 ) (rel domain.Release, alreadyPresent bool, err error) {
-	d.warnPasswordInRef(ref.Scheme + "://" + ref.Location)
 	dest := d.Paths.ReleaseDir(resolved.Version.String())
 
 	// The policy is read before anything is downloaded *or* accepted from

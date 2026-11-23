@@ -307,9 +307,14 @@ func (d *Deps) warnUnsetSourceSecret(ctx context.Context, entry domain.HTTPSSour
 	}
 }
 
-// warnPasswordInRef is decision 16: a password typed into a reference works,
-// and is on the command line and in shell history while it does.
-func (d *Deps) warnPasswordInRef(ref string) {
+// WarnPasswordInRef is decision 16: a password typed into a reference works,
+// and is on the command line and in shell history while it does. Called
+// before the first fetch, which for `release fetch`, and for `init` reading
+// the product's name, is the CLI's rather than an operation's.
+func WarnPasswordInRef(d *Deps, ref string) {
+	if d == nil {
+		return
+	}
 	rest, ok := strings.CutPrefix(ref, "https://")
 	if !ok {
 		return

@@ -129,7 +129,6 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	if err := domain.ValidateProductName(opts.Product); err != nil {
 		return Result{}, err
 	}
-	d.warnPasswordInRef(opts.ReleasePath)
 	if err := domain.CheckProfileSelection(opts.Profiles); err != nil {
 		return Result{}, err
 	}

@@ -3,6 +3,7 @@ package clitest_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -42,4 +43,21 @@ func TestReleaseSourceAddTakesOneScheme(t *testing.T) {
 		ExitCode(0).SaysAll("downloads.vendor.example gets the bearer credential in the secret vendor_token",
 		"the secret vendor_token is not set yet")
 	r.Run("release", "source", "ls").ExitCode(0).SaysAll("https://downloads.vendor.example", "vendor_token")
+}
+
+// The warning about a password in a reference comes before the first fetch,
+// so a fetch that fails still carries it (RFC 0038 decision 16): `release
+// fetch` resolves before anything else, and `init` without --product reads
+// the product's name from the bundle before its operation starts.
+func TestAPasswordInAReferenceIsWarnedAboutBeforeAnyFetch(t *testing.T) {
+	ref := "https://someone:hunter2@127.0.0.1:1/demo-1.2.0.tar.zst"
+	for _, res := range []clitest.Result{
+		clitest.NewInstalled(t).Run("release", "fetch", ref),
+		clitest.New(t).Run("init", "--release", ref),
+	} {
+		res.SaysAll("carries a password")
+		if strings.Contains(res.Stdout+res.Stderr, "hunter2") {
+			t.Errorf("the password was printed:\n%s%s", res.Stdout, res.Stderr)
+		}
+	}
 }

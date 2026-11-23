@@ -691,6 +691,8 @@ func newReleaseFetchCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Before the fetch, so one that fails still says so.
+			ops.WarnPasswordInRef(app.Deps, args[0])
 			// No scheme pre-check: the source registry refuses a
 			// scheme it has no adapter for, and naming the supported
 			// ones is its job rather than every call site's.

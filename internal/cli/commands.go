@@ -73,6 +73,8 @@ func newInitCommand(app *App) *cobra.Command {
 			if product == "" {
 				product = app.Flags.product
 			}
+			// Before any fetch, so one that fails still says so.
+			ops.WarnPasswordInRef(app.Deps, releasePath)
 			// Before the first fetch, which may be the one below:
 			// the server may want its credential for that one too
 			// (RFC 0038 decision 12).
