@@ -188,14 +188,16 @@ func (e InstallationExport) Validate() error {
 	// An index with no sequence would accept any replay, and one with no
 	// release would refuse every bundle the channel serves.
 	for channel, idx := range e.ChannelIndexes {
-		switch {
-		case strings.TrimSpace(channel) == "":
+		if strings.TrimSpace(channel) == "" {
 			v.add("channel_indexes", "an entry names no channel")
-		case idx.Sequence <= 0:
+		}
+		if idx.Sequence <= 0 {
 			v.add("channel_indexes", "the entry for %q has no sequence", channel)
-		case !contentDigest(idx.Digest) || !contentDigest(idx.Release.Digest):
+		}
+		if !contentDigest(idx.Digest) || !contentDigest(idx.Release.Digest) {
 			v.add("channel_indexes", "the entry for %q does not give its digests as sha256", channel)
-		case idx.Release.Version.IsZero() || idx.ExpiresAt.IsZero():
+		}
+		if idx.Release.Version.IsZero() || idx.ExpiresAt.IsZero() {
 			v.add("channel_indexes", "the entry for %q names no release or no expiry", channel)
 		}
 	}

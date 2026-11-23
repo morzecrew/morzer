@@ -848,6 +848,16 @@ func TestExportValidationRefusesAnUnusableDocument(t *testing.T) {
 			assert.Contains(t, err.Error(), "channel_indexes")
 		})
 	}
+	t.Run("an index wrong twice over says both", func(t *testing.T) {
+		e := base()
+		idx := good
+		idx.Sequence, idx.Digest = 0, "md5:x"
+		e.ChannelIndexes = domain.ChannelIndexes{stable: idx}
+		err := e.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no sequence")
+		assert.Contains(t, err.Error(), "sha256")
+	})
 	t.Run("an accepted index", func(t *testing.T) {
 		e := base()
 		e.ChannelIndexes = domain.ChannelIndexes{stable: good}
