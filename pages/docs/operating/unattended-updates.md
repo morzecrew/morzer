@@ -87,6 +87,17 @@ Moving the file away lets the next tick install. An attended
 [update](updating.md#a-file-where-the-new-release-puts-a-new-one) keeps a copy
 and installs.
 
+A channel's [signed index](updating.md#a-channel-that-stops-moving) holds a
+release too, on a machine that pins its vendor's key: one that has expired, and
+one that names another release than the staged one. Either can be a channel
+held back, and nobody is there at night to judge which:
+
+```text
+the channel's index expired at 2026-11-05T08:00:00Z, so 1.4.0 is staged and
+not installed: a channel whose index is not re-signed may be held back, and
+`morzer update --to 1.4.0` installs it once you have looked
+```
+
 A release that adds a parameter with no default is held too, since a tick
 cannot give it a value, and so is one that no longer accepts a value recorded
 for one it has. The tick names the parameter, and installing the release is an

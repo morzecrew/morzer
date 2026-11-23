@@ -198,10 +198,14 @@ Stated here rather than discovered during an incident:
   `update` refuses a release older than the one installed unless an operator
   passes `--allow-older`, and a channel is refused a release older than one it
   already delivered, until a `rollback` or an `--allow-older` install lowers
-  that memory to the release it installed. But a channel that never moves, or
-  a machine never shown the newer release, goes unnoticed: a correctly signed
-  older release can still be the newest thing such a machine knows of. [RFC 0037](rfcs/0037-freshness-of-a-signed-release.md)'s signed
-  channel index would close that, and is built when a vendor asks for it.
+  that memory to the release it installed. A vendor who publishes a signed
+  channel index ([RFC 0037](rfcs/0037-freshness-of-a-signed-release.md)) closes
+  the rest for a machine that pins their key: a channel held on an old release
+  shows as an index that expires, or one naming another release than the tag
+  serves. What remains is a channel without an index, a machine with no pinned
+  key, a release installed from a path, and the time until an index expires:
+  there, a correctly signed older release can still be the newest thing a
+  machine knows of.
 - A signature is verified *after* the archive is extracted, because it travels
   inside the bundle. Extraction is confined and bounded, so what an unsigned
   hostile archive can do is refuse to extract — but the ordering is worth

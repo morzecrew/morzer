@@ -89,10 +89,12 @@ the versions while the channel does its work on the pointer.
 
 ### What a tick costs
 
-A poll asks the registry what the tag points at — one manifest request. Only
-when the answer differs from what this machine has already seen is anything
-downloaded. An unchanged channel therefore costs a few hundred bytes, whatever
-the size of the release.
+A poll asks the registry what the tag points at, and for the channel's
+[signed index](#a-channel-that-stops-moving) beside it — two manifest requests,
+and the index's two small files when one is published. Only when the tag's
+answer differs from what this machine has already seen is the bundle
+downloaded. An unchanged channel therefore costs a few kilobytes at most,
+whatever the size of the release.
 
 There is **no interval floor**. The cost belongs to your vendor's registry
 rather than to the manager, and a rate-limited registry counts manifest
@@ -123,8 +125,9 @@ the tag may point somewhere else — pinning to what was actually read closes
 that window.
 
 If the channel offers something unusable — a version older than the one
-installed, a version older than one the channel already delivered, or a version
-already installed republished with different content — it is refused and the
+installed, a version older than one the channel already delivered, a version
+already installed republished with different content, or a bundle the channel's
+[signed index](#a-channel-that-stops-moving) does not name — it is refused and the
 refusal is *recorded*, so the next tick does not download the same bundle again
 to reach the same answer. `status` reports it. See [never older](#never-older).
 
@@ -276,8 +279,50 @@ is no setting that turns the refusal off. Both a rollback and an
 they installed, so after a vendor withdraws 1.4.0, the machine takes the 1.3.x
 patches the channel serves next instead of refusing them.
 
-What this does not catch is a channel that never moves: a machine that was never
-shown the newer release has nothing to compare with.
+What this does not catch alone is a channel that never moves: a machine that was
+never shown the newer release has nothing to compare with. A signed index does.
+
+### A channel that stops moving
+
+A channel that stops moving looks the same whether its vendor released nothing
+or someone who controls the registry holds it on an old release. A vendor tells
+the two apart with a signed index beside the channel, under `stable.index` for
+`stable`: the release the channel points at, a sequence, and a date the
+statement expires, re-signed before that date
+([how a vendor publishes one](../authoring/publishing.md#signing-the-channels-index)).
+A machine that pins the vendor's key in `policy.signing_keys` reads the index on
+every poll, moved or not. Only the update timer and `update --stage` read it; an
+`update` you run and `update --check` do not.
+
+- **What it accepts.** An index signed by a pinned key, naming this channel,
+  with a sequence higher than the one accepted before. The same sequence is
+  accepted again only with the same bytes, and a lower one is refused as a
+  replay.
+- **While it holds.** A bundle the index does not name is refused, and fetched
+  again once the vendor re-signs, so a tag moved before its index costs one
+  wait. A tag that has not moved, and still serves another release than a fresh
+  index names, is reported by `status` and `doctor` and not installed
+  unattended.
+- **When it expires.** `status` and `doctor` say so, the timer sends
+  `update.index_expired` once, and under `update.auto_apply` a staged release
+  waits for you. An `update` you run still installs: an expired index is a
+  reason to look, not a lock. It is judged by this machine's clock.
+- **What counts as none.** An index signed by another key, naming another
+  channel, that does not read as one, or that the registry refuses to show is
+  not accepted, and `status` says why. A registry that cannot be reached fails
+  the poll, as it does for the tag. Removing the index does not undo it: the
+  channel is judged by the one accepted until that expires.
+- **Without a pinned key** the machine does not check the index, and `doctor`
+  says the channel publishes one it could check once you pin the vendor's key.
+
+The accepted index is kept in `/var/lib/<product>/manager/channel-indexes.json`,
+and an [export](recovering-a-lost-machine.md) carries it, so a rebuilt machine
+does not accept a replayed older one. If your vendor stops publishing an index,
+forget the one accepted; this is recorded in the journal:
+
+```sh
+morzer update --stage --forget-index
+```
 
 ## When it fails
 

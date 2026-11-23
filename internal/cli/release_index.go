@@ -51,8 +51,8 @@ func newReleaseIndexCommand(app *App) *cobra.Command {
 		Short: "Sign and publish a channel's index, naming its release and expiry",
 		Long: "Writes a signed statement of which release a channel points at, and\n" +
 			"until when, beside the channel as the tag <channel>.index. Its expiry is\n" +
-			"how a machine that pins your key is to tell a channel that is quiet\n" +
-			"from one an attacker froze. Machines do not read the index yet.\n\n" +
+			"how a machine that pins your key tells a channel that is quiet from\n" +
+			"one an attacker froze.\n\n" +
 			"The release is the bundle the channel tag points at now, named by its\n" +
 			"content digest. The sequence is the time in milliseconds, and a\n" +
 			"sequence not higher than the index already published, signed by this\n" +
@@ -232,7 +232,7 @@ func indexKeyError(err error, path string) error {
 // checkedIndex is the published index when its signature verifies against
 // publicKey and it reads as an index of channel; otherwise problem says why
 // not. Each of those is one a machine following the channel would refuse.
-func checkedIndex(published oci.PublishedIndex, publicKey, channel string) (domain.ChannelIndex, string) {
+func checkedIndex(published ports.PublishedIndex, publicKey, channel string) (domain.ChannelIndex, string) {
 	if published.Problem != "" {
 		return domain.ChannelIndex{}, "cannot be read: " + published.Problem
 	}

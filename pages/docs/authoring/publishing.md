@@ -292,11 +292,9 @@ nothing or someone who controls the registry froze it on an old release with a
 known hole. A signed index tells the two apart. It names the release the
 channel points at and a date it expires, and you re-sign it before that date
 whether or not you released. A machine that follows the channel and pins your
-key is to warn once the index expires.
-
-Machines do not read the index yet: this release publishes it, and checking it
-on the machines comes in a later one. What follows describes the check as it is
-designed.
+key warns once the index expires, and refuses a bundle the index does not name.
+What the machine checks is in
+[updating](../operating/updating.md#a-channel-that-stops-moving).
 
 ```sh
 morzer release index oci://registry.example/demo/bundle:stable --key ./release.key

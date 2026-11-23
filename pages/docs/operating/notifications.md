@@ -66,7 +66,7 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.
 
 ## What is sent
 
-Six kinds of event, and no others:
+Seven kinds of event, and no others:
 
 - `operation.finished` — the outcome of an `apply`, `update`, `rollback`,
   `config`, `backup` or `restore`, including **failures**.
@@ -85,6 +85,9 @@ Six kinds of event, and no others:
   again.
 - `sync.expired` — the desired-state document in force has expired and nothing
   newer is published. Sent when a sync cycle first finds it so.
+- `update.index_expired` — the [signed index](updating.md#a-channel-that-stops-moving)
+  of the followed channel has expired and was not re-signed: a vendor gone
+  quiet, or a channel held back. Sent once per index.
 
 The payload is the manager's own event JSON, the same shape `--log-format json`
 emits. A service wanting a different body gets a two-line receiver.

@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the channel. Re-sign it after each channel move and before it expires,
   seven days unless `--valid-for` says otherwise.
 
+- `morzer update --stage --forget-index` forgets the signed index a machine
+  accepted from its channel, for a vendor who stopped publishing one. It is
+  recorded in the journal.
+
+### Security
+
+- A machine that pins its vendor's key now checks the channel's signed index
+  on every poll, so a channel held on an old release is noticed. It refuses a
+  bundle the index does not name and a replayed index. An expired index is
+  reported by `status` and `doctor`, notified once, and holds an unattended
+  install.
+
 ## [0.19.1] - 2026-11-22
 
 A service with an image mount starts again after the machine restarts, which
