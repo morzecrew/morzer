@@ -422,3 +422,34 @@ func TestAnUnattendedInstallRechecksTheIndexUnderTheLock(t *testing.T) {
 	assert.False(t, res.Applied)
 	assert.Contains(t, err.Error(), "names 1.4.0, not the staged 1.3.0")
 }
+
+// Forgetting is journalled before the index is let go, so a journal that
+// cannot be written leaves the index accepted and the retry journals it.
+func TestAnIndexIsForgottenOnlyOnceTheJournalSaysSo(t *testing.T) {
+	h, vendor, _ := indexedChannel(t)
+	vendor.publish(1000, vendor.release)
+	followOnce(t, h)
+	ctx := context.Background()
+
+	// A directory where the journal goes: appending to it fails.
+	journal := h.Deps.Paths.JournalFile()
+	_, statErr := os.Stat(journal)
+	had := statErr == nil
+	if had {
+		require.NoError(t, os.Rename(journal, journal+".aside"))
+	}
+	require.NoError(t, os.Mkdir(journal, 0o750))
+	_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true, ForgetIndex: true})
+	require.Error(t, err)
+	records, err := os.ReadFile(h.Deps.Paths.ChannelIndexesFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(records), `"sequence": 1000`, "the index was let go with nothing journalled")
+
+	require.NoError(t, os.Remove(journal))
+	if had {
+		require.NoError(t, os.Rename(journal+".aside", journal))
+	}
+	res, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true, ForgetIndex: true})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1000), res.ForgotIndex)
+}

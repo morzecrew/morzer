@@ -427,12 +427,11 @@ func (d *Deps) forgetChannelIndex(ctx context.Context, opts Options, inst domain
 		if acc == nil {
 			return nil
 		}
-		delete(records, channel)
-		if err := d.saveChannelIndexRecords(records); err != nil {
-			return err
-		}
-		forgot = acc.Sequence
-		return d.State.AppendOperation(ctx, domain.OperationRecord{
+		// Journalled first: an index let go with nothing journalled is a
+		// replay guard dropped that no record shows, and a retry would find
+		// nothing to forget. A record whose deletion then fails is followed
+		// by the retry's own.
+		if err := d.State.AppendOperation(ctx, domain.OperationRecord{
 			SchemaVersion:  domain.OperationSchemaVersion,
 			ID:             opID,
 			Type:           domain.OpTypeRelease,
@@ -445,7 +444,15 @@ func (d *Deps) forgetChannelIndex(ctx context.Context, opts Options, inst domain
 				"forget_index": channel,
 				"sequence":     strconv.FormatInt(acc.Sequence, 10),
 			},
-		})
+		}); err != nil {
+			return err
+		}
+		delete(records, channel)
+		if err := d.saveChannelIndexRecords(records); err != nil {
+			return err
+		}
+		forgot = acc.Sequence
+		return nil
 	})
 	return forgot, err
 }
