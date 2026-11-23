@@ -80,3 +80,55 @@ evidence: internal/lifecycle/ops/init.go:417-470
 action: decided
 proposal: ASSUMED — without `--source-secret`, `init` names the secret `source_` followed by the authority with each character that is not a letter or a digit replaced by `_`, so `downloads.vendor.example` is `source_downloads_vendor_example`. `--source-secret` and `--source-auth` without `--source-secret-file`, or the file without `--release https://…`, are usage errors.
 ```
+
+Found while building, and decided there. The holder in the first entry below
+answers a finding on #416's review, which narrowed decision 12 before this
+code was written.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-23T15:30:47Z
+attempt: 2
+claim: decision 12 holds init's credential from its first fetch, and that fetch runs in the CLI before the operation, through a release source built once and kept across the rewire init makes once it knows the product's name, so a credential held on Deps would be lost with the Deps it was held on
+evidence: internal/lifecycle/ops/sources.go:93-105
+action: decided
+proposal: ASSUMED — the HTTPS source asks a credential holder built with it and kept with it across a rewire, which reads the entries through whichever Deps the command holds at the time of each request. `init` holds its credential there before its first fetch. A machine with no installation, or several and none chosen, configures no credential, so `release fetch` there works as before.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T15:30:47Z
+attempt: 2
+claim: decision 14 trims a trailing newline and splits basic at the first colon, without saying what an empty value, a value holding a line break, or a basic value with no user does
+evidence: internal/adapters/source/https/credentials.go:66-95
+action: decided
+proposal: ASSUMED — refines decision 14. One trailing newline, with a carriage return before it, is not part of the value. An empty value, one holding a control character, and a basic value with no colon or no user are refused before the request is made, naming the secret and never quoting the value, since a line break in a header value is a second header.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T15:30:47Z
+attempt: 2
+claim: decision 12 does not say what `init --repair` does with the entries, nor what `--source-auth` defaults to, nor what happens when the credential's secret name is one the release declares
+evidence: internal/lifecycle/ops/init.go:895
+action: decided
+proposal: ASSUMED — refines decision 12. `init --repair` keeps the entries, as it keeps the other settings, and refuses `--source-secret-file`, pointing at `release source add`. `--source-auth` defaults to `bearer`, which most download services issue. A credential secret named after one the release declares is refused before it is stored, since storing it would overwrite the release's secret.
+```
+
+```divergence
+decision: 11
+grade: ASSUMED
+class: discovery
+at: 2026-11-23T15:30:47Z
+attempt: 2
+claim: decision 11 names the listing command `release source ls`, and every listing beside it is `list`: `release trust list`, `secret list`, `backup target list`
+evidence: internal/cli/release_source.go:80-81
+action: departed
+proposal: ASSUMED — the listing is `release source list`, with `ls` as its alias, as `config list` has. Decision 11 graded the names `ASSUMED`.
+```
