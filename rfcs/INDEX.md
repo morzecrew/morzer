@@ -18,12 +18,11 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0029, 0031, 0037 and 0039 have each shipped
+only **0023** and **0038** have work anybody can pick up: 0027, 0029, 0031, 0037 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
-building P2 is the correct outcome. 0038 is ruled, and its stored credentials
-wait on a vendor asking, as 0037's signed index does. Each
+building P2 is the correct outcome. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
 phase shipped, and a reader deciding what to work on needs the other half.
 
@@ -92,8 +91,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   index is gated on a vendor asking for it.
 - **[0038 — Credentials for HTTPS bundle sources](0038-credentials-for-https-bundle-sources.md).**
   📝 Proposed, and ruled by the author 2026-11-01 as recommended. Its row 1, a
-  journal defect that recorded a reference's password, shipped in #170; stored
-  credentials are gated on a vendor asking for them.
+  journal defect that recorded a reference's password, shipped in #170. Stored
+  credentials, P1, are ruled to be built now (decision 10, 2026-11-23).
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
