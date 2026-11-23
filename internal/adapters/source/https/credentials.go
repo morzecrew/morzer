@@ -107,6 +107,20 @@ func (s *sentCredentials) in(text string) bool {
 	return false
 }
 
+// any reports whether this fetch sent a credential at all.
+func (s *sentCredentials) any() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.values) > 0
+}
+
+// aboutALocation reports whether err quotes a Location the server sent. After
+// a credential was sent, that text is the server's to fill with any encoding of
+// it, so no match against known forms can be complete: the cause is left out.
+func aboutALocation(err error) bool {
+	return strings.Contains(err.Error(), "Location header")
+}
+
 // authorityOf is a URL's server in domain.SourceAuthority's form.
 func authorityOf(u *url.URL) string { return domain.SourceAuthority(u.Hostname(), u.Port()) }
 

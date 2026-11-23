@@ -282,6 +282,9 @@ func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
 		{"a password holding a quote", basic, `customer:pw"echoed`, `pw"echoed`, `pw\"echoed`},
 		// And a server may echo it URL-encoded.
 		{"a token URL-encoded", vendorToken(), "tok echoed", "tok%20echoed", "tok%20echoed"},
+		// Percent-encoding is case-insensitive, and an echo need not use the
+		// case Go's escaper writes.
+		{"a token with a lower-case escape", vendorToken(), "tok/echoed", "tok%2fechoed", "tok%2fechoed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			creds := credentialsFor(tc.entry)
@@ -303,20 +306,29 @@ func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
 // named as a certificate problem, and the URL it quotes may carry what the
 // first server was sent: the refusal keeps neither.
 func TestACertificateRefusalAfterACredentialDoesNotPrintIt(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// localhost is a name the test certificate is not issued for.
-		port := r.Host[strings.LastIndex(r.Host, ":")+1:]
-		http.Redirect(w, r, "https://localhost:"+port+"/b.tar.zst?token=tok-echoed", http.StatusFound)
-	}))
-	t.Cleanup(srv.Close)
-	authority := strings.TrimPrefix(srv.URL, "https://")
-	creds := credentialsFor(domain.HTTPSSource{Host: authority, Auth: domain.SourceAuthBearer, Secret: "vendor_token"})
-	creds.values["vendor_token"] = "tok-echoed"
-	source := https.New(https.WithTransport(srv.Client().Transport), https.WithCredentials(creds),
-		https.WithBackoff(time.Millisecond))
-	t.Cleanup(func() { _ = source.Close() })
+	for _, tc := range []struct{ name, query, secret string }{
+		{"the token echoed", "token=tok-echoed", "tok-echoed"},
+		// A query the redirect brought in can be another server's signed
+		// URL rather than anything this one was sent.
+		{"another server's signed query", "sig=cdn-signed", "cdn-signed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// localhost is a name the test certificate is not issued for.
+				port := r.Host[strings.LastIndex(r.Host, ":")+1:]
+				http.Redirect(w, r, "https://localhost:"+port+"/b.tar.zst?"+tc.query, http.StatusFound)
+			}))
+			t.Cleanup(srv.Close)
+			authority := strings.TrimPrefix(srv.URL, "https://")
+			creds := credentialsFor(domain.HTTPSSource{Host: authority, Auth: domain.SourceAuthBearer, Secret: "vendor_token"})
+			creds.values["vendor_token"] = "tok-echoed"
+			source := https.New(https.WithTransport(srv.Client().Transport), https.WithCredentials(creds),
+				https.WithBackoff(time.Millisecond))
+			t.Cleanup(func() { _ = source.Close() })
 
-	_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https", Location: authority + "/b.tar.zst"})
-	require.ErrorContains(t, err, "TLS certificate")
-	assert.NotContains(t, err.Error()+domain.AsError(err).Hint, "tok-echoed")
+			_, err := source.Resolve(context.Background(), ports.Ref{Scheme: "https", Location: authority + "/b.tar.zst"})
+			require.ErrorContains(t, err, "TLS certificate")
+			assert.NotContains(t, err.Error()+domain.AsError(err).Hint, tc.secret)
+		})
+	}
 }

@@ -291,8 +291,11 @@ func withoutCredentials(err error, target string) error {
 	if perr != nil {
 		return err
 	}
+	// Whatever the reference's own query: after a redirect, the URL the
+	// client quotes is the server's, and its query can be another server's
+	// signed URL.
 	var quoted *url.Error
-	if u.RawQuery != "" && errors.As(err, &quoted) {
+	if errors.As(err, &quoted) {
 		quoted.URL = source.Shown(quoted.URL)
 	}
 	if u.User == nil {
@@ -336,7 +339,7 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 		// What the client quotes is the server's to choose, so it is
 		// cleared of anything this fetch sent before any refusal wraps it.
 		cause := withoutCredentials(err, target)
-		if cause != nil && sent.in(cause.Error()) {
+		if cause != nil && (sent.in(cause.Error()) || sent.any() && aboutALocation(cause)) {
 			cause = nil
 		}
 		if certErr := certificateProblem(err, cause, shown); certErr != nil {
