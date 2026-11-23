@@ -312,6 +312,20 @@ func TestARedirectEchoingTheStoredCredentialDoesNotPrintIt(t *testing.T) {
 	}
 }
 
+// A server that redirects without end is refused, and the refusal names the
+// reference without its query, where a signed URL carries its token.
+func TestARedirectLoopIsRefusedWithoutTheReferencesQuery(t *testing.T) {
+	source, _ := serveCredentialed(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, r.URL.String(), http.StatusFound)
+	}, credentialsFor())
+	_, err := source.Resolve(context.Background(),
+		ports.Ref{Scheme: "https", Location: "downloads.vendor.example/b.tar.zst?sig=signed-token"})
+	require.ErrorContains(t, err, "too many redirects")
+	text := err.Error() + domain.AsError(err).Hint
+	assert.Contains(t, text, "downloads.vendor.example/b.tar.zst")
+	assert.NotContains(t, text, "signed-token")
+}
+
 // A redirect the client follows and then cannot fetch is quoted in its error,
 // and its path is the server's to fill with any spelling of what it was sent:
 // the error names the server it was sent to and not the path.
