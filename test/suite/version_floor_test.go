@@ -394,6 +394,24 @@ func TestAnUnreadableMarksFileIsNotRecordedAsARefusal(t *testing.T) {
 	assert.Equal(t, "1.3.0", res.Candidate.Version.String())
 }
 
+// A marks file holding JSON's null is damage, not an empty record: read as
+// none, it would admit every release below the marks it lost, and the first
+// raise would write into no map at all.
+func TestAMarksFileThatIsNullIsRefused(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, recoverableUpdate)
+	ctx := context.Background()
+	require.NoError(t, os.MkdirAll(filepath.Dir(h.Paths.ChannelMarksFile()), 0o755))
+	require.NoError(t, os.WriteFile(h.Paths.ChannelMarksFile(), []byte("null\n"), 0o640))
+
+	_, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrInstallation)
+	assert.Contains(t, err.Error(), "channel marks")
+	candidate, err := h.Deps.State.UpdateCandidate(ctx)
+	require.NoError(t, err)
+	assert.False(t, candidate.IsStaged(), "a release was staged over marks that could not be read")
+}
+
 // A crash after a lowered mark is written leaves a refusal recorded against the
 // old one; the poll looks again because the refusal predates the mark, so no
 // second write has to happen for the follower to resume.
