@@ -153,8 +153,9 @@ func BuildExport(ctx context.Context, d *Deps) (domain.InstallationExport, error
 			State:      string(state),
 			Recipients: exportRecipients(recipients),
 		},
-		Release:      currentExportedRelease(ctx, d),
-		ChannelMarks: exportedChannelMarks(ctx, d),
+		Release:        currentExportedRelease(ctx, d),
+		ChannelMarks:   exportedChannelMarks(ctx, d),
+		ChannelIndexes: exportedChannelIndexes(ctx, d),
 	}
 
 	if err := export.Validate(); err != nil {
@@ -710,12 +711,19 @@ func stepWriteImportedInstallation(d *Deps, export domain.InstallationExport) en
 			if err := d.replaceChannelMarks(export.ChannelMarks); err != nil {
 				return err
 			}
+			// And the indexes they accepted, the same way, or the
+			// rebuilt machine accepts a replayed older one (RFC 0037
+			// decision 31).
+			if err := d.replaceChannelIndexes(export.ChannelIndexes); err != nil {
+				return err
+			}
 			return d.State.SaveInstallation(ctx, inst)
 		},
 		Compensate: func(ctx context.Context, st *engine.State) error {
 			_ = os.Remove(d.Paths.InstallationFile())
 			_ = os.Remove(d.Paths.InstallationState())
 			_ = os.Remove(d.Paths.ChannelMarksFile())
+			_ = os.Remove(d.Paths.ChannelIndexesFile())
 			return nil
 		},
 	}

@@ -73,3 +73,93 @@ evidence: internal/adapters/source/oci/index.go:60-70
 action: decided
 proposal: ASSUMED — `release index` compares its sequence only with a published index whose signature verifies against the public half of `--key` and which names the same channel. Any other index under the tag, one that cannot be read, one another key signed, or one for another channel, is replaced, and the command warns that it was. A read the registry refuses, or cannot answer, stops the command before anything is pushed.
 ```
+
+The machine's side, on branch `channel-index-follow` from `d52aa67f`: the
+follower reads and checks the index (decisions 3, 9, 10, 16, 17 and 25 to 32).
+Planning it found four questions the RFC does not settle, so the plan stopped
+before code; the author ruled all four as recommended on 2026-11-23. Three
+smaller ones were decided with them.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: §5.2 says a replayed index, or a different one under an accepted sequence, is refused, without saying what the poll does then, nor with an index whose signature or content does not hold
+evidence: rfcs/0037-freshness-of-a-signed-release.md:226-232
+action: decided
+proposal: ASSUMED — an index the follower cannot accept, because its signature fails, it does not parse, it names another channel, its sequence is lower than the accepted one, or it reuses the accepted sequence with other bytes, counts as no index: decision 25 then judges the tag against the accepted index if there is one, and a channel with none is followed as today. The reason is recorded, and `status` and `doctor` report it. Refusing to stage over it adds nothing, since whoever can plant a bad index can delete it. Ruled by the author 2026-11-23.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: decision 10 compares the index with the bundle after a fetch, and an unmoved tag is never fetched, so a registry that serves the fresh index but holds the tag still is never caught: that index never expires
+evidence: rfcs/0037-freshness-of-a-signed-release.md:357
+action: decided
+proposal: ASSUMED — every poll compares the accepted index's release digest with the content digest already known for what the tag points at: the staged candidate's, or the installed release's when the channel delivered it. When they disagree, the tick does not install the staged candidate, and `status` and `doctor` report that the index names one release while the tag still serves another. Ruled by the author 2026-11-23.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: decision 3 refuses only under unattended auto_apply without saying whether that refuses the stage or the install
+evidence: rfcs/0037-freshness-of-a-signed-release.md:350
+action: decided
+proposal: ASSUMED — refines decision 3. Under `auto_apply`, a release behind an expired index is staged and not installed, with the expiry as the tick's reason, as the drift and stopped gates hold a release. Ruled by the author 2026-11-23.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: decision 9 fetches the index in the same poll as the peek without saying what a failed read of it does
+evidence: rfcs/0037-freshness-of-a-signed-release.md:356
+action: decided
+proposal: ASSUMED — with a key pinned, a registry that cannot be reached for the index fails the poll, as a failed peek does. A read the registry answers with a refusal other than 404 counts as no index, and is recorded and reported. Without a pinned key the index is not consulted, and a failed read only leaves it unrecorded. Ruled by the author 2026-11-23.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: the index carries a `channel` field and §5.2 lists no check of it
+evidence: rfcs/0037-freshness-of-a-signed-release.md:215
+action: decided
+proposal: ASSUMED — the follower accepts an index only when its `channel` is the followed reference's tag. Another channel's index, copied under this channel's index tag, would otherwise let whoever can push tags move a channel to a release the vendor published for another one.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: decision 17 records the index's expiry in state without saying where
+evidence: internal/lifecycle/ops/channel_marks.go:24
+action: decided
+proposal: ASSUMED — the accepted indexes are a file under the manager directory beside the channel marks, keyed the same way and written atomically by the lifecycle layer, as decision 18 placed the marks. The same record holds what the last poll found that `status` and `doctor` report: an index this machine cannot check, one it did not accept and why, and a tag that disagrees with it.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T07:29:03Z
+attempt: 3
+claim: decision 25 names `update --stage --forget-index` without saying what it does alone or with nothing to forget
+evidence: rfcs/0037-freshness-of-a-signed-release.md:372
+action: decided
+proposal: ASSUMED — refines decision 25. `--forget-index` is a usage error without `--stage`. It forgets the followed channel's accepted index under the deployment lock, journals that as a `release` operation, then polls; with no accepted index it forgets nothing, journals nothing and says so. Only expiry notifies (decision 28): a refused index is reported by `status` and `doctor`.
+```

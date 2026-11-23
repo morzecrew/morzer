@@ -276,6 +276,7 @@ morzer update --to 1.3.0
 | `--generate-secrets` | Generate the secrets the new release adds with a `generator`. Default `true`; `false` is recorded in the journal, and `--resume` keeps it. |
 | `--check` | Report whether a newer release exists, without installing anything. |
 | `--stage` | Follow the configured channel: fetch and verify what it points at, without installing it. |
+| `--forget-index` | With `--stage`: forget the [signed index](../operating/updating.md#a-channel-that-stops-moving) accepted from the channel, for a vendor who stopped publishing one, then poll. Recorded in the journal. Refused without `--stage`. |
 | `--unattended` | One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see [unattended updates](../operating/unattended-updates.md). On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see [what runs at boot](../explanation/platforms.md#what-runs-at-boot-and-on-schedule). |
 
 Before it converges, an update generates each secret the new release declares
@@ -467,7 +468,7 @@ not answer, and the start at boot runs it once it does; see
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.
 
-Six checks are advisory by design, and warn rather than fail:
+Seven checks are advisory by design, and warn rather than fail:
 
 | Check | What it means |
 | --- | --- |
@@ -476,6 +477,7 @@ Six checks are advisory by design, and warn rather than fail:
 | `notify.outbox` | A notify target has events it did not accept waiting in the [outbox](../operating/notifications.md#delivery): it names the target, how many, and how many were dropped past the bound of 100. `morzer notify flush` sends them once the target answers, as the scheduled `doctor` does. |
 | `secrets.rotation` | A secret is older than the `rotation_period` its release declares. That period is the vendor's recommendation, and failing an exit code monitoring watches over a recommendation is how a team learns to ignore it. Secrets with no declared period are not mentioned at all. |
 | `secrets.ephemeral-storage` | The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this. |
+| `release.channel-index` | The followed channel's [signed index](../operating/updating.md#a-channel-that-stops-moving), as the last poll found it: ok with its sequence, release and expiry, and a warning when it has expired, when the channel's tag still serves another release than it names, when the last index found was not accepted, or when the channel publishes one this machine pins no key to check. It reads no registry. Present only on a machine that follows a channel. |
 | `runtime.images-local` | Some of the release's **pulled** images are not present locally, so this machine would not come up without network access. Images that travel in the bundle are not counted here — they are either loaded or the deployment is refused, which is `images.bundled` below. See [Installing without a network](../operating/installing-offline.md). |
 
 The rotation remedy names the command that will actually work: `secret rotate`

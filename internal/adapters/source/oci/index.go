@@ -9,6 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote/errcode"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -29,35 +30,32 @@ const (
 // hundred bytes, and a poll reads it on every tick.
 const MaxIndexLayerSize = 64 << 10
 
-// PublishedIndex is what the registry holds under a channel's index tag, not
-// yet trusted: its signature and its fields are the caller's to check.
-type PublishedIndex struct {
-	Index     []byte
-	Signature []byte
-
-	// Problem says why the artifact under the tag is not an index, when it
-	// is not one: no such layer, a layer over the bound, bytes that do not
-	// match their digest. Index and Signature are then empty.
-	Problem string
-}
+var _ ports.ChannelIndexReader = (*Source)(nil)
 
 // FetchIndex reads the index published beside the channel ref names. found is
-// false when the tag does not exist. An artifact that exists and is not a
-// readable index is found, with its Problem set, so the caller decides what
-// that means; err is a registry that cannot be reached or refused the read.
-func (s *Source) FetchIndex(ctx context.Context, ref ports.Ref) (PublishedIndex, bool, error) {
-	reference, err := indexReference(ref)
-	if err != nil {
-		return PublishedIndex{}, false, err
+// false when the tag does not exist, or ref has no tag to put one beside. An
+// artifact that exists and is not a readable index is found, with its Problem
+// set, so the caller decides what that means; err is a registry that cannot be
+// reached or refused the read.
+func (s *Source) FetchIndex(ctx context.Context, ref ports.Ref) (ports.PublishedIndex, bool, error) {
+	repository, channel, err := splitReference(ref.Location)
+	if err != nil || channel == "" || ref.Location[len(repository)] == '@' {
+		return ports.PublishedIndex{}, false, nil
 	}
+	// A tag a character short of the limit cannot carry ".index", so its
+	// channel has no index to publish: none, rather than a refused read.
+	if (registry.Reference{Reference: domain.ChannelIndexTag(channel)}).ValidateReferenceAsTag() != nil {
+		return ports.PublishedIndex{}, false, nil
+	}
+	reference := repository + ":" + domain.ChannelIndexTag(channel)
 	repo, err := s.newRepository(reference)
 	if err != nil {
-		return PublishedIndex{}, false, err
+		return ports.PublishedIndex{}, false, err
 	}
 
 	// One manifest, checked against its digest, so both layers come from
 	// the same artifact even if the tag moves meanwhile.
-	var out PublishedIndex
+	out := ports.PublishedIndex{Channel: channel}
 	manifest, err := fetchManifest(ctx, repo, reference)
 	switch {
 	case errors.Is(err, domain.ErrReleaseNotFound):

@@ -93,6 +93,21 @@ func (r *Registry) Peek(ctx context.Context, ref ports.Ref) (ports.ChannelState,
 	return peeker.Peek(ctx, ref)
 }
 
+// FetchIndex forwards to the source for the reference when it can read a
+// channel's index. One that cannot has no channel to publish one beside, so it
+// has none: Peek has already refused to follow it.
+func (r *Registry) FetchIndex(ctx context.Context, ref ports.Ref) (ports.PublishedIndex, bool, error) {
+	s, err := r.For(ref)
+	if err != nil {
+		return ports.PublishedIndex{}, false, err
+	}
+	reader, ok := s.(ports.ChannelIndexReader)
+	if !ok {
+		return ports.PublishedIndex{}, false, nil
+	}
+	return reader.FetchIndex(ctx, ref)
+}
+
 func (r *Registry) List(ctx context.Context, ref ports.Ref) ([]domain.Version, error) {
 	s, err := r.For(ref)
 	if err != nil {

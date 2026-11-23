@@ -229,6 +229,12 @@ type UpdateCandidate struct {
 	// No schema bump: an older manager does not read the field, and so
 	// retries, which is what it did before the field existed.
 	Failed string `json:"failed,omitempty"`
+
+	// IndexSequence is the channel index a refusal was judged against, set
+	// when the bundle disagreed with it (RFC 0037 decision 10). Once the
+	// channel's accepted index changes, the poll looks again (decision 29).
+	// No schema bump, as for Failed: an older manager does not look again.
+	IndexSequence int64 `json:"index_sequence,omitempty"`
 }
 
 func (c UpdateCandidate) IsZero() bool { return c.UpstreamDigest == "" }

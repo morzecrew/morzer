@@ -17,3 +17,13 @@ func TestAllowOlderOnlyGoesWithAnInstall(t *testing.T) {
 			SaysAll("--allow-older applies to an install")
 	}
 }
+
+// Forgetting a channel's index is what a stage does first (RFC 0037 decision
+// 25), so alone, or beside an install, it is a usage error.
+func TestForgetIndexOnlyGoesWithAStage(t *testing.T) {
+	r := clitest.NewInstalled(t)
+	for _, args := range [][]string{{"--forget-index"}, {"--check", "--forget-index"}, {"--unattended", "--forget-index"}} {
+		r.Run(append([]string{"update"}, args...)...).ExitCode(domain.ExitUsage).
+			SaysAll("--forget-index applies to --stage")
+	}
+}

@@ -229,6 +229,20 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 	raw, err := json.Marshal(marks)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(origin.Deps.Paths.ChannelMarksFile(), raw, 0o640))
+	// And the index it accepted, whose sequence a replay must not get past
+	// (decision 31). What the last poll found besides is not carried.
+	accepted := domain.AcceptedIndex{
+		Sequence: 1793260800123, Digest: "sha256:" + strings.Repeat("cd", 32),
+		Release: domain.ChannelIndexRelease{
+			Version: domain.MustParseVersion("1.4.0"), Digest: "sha256:" + strings.Repeat("ef", 32),
+		},
+		ExpiresAt: domain.NewTime(time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)),
+	}
+	raw, err = json.Marshal(domain.ChannelIndexRecords{
+		channel: {Accepted: &accepted, Problem: "the update channel publishes no index now"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(origin.Deps.Paths.ChannelIndexesFile(), raw, 0o640))
 
 	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
 	_, err = ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
@@ -267,6 +281,19 @@ func TestRecoveryRebuildsAMachineFromAnOfflineKey(t *testing.T) {
 		var got domain.ChannelMarks
 		require.NoError(t, json.Unmarshal(raw, &got))
 		assert.Equal(t, "1.4.0", got[channel].Version.String())
+	})
+
+	t.Run("the accepted channel indexes survive", func(t *testing.T) {
+		raw, err := os.ReadFile(rebuilt.Deps.Paths.ChannelIndexesFile())
+		require.NoError(t, err, "a rebuilt machine forgot the sequence its channel's index reached")
+		var got domain.ChannelIndexRecords
+		require.NoError(t, json.Unmarshal(raw, &got))
+		require.NotNil(t, got[channel].Accepted)
+		assert.Equal(t, accepted.Sequence, got[channel].Accepted.Sequence)
+		assert.Equal(t, accepted.Digest, got[channel].Accepted.Digest)
+		assert.Equal(t, "1.4.0", got[channel].Accepted.Release.Version.String())
+		assert.True(t, accepted.ExpiresAt.Equal(got[channel].Accepted.ExpiresAt.Time))
+		assert.Empty(t, got[channel].Problem, "what a poll found is the rebuilt machine's to find again")
 	})
 
 	t.Run("the installation identity survives", func(t *testing.T) {
@@ -794,6 +821,48 @@ func TestExportValidationRefusesAnUnusableDocument(t *testing.T) {
 			assert.Contains(t, err.Error(), "channel_marks")
 		})
 	}
+
+	// An accepted index with no sequence would admit any replay, and one
+	// naming no release would refuse every bundle its channel serves.
+	good := domain.AcceptedIndex{
+		Sequence: 1, Digest: "sha256:" + strings.Repeat("cd", 32),
+		Release: domain.ChannelIndexRelease{
+			Version: domain.MustParseVersion("1.4.0"), Digest: "sha256:" + strings.Repeat("ef", 32),
+		},
+		ExpiresAt: domain.NewTime(time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)),
+	}
+	const stable = "oci://registry.example/demo/bundle:stable"
+	for name, change := range map[string]func(*domain.AcceptedIndex) string{
+		"an index naming no channel": func(*domain.AcceptedIndex) string { return " " },
+		"an index with no sequence":  func(i *domain.AcceptedIndex) string { i.Sequence = 0; return stable },
+		"an index digest not sha256": func(i *domain.AcceptedIndex) string { i.Digest = "md5:x"; return stable },
+		"an index naming no release": func(i *domain.AcceptedIndex) string { i.Release.Version = domain.Version{}; return stable },
+		"an index with no expiry":    func(i *domain.AcceptedIndex) string { i.ExpiresAt = domain.Time{}; return stable },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := base()
+			idx := good
+			e.ChannelIndexes = domain.ChannelIndexes{change(&idx): idx}
+			err := e.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "channel_indexes")
+		})
+	}
+	t.Run("an index wrong twice over says both", func(t *testing.T) {
+		e := base()
+		idx := good
+		idx.Sequence, idx.Digest = 0, "md5:x"
+		e.ChannelIndexes = domain.ChannelIndexes{stable: idx}
+		err := e.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no sequence")
+		assert.Contains(t, err.Error(), "sha256")
+	})
+	t.Run("an accepted index", func(t *testing.T) {
+		e := base()
+		e.ChannelIndexes = domain.ChannelIndexes{stable: good}
+		require.NoError(t, e.Validate())
+	})
 
 	t.Run("only the exporting machine can decrypt", func(t *testing.T) {
 		// The failure mode this catches is an export taken on a machine

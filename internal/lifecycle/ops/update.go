@@ -39,6 +39,11 @@ type UpdateOptions struct {
 	// the layout to install from it.
 	To string
 
+	// Channel is the channel an unattended update's release was staged
+	// from, which its index is judged against under the lock (RFC 0037
+	// decision 3). Empty for an operator's update, which reads no index.
+	Channel string
+
 	// AllowOlder installs a release older than the one running, which is
 	// otherwise refused (RFC 0037 decision 4). Per run and journalled: going
 	// back past what a machine has seen is a decision made each time.
@@ -251,6 +256,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		}
 		if err := d.refuseChangedPending(ctx, recorded); err != nil {
 			return err
+		}
+		if opts.Unattended {
+			if err := d.refuseHeldForIndex(ctx, staged, opts.Channel); err != nil {
+				return err
+			}
 		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {

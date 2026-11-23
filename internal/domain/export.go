@@ -52,6 +52,12 @@ type InstallationExport struct {
 	// offered an older release by a channel that already served a newer
 	// one. An older manager reads past the field.
 	ChannelMarks ChannelMarks `yaml:"channel_marks,omitempty" json:"channel_marks,omitempty"`
+
+	// ChannelIndexes are the index each followed channel last accepted
+	// (RFC 0037 decision 31): a rebuilt machine that forgot a sequence
+	// would accept a replayed older index. An older manager reads past the
+	// field.
+	ChannelIndexes ChannelIndexes `yaml:"channel_indexes,omitempty" json:"channel_indexes,omitempty"`
 }
 
 // ChannelMark is the newest release a channel delivered to this installation:
@@ -177,6 +183,22 @@ func (e InstallationExport) Validate() error {
 		}
 		if mark.Version.IsZero() {
 			v.add("channel_marks", "the entry for %q has no version", channel)
+		}
+	}
+	// An index with no sequence would accept any replay, and one with no
+	// release would refuse every bundle the channel serves.
+	for channel, idx := range e.ChannelIndexes {
+		if strings.TrimSpace(channel) == "" {
+			v.add("channel_indexes", "an entry names no channel")
+		}
+		if idx.Sequence <= 0 {
+			v.add("channel_indexes", "the entry for %q has no sequence", channel)
+		}
+		if !contentDigest(idx.Digest) || !contentDigest(idx.Release.Digest) {
+			v.add("channel_indexes", "the entry for %q does not give its digests as sha256", channel)
+		}
+		if idx.Release.Version.IsZero() || idx.ExpiresAt.IsZero() {
+			v.add("channel_indexes", "the entry for %q names no release or no expiry", channel)
 		}
 	}
 

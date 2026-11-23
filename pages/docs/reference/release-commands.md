@@ -499,7 +499,9 @@ Signs a statement of which release a channel points at, and until when, and
 publishes it beside the channel under the tag `<channel>.index`. A channel that
 stops moving looks the same whether nothing was released or someone froze it
 on an old release, and the index's expiry is what tells the two apart.
-Machines do not read it yet. How to keep one fresh is in the
+A machine that follows the channel and pins your key checks it on every poll,
+as [updating](../operating/updating.md#a-channel-that-stops-moving) describes.
+How to keep one fresh is in the
 [publishing guide](../authoring/publishing.md#signing-the-channels-index).
 
 The release is the bundle the channel tag points at when the command runs. It

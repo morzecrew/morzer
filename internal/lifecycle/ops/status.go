@@ -114,6 +114,10 @@ type Following struct {
 	// RandomizedDelay is how late a tick may run: the timer's spread, as
 	// `update.randomized_delay` resolves it. Zero is none.
 	RandomizedDelay domain.Duration `json:"randomized_delay"`
+
+	// Index is the channel's signed index as the last poll recorded it
+	// (RFC 0037 decision 30). Absent when the channel never published one.
+	Index *ChannelIndexView `json:"index,omitempty"`
 }
 
 type BackupSummary struct {
@@ -173,6 +177,14 @@ func GetStatus(ctx context.Context, d *Deps) (Status, error) {
 			AutoApply: inst.Update.AutoApply,
 
 			RandomizedDelay: domain.Duration(inst.UpdateRandomizedDelay()),
+		}
+		records, err := d.channelIndexRecords()
+		if err != nil {
+			out.Problems = append(out.Problems,
+				"cannot read the channel indexes: "+domain.AsError(err).Message)
+		} else {
+			out.Following.Index = channelIndexView(records[out.Following.Channel], d.now())
+			out.Problems = append(out.Problems, out.Following.Index.Lines(d.now())...)
 		}
 	}
 
