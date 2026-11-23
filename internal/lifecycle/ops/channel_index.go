@@ -472,19 +472,19 @@ func (d *Deps) forgetChannelIndex(ctx context.Context, opts Options, inst domain
 
 // refuseHeldForIndex is heldForIndex again under the update's lock, for the
 // release the tick is installing: a poll that accepted another index while the
-// tick waited for the lock has the last word. Only an unattended update asks,
-// since an operator's update does not read the index (decision 30).
+// tick waited for the lock has the last word. It judges that release against
+// the followed channel's index whatever the candidate record now says, since
+// the same poll may have replaced it. Only an unattended update asks, since an
+// operator's update does not read the index (decision 30).
 func (d *Deps) refuseHeldForIndex(ctx context.Context, staged domain.Release) error {
-	candidate, err := d.State.UpdateCandidate(ctx)
-	if err != nil || !candidate.IsStaged() {
-		return err
-	}
 	inst, err := d.loadInstallation(ctx)
 	if err != nil {
 		return err
 	}
-	candidate.Version, candidate.Digest = staged.Version(), staged.Digest
-	if held := d.heldForIndex(inst, candidate); held != "" {
+	installing := domain.UpdateCandidate{
+		SourceRef: channelKey(inst.Update.Channel), Version: staged.Version(), Digest: staged.Digest,
+	}
+	if held := d.heldForIndex(inst, installing); held != "" {
 		return domain.ValidationError(nil, "%s", held)
 	}
 	return nil
