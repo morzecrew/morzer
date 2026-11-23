@@ -210,12 +210,6 @@ Stated here rather than discovered during an incident:
   inside the bundle. Extraction is confined and bounded, so what an unsigned
   hostile archive can do is refuse to extract — but the ordering is worth
   knowing: the extractor runs on bytes nothing has authenticated yet.
-- The manager stores no credentials for HTTPS. A password written into a bundle
-  URL is sent as basic auth to that URL's host, and not to another host a
-  redirect leads to; the journal and the release's recorded source keep the URL
-  with the password removed. Any other authentication means fetching the bundle
-  out of band, or publishing it to an OCI registry, where the ambient Docker
-  credentials are used.
 - An attestation leaves the machine as it is written, to the same targets the
   backups go to, and a push that fails does not fail the operation. So a machine
   lost between writing a statement and pushing it takes that statement with it;
@@ -259,6 +253,16 @@ cannot make that distinction, so it reports both alike.
 
 Kept here because a security policy that only ever grows is one nobody trusts to
 be current.
+
+- **The manager stored no credentials for HTTPS** (closed 2026-11-23). A bundle
+  behind authentication could be fetched only with a password typed into its
+  URL, where it sat in argv and shell history, and a bearer token could not be
+  sent at all. `morzer release source add` now names a server and the secret
+  its token or login is in, and `init --source-secret-file` takes one for the
+  first install. The credential is sent only to the authority it names, over
+  TLS, and never across a redirect to another host or port; a refusal names
+  the secret, never the value. A password in a URL still works, with a warning.
+  See [RFC 0038](rfcs/0038-credentials-for-https-bundle-sources.md).
 
 - **An attestation did not say a release's signature was verified**
   (closed 2026-10-29). Signatures are checked when a release is staged, and no

@@ -623,8 +623,35 @@ fetched over a connection nothing authenticated is a bundle from nobody in
 particular, and a `--insecure` that existed would be reached for at exactly the
 moment it should not be.
 
-No credentials are sent. A bundle behind authentication is fetched out of band,
-or published to a registry.
+**A server that wants a credential gets the one configured for it**, and no
+other. Store the vendor's token, or their `user:password`, as a secret, and name
+the server and the secret with [`release source add`](#release-source):
+
+```sh
+morzer secret set vendor_download_token
+morzer release source add https://downloads.vendor.example --bearer --secret vendor_download_token
+```
+
+Every request to that server sends it, each hop of a redirect included, and
+nothing else does:
+
+- **A credential goes only to the authority it names**, over TLS. The host is
+  compared ignoring case and the port after both sides default to 443, so an
+  entry for `downloads.vendor.example` is not sent to
+  `cdn.downloads.vendor.example`, nor to `downloads.vendor.example:8443`.
+- **A redirect away from the server carries nothing.** A vendor whose server
+  redirects to a CDN that wants the token needs an entry for the CDN too; one
+  that redirects to signed URLs needs none.
+- **A refusal names the secret, never its value.** A 401 or 403 from a configured
+  server says which secret it was sent; from a server with none configured, the
+  hint says how to configure one.
+
+A password typed into the reference, `https://user:token@host/…`, still works
+and is sent as basic authentication to that host. It is on the command line and
+in shell history while it does, so `update`, `release fetch` and `init` warn
+about it. When the server also has an entry, the entry's credential is sent and
+the password is not. `init` takes a credential for the release it installs from
+with `--source-secret-file`; see [the command reference](commands.md#init).
 
 ### From an OCI registry
 
@@ -965,6 +992,42 @@ morzer release trust remove RWQ...old
   key is refused from the next update, including one already staged.
 
 `--dry-run` reports what would change, and the refusals above apply to it.
+
+## release source
+
+```sh
+morzer release source list
+morzer release source add https://<host>[:port] --bearer --secret <name>
+morzer release source add https://<host>[:port] --basic --secret <name>
+morzer release source remove https://<host>[:port]
+```
+
+The HTTPS servers this installation sends a credential to, and the secret each
+credential is in, which `--secret` names. With `--bearer` the secret holds a token, sent as
+`Authorization: Bearer …`; with `--basic` it holds `user:password`, split at the
+first colon, so a password may contain colons. One trailing newline is not part
+of the value. [Over HTTPS](#over-https) says which requests are sent it.
+
+- **`add` takes a server and nothing more**: an `https://` URL with no path,
+  query or password. A server is written as its authority, lower-cased and
+  without `:443`, so two spellings of one server are one entry. Adding a server
+  that has an entry replaces it and says what it replaced; adding the same entry
+  again changes nothing. A secret that is not set yet is warned about, since the
+  next fetch from that server would be refused for it.
+- **`morzer release source remove` keeps the secret**, which `morzer secret remove` removes.
+  Removing a server with no entry changes nothing and says so.
+- `list` shows each server, its scheme and its secret's name, never a value.
+
+Each change is journaled as a `config` operation naming the server, the scheme
+and the secret, and `--dry-run` reports what would change and journals nothing.
+`morzer doctor` warns when a configured server's secret is not set
+(`release.source-credentials`). The entries travel in an export, and their
+secrets with the other secrets, so a machine rebuilt with `installation import`
+fetches its next update without a new token. A desired-state document does not
+manage them.
+
+An OCI registry is not configured here: it uses the Docker credentials, from
+`docker login` and the credential helpers.
 
 ## What the loader enforces
 

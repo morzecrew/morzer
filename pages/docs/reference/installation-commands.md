@@ -276,6 +276,11 @@ backup:
   targets:
     - url: s3://bucket/prefix
       credentials: s3_creds
+sources:
+  https:
+    - host: downloads.vendor.example
+      auth: bearer
+      secret: vendor_download_token
 ```
 
 The answer to "what is this machine" becomes a file rather than four commands.
@@ -285,7 +290,8 @@ It is reviewable, diffable, and safe to commit.
 
 Every credential in an installation is already a *reference*: a backup target
 names the secret holding its credentials, a notification target names the secret
-holding its URL. The document carries those names. `secrets` is a list of names
+holding its URL, and a [source](release-commands.md#release-source) names the
+secret holding the token an HTTPS server is sent. The document carries those names. `secrets` is a list of names
 too — what `secret set` would have to be run for, never what was set.
 
 That is a property of the configuration rather than a filter applied on the way
