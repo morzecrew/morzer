@@ -4,11 +4,13 @@
   2026-10-19** (§2.2). Its finding, that §4.1's string subtraction does not
   keep the names decision 3 excludes, is answered by decision 14. **P2 built
   2026-10-20**: `release prune` and dev mode's prune remove the images only
-  the pruned releases named. What remains is demand-gated (§9). Two proposals
-  from the build wait in
-  [logs/prune-release-images.md](../logs/prune-release-images.md): a name
-  already absent counts as removed rather than kept (§4.5, decision 8), and
-  0023 §6's count of optional capabilities is now 9. Ruled 2026-10-16:
+  the pruned releases named. What remains is demand-gated (§9). Of the build's
+  two proposals in
+  [logs/prune-release-images.md](../logs/prune-release-images.md), decision 15
+  records the first: a name already absent counts as removed rather than kept
+  (§4.5, decision 8). The second, that 0023 §6's count of optional
+  capabilities is now 9, was overtaken by 0023 P3's own baseline, which its
+  reconciliation records (the log says why, 2026-11-23). Ruled 2026-10-16:
   decisions 1, 3, 4, 5 and 9 as written, 11 and 12 settled, 13 added. Ruled
   2026-10-19: 14 added, 4 and 11 stand.
 - **Scope:** What happens to container images when a release is pruned. Today
@@ -559,6 +561,7 @@ the cost, and decision 11 the row that reopens it.
 | 12 | The report names each reference removed and does not distinguish "name removed, bytes kept" from "image deleted"; the docs say a removed name may free no disk | ASSUMED | The daemon reports both (`Untagged:` / `Deleted:`), and what the operator asked for is that the manager stop leaking names. Freed bytes are added when an operator asks for them. Was `OPEN`. Ruled by the author 2026-10-16. |
 | 13 | Images of releases pruned before this ships are not reclaimed; the docs say once how to clear them by hand | ASSUMED | Their manifests went with their directories, so nothing names them as the manager's, and finding them means sweeping the store, which decision 1 rules out: a pulled image cannot be told from anyone else's. Bundled aliases (`<repo>:morzer-sha256-<hex>`) could be, since only the manager creates them, but they are not the pulled images the request is about. Ruled by the author 2026-10-16. |
 | 14 | **Refines decision 3.** The exclusion compares the names the daemon resolves, not strings: each reference is keyed by its normalized repository and digest, and a bundled alias `R:morzer-sha256-<hex>` is keyed as `R@sha256:<hex>`. A candidate is removed only when no remaining reference has its key, and one whose key cannot be computed is kept | LOCKED | Measured in P1 (§2.2): removing a tag removes the same repository's digest references unless another tag of it stays, so a pruned release's alias took a remaining release's pulled `R@D` with it; and `postgres:17@D`, `postgres@D` and `docker.io/library/postgres@D` are one name to the daemon and three strings to §4.1. String subtraction kept neither promise decision 3 makes. Ruled by the author 2026-10-19. |
+| 15 | **Refines decision 8 and §4.5.** A reference already absent from the store counts as removed, not kept: `RemoveImage` returns nil for it, as `IngestImages` treats a name already present as done, and the prune reports it as removed. Kept means the name is still in the store | ASSUMED | Removing an alias removes its repository's digest references on the same image (§2.2), so a prune whose set holds both `A` and `R@D` sees the second removal answer `No such image`. Reporting that as kept would claim a name the store no longer holds. *(2026-10-19, from the build of P2.)* See [logs/prune-release-images.md](../logs/prune-release-images.md) (D-8, attempt 1, 2026-10-19T21:36:20Z, departed). |
 
 ## 9. Phasing
 
