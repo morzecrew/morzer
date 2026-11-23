@@ -2,6 +2,7 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -379,4 +380,45 @@ func TestAnUnmovedIndexedChannelDownloadsNoBundle(t *testing.T) {
 	assert.False(t, followOnce(t, h).Moved)
 	assert.Equal(t, fetched, vendor.registry.blobBytes.Load())
 	assert.Equal(t, reads+1, vendor.registry.indexReads.Load(), "the index is read on every poll")
+}
+
+// An index accepted while an unattended install waits for the lock is checked
+// again under it: the install must not land a release the index no longer
+// names.
+func TestAnUnattendedInstallRechecksTheIndexUnderTheLock(t *testing.T) {
+	h, registry := recoverableChannel(t)
+	ctx := context.Background()
+	keyPath := filepath.Join(t.TempDir(), "vendor.key")
+	pub, err := signer.New(keyPath, "vendor").EnsureKey(ctx)
+	require.NoError(t, err)
+	h.Deps.Checker = signer.NewChecker()
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	inst.Policy.SigningKeys = []string{pub.Line}
+	require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+	ref, err := ports.ParseRef(inst.Update.Channel)
+	require.NoError(t, err)
+	resolved, err := h.Deps.Source.Resolve(ctx, ref)
+	require.NoError(t, err)
+	vendor := indexVendor{t: t, registry: registry, keyPath: keyPath, issued: h.Deps.Now().Add(-time.Hour),
+		release: domain.ChannelIndexRelease{Version: resolved.Version, Digest: resolved.Digest}}
+	vendor.publish(1000, vendor.release)
+	require.True(t, followOnce(t, h).Candidate.IsStaged())
+
+	// Another poll, landing while the tick waits for the lock, accepts an
+	// index naming a release the tag does not serve.
+	channel := ports.RedactRefCredentials(inst.Update.Channel)
+	h.Locker.BeforeAcquire = func() {
+		raw, err := json.Marshal(domain.ChannelIndexRecords{channel: {Accepted: &domain.AcceptedIndex{
+			Sequence: 2000, Digest: "sha256:" + strings.Repeat("cd", 32), Release: unservedRelease,
+			ExpiresAt: domain.NewTime(h.Deps.Now().Add(24 * time.Hour)),
+		}}})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(h.Deps.Paths.ChannelIndexesFile(), raw, 0o640))
+	}
+
+	res, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.Error(t, err)
+	assert.False(t, res.Applied)
+	assert.Contains(t, err.Error(), "names 1.4.0, not the staged 1.3.0")
 }

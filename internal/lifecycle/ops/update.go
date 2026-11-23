@@ -252,6 +252,11 @@ func Update(ctx context.Context, d *Deps, opts UpdateOptions) (Result, error) {
 		if err := d.refuseChangedPending(ctx, recorded); err != nil {
 			return err
 		}
+		if opts.Unattended {
+			if err := d.refuseHeldForIndex(ctx, staged); err != nil {
+				return err
+			}
+		}
 		result, err = d.Engine.Run(ctx, op, d.engineOptions(opts.Options, inst.ID, prior))
 		if err == nil && result.Record.Status == domain.StatusSucceeded && !opts.DryRun {
 			d.reconcileUnitsAfterConverge(ctx)
