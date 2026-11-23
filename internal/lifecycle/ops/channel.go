@@ -63,12 +63,19 @@ type FollowChannelResult struct {
 	// ForgotIndex is the sequence of the accepted index `--forget-index`
 	// forgot, zero when it forgot none.
 	ForgotIndex int64 `json:"forgot_index,omitempty"`
+
+	// WouldForgetIndex is the sequence a plan with `--forget-index` would
+	// forget: the plan forgets nothing, and polls as if it had.
+	WouldForgetIndex int64 `json:"would_forget_index,omitempty"`
 }
 
 // Summary renders the outcome for a human.
 func (r FollowChannelResult) Summary() string {
-	if r.ForgotIndex != 0 {
+	switch {
+	case r.ForgotIndex != 0:
 		return fmt.Sprintf("forgot the index accepted under sequence %d; %s", r.ForgotIndex, r.outcome())
+	case r.WouldForgetIndex != 0:
+		return fmt.Sprintf("would forget the index accepted under sequence %d; %s", r.WouldForgetIndex, r.outcome())
 	}
 	return r.outcome()
 }
@@ -143,10 +150,13 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 	}
 
 	channel := ports.RedactRefCredentials(ref)
-	var forgot int64
+	var forgot, wouldForget int64
 	if opts.ForgetIndex {
 		if forgot, err = d.forgetChannelIndex(ctx, opts.Options, inst, channel); err != nil {
 			return FollowChannelResult{Ref: channel}, err
+		}
+		if opts.DryRun {
+			forgot, wouldForget = 0, forgot
 		}
 	}
 
@@ -159,12 +169,15 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 		Ref:            channel,
 		UpstreamDigest: state.UpstreamDigest,
 		ForgotIndex:    forgot,
+
+		WouldForgetIndex: wouldForget,
 	}
 
 	// The index on every poll, before the unmoved return: a frozen channel
 	// is one that never moves, so a check made only when it moves would
 	// never see one (RFC 0037 decision 17).
-	record, err := d.pollChannelIndex(ctx, opts.Options, inst, parsed, channel, state.UpstreamDigest)
+	record, err := d.pollChannelIndex(ctx, opts.Options, inst, parsed, channel, state.UpstreamDigest,
+		wouldForget != 0)
 	if err != nil {
 		return result, err
 	}

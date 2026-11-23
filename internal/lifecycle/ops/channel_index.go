@@ -348,8 +348,12 @@ func expiryDue(inst domain.Installation, rec *domain.ChannelIndexRecord, now tim
 // once per re-sign rather than once per tick, and under the deployment lock,
 // judging again from the record as it stands there. An expiry is notified
 // once, after the write that records it.
+//
+// forgotten is a plan's `--forget-index`: the record is judged from nothing, as
+// it would be once forgotten, and nothing is written.
 func (d *Deps) pollChannelIndex(
 	ctx context.Context, opts Options, inst domain.Installation, ref ports.Ref, channel, upstream string,
+	forgotten bool,
 ) (domain.ChannelIndexRecord, error) {
 	poll, err := d.readChannelIndex(ctx, inst, ref)
 	if err != nil {
@@ -365,6 +369,9 @@ func (d *Deps) pollChannelIndex(
 			return nil, domain.ChannelIndexRecord{}, false, false, err
 		}
 		prev := records[channel]
+		if forgotten {
+			prev = domain.ChannelIndexRecord{}
+		}
 		next := d.judgeChannelIndex(inst, prev, poll, tag, d.now())
 		notify := expiryDue(inst, &next, d.now())
 		records[channel] = next
@@ -407,6 +414,7 @@ func sameIndexRecord(a, b domain.ChannelIndexRecord) bool {
 // forgetChannelIndex forgets the channel's accepted index, for a vendor who
 // stopped publishing one (decision 25), and journals it. It returns the
 // sequence forgotten, zero when none was accepted, and then journals nothing.
+// A plan forgets nothing: pollChannelIndex judges as if it had.
 func (d *Deps) forgetChannelIndex(ctx context.Context, opts Options, inst domain.Installation, channel string) (int64, error) {
 	if opts.DryRun {
 		records, err := d.channelIndexRecords()

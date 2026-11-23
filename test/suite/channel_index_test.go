@@ -453,3 +453,24 @@ func TestAnIndexIsForgottenOnlyOnceTheJournalSaysSo(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1000), res.ForgotIndex)
 }
+
+// A plan forgets nothing, and shows the poll the forgetting would lead to.
+func TestAPlannedForgetShowsThePollItWouldLeadTo(t *testing.T) {
+	h, vendor, _ := indexedChannel(t)
+	vendor.publish(1000, unservedRelease)
+	require.NotEmpty(t, followOnce(t, h).Candidate.Refused)
+	vendor.registry.publishIndex(nil, nil)
+
+	res, err := ops.FollowChannel(context.Background(), h.Deps, ops.FollowChannelOptions{
+		Options: ops.Options{DryRun: true}, Explicit: true, ForgetIndex: true,
+	})
+	require.NoError(t, err)
+	assert.Zero(t, res.ForgotIndex)
+	assert.Equal(t, int64(1000), res.WouldForgetIndex)
+	assert.True(t, res.Moved, "without the index the refused bundle is looked at again")
+	assert.Contains(t, res.Summary(), "would forget the index accepted under sequence 1000")
+
+	records, err := os.ReadFile(h.Deps.Paths.ChannelIndexesFile())
+	require.NoError(t, err)
+	assert.Contains(t, string(records), `"sequence": 1000`, "a plan forgot the index")
+}
