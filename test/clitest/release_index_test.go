@@ -150,6 +150,24 @@ func TestReleaseIndexRefusesASequenceNotHigherThanItsOwn(t *testing.T) {
 	}
 }
 
+// The index is issued after every read of the registry, the published
+// index's included, so a slow registry does not eat into --valid-for.
+func TestReleaseIndexIsIssuedAfterTheRegistryIsRead(t *testing.T) {
+	r, reg, channel, _, keyPath, pub := indexFixture(t)
+	r.Run("release", "index", channel, "--key", keyPath).ExitCode(0)
+	reg.ReadDelay = 50 * time.Millisecond
+
+	r.Run("release", "index", channel, "--key", keyPath).ExitCode(0)
+	read := reg.ReadAt("stable.index")
+	if read.IsZero() {
+		t.Fatal("the published index was not read")
+	}
+	if idx := publishedIndex(t, channel, pub); idx.Sequence < read.UnixMilli() {
+		t.Errorf("issued at %d, %dms before the published index was read",
+			idx.Sequence, read.UnixMilli()-idx.Sequence)
+	}
+}
+
 // An index this key signed for another channel is one no machine following
 // this channel would accept, so it does not count either.
 func TestReleaseIndexReplacesAnIndexForAnotherChannel(t *testing.T) {

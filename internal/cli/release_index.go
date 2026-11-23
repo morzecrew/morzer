@@ -176,15 +176,15 @@ func publishChannelIndex(ctx context.Context, source *oci.Source, key *signer.Si
 		return report, "", err
 	}
 
-	// Issued after the pull, so a slow download does not eat into the
-	// validity the vendor asked for.
-	idx := domain.NewChannelIndex(channel, resolved.Version, resolved.Digest, time.Now(), validFor)
-	report.Sequence, report.IssuedAt, report.ExpiresAt, report.Release = idx.Sequence, idx.IssuedAt, idx.ExpiresAt, idx.Release
-
 	published, found, err := source.FetchIndex(ctx, ref)
 	if err != nil {
 		return report, "", err
 	}
+
+	// Issued after the last registry read, so a slow registry does not eat
+	// into the validity the vendor asked for.
+	idx := domain.NewChannelIndex(channel, resolved.Version, resolved.Digest, time.Now(), validFor)
+	report.Sequence, report.IssuedAt, report.ExpiresAt, report.Release = idx.Sequence, idx.IssuedAt, idx.ExpiresAt, idx.Release
 	var warning string
 	if found {
 		prior, problem := checkedIndex(published, publicKey, channel)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -43,6 +44,12 @@ type Registry struct {
 	// registry does for credentials that may not pull it.
 	DenyRead string
 
+	// ReadDelay holds every manifest read this long before it is served:
+	// a slow registry, so a test can tell what was sampled before a read
+	// from what was sampled after it.
+	ReadDelay time.Duration
+	readAt    map[string]time.Time
+
 	requests  atomic.Int64
 	writes    atomic.Int64
 	uploads   atomic.Int64
@@ -61,7 +68,16 @@ func NewRegistry() *Registry {
 		blobs:     map[string][]byte{},
 		manifests: map[string]stored{},
 		tags:      map[string]string{},
+		readAt:    map[string]time.Time{},
 	}
+}
+
+// ReadAt is when a manifest was last served under ref, a tag or a digest:
+// after ReadDelay, as the client received it.
+func (r *Registry) ReadAt(ref string) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.readAt[ref]
 }
 
 // Requests counts every request, including the version probe.
@@ -203,6 +219,12 @@ func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, ref string
 	if !ok {
 		http.NotFound(w, req)
 		return
+	}
+	if req.Method != http.MethodHead {
+		time.Sleep(r.ReadDelay)
+		r.mu.Lock()
+		r.readAt[ref] = time.Now()
+		r.mu.Unlock()
 	}
 	w.Header().Set("Content-Type", m.mediaType)
 	w.Header().Set("Docker-Content-Digest", dgst)
