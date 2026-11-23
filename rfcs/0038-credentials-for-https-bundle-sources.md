@@ -1,8 +1,9 @@
 # RFC 0038 — Credentials for HTTPS bundle sources
 
 - **Status:** 📝 Draft — proposed, and ruled by the author 2026-11-01: §11's
-  `OPEN` rows as recommended. Row 1 shipped in #170; P1 is gated on a vendor
-  asking
+  `OPEN` rows as recommended. Row 1 shipped in #170. P1 was gated on a vendor
+  asking, and the author ruled 2026-11-23 to build it now: decision 10 lifts
+  the gate, and decisions 11–17 settle what the design left open.
 - **Scope:** How the manager authenticates to an HTTPS server that serves
   release bundles only to customers who log in. Covers where a credential lives
   (the installation's secret store, named per host in `installation.yaml`),
@@ -213,7 +214,7 @@ is ignored, so one request never carries two answers.
 | # | Grade | Decision |
 | --- | --- | --- |
 | 1 | `ASSUMED` | **Fix the journal defect now, apart from this RFC?** Recommended yes: `update` journals a reference's userinfo password verbatim (`update.go:338`), and the fix is to pass the flag through `RedactRefCredentials` as `SourceRef` already is. One line and a regression test, whatever is decided about the rest. Was `OPEN`; ruled by the author 2026-11-01: as recommended; the fix had already landed in #170, and the journalled flag is redacted at `update.go:356`. |
-| 2 | `ASSUMED` | **Build stored credentials now, or gate them on a vendor asking?** Recommended: gate. Userinfo works for the occasional manual fetch once row 1 is fixed, OCI covers authenticated distribution with ambient credentials, and no vendor has asked. Was `OPEN`; ruled by the author 2026-11-01: as recommended, gated on a vendor asking. |
+| 2 | `ASSUMED` | **Build stored credentials now, or gate them on a vendor asking?** Recommended: gate. Userinfo works for the occasional manual fetch once row 1 is fixed, OCI covers authenticated distribution with ambient credentials, and no vendor has asked. Was `OPEN`; ruled by the author 2026-11-01: as recommended, gated on a vendor asking. Superseded by decision 10. |
 | 3 | `ASSUMED` | **Configuration shape: per host (`sources.https[].host`) or per reference?** Recommended per host: a credential belongs to a server, and a per-reference credential would have to be repeated for every version an operator installs. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
 | 4 | `ASSUMED` | **Userinfo references once stored credentials exist: keep silently, warn, or refuse?** Recommended: warn that the password is on the command line and point at `sources.https`, without refusing, since refusing breaks scripts that work today. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
 | 5 | `ASSUMED` | **Schemes: bearer and basic, or bearer only?** Recommended both: basic is what many simple download servers speak, and it costs one branch. Was `OPEN`; ruled by the author 2026-11-01: as recommended. |
@@ -221,6 +222,14 @@ is ignored, so one request never carries two answers.
 | 7 | `ASSUMED` | Matching is per request, on the exact authority: host case-insensitive, port defaulted to 443 on both sides, `https` only, with no suffix or wildcard matching. A redirect to another host, or to the same host on another port, never carries the credential. |
 | 8 | `ASSUMED` | A configured credential takes precedence over userinfo in the reference, so a request never carries two. |
 | 9 | `ASSUMED` | An export carries the `sources.https` entries and their secrets as it carries backup credentials, encrypted to the recovery recipients. |
+| 10 | `ASSUMED` | **Supersedes decision 2.** Stored credentials, P1, are built now, without waiting for a vendor to ask. Ruled by the author 2026-11-23. |
+| 11 | `ASSUMED` | An operator manages the `sources.https` entries with `morzer release source add https://<host>[:port] --bearer --secret <name>` (or `--basic`), `release source remove <host>` and `release source ls` (names `ASSUMED`). Each change is journaled, naming the host, the scheme and the secret's name and never its value. `backup target add` and `release trust add` only take the deployment lock and write the state, but a change to where a credential is sent is worth a record. `remove` leaves the secret in the store and says so. Rejected: entries only through a `config apply` document, which leaves no command to type; and a setting per host, which would put the scheme and the secret's name into one value. Ruled by the author 2026-11-23. |
+| 12 | `ASSUMED` | `init --release https://…` takes the credential with `--source-auth` (`bearer` or `basic`), `--source-secret-file <file>` and `--source-secret <name>` (names `ASSUMED`; the default secret name is left to the build). Init fetches the release before it creates the secret store, so it holds the value in memory from its first fetch on, including the one that reads the product's name from the bundle when `--product` is not given, then stores it as the named secret and writes the entry into the installation, and later updates use it. Without the flags, a password in the reference still works, with decision 4's warning. Rejected: leaving `init` to a password in the reference or to a local path, which keeps the argv exposure at a customer's first contact with the vendor's server; and reordering `init` so that the store exists before the fetch. Ruled by the author 2026-11-23. |
+| 13 | `ASSUMED` | A desired-state document ([RFC 0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md)) does not manage the `sources.https` entries or their secrets in P1: they stay local to each machine. The settings a sync may manage are a closed list, and adding these needs a row of its own, deciding among other things where a token may be sent. Ruled by the author 2026-11-23. |
+| 14 | `ASSUMED` | A credential secret's value has a trailing newline trimmed. For `bearer` it is the token. For `basic` it holds `user:password`, split at the first colon, so a password may contain colons. Ruled by the author 2026-11-23. |
+| 15 | `ASSUMED` | `doctor` checks that each `sources.https` entry's secret is set, and warns rather than fails when one is not: the machine still runs, and only its next fetch from that host would fail. Answers §10's question. Ruled by the author 2026-11-23. |
+| 16 | `ASSUMED` | **Refines decision 4.** The warning about a password in a reference is given by `update`, `release fetch` and `init`, the commands that fetch over HTTPS, and none of them refuses. Ruled by the author 2026-11-23. |
+| 17 | `ASSUMED` | `sources.https` is a new field of installation state, so `InstallationSchemaVersion` goes from 22 to 23 with a migration, for RFC 0007 decision 9's reason. The manifest does not change, so no release needs a version floor. Ruled by the author 2026-11-23. |
 
 ## 12. Phasing
 
@@ -228,3 +237,5 @@ is ignored, so one request never carries two answers.
 - **P1 — stored credentials** (§5), gated on row 2: the schema field, the
   transport wrapper, the hints, describe/export, docs, and SECURITY.md's entry
   moved to Closed gaps.
+  *(2026-11-23: decision 10 superseded row 2, and P1 is built now; decisions
+  11–17 settle what it left open.)*
