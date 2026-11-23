@@ -3715,6 +3715,10 @@ morzer<span class="w"> </span>update<span class="w"> </span>--to<span class="w">
 <td>Follow the configured channel: fetch and verify what it points at, without installing it.</td>
 </tr>
 <tr>
+<td><code>--forget-index</code></td>
+<td>With <code>--stage</code>: forget the <a href="../../operating/updating/#a-channel-that-stops-moving">signed index</a> accepted from the channel, for a vendor who stopped publishing one, then poll. Recorded in the journal. Refused without <code>--stage</code>.</td>
+</tr>
+<tr>
 <td><code>--unattended</code></td>
 <td>One scheduled tick: follow the channel, stage, and install only what declares a failure cannot need a database restore. This is what the update timer runs; see <a href="../../operating/unattended-updates/">unattended updates</a>. On a Mac it exits 7 while the engine does not answer, and the start at boot runs it once it does; see <a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>.</td>
 </tr>
@@ -3904,7 +3908,7 @@ not answer, and the start at boot runs it once it does; see
 <a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>. Every run leaves out of <code>config.operations</code> the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.</p>
-<p>Six checks are advisory by design, and warn rather than fail:</p>
+<p>Seven checks are advisory by design, and warn rather than fail:</p>
 <table>
 <thead>
 <tr>
@@ -3932,6 +3936,10 @@ unfinished.</p>
 <tr>
 <td><code>secrets.ephemeral-storage</code></td>
 <td>The directory decrypted secrets are written to is not tmpfs, so they touch disk and are not reliably erasable. A container with no tmpfs mounted is a legitimate way to run this.</td>
+</tr>
+<tr>
+<td><code>release.channel-index</code></td>
+<td>The followed channel's <a href="../../operating/updating/#a-channel-that-stops-moving">signed index</a>, as the last poll found it: ok with its sequence, release and expiry, and a warning when it has expired, when the channel's tag still serves another release than it names, when the last index found was not accepted, or when the channel publishes one this machine pins no key to check. It reads no registry. Present only on a machine that follows a channel.</td>
 </tr>
 <tr>
 <td><code>runtime.images-local</code></td>

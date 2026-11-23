@@ -2489,7 +2489,7 @@ morzer<span class="w"> </span>notify<span class="w"> </span>target<span class="w
 <p>Diagnostics then name the target <code>chat</code> and never say where it points, which is
 the trade: you lose "unreachable host x" and keep the token out of your logs.</p>
 <h2 id="what-is-sent">What is sent<a class="headerlink" href="#what-is-sent" title="Permanent link">&para;</a></h2>
-<p>Six kinds of event, and no others:</p>
+<p>Seven kinds of event, and no others:</p>
 <ul>
 <li><code>operation.finished</code> — the outcome of an <code>apply</code>, <code>update</code>, <code>rollback</code>,
   <code>config</code>, <code>backup</code> or <code>restore</code>, including <strong>failures</strong>.</li>
@@ -2508,6 +2508,9 @@ the trade: you lose "unreachable host x" and keep the token out of your logs.</p
   again.</li>
 <li><code>sync.expired</code> — the desired-state document in force has expired and nothing
   newer is published. Sent when a sync cycle first finds it so.</li>
+<li><code>update.index_expired</code> — the <a href="../updating/#a-channel-that-stops-moving">signed index</a>
+  of the followed channel has expired and was not re-signed: a vendor gone
+  quiet, or a channel held back. Sent once per index.</li>
 </ul>
 <p>The payload is the manager's own event <abbr title="JavaScript Object Notation">JSON</abbr>, the same shape <code>--log-format json</code>
 emits. A service wanting a different body gets a two-line receiver.</p>

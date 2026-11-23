@@ -2792,10 +2792,9 @@ nothing or someone who controls the registry froze it on an old release with a
 known hole. A signed index tells the two apart. It names the release the
 channel points at and a date it expires, and you re-sign it before that date
 whether or not you released. A machine that follows the channel and pins your
-key is to warn once the index expires.</p>
-<p>Machines do not read the index yet: this release publishes it, and checking it
-on the machines comes in a later one. What follows describes the check as it is
-designed.</p>
+key warns once the index expires, and refuses a bundle the index does not name.
+What the machine checks is in
+<a href="../../operating/updating/#a-channel-that-stops-moving">updating</a>.</p>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>index<span class="w"> </span>oci://registry.example/demo/bundle:stable<span class="w"> </span>--key<span class="w"> </span>./release.key
 </code></pre></div>
 <p>It pulls the bundle <code>stable</code> points at and writes its version and content
