@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -59,4 +60,31 @@ func TestTheEquivalentCommandNamesTheCredentialsFileNotItsValue(t *testing.T) {
 	got = EquivalentCommand(ops.InitOptions{Product: "demo", Source: src})
 	assert.NotContains(t, got, "--source-auth", "the default scheme is spelled out")
 	assert.NotContains(t, got, "--source-secret ", "the default secret name is spelled out")
+}
+
+// A credential is a token or a login, read from a regular file and bounded as
+// it is read: a pipe or a device would hang init or exhaust its memory, and a
+// file may grow after its size was looked at.
+func TestInitReadsACredentialFileWithABound(t *testing.T) {
+	app := &App{}
+	cmd := &cobra.Command{}
+	cmd.Flags().String("source-auth", "", "")
+	cmd.Flags().String("source-secret", "", "")
+	release := "https://downloads.vendor.example/demo-1.2.0.tar.zst"
+
+	fifo := filepath.Join(t.TempDir(), "fifo")
+	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+	_, err := app.initSource(cmd, release, false, "bearer", "", fifo)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
+
+	_, err = app.initSource(cmd, release, false, "bearer", "", "/dev/zero")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a regular file")
+
+	big := filepath.Join(t.TempDir(), "big")
+	require.NoError(t, os.WriteFile(big, make([]byte, maxSourceSecretFile+1), 0o600))
+	_, err = app.initSource(cmd, release, false, "bearer", "", big)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "larger than")
 }

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"io"
 	"os"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -116,18 +118,11 @@ func (a *App) initSource(cmd *cobra.Command, release string, repair bool, auth, 
 	if !domain.SourceAuth(auth).Valid() {
 		return nil, domain.Usage("--source-auth %q is neither bearer nor basic", auth)
 	}
-	info, err := os.Stat(file)
+	value, err := readSourceSecretFile(file)
 	if err != nil {
-		return nil, domain.Usage("cannot read --source-secret-file %s: %s", file, err)
+		return nil, err
 	}
-	if info.Size() > maxSourceSecretFile {
-		return nil, domain.Usage("--source-secret-file %s is larger than %d KiB, which no credential is", file, maxSourceSecretFile>>10)
-	}
-	value, err := os.ReadFile(file)
-	if err != nil {
-		return nil, domain.Usage("cannot read --source-secret-file %s: %s", file, err)
-	}
-	src, err := ops.NewInitSource(release, domain.SourceAuth(auth), secret, string(value), file)
+	src, err := ops.NewInitSource(release, domain.SourceAuth(auth), secret, value, file)
 	if err != nil {
 		return nil, err
 	}
@@ -135,4 +130,32 @@ func (a *App) initSource(cmd *cobra.Command, release string, repair bool, auth, 
 		a.sourceCredentials.Hold(src)
 	}
 	return src, nil
+}
+
+// readSourceSecretFile reads a credential from a regular file, bounded as it
+// is read. Opened without blocking and checked through the descriptor, so a
+// pipe cannot hang init and a file swapped after a check is the one checked;
+// read through a limit, because a file can grow after its size is looked at.
+func readSourceSecretFile(file string) (string, error) {
+	f, err := os.OpenFile(file, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", domain.Usage("cannot read --source-secret-file %s: %s", file, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return "", domain.Usage("cannot read --source-secret-file %s: %s", file, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", domain.Usage("--source-secret-file %s is not a regular file", file)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxSourceSecretFile+1))
+	if err != nil {
+		return "", domain.Usage("cannot read --source-secret-file %s: %s", file, err)
+	}
+	if len(data) > maxSourceSecretFile {
+		return "", domain.Usage("--source-secret-file %s is larger than %d KiB, which no credential is",
+			file, maxSourceSecretFile>>10)
+	}
+	return string(data), nil
 }
