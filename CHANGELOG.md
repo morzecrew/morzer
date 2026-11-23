@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server it names, never across a redirect. Installation state moves to schema
   23, so an older manager refuses a machine this one ran on.
 
+- A server that redirects without end no longer gets the reference's query
+  printed and journaled with the refusal. A signed URL carries its token
+  there.
+
 ### Fixed
 
 - An update tick on a channel that has not moved now says which staged

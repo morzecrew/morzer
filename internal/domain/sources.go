@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -88,6 +89,11 @@ func SourceAuthority(host, port string) string {
 		port = strconv.Itoa(n)
 	}
 	if strings.Contains(host, ":") {
+		// An IPv6 address is written as netip writes it, so its every
+		// spelling is one authority.
+		if addr, err := netip.ParseAddr(host); err == nil {
+			host = addr.String()
+		}
 		host = strings.Replace(host, "%", "%25", 1)
 	}
 	if port == "" || port == "443" {

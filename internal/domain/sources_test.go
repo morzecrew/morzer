@@ -22,6 +22,10 @@ func TestASourceIsNamedByItsAuthority(t *testing.T) {
 		{"IPv6 with a port", "https://[2001:db8::1]:8443", "[2001:db8::1]:8443"},
 		{"scoped IPv6", "https://[fe80::1%25eth0]", "[fe80::1%25eth0]"},
 		{"scoped IPv6 with a port", "https://[fe80::1%25eth0]:8443", "[fe80::1%25eth0]:8443"},
+		// An IPv6 address has many spellings, and one is the address's own.
+		{"IPv6 written in full", "https://[2001:0DB8:0:0:0:0:0:1]", "[2001:db8::1]"},
+		{"IPv6 with leading zeros and a port", "https://[2001:0db8::0001]:8443", "[2001:db8::1]:8443"},
+		{"scoped IPv6 written in full", "https://[fe80:0:0:0:0:0:0:1%25eth0]", "[fe80::1%25eth0]"},
 		{"a path", "https://downloads.vendor.example:443/path", ""},
 		{"plain http", "http://downloads.vendor.example", ""},
 		{"a password", "https://user:s3cr3t@downloads.vendor.example", ""},
@@ -58,6 +62,7 @@ func TestASourceEntryReadFromStateIsChecked(t *testing.T) {
 		{"upper case host", domain.HTTPSSource{Host: "Downloads.Vendor.Example", Auth: domain.SourceAuthBearer, Secret: "t"}},
 		{"default port", domain.HTTPSSource{Host: "downloads.vendor.example:443", Auth: domain.SourceAuthBearer, Secret: "t"}},
 		{"a leading zero", domain.HTTPSSource{Host: "downloads.vendor.example:08443", Auth: domain.SourceAuthBearer, Secret: "t"}},
+		{"IPv6 not in its own spelling", domain.HTTPSSource{Host: "[2001:0db8::1]", Auth: domain.SourceAuthBearer, Secret: "t"}},
 		{"a port out of range", domain.HTTPSSource{Host: "downloads.vendor.example:99999", Auth: domain.SourceAuthBearer, Secret: "t"}},
 		{"a path", domain.HTTPSSource{Host: "downloads.vendor.example/x", Auth: domain.SourceAuthBearer, Secret: "t"}},
 		{"unknown auth", domain.HTTPSSource{Host: "downloads.vendor.example", Auth: "digest", Secret: "t"}},

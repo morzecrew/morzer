@@ -446,7 +446,7 @@ func (s *Source) copyBody(shown string, resp *http.Response, path string) error 
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= maxRedirectDepth {
 		return domain.ValidationError(nil,
-			"too many redirects fetching %s", via[0].URL.Redacted())
+			"too many redirects fetching %s", source.Shown(via[0].URL.String()))
 	}
 	if req.URL.Scheme != Scheme {
 		return domain.ValidationError(nil,
