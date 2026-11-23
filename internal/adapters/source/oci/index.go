@@ -9,6 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote/errcode"
 
 	"github.com/morzecrew/morzer/internal/domain"
@@ -39,6 +40,11 @@ var _ ports.ChannelIndexReader = (*Source)(nil)
 func (s *Source) FetchIndex(ctx context.Context, ref ports.Ref) (ports.PublishedIndex, bool, error) {
 	repository, channel, err := splitReference(ref.Location)
 	if err != nil || channel == "" || ref.Location[len(repository)] == '@' {
+		return ports.PublishedIndex{}, false, nil
+	}
+	// A tag a character short of the limit cannot carry ".index", so its
+	// channel has no index to publish: none, rather than a refused read.
+	if (registry.Reference{Reference: domain.ChannelIndexTag(channel)}).ValidateReferenceAsTag() != nil {
 		return ports.PublishedIndex{}, false, nil
 	}
 	reference := repository + ":" + domain.ChannelIndexTag(channel)

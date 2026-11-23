@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	signer "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
+	"github.com/morzecrew/morzer/internal/adapters/source/oci"
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -473,4 +474,14 @@ func TestAPlannedForgetShowsThePollItWouldLeadTo(t *testing.T) {
 	records, err := os.ReadFile(h.Deps.Paths.ChannelIndexesFile())
 	require.NoError(t, err)
 	assert.Contains(t, string(records), `"sequence": 1000`, "a plan forgot the index")
+}
+
+// A channel whose tag is too long to carry ".index" has no index, rather than
+// a poll that fails or records a problem every tick.
+func TestAChannelTooLongForAnIndexTagHasNone(t *testing.T) {
+	srv := newFakeRegistry(t, bundleArchive(t), oci.MediaType, 0)
+	source := newTestSource(t, srv)
+	_, found, err := source.FetchIndex(context.Background(), ociRef(srv, "demo/bundle", strings.Repeat("s", 125)))
+	require.NoError(t, err)
+	assert.False(t, found)
 }
