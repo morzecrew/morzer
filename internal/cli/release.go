@@ -66,6 +66,7 @@ func newReleaseCommand(app *App) *cobra.Command {
 		installationScope(newReleaseIngestCommand(app)),
 		installationScope(newReleasePruneCommand(app)),
 		installationScope(newReleaseTrustCommand(app)),
+		installationScope(newReleaseSourceCommand(app)),
 	)
 	return cmd
 }

@@ -42,6 +42,9 @@ func newInitCommand(app *App) *cobra.Command {
 		set              []string
 		setFiles         []string
 		mode             string
+		sourceAuth       string
+		sourceSecret     string
+		sourceFile       string
 	)
 
 	cmd := &cobra.Command{
@@ -69,6 +72,13 @@ func newInitCommand(app *App) *cobra.Command {
 			// the name from the manifest or ask for it again.
 			if product == "" {
 				product = app.Flags.product
+			}
+			// Before the first fetch, which may be the one below:
+			// the server may want its credential for that one too
+			// (RFC 0038 decision 12).
+			source, err := app.initSource(cmd, releasePath, repair, sourceAuth, sourceSecret, sourceFile)
+			if err != nil {
+				return err
 			}
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
@@ -150,6 +160,7 @@ func newInitCommand(app *App) *cobra.Command {
 				// Unset and false differ: unset requires a signature
 				// whenever a key is trusted, false says not to.
 				SignatureNotRequired: cmd.Flags().Changed("require-signature") && !requireSig,
+				Source:               source,
 			}
 
 			// Parsed before anything is created, so a typo fails
@@ -268,6 +279,13 @@ func newInitCommand(app *App) *cobra.Command {
 		"minisign public key a desired-state document must be signed with")
 	f.StringVar(&syncRecipient, "sync-recipient", "",
 		"the authority's age recipient, which this machine's facts are encrypted to")
+	f.StringVar(&sourceFile, "source-secret-file", "",
+		"a file holding the credential the https:// --release's server wants: a token, or user:password; "+
+			"stored as a secret, and sent to that server from now on")
+	f.StringVar(&sourceAuth, "source-auth", string(domain.SourceAuthBearer),
+		"how --source-secret-file's credential is sent: bearer or basic")
+	f.StringVar(&sourceSecret, "source-secret", "",
+		"the secret --source-secret-file's credential is stored as (default source_ and the server's name)")
 	f.BoolVar(&repair, "repair", false, "restore missing directories on an existing installation")
 	f.StringVar(&mode, "mode", "",
 		"what this machine is for: dev for a sandbox, or production (the default). "+

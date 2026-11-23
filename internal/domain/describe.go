@@ -81,6 +81,10 @@ type InstallationDocument struct {
 	Update UpdateConfig `yaml:"update,omitempty" json:"update,omitempty"`
 	Notify NotifyConfig `yaml:"notify,omitempty" json:"notify,omitempty"`
 	Backup BackupConfig `yaml:"backup,omitempty" json:"backup,omitempty"`
+
+	// Sources names each HTTPS server's credential by its secret, never
+	// its value (RFC 0038 §5.4).
+	Sources SourcesConfig `yaml:"sources,omitempty" json:"sources,omitzero"`
 }
 
 // DescribedRelease identifies the release by what survives a machine, rather
@@ -168,6 +172,7 @@ func (i Installation) Describe(release DescribedRelease, secretNames []string) I
 		Update:         i.Update,
 		Notify:         copyNotify(i.Notify),
 		Backup:         copyBackup(i.Backup),
+		Sources:        SourcesConfig{HTTPS: append([]HTTPSSource(nil), i.Sources.HTTPS...)},
 	}
 }
 

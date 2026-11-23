@@ -59,6 +59,9 @@ type Source struct {
 	backoff  time.Duration
 
 	cache *source.TempCache
+
+	// creds is nil where no installation can configure a credential.
+	creds ports.SourceCredentials
 }
 
 type Option func(*Source)
@@ -90,6 +93,13 @@ func New(opts ...Option) *Source {
 	}
 	for _, o := range opts {
 		o(s)
+	}
+	if s.creds != nil {
+		base := s.client.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		s.client.Transport = credentialTransport{base: base, creds: s.creds}
 	}
 	return s
 }
@@ -327,7 +337,7 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if err := checkStatus(shown, resp); err != nil {
+	if err := s.checkStatus(ctx, shown, resp); err != nil {
 		return err
 	}
 	if err := s.checkDeclaredSize(shown, resp); err != nil {
@@ -336,7 +346,7 @@ func (s *Source) attemptFetch(ctx context.Context, target, shown, path string) e
 	return s.copyBody(shown, resp, path)
 }
 
-func checkStatus(shown string, resp *http.Response) error {
+func (s *Source) checkStatus(ctx context.Context, shown string, resp *http.Response) error {
 	switch {
 	case resp.StatusCode == http.StatusOK:
 		return nil
@@ -350,8 +360,7 @@ func checkStatus(shown string, resp *http.Response) error {
 		// Retrying will not produce credentials.
 		return domain.ValidationError(nil,
 			"access to %s was refused (%d)", shown, resp.StatusCode).
-			WithHint("this build sends no credentials; fetch the bundle out of band " +
-				"and install it from a path")
+			WithHint("%s", s.refusedHint(ctx, resp))
 
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		return retryable{domain.RuntimeError(nil,

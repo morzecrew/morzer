@@ -201,6 +201,27 @@ func init() {
 	})
 }
 
+func init() {
+	ui.Register(ui.View[ops.SourcesReport]{
+		Rich:  func(w io.Writer, t *theme.Theme, v ops.SourcesReport) { emit(w, sourcesDoc(doc(w, t), v)) },
+		Plain: func(w io.Writer, v ops.SourcesReport) { emit(w, sourcesDoc(plainDoc(w), v)) },
+	})
+}
+
+// sourcesDoc lists the servers sent a credential, by secret name.
+func sourcesDoc(d *ui.Doc, r ops.SourcesReport) *ui.Doc {
+	rows := make([][]string, 0, len(r.HTTPS))
+	for _, s := range r.HTTPS {
+		rows = append(rows, []string{"https://" + s.Host, string(s.Auth), s.Secret})
+	}
+	d.Table(0, ui.Table{
+		Columns: []ui.Column{{Header: "server", Essential: true}, {Header: "auth"}, {Header: "secret", Essential: true}},
+		Rows:    rows,
+		Empty:   "no server is sent a credential",
+	})
+	return d
+}
+
 // trustDoc lists the release signing keys, and whether a signature is required
 // at all: a key trusted on a machine that requires none is a key nothing
 // insists on, which is the line an operator rotating keys needs to see.

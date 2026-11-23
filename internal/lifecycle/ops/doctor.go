@@ -284,6 +284,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if inst.Update.FollowsChannel() {
 		checks = append(checks, d.checkChannelIndex(inst))
 	}
+	if !inst.Sources.IsZero() && d.Secrets != nil {
+		checks = append(checks, d.checkSourceCredentials(inst))
+	}
 	checks = append(checks, checkMode(inst))
 	if d.Runtime != nil {
 		checks = append(checks, d.checkDeclaredRuntime(inst))

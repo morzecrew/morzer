@@ -176,6 +176,20 @@ type ChannelPeeker interface {
 	Peek(ctx context.Context, ref Ref) (ChannelState, error)
 }
 
+// SourceCredentials is the credential each HTTPS server is configured with
+// (RFC 0038). The HTTPS source asks per request, each hop of a redirect
+// included, so a server is only ever sent its own (decision 7).
+type SourceCredentials interface {
+	// SourceFor returns the entry configured for an authority in
+	// domain.SourceAuthority's form, and found=false when there is none,
+	// as on a machine with no installation. It reads no secret.
+	SourceFor(ctx context.Context, authority string) (entry domain.HTTPSSource, found bool, err error)
+
+	// RevealSource returns the value of the secret an entry names. A secret
+	// that is not set is an error naming it, never an empty credential.
+	RevealSource(ctx context.Context, entry domain.HTTPSSource) (string, error)
+}
+
 // ChannelIndexReader reads the signed index a vendor publishes beside a channel
 // (RFC 0037 §5.2). Optional, like ChannelPeeker: only a registry has a channel
 // to publish one beside.

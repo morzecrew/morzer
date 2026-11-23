@@ -192,6 +192,30 @@
       },
       "type": "array"
     },
+    "sources": {
+      "additionalProperties": false,
+      "properties": {
+        "https": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "auth": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "secret": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "update": {
       "additionalProperties": false,
       "properties": {

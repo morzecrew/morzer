@@ -417,6 +417,10 @@ func migrateInstallation(i domain.Installation) (domain.Installation, error) {
 			// 21 -> 22 added `policy.allow_unencrypted_disk` (RFC 0055).
 			// Nothing to convert: absent allows no unencrypted disk.
 			i.SchemaVersion = 22
+		case 22:
+			// 22 -> 23 added `sources` (RFC 0038). Nothing to convert:
+			// absent configures no credential.
+			i.SchemaVersion = 23
 		// case 1: there is no 1 -> 2 path. Schema 1 predates any
 		// released manager, so nothing on disk is at it.
 		default:

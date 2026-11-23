@@ -92,6 +92,11 @@ type App struct {
 
 	Deps *ops.Deps
 
+	// sourceCredentials is what the HTTPS source sends each server. Built
+	// with the source and kept with it across a rewire, so a credential
+	// `init` holds for its first fetch still answers after it (RFC 0038).
+	sourceCredentials *ops.SourceCredentials
+
 	json  *jsonout.Presenter
 	plain *plain.Presenter
 	log   *slog.Logger
@@ -1066,7 +1071,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	if a.Deps != nil && a.Deps.Source != nil {
 		sources = a.Deps.Source
 	} else {
-		registry, err := source.NewRegistry(local.New(), https.New(), oci.New())
+		// The HTTPS source asks for a server's credential per request,
+		// through whichever Deps this App holds by then (RFC 0038).
+		a.sourceCredentials = ops.NewSourceCredentials(func() *ops.Deps { return a.Deps })
+		registry, err := source.NewRegistry(local.New(), https.New(https.WithCredentials(a.sourceCredentials)), oci.New())
 		if err != nil {
 			return err
 		}
