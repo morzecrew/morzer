@@ -108,7 +108,7 @@ func isSourceAuthority(s string) bool {
 func ParseSourceURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", Usage("%q is not a URL", raw)
+		return "", Usage("%q is not a URL", RedactURLCredentials(raw))
 	}
 	switch {
 	case u.Scheme != "https":

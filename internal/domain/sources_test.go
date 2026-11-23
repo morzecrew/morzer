@@ -13,22 +13,23 @@ import (
 // is dropped, and the host is compared lower-cased (RFC 0038 decision 7).
 func TestASourceIsNamedByItsAuthority(t *testing.T) {
 	for raw, want := range map[string]string{
-		"https://downloads.vendor.example":           "downloads.vendor.example",
-		"https://Downloads.Vendor.Example:443/":      "downloads.vendor.example",
-		"https://downloads.vendor.example:8443":      "downloads.vendor.example:8443",
-		"https://[2001:db8::1]":                      "[2001:db8::1]",
-		"https://[2001:db8::1]:8443":                 "[2001:db8::1]:8443",
-		"https://downloads.vendor.example:443/path":  "",
-		"http://downloads.vendor.example":            "",
-		"https://user:pass@downloads.vendor.example": "",
-		"https://downloads.vendor.example/?a=b":      "",
-		"https://downloads.vendor.example:99999":     "",
-		"https://":                                   "",
+		"https://downloads.vendor.example":                 "downloads.vendor.example",
+		"https://Downloads.Vendor.Example:443/":            "downloads.vendor.example",
+		"https://downloads.vendor.example:8443":            "downloads.vendor.example:8443",
+		"https://[2001:db8::1]":                            "[2001:db8::1]",
+		"https://[2001:db8::1]:8443":                       "[2001:db8::1]:8443",
+		"https://downloads.vendor.example:443/path":        "",
+		"http://downloads.vendor.example":                  "",
+		"https://user:s3cr3t@downloads.vendor.example":     "",
+		"https://downloads.vendor.example/?a=b":            "",
+		"https://downloads.vendor.example:99999":           "",
+		"https://":                                         "",
+		"https://user:s3cr3t@downloads.vendor.example:bad": "",
 	} {
 		got, err := domain.ParseSourceURL(raw)
 		if want == "" {
 			require.Error(t, err, raw)
-			assert.NotContains(t, err.Error(), "pass", "a refusal quoted the password")
+			assert.NotContains(t, err.Error(), "s3cr3t", "a refusal quoted the password")
 			continue
 		}
 		require.NoError(t, err, raw)
