@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -573,6 +574,69 @@ func TestAutoApplyOffLeavesEverythingStaged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1.2.0", current.Version.String(),
 		"a machine that never opted in installed a release by itself")
+}
+
+// A tick on a channel that has not moved, with a release an earlier tick
+// staged still waiting, says what is waiting and why. "Unchanged" alone reads
+// as a quiet night, which is the one thing it is not: on most nights after a
+// release is held, this is the line the journal carries.
+func TestAQuietTickSaysWhatIsStillWaitingAndWhy(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, recoverableUpdate)
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+
+	first, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	require.True(t, first.Follow.Candidate.IsStaged(), "the first tick staged nothing: %s", first.Summary())
+	staged := first.Follow.Candidate.Version.String()
+
+	h.tick(time.Hour)
+	quiet, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{})
+	require.NoError(t, err)
+	require.False(t, quiet.Follow.Moved)
+	assert.False(t, quiet.Applied)
+	assert.Contains(t, quiet.Summary(), "unchanged", "the line no longer says the channel was read")
+	assert.Contains(t, quiet.Summary(), staged+" is staged and was not installed")
+	assert.Contains(t, quiet.Summary(), "auto_apply", "the line does not say why the release waits")
+	raw, err := json.Marshal(quiet)
+	require.NoError(t, err)
+	var shown struct {
+		Staged struct {
+			Version string `json:"version"`
+		} `json:"staged"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &shown))
+	assert.Equal(t, staged, shown.Staged.Version, "--json does not name the release that waits")
+}
+
+// A planned tick on a channel that has not moved, over a staged release the
+// gate would let through, says that a real run installs it, rather than that
+// nothing is waiting.
+func TestAQuietPlannedTickSaysWhatARealOneWouldInstall(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw),
+			"database_schema_produces: 14", "database_schema_produces: 12", 1)), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	staged, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	require.True(t, staged.Candidate.IsStaged(), "nothing was staged: %s", staged.Summary())
+	armAutoApply(t, h)
+
+	plan, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{Options: ops.Options{DryRun: true}})
+	require.NoError(t, err)
+	require.False(t, plan.Follow.Moved)
+	require.True(t, plan.Assessment.OK, "the gate refused: %s", plan.Assessment.Why())
+	assert.False(t, plan.Applied)
+	assert.Contains(t, plan.Summary(), "unchanged")
+	assert.Contains(t, plan.Summary(), staged.Candidate.Version.String()+" is staged, and a real run would install it")
 }
 
 // TestATickThatCannotTakeTheLockDoesNotFailTheUnit.

@@ -34,6 +34,12 @@ func (d *Deps) channelMarks() (domain.ChannelMarks, error) {
 		return nil, domain.InstallationError(err,
 			"the channel marks at %s are not valid JSON", d.Paths.ChannelMarksFile())
 	}
+	// JSON's null decodes to no map at all, which is damage rather than
+	// no marks: reading it as none would admit every release below them.
+	if marks == nil {
+		return nil, domain.InstallationError(nil,
+			"the channel marks at %s are null, not a record", d.Paths.ChannelMarksFile())
+	}
 	return marks, nil
 }
 
