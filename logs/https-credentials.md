@@ -132,3 +132,7 @@ evidence: internal/cli/release_source.go:80-81
 action: departed
 proposal: ASSUMED — the listing is `release source list`, with `ls` as its alias, as `config list` has. Decision 11 graded the names `ASSUMED`.
 ```
+
+Correction: the four planning entries above give `at: 2026-11-23T16:05:00Z`,
+which is wrong. They were written before the plan was committed at
+2026-11-23T15:08:58Z (`090277c1`), and before any code.
