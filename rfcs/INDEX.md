@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** and **0038** have work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023** has work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -86,10 +86,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
   installation still names them. What remains is gated on demand: an opt-out
   when an operator asks to keep them, and the Quadlet implementation with
   0023 P3.
-- **[0038 — Credentials for HTTPS bundle sources](0038-credentials-for-https-bundle-sources.md).**
-  📝 Proposed, and ruled by the author 2026-11-01 as recommended. Its row 1, a
-  journal defect that recorded a reference's password, shipped in #170. Stored
-  credentials, P1, are ruled to be built now (decision 10, 2026-11-23).
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
@@ -172,7 +168,7 @@ number in the filename in sync.
 | [0035](0035-tasks-an-operator-runs-on-demand.md) | Tasks an operator runs on demand | ✅ Complete | Letting a release declare named commands an operator runs on a deployed machine, as a one-shot container of a release service, under the lock and refused on machines the vendor ruled out. |
 | [0036](0036-generating-a-secret-a-new-release-declares.md) | Generating a secret a new release declares | ✅ Complete | What `update` does with a secret the release it installs adds: which it generates, where, how it is turned off, and why `apply` and `rollback` do not. |
 | [0037](0037-freshness-of-a-signed-release.md) | Freshness of a signed release | ✅ Complete | Stopping a correctly signed but stale release from being installed, or from being the newest a machine ever learns of: rollback to an older release, and a frozen channel. |
-| [0038](0038-credentials-for-https-bundle-sources.md) | Credentials for HTTPS bundle sources | 📝 Draft | Fetching a bundle from an HTTPS server that requires a login, without the credential reaching argv, the journal or another host. |
+| [0038](0038-credentials-for-https-bundle-sources.md) | Credentials for HTTPS bundle sources | ✅ Complete | Fetching a bundle from an HTTPS server that requires a login, without the credential reaching argv, the journal or another host. |
 | [0039](0039-publishing-a-bundle-to-an-oci-registry.md) | Publishing a bundle to an OCI registry | 🚧 In progress | Publishing a bundle archive to an OCI registry with morzer's own command: an existence check, morzer's media types, channel tags moved after the push, and both digests reported. |
 | [0040](0040-keeping-an-installation-down.md) | Keeping an installation down | ✅ Complete | Taking a product down on purpose and keeping it down across a reboot and an unattended update, until an operator starts it again. |
 | [0041](0041-files-an-operator-passes-to-a-task.md) | Files an operator passes to a task | ✅ Complete | Passing a local file to a release's task: declared inputs, staged per operation and mounted read-only into the one-off container. |
