@@ -43,6 +43,39 @@ func TestInitHoldsItsCredentialBeforeItsFirstFetch(t *testing.T) {
 	assert.False(t, found, "the held credential answers for another server")
 }
 
+// init takes the flag with every https reference the source fetches, so a
+// scheme in another case, or space around the reference, still names its
+// server; and a reference the source refuses is refused here too.
+func TestInitTakesItsCredentialWithAnyHTTPSReferenceTheSourceTakes(t *testing.T) {
+	token := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(token, []byte("tok-123\n"), 0o600))
+	app := &App{}
+	cmd := &cobra.Command{}
+	cmd.Flags().String("source-auth", "", "")
+	cmd.Flags().String("source-secret", "", "")
+
+	for _, release := range []string{
+		"HTTPS://Downloads.Vendor.Example/demo-1.2.0.tar.zst",
+		" https://downloads.vendor.example/demo-1.2.0.tar.zst\n",
+	} {
+		t.Run(release, func(t *testing.T) {
+			src, err := app.initSource(cmd, release, false, "bearer", "", token)
+			require.NoError(t, err)
+			assert.Equal(t, "downloads.vendor.example", src.Entry.Host)
+		})
+	}
+	for _, release := range []string{
+		"./demo-1.2.0.tar.zst",
+		"oci://registry.example/demo:1.2.0",
+		"http://downloads.vendor.example/demo-1.2.0.tar.zst",
+	} {
+		t.Run(release, func(t *testing.T) {
+			_, err := app.initSource(cmd, release, false, "bearer", "", token)
+			require.Error(t, err)
+		})
+	}
+}
+
 // The wizard prints the command that reproduces its run, which names the file
 // the credential came from and never the credential.
 func TestTheEquivalentCommandNamesTheCredentialsFileNotItsValue(t *testing.T) {

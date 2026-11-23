@@ -70,12 +70,17 @@ type InitSource struct {
 // NewInitSource builds `init`'s credential for the server release names. The
 // secret is named after the server when secret is empty (logs/https-credentials.md).
 func NewInitSource(release string, auth domain.SourceAuth, secret, value, file string) (*InitSource, error) {
-	rest, ok := strings.CutPrefix(release, "https://")
-	if !ok {
+	// Read as the source will read it, so every https reference it fetches
+	// takes the flag, whatever the scheme's case or the space around it.
+	ref, err := ports.ParseRef(release)
+	if strings.TrimSpace(release) == "" || err == nil && ref.Scheme != "https" {
 		return nil, domain.Usage("--source-secret-file applies to an https:// --release, not %q",
-			domain.RedactURLCredentials(release))
+			domain.RedactURLCredentials(strings.TrimSpace(release)))
 	}
-	u, err := url.Parse("https://" + rest)
+	if err != nil {
+		return nil, err
+	}
+	u, err := url.Parse("https://" + ref.Location)
 	if err != nil || u.Hostname() == "" {
 		return nil, domain.Usage("--release %q names no server", domain.RedactURLCredentials(release))
 	}
