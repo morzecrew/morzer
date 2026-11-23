@@ -311,9 +311,10 @@ func newApplyCommand(app *App) *cobra.Command {
 
 func newUpdateCommand(app *App) *cobra.Command {
 	var (
-		check      bool
-		stage      bool
-		unattended bool
+		check       bool
+		stage       bool
+		unattended  bool
+		forgetIndex bool
 	)
 
 	var (
@@ -362,6 +363,13 @@ func newUpdateCommand(app *App) *cobra.Command {
 			// operator's decision for one install (RFC 0037 decision
 			// 4); a check or a stage installs nothing, and a tick has
 			// nobody to make it.
+			// Forgetting a channel's index is a stage's preamble: the
+			// poll that follows is what reads the channel afresh.
+			if forgetIndex && !stage {
+				return domain.Usage("--forget-index applies to --stage").
+					WithHint("`morzer update --stage --forget-index` forgets the followed channel's " +
+						"index and polls it again")
+			}
 			if allowOlder && (check || stage || unattended) {
 				return domain.Usage("--allow-older applies to an install").
 					WithHint("pass it with a bundle or --to; --check, --stage and " +
@@ -440,6 +448,7 @@ func newUpdateCommand(app *App) *cobra.Command {
 				res, err := ops.FollowChannel(cmd.Context(), app.Deps,
 					ops.FollowChannelOptions{
 						Options: opts, Ref: stageRef, Explicit: true,
+						ForgetIndex: forgetIndex,
 					})
 				if err != nil {
 					return err
@@ -447,6 +456,12 @@ func newUpdateCommand(app *App) *cobra.Command {
 				if app.json != nil {
 					app.jsonData = res
 					return nil
+				}
+				if forgetIndex && res.ForgotIndex == 0 {
+					fmt.Fprintf(app.Stream.Err, "no index was accepted from %s, so none was forgotten\n", res.Ref)
+				}
+				for _, line := range res.Index.Lines(time.Now()) {
+					fmt.Fprintf(app.Stream.Err, "warning: %s\n", line)
 				}
 				app.finish(ops.Result{Summary: res.Summary()})
 				if notes := strings.TrimSpace(res.Notes); notes != "" {
@@ -526,6 +541,9 @@ func newUpdateCommand(app *App) *cobra.Command {
 	f.BoolVar(&stage, "stage", false,
 		"follow the configured channel: fetch and verify what it points at, "+
 			"without installing it")
+	f.BoolVar(&forgetIndex, "forget-index", false,
+		"with --stage: forget the index accepted from the channel, for a vendor who stopped "+
+			"publishing one; recorded in the journal")
 	f.BoolVar(&unattended, "unattended", false,
 		"one scheduled tick: follow the channel, stage, and install only what "+
 			"declares a failure cannot need a database restore")

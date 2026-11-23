@@ -65,3 +65,19 @@ func TestAChannelIndexThatIsNotWellFormedIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// An accepted index holds until its expiry and not at it, by this machine's
+// clock alone (RFC 0037 decision 32).
+func TestAnAcceptedIndexExpiresAtItsExpiry(t *testing.T) {
+	at := time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)
+	idx := domain.AcceptedIndex{ExpiresAt: domain.NewTime(at)}
+	assert.False(t, idx.Expired(at.Add(-time.Nanosecond)))
+	assert.True(t, idx.Expired(at))
+	assert.True(t, idx.Expired(at.Add(time.Second)))
+}
+
+func TestAnEmptyIndexRecordIsZero(t *testing.T) {
+	assert.True(t, domain.ChannelIndexRecord{}.IsZero())
+	assert.False(t, domain.ChannelIndexRecord{Unchecked: true}.IsZero())
+	assert.False(t, domain.ChannelIndexRecord{Accepted: &domain.AcceptedIndex{}}.IsZero())
+}

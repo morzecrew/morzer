@@ -66,6 +66,16 @@ type fakeRegistry struct {
 	// downloaded the bundle to find it out.
 	manifestBytes atomic.Int64
 	blobBytes     atomic.Int64
+
+	// index is the artifact under every channel's index tag, which is
+	// absent until a test publishes one: a registry serving the bundle
+	// there would read as a broken index on every poll.
+	index      []byte
+	indexDig   string
+	indexBlobs map[string][]byte
+	indexReads atomic.Int64
+	// indexStatus overrides the index manifest's response.
+	indexStatus int
 }
 
 func digestOf(b []byte) string {
@@ -139,6 +149,30 @@ func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case req.URL.Path == "/v2/":
 		w.WriteHeader(http.StatusOK)
 
+	case strings.Contains(req.URL.Path, "/manifests/") && strings.HasSuffix(req.URL.Path, ".index"):
+		r.indexReads.Add(1)
+		switch {
+		case r.indexStatus != 0:
+			w.WriteHeader(r.indexStatus)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"DENIED","message":"denied"}]}`))
+			return
+		case r.index == nil:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"MANIFEST_UNKNOWN","message":"manifest unknown"}]}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+		w.Header().Set("Docker-Content-Digest", r.indexDig)
+		w.Header().Set("Content-Length", fmt.Sprint(len(r.index)))
+		if req.Method != http.MethodHead {
+			_, _ = w.Write(r.index)
+		}
+
+	case strings.Contains(req.URL.Path, "/blobs/") && r.indexBlobs[req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:]] != nil:
+		body := r.indexBlobs[req.URL.Path[strings.LastIndex(req.URL.Path, "/")+1:]]
+		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		_, _ = w.Write(body)
+
 	case strings.Contains(req.URL.Path, "/manifests/"):
 		w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 		w.Header().Set("Docker-Content-Digest", r.manifestDig)
@@ -186,6 +220,37 @@ func (r *fakeRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	default:
 		http.NotFound(w, req)
 	}
+}
+
+// publishIndex puts an index artifact under every channel's index tag, with
+// the two layers a vendor's `release index` pushes. Nil data removes it.
+func (r *fakeRegistry) publishIndex(data, signature []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if data == nil {
+		r.index, r.indexDig, r.indexBlobs = nil, "", nil
+		return
+	}
+	config := []byte(`{}`)
+	r.indexBlobs = map[string][]byte{
+		digestOf(config): config, digestOf(data): data, digestOf(signature): signature,
+	}
+	manifest, err := json.Marshal(map[string]any{
+		"schemaVersion": 2,
+		"mediaType":     "application/vnd.oci.image.manifest.v1+json",
+		"artifactType":  oci.IndexArtifactType,
+		"config": map[string]any{
+			"mediaType": "application/vnd.oci.empty.v1+json",
+			"digest":    digestOf(config),
+			"size":      len(config),
+		},
+		"layers": []map[string]any{
+			{"mediaType": oci.IndexMediaType, "digest": digestOf(data), "size": len(data)},
+			{"mediaType": oci.IndexSignatureMediaType, "digest": digestOf(signature), "size": len(signature)},
+		},
+	})
+	require.NoError(r.t, err)
+	r.index, r.indexDig = manifest, digestOf(manifest)
 }
 
 // ociRef builds the reference form ParseRef produces: everything after

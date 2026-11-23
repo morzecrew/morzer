@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -28,6 +29,10 @@ type FollowChannelOptions struct {
 	// authorisation -- the same rule `update --check` follows. A timer
 	// leaves it false and is gated by `update.check`.
 	Explicit bool
+
+	// ForgetIndex forgets the channel's accepted index before the poll, for
+	// a vendor who stopped publishing one (RFC 0037 decision 25).
+	ForgetIndex bool
 }
 
 // FollowChannelResult is what one poll found.
@@ -50,10 +55,25 @@ type FollowChannelResult struct {
 	// Notes are the incoming release's notes, when it ships any. Read from
 	// the staged bundle, so they exist only once something was staged.
 	Notes string `json:"-"`
+
+	// Index is what the poll found of the channel's signed index. Absent
+	// when the channel has none and never had.
+	Index *ChannelIndexView `json:"index,omitempty"`
+
+	// ForgotIndex is the sequence of the accepted index `--forget-index`
+	// forgot, zero when it forgot none.
+	ForgotIndex int64 `json:"forgot_index,omitempty"`
 }
 
 // Summary renders the outcome for a human.
 func (r FollowChannelResult) Summary() string {
+	if r.ForgotIndex != 0 {
+		return fmt.Sprintf("forgot the index accepted under sequence %d; %s", r.ForgotIndex, r.outcome())
+	}
+	return r.outcome()
+}
+
+func (r FollowChannelResult) outcome() string {
 	switch {
 	case !r.Moved:
 		return fmt.Sprintf("%s is unchanged; nothing to stage", r.Ref)
@@ -122,17 +142,35 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 			"the configured release source cannot follow a channel")
 	}
 
+	channel := ports.RedactRefCredentials(ref)
+	var forgot int64
+	if opts.ForgetIndex {
+		if forgot, err = d.forgetChannelIndex(ctx, opts.Options, inst, channel); err != nil {
+			return FollowChannelResult{Ref: channel}, err
+		}
+	}
+
 	state, err := peeker.Peek(ctx, parsed)
 	if err != nil {
 		return FollowChannelResult{}, err
 	}
 
 	result := FollowChannelResult{
-		Ref:            ports.RedactRefCredentials(ref),
+		Ref:            channel,
 		UpstreamDigest: state.UpstreamDigest,
+		ForgotIndex:    forgot,
 	}
 
-	seen, err := d.lastSeenUpstream(ctx)
+	// The index on every poll, before the unmoved return: a frozen channel
+	// is one that never moves, so a check made only when it moves would
+	// never see one (RFC 0037 decision 17).
+	record, err := d.pollChannelIndex(ctx, opts.Options, inst, parsed, channel, state.UpstreamDigest)
+	if err != nil {
+		return result, err
+	}
+	result.Index = channelIndexView(record, d.now())
+
+	seen, err := d.lastSeenUpstream(ctx, judgedIndex(inst, record, d.now()))
 	if err != nil {
 		return FollowChannelResult{}, err
 	}
@@ -168,7 +206,14 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 	var staged domain.Release
 	err = d.withLock(ctx, d.newOpID(), domain.OpTypeRelease, opts.Options,
 		func(ctx context.Context) error {
-			seen, err := d.lastSeenUpstream(ctx)
+			// Read again, as the seen check is: another poll may have
+			// accepted a newer index while this one waited.
+			records, err := d.channelIndexRecords()
+			if err != nil {
+				return err
+			}
+			judged := judgedIndex(inst, records[channel], d.now())
+			seen, err := d.lastSeenUpstream(ctx, judged)
 			if err != nil {
 				return err
 			}
@@ -176,7 +221,7 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 				result.Moved = false
 				return nil
 			}
-			staged, err = d.stageUnderLock(ctx, state, &result)
+			staged, err = d.stageUnderLock(ctx, state, &result, judged)
 			return err
 		})
 	if err != nil {
@@ -198,7 +243,7 @@ func FollowChannel(ctx context.Context, d *Deps, opts FollowChannelOptions) (Fol
 // FollowChannel: what must be serialised is the fetch and the record, and a
 // reader should be able to see where that begins and ends.
 func (d *Deps) stageUnderLock(
-	ctx context.Context, state ports.ChannelState, result *FollowChannelResult,
+	ctx context.Context, state ports.ChannelState, result *FollowChannelResult, judged *domain.AcceptedIndex,
 ) (domain.Release, error) {
 	candidate := domain.UpdateCandidate{
 		SchemaVersion:  domain.UpdateCandidateSchemaVersion,
@@ -214,13 +259,19 @@ func (d *Deps) stageUnderLock(
 	if err != nil {
 		return domain.Release{}, err
 	}
-	rel, stageErr := d.stageCandidate(ctx, state.Pinned, result.Ref, marks)
+	rel, stageErr := d.stageCandidate(ctx, state.Pinned, result.Ref, marks, judged)
 	if stageErr != nil {
 		// A refusal is recorded, not merely returned. The tag will still
 		// point here on the next tick, and a poll that remembered only
 		// its successes would re-download this bundle every tick forever
 		// to reach the same refusal.
 		candidate.Refused = domain.AsError(stageErr).Message
+		if errors.Is(stageErr, errIndexDisagrees) {
+			// Looked at again once another index is accepted, as a
+			// vendor who moved the tag before re-signing will do
+			// (RFC 0037 decision 29).
+			candidate.IndexSequence = judged.Sequence
+		}
 		if err := d.State.SetUpdateCandidate(ctx, candidate); err != nil {
 			return domain.Release{}, err
 		}
@@ -258,7 +309,11 @@ func (d *Deps) stageUnderLock(
 // before this was recorded -- and unknown is treated as moved. That costs one
 // fetch and then records an answer, which is the right direction: the
 // alternative is a machine that never notices its channel again.
-func (d *Deps) lastSeenUpstream(ctx context.Context) (string, error) {
+//
+// judged is the channel index the tag is judged against now. A refusal judged
+// against another one, or against one that no longer judges, is looked at
+// again (RFC 0037 decision 29).
+func (d *Deps) lastSeenUpstream(ctx context.Context, judged *domain.AcceptedIndex) (string, error) {
 	candidate, err := d.State.UpdateCandidate(ctx)
 	if err != nil {
 		return "", err
@@ -268,7 +323,7 @@ func (d *Deps) lastSeenUpstream(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if outdated {
+		if outdated || indexRefusalOutdated(candidate, judged) {
 			// Unknown, so the channel is looked at again.
 			return "", nil
 		}
@@ -280,6 +335,16 @@ func (d *Deps) lastSeenUpstream(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return current.UpstreamDigest, nil
+}
+
+// indexRefusalOutdated reports a refusal made against a channel index that no
+// longer judges the tag: a newer one was accepted, or it expired or was
+// forgotten.
+func indexRefusalOutdated(candidate domain.UpdateCandidate, judged *domain.AcceptedIndex) bool {
+	if candidate.Refused == "" || candidate.IndexSequence == 0 {
+		return false
+	}
+	return judged == nil || judged.Sequence != candidate.IndexSequence
 }
 
 // adoptStagedCandidate carries the channel's facts onto the release record.
@@ -349,11 +414,18 @@ func (d *Deps) retireStagedCandidate(ctx context.Context, record domain.ReleaseR
 // tolerable when a human typed a reference seconds ago, and not when a loop is
 // watching something built to change (RFC 0016 decision 22).
 func (d *Deps) stageCandidate(
-	ctx context.Context, pinned ports.Ref, channel string, marks domain.ChannelMarks,
+	ctx context.Context, pinned ports.Ref, channel string, marks domain.ChannelMarks, judged *domain.AcceptedIndex,
 ) (domain.Release, error) {
 	resolved, err := d.Source.Resolve(ctx, pinned)
 	if err != nil {
 		return domain.Release{}, err
+	}
+
+	// The tag and its index, read at different moments, must not combine
+	// into a release neither named (RFC 0037 decision 10). Compared by the
+	// content digest Resolve computed, never the registry's.
+	if judged != nil && !atomicfs.SameDigest(judged.Release.Digest, resolved.Digest) {
+		return domain.Release{}, indexDisagrees(resolved, judged)
 	}
 
 	current, err := d.State.CurrentRelease(ctx)
@@ -416,6 +488,19 @@ func (d *Deps) stageCandidate(
 		return domain.Release{}, err
 	}
 	return rel, nil
+}
+
+// indexDisagrees is the refusal of a bundle the channel's index does not name.
+func indexDisagrees(resolved ports.ResolvedRelease, judged *domain.AcceptedIndex) error {
+	what := fmt.Sprintf("the channel points at %s, and its index (sequence %d) names %s",
+		resolved.Version, judged.Sequence, judged.Release.Version)
+	if resolved.Version.Equal(judged.Release.Version) {
+		what = fmt.Sprintf("the channel points at %s with other content than its index (sequence %d) names",
+			resolved.Version, judged.Sequence)
+	}
+	return domain.ValidationError(errIndexDisagrees, "%s", what).
+		WithHint("a vendor who moves the tag re-signs the index next, and the release is fetched again " +
+			"once they do; a tag that stays apart from its index is what holding a channel back looks like")
 }
 
 // UnattendedOptions are the inputs to one scheduled tick.
@@ -554,6 +639,12 @@ func RunUnattended(ctx context.Context, d *Deps, opts UnattendedOptions) (Unatte
 		out.Skipped = fmt.Sprintf("%s did not install (%s) and is not retried "+
 			"until the channel moves; `morzer update --to %s` tries again",
 			candidate.Version, candidate.Failed, candidate.Version)
+		return out, nil
+	}
+	// Behind an expired index, or one that names another release (RFC 0037
+	// decision 3): nobody is there to judge whether the channel is held back.
+	if held := d.heldForIndex(now, candidate); held != "" {
+		out.Assessment = domain.UnattendedAssessment{Reasons: []string{held}}
 		return out, nil
 	}
 	// While a configuration file differs from what the installed release

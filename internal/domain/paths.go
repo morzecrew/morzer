@@ -175,6 +175,14 @@ func (p Paths) ChannelMarksFile() string {
 	return filepath.Join(p.ManagerDir(), "channel-marks.json")
 }
 
+// ChannelIndexesFile records, per channel, the signed index this installation
+// accepted from it and what the last poll found (RFC 0037 §5.2). Like the
+// marks it is not derived, since forgetting a sequence admits a replay, so an
+// export carries what it accepted.
+func (p Paths) ChannelIndexesFile() string {
+	return filepath.Join(p.ManagerDir(), "channel-indexes.json")
+}
+
 // The scheduled runs that stamp when they reach the engine: the four systemd
 // catches up with Persistent= (RFC 0055 decision 29). A supervisor that does
 // not catch up by itself reads the stamps at boot; Linux reads none.

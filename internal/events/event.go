@@ -65,6 +65,11 @@ const (
 	// target withholding what it publishes. Sent when a cycle first finds
 	// it so.
 	KindSyncExpired Kind = "sync.expired"
+
+	// KindChannelIndexExpired says the signed index of the channel this
+	// machine follows has expired and was not re-signed: a vendor gone
+	// quiet, or a channel held back (RFC 0037 §5.2). Sent once per index.
+	KindChannelIndexExpired Kind = "update.index_expired"
 )
 
 // AllKinds is every event kind, so a consumer that must classify all of them
@@ -87,6 +92,7 @@ var AllKinds = []Kind{
 	KindDoctorFinished,
 	KindSyncRefused,
 	KindSyncExpired,
+	KindChannelIndexExpired,
 }
 
 // Level classifies a message for presenters that style by severity.
@@ -318,6 +324,17 @@ func SyncExpired(product string, doc domain.SyncDocument) Event {
 		Description: product + " sync",
 		Message: sprintf("desired-state document %d expired at %s, and nothing newer is published",
 			doc.Serial, doc.ExpiresAt.Format(time.RFC3339)),
+	}
+}
+
+// ChannelIndexExpired is the accepted index of the followed channel past its
+// expiry, with nothing newer accepted.
+func ChannelIndexExpired(product, channel string, idx domain.AcceptedIndex) Event {
+	return Event{
+		Kind: KindChannelIndexExpired, At: time.Now(), Level: LevelWarn,
+		Description: product + " update",
+		Message: sprintf("the index of %s expired at %s and was not re-signed: its vendor has gone "+
+			"quiet, or the channel is being held back", channel, idx.ExpiresAt.Format(time.RFC3339)),
 	}
 }
 

@@ -176,6 +176,33 @@ type ChannelPeeker interface {
 	Peek(ctx context.Context, ref Ref) (ChannelState, error)
 }
 
+// ChannelIndexReader reads the signed index a vendor publishes beside a channel
+// (RFC 0037 §5.2). Optional, like ChannelPeeker: only a registry has a channel
+// to publish one beside.
+type ChannelIndexReader interface {
+	// FetchIndex reads what is published under the index tag of the
+	// channel ref names. found is false when nothing is, and for a
+	// reference with no tag, which names no channel. An artifact there
+	// that is not a readable index is found, with its Problem set; err is
+	// a registry that could not be reached or refused the read.
+	FetchIndex(ctx context.Context, ref Ref) (index PublishedIndex, found bool, err error)
+}
+
+// PublishedIndex is what a registry holds under a channel's index tag, not yet
+// trusted: its signature and its fields are the caller's to check.
+type PublishedIndex struct {
+	// Channel is the tag the index sits beside: the channel it must name.
+	Channel string
+
+	Index     []byte
+	Signature []byte
+
+	// Problem says why the artifact under the tag is not an index, when it
+	// is not one: no such layer, a layer over the bound, bytes that do not
+	// match their digest. Index and Signature are then empty.
+	Problem string
+}
+
 // ChannelState is what a mutable reference points at right now.
 type ChannelState struct {
 	// UpstreamDigest identifies the artefact *at the registry*: the

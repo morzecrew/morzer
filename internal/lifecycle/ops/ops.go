@@ -690,6 +690,8 @@ var forwardedKinds = map[events.Kind]bool{
 	// elsewhere (RFC 0057 §5.9).
 	events.KindSyncRefused: true,
 	events.KindSyncExpired: true,
+	// A channel's index gone stale: the freeze signal, sent once.
+	events.KindChannelIndexExpired: true,
 
 	events.KindOperationStarted: false, // the outcome is the news, not the start
 	events.KindStepStarted:      false, // narration

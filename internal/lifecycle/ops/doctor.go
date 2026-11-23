@@ -281,6 +281,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	// temporarily unreachable should still be told a fixed version exists.
 	// Inside that branch, a broken release silently removed the check.
 	checks = append(checks, d.checkUpdateAvailable(inst), d.checkManagerVersion(inst), d.checkMetricsTextfile(inst))
+	if inst.Update.FollowsChannel() {
+		checks = append(checks, d.checkChannelIndex(inst))
+	}
 	checks = append(checks, checkMode(inst))
 	if d.Runtime != nil {
 		checks = append(checks, d.checkDeclaredRuntime(inst))
@@ -1365,6 +1368,52 @@ func (d *Deps) checkUpdateAvailable(inst domain.Installation) preflight.Check {
 					res.Latest, res.Installed)
 			}
 			return preflight.OK("%s is installed; nothing newer is offered", res.Installed)
+		},
+	}
+}
+
+// checkChannelIndex reports the followed channel's signed index as the last
+// poll recorded it (RFC 0037 decisions 3, 26 and 30). It reads no registry:
+// the poll already did, and doctor must answer between polls too.
+func (d *Deps) checkChannelIndex(inst domain.Installation) preflight.Check {
+	return preflight.Check{
+		ID:          "release.channel-index",
+		Category:    preflight.CategoryNetwork,
+		Description: "the followed channel's signed index",
+		Fatal:       false,
+		Run: func(ctx context.Context) events.CheckResult {
+			records, err := d.channelIndexRecords()
+			if err != nil {
+				return preflight.Warn(
+					"check the file's owner and mode; removing it costs this machine the sequence it accepted, "+
+						"so a replayed older index would be accepted once",
+					"cannot read the channel indexes: %s", domain.AsError(err).Message)
+			}
+			now := d.now()
+			view := channelIndexView(records[channelKey(inst.Update.Channel)], now)
+			switch {
+			case view == nil:
+				return preflight.OK("the channel has published no index this machine has seen")
+			case view.Unchecked:
+				return preflight.Warn(
+					"pin the vendor's key with `morzer release trust add <key>`, and the next poll checks it",
+					"the channel publishes a signed index this machine cannot check: it pins no signing key")
+			case view.Expired:
+				return preflight.Warn(
+					"ask the vendor whether the channel is still kept; if they stopped publishing an index, "+
+						"`morzer update --stage --forget-index` forgets this one",
+					"the channel's index expired %s ago, naming %s: it was not re-signed, or the channel is held back",
+					roundDays(now.Sub(view.Accepted.ExpiresAt.Time)), view.Accepted.Release.Version)
+			case view.Disagrees != "":
+				return preflight.Warn(
+					"ask the vendor which release the channel serves; a tag held apart from its index is "+
+						"what holding a channel back looks like",
+					"%s", view.Disagrees)
+			case view.Problem != "":
+				return preflight.Warn("ask the vendor to publish the channel's index again", "%s", view.Problem)
+			}
+			return preflight.OK("sequence %d names %s, valid until %s", view.Accepted.Sequence,
+				view.Accepted.Release.Version, view.Accepted.ExpiresAt.Format(time.RFC3339))
 		},
 	}
 }
