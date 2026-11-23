@@ -2731,8 +2731,11 @@ installation on the machine, so it belongs in your CI as a required check.</p>
 </table>
 <p><strong>HTTPS</strong> is a static file on any web server. TLS is not optional on the client
 side and a redirect out of it is refused, so a plain-HTTP mirror will not work.
-No credentials are sent, so a bundle behind authentication needs the registry
-route or an out-of-band download.</p>
+A server that serves bundles only to customers who log in works too: a customer
+stores the token or login you give them as a secret and names your server with
+<code>morzer release source add</code>, and <code>morzer init --source-secret-file</code> takes it for
+the first install. It is sent only to that server, so a redirect to a CDN on
+another host carries nothing.</p>
 <p><strong>An <abbr title="Open Container Initiative">OCI</abbr> registry</strong> is the remote transport that lets <code>morzer update --check</code>
 find your newer versions, and the only one an installation can follow as a
 channel, because a registry keeps a tag list and a URL does not. Publish the

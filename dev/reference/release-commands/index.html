@@ -1991,6 +1991,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release source
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-loader-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2973,6 +2984,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release source
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-the-loader-enforces" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3881,8 +3903,32 @@ hint:  install the issuing CA, or fetch the bundle out of band and install it
 fetched over a connection nothing authenticated is a bundle from nobody in
 particular, and a <code>--insecure</code> that existed would be reached for at exactly the
 moment it should not be.</p>
-<p>No credentials are sent. A bundle behind authentication is fetched out of band,
-or published to a registry.</p>
+<p><strong>A server that wants a credential gets the one configured for it</strong>, and no
+other. Store the vendor's token, or their <code>user:password</code>, as a secret, and name
+the server and the secret with <a href="#release-source"><code>release source add</code></a>:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>vendor_download_token
+morzer<span class="w"> </span>release<span class="w"> </span><span class="nb">source</span><span class="w"> </span>add<span class="w"> </span>https://downloads.vendor.example<span class="w"> </span>--bearer<span class="w"> </span>--secret<span class="w"> </span>vendor_download_token
+</code></pre></div>
+<p>Every request to that server sends it, each hop of a redirect included, and
+nothing else does:</p>
+<ul>
+<li><strong>A credential goes only to the authority it names</strong>, over TLS. The host is
+  compared ignoring case and the port after both sides default to 443, so an
+  entry for <code>downloads.vendor.example</code> is not sent to
+  <code>cdn.downloads.vendor.example</code>, nor to <code>downloads.vendor.example:8443</code>.</li>
+<li><strong>A redirect away from the server carries nothing.</strong> A vendor whose server
+  redirects to a CDN that wants the token needs an entry for the CDN too; one
+  that redirects to signed URLs needs none.</li>
+<li><strong>A refusal names the secret, never its value.</strong> A 401 or 403 from a configured
+  server says which secret it was sent; from a server with none configured, the
+  hint says how to configure one.</li>
+</ul>
+<p>A password typed into the reference, <code>https://user:token@host/…</code>, still works
+and is sent as basic authentication to that host. It is on the command line and
+in shell history while it does, so <code>update</code>, <code>release fetch</code> and <code>init</code> warn
+about it. When the server also has an entry, the entry's credential is sent and
+the password is not. <code>init</code> takes a credential for the release it installs from
+with <code>--source-secret-file</code>; see <a href="../commands/#init">the command reference</a>.</p>
 <h3 id="from-an-oci-registry">From an <abbr title="Open Container Initiative">OCI</abbr> registry<a class="headerlink" href="#from-an-oci-registry" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>oci://registry.example/demo/bundle:1.3.0
 morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>oci://registry.example/demo/bundle@sha256:…
@@ -4203,6 +4249,37 @@ morzer<span class="w"> </span>release<span class="w"> </span>trust<span class="w
   key is refused from the next update, including one already staged.</li>
 </ul>
 <p><code>--dry-run</code> reports what would change, and the refusals above apply to it.</p>
+<h2 id="release-source">release source<a class="headerlink" href="#release-source" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span><span class="nb">source</span><span class="w"> </span>list
+morzer<span class="w"> </span>release<span class="w"> </span><span class="nb">source</span><span class="w"> </span>add<span class="w"> </span>https://&lt;host&gt;<span class="o">[</span>:port<span class="o">]</span><span class="w"> </span>--bearer<span class="w"> </span>--secret<span class="w"> </span>&lt;name&gt;
+morzer<span class="w"> </span>release<span class="w"> </span><span class="nb">source</span><span class="w"> </span>add<span class="w"> </span>https://&lt;host&gt;<span class="o">[</span>:port<span class="o">]</span><span class="w"> </span>--basic<span class="w"> </span>--secret<span class="w"> </span>&lt;name&gt;
+morzer<span class="w"> </span>release<span class="w"> </span><span class="nb">source</span><span class="w"> </span>remove<span class="w"> </span>https://&lt;host&gt;<span class="o">[</span>:port<span class="o">]</span>
+</code></pre></div>
+<p>The HTTPS servers this installation sends a credential to, and the secret each
+credential is in, which <code>--secret</code> names. With <code>--bearer</code> the secret holds a token, sent as
+<code>Authorization: Bearer …</code>; with <code>--basic</code> it holds <code>user:password</code>, split at the
+first colon, so a password may contain colons. One trailing newline is not part
+of the value. <a href="#over-https">Over HTTPS</a> says which requests are sent it.</p>
+<ul>
+<li><strong><code>add</code> takes a server and nothing more</strong>: an <code>https://</code> URL with no path,
+  query or password. A server is written as its authority, lower-cased and
+  without <code>:443</code>, so two spellings of one server are one entry. Adding a server
+  that has an entry replaces it and says what it replaced; adding the same entry
+  again changes nothing. A secret that is not set yet is warned about, since the
+  next fetch from that server would be refused for it.</li>
+<li><strong><code>morzer release source remove</code> keeps the secret</strong>, which <code>morzer secret remove</code> removes.
+  Removing a server with no entry changes nothing and says so.</li>
+<li><code>list</code> shows each server, its scheme and its secret's name, never a value.</li>
+</ul>
+<p>Each change is journaled as a <code>config</code> operation naming the server, the scheme
+and the secret, and <code>--dry-run</code> reports what would change and journals nothing.
+<code>morzer doctor</code> warns when a configured server's secret is not set
+(<code>release.source-credentials</code>). The entries travel in an export, and their
+secrets with the other secrets, so a machine rebuilt with <code>installation import</code>
+fetches its next update without a new token. A desired-state document does not
+manage them.</p>
+<p>An <abbr title="Open Container Initiative">OCI</abbr> registry is not configured here: it uses the Docker credentials, from
+<code>docker login</code> and the credential helpers.</p>
 <h2 id="what-the-loader-enforces">What the loader enforces<a class="headerlink" href="#what-the-loader-enforces" title="Permanent link">&para;</a></h2>
 <p>Rules a bundle must satisfy before any of it runs:</p>
 <ul>

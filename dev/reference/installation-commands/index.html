@@ -3064,13 +3064,19 @@ morzer<span class="w"> </span>installation<span class="w"> </span>describe<span 
 <span class="w">  </span><span class="nt">targets</span><span class="p">:</span>
 <span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3://bucket/prefix</span>
 <span class="w">      </span><span class="nt">credentials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">s3_creds</span>
+<span class="nt">sources</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">https</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">downloads.vendor.example</span>
+<span class="w">      </span><span class="nt">auth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bearer</span>
+<span class="w">      </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vendor_download_token</span>
 </code></pre></div>
 <p>The answer to "what is this machine" becomes a file rather than four commands.
 It is reviewable, diffable, and safe to commit.</p>
 <h4 id="it-holds-no-secret-value-and-cannot">It holds no secret value, and cannot<a class="headerlink" href="#it-holds-no-secret-value-and-cannot" title="Permanent link">&para;</a></h4>
 <p>Every credential in an installation is already a <em>reference</em>: a backup target
 names the secret holding its credentials, a notification target names the secret
-holding its URL. The document carries those names. <code>secrets</code> is a list of names
+holding its URL, and a <a href="../release-commands/#release-source">source</a> names the
+secret holding the credential an HTTPS server is sent, a token or a login. The document carries those names. <code>secrets</code> is a list of names
 too — what <code>secret set</code> would have to be run for, never what was set.</p>
 <p>That is a property of the configuration rather than a filter applied on the way
 out, which is why it can be stated flatly: there is nowhere in this document to

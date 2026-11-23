@@ -3502,6 +3502,18 @@ run <code>apply</code> afterwards.</p>
 <td>The authority's age recipient, which this machine's <a href="../desired-state/#facts">facts</a> are encrypted to, as <code>config set sync.recipient</code> takes it.</td>
 </tr>
 <tr>
+<td><code>--source-secret-file</code></td>
+<td>A file holding the credential the <code>https://</code> <code>--release</code>'s server wants: a token, or <code>user:password</code>. It is sent for every fetch from that server, the one that reads the product's name included, then stored as a secret and configured as with <a href="../release-commands/#release-source"><code>release source add</code></a>, so updates send it too. Refused beside <code>--repair</code>, or with a <code>--release</code> that is not <code>https://</code>.</td>
+</tr>
+<tr>
+<td><code>--source-auth</code></td>
+<td>How <code>--source-secret-file</code>'s credential is sent: <code>bearer</code>, the default, or <code>basic</code>.</td>
+</tr>
+<tr>
+<td><code>--source-secret</code></td>
+<td>The secret <code>--source-secret-file</code>'s credential is stored as: by default <code>source_</code> and the server's name, as <code>source_downloads_vendor_example</code>. Refused when the release declares a secret of that name.</td>
+</tr>
+<tr>
 <td><code>--product</code></td>
 <td>Product name, when no <code>--release</code> is given to take it from.</td>
 </tr>
@@ -3908,7 +3920,7 @@ not answer, and the start at boot runs it once it does; see
 <a href="../../explanation/platforms/#what-runs-at-boot-and-on-schedule">what runs at boot</a>. Every run leaves out of <code>config.operations</code> the operation holding the
 deployment lock while it is running, so a backup in progress is not reported as
 unfinished.</p>
-<p>Seven checks are advisory by design, and warn rather than fail:</p>
+<p>Eight checks are advisory by design, and warn rather than fail:</p>
 <table>
 <thead>
 <tr>
@@ -3940,6 +3952,10 @@ unfinished.</p>
 <tr>
 <td><code>release.channel-index</code></td>
 <td>The followed channel's <a href="../../operating/updating/#a-channel-that-stops-moving">signed index</a>, as the last poll found it: ok with its sequence, release and expiry, and a warning when it has expired, when the channel's tag still serves another release than it names, when the last index found was not accepted, or when the channel publishes one this machine pins no key to check. It reads no registry. Present only on a machine that follows a channel.</td>
+</tr>
+<tr>
+<td><code>release.source-credentials</code></td>
+<td>A server in <a href="../release-commands/#release-source"><code>release source list</code></a> names a secret that is not set, so the next fetch from it will be refused. The machine runs meanwhile. Present only when a server is configured.</td>
 </tr>
 <tr>
 <td><code>runtime.images-local</code></td>
