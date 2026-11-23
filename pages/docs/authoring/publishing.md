@@ -285,6 +285,72 @@ machine that already took `1.3.0`. Publish `1.3.1` with the fix and move the tag
 to it; an operator who needs the old release now runs `morzer rollback`.
 `release push` warns when it moves a channel backwards, and moves it anyway.
 
+### Signing the channel's index
+
+A channel that stops moving looks the same to a machine whether you released
+nothing or someone who controls the registry froze it on an old release with a
+known hole. A signed index tells the two apart. It names the release the
+channel points at and a date it expires, and you re-sign it before that date
+whether or not you released. A machine that follows the channel and pins your
+key is to warn once the index expires.
+
+Machines do not read the index yet: this release publishes it, and checking it
+on the machines comes in a later one. What follows describes the check as it is
+designed.
+
+```sh
+morzer release index oci://registry.example/demo/bundle:stable --key ./release.key
+```
+
+It pulls the bundle `stable` points at and writes its version and content
+digest, a sequence, which is the time in milliseconds, and an expiry seven days
+out. It signs that with the key and pushes it beside the channel as
+`stable.index`. `--valid-for 72h` sets another expiry, and `--dry-run` signs and
+pushes nothing. The [reference](../reference/release-commands.md#release-index)
+has the document and what the command refuses.
+
+Run it after every channel move, and on a schedule shorter than the expiry. The
+key is the one your bundles are signed with, since a machine checks the index
+against the keys it already pins for your releases. It has to have no password,
+because a scheduled job has nobody to type one. If you keep a password on it,
+sign by hand, as shown below.
+
+The expiry is a trade. A short one notices a freeze sooner, and costs a job that
+must not miss. A re-sign that does not happen makes every machine following the
+channel warn, and refuse to install unattended under `auto_apply`, until you
+re-sign. Seven days with a daily job leaves six days to notice the job failed.
+Taking the index away does not switch the check off: a machine that accepted
+one keeps judging the channel by it until it expires.
+
+The sequence check and the push are separate requests, like `release push`'s,
+so run every `release index` and `release push` of a repository in the same
+concurrency group. Two runs that overlap anyway can leave the older index on the
+tag. A machine that took the newer one refuses it as a replay, and the next
+re-sign puts a higher sequence there.
+
+By hand, write the document, sign it, and push both files under the index tag.
+The digest is the content digest `release push` printed for the release the
+channel points at:
+
+```sh
+cat > index.json <<EOF
+{"schema": 1, "channel": "stable", "sequence": $(date -u +%s)000,
+ "issued_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "expires_at": "$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)",
+ "release": {"version": "1.3.0", "digest": "sha256:bcca96e8…"}}
+EOF
+minisign -Sm index.json
+oras push registry.example/demo/bundle:stable.index \
+    --artifact-type application/vnd.morzer.channel.index.v1 \
+    index.json:application/vnd.morzer.channel.index.v1+json \
+    index.json.minisig:application/vnd.morzer.channel.index.v1.minisig
+```
+
+`date -d` is GNU's. On macOS, write the expiry as
+`$(date -u -v+7d +%Y-%m-%dT%H:%M:%SZ)`. Each re-sign needs a sequence higher
+than the last one, which the time gives you as long as the clock does not go
+back.
+
 ## Tell them the digest
 
 ```sh
