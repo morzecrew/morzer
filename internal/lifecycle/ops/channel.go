@@ -568,6 +568,10 @@ func (r UnattendedResult) Summary() string {
 		// "Unchanged" alone would read as nothing waiting.
 		return fmt.Sprintf("%s is unchanged; %s is staged and was not installed: %s",
 			r.Follow.Ref, r.Staged.Version, r.Assessment.Why())
+	case !r.Follow.Moved && r.Staged.IsStaged() && r.Assessment.OK:
+		// Passed the gate and not applied: only a plan stops there.
+		return fmt.Sprintf("%s is unchanged; %s is staged, and a real run would install it",
+			r.Follow.Ref, r.Staged.Version)
 	default:
 		return r.Follow.Summary()
 	}

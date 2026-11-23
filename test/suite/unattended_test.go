@@ -2,7 +2,6 @@ package suite
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -600,6 +599,35 @@ func TestAQuietTickSaysWhatIsStillWaitingAndWhy(t *testing.T) {
 	assert.Contains(t, quiet.Summary(), staged+" is staged and was not installed")
 	assert.Contains(t, quiet.Summary(), "auto_apply", "the line does not say why the release waits")
 	assert.Equal(t, staged, quiet.Staged.Version.String(), "--json does not name the release that waits")
+}
+
+// A planned tick on a channel that has not moved, over a staged release the
+// gate would let through, says that a real run installs it, rather than that
+// nothing is waiting.
+func TestAQuietPlannedTickSaysWhatARealOneWouldInstall(t *testing.T) {
+	h, _, _, _ := followingHarnessWith(t, func(t *testing.T, dir string) {
+		t.Helper()
+		path := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(path, []byte(strings.Replace(string(raw),
+			"database_schema_produces: 14", "database_schema_produces: 12", 1)), 0o644))
+	})
+	h.setHookEnv()
+	applyBaseline(t, h)
+	ctx := context.Background()
+	staged, err := ops.FollowChannel(ctx, h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.NoError(t, err)
+	require.True(t, staged.Candidate.IsStaged(), "nothing was staged: %s", staged.Summary())
+	armAutoApply(t, h)
+
+	plan, err := ops.RunUnattended(ctx, h.Deps, ops.UnattendedOptions{Options: ops.Options{DryRun: true}})
+	require.NoError(t, err)
+	require.False(t, plan.Follow.Moved)
+	require.True(t, plan.Assessment.OK, "the gate refused: %s", plan.Assessment.Why())
+	assert.False(t, plan.Applied)
+	assert.Contains(t, plan.Summary(), "unchanged")
+	assert.Contains(t, plan.Summary(), staged.Candidate.Version.String()+" is staged, and a real run would install it")
 }
 
 // TestATickThatCannotTakeTheLockDoesNotFailTheUnit.
