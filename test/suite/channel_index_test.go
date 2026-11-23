@@ -485,3 +485,14 @@ func TestAChannelTooLongForAnIndexTagHasNone(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 }
+
+// A records file that reads as null is damaged state, not an empty one: the
+// poll that writes it must not panic on it.
+func TestARecordsFileThatIsNullIsRefused(t *testing.T) {
+	h, vendor, _ := indexedChannel(t)
+	vendor.publish(1000, vendor.release)
+	require.NoError(t, os.WriteFile(h.Deps.Paths.ChannelIndexesFile(), []byte("null\n"), 0o640))
+	_, err := ops.FollowChannel(context.Background(), h.Deps, ops.FollowChannelOptions{Explicit: true})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrInstallation)
+}

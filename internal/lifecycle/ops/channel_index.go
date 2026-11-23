@@ -107,6 +107,11 @@ func (d *Deps) channelIndexRecords() (domain.ChannelIndexRecords, error) {
 	if err := json.Unmarshal(data, &records); err != nil {
 		return nil, domain.InstallationError(err, "the channel indexes at %s are not valid JSON", path)
 	}
+	// JSON's null decodes to no map at all, which is damage rather than
+	// an empty record: reading it as none would forget every sequence.
+	if records == nil {
+		return nil, domain.InstallationError(nil, "the channel indexes at %s are null, not a record", path)
+	}
 	return records, nil
 }
 
