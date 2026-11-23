@@ -1819,6 +1819,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release index
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release index">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-fetch" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1914,7 +1942,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses_3" class="md-nav__link">
+  <a href="#what-it-refuses_4" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -2773,6 +2801,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#release-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        release index
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="release index">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-refuses_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        What it refuses
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#release-fetch" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2868,7 +2924,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#what-it-refuses_3" class="md-nav__link">
+  <a href="#what-it-refuses_4" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
         What it refuses
@@ -3637,6 +3693,125 @@ newer version do not follow a channel backwards.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="release-index">release index<a class="headerlink" href="#release-index" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>index<span class="w"> </span>oci://&lt;registry&gt;/&lt;repository&gt;:&lt;channel&gt;<span class="w"> </span>--key<span class="w"> </span>FILE<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">[</span>--valid-for<span class="w"> </span>DURATION<span class="o">]</span>
+</code></pre></div>
+<p>Signs a statement of which release a channel points at, and until when, and
+publishes it beside the channel under the tag <code>&lt;channel&gt;.index</code>. A channel that
+stops moving looks the same whether nothing was released or someone froze it
+on an old release, and the index's expiry is what tells the two apart.
+Machines do not read it yet. How to keep one fresh is in the
+<a href="../../authoring/publishing/#signing-the-channels-index">publishing guide</a>.</p>
+<p>The release is the bundle the channel tag points at when the command runs. It
+is pulled and named by its <a href="#verification">content digest</a>, never the
+manifest digest. The index is <code>index.json</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"schema"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"channel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"stable"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"sequence"</span><span class="p">:</span><span class="w"> </span><span class="mi">1793260800123</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"issued_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-29T08:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"expires_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-05T08:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"release"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.3.0"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"digest"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sha256:bcca96e8020143562b3040e9c443f36ae57d8e2594c59b7f2499902416b211c5"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--key</code></td>
+<td>The minisign secret key your bundles are signed with. It must have no password: a scheduled re-sign has no one to type it.</td>
+</tr>
+<tr>
+<td><code>--valid-for</code></td>
+<td>How long the index stays valid, at least <code>1m</code>. Default <code>168h</code>.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Pull, check and sign, and push nothing.</td>
+</tr>
+</tbody>
+</table>
+<p>The sequence is the issue time in milliseconds. If the index already under the
+tag is signed by this key and has a sequence at least as high, the command
+refuses, since a machine that accepted that index would refuse this one as a
+replay. An index under the tag that this key did not sign, that names another
+channel, or that is not an index, does not count: it is replaced, with a
+warning naming why. Anyone who can push to the repository can write the tag, so
+an index planted there with a high sequence cannot stop you re-signing. A read
+of the tag that the registry refuses stops the command, since it says nothing
+about what is there.</p>
+<p>The artifact has type <code>application/vnd.morzer.channel.index.v1</code> and two
+layers:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Media type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.json</code></td>
+<td><code>application/vnd.morzer.channel.index.v1+json</code></td>
+</tr>
+<tr>
+<td><code>index.json.minisig</code></td>
+<td><code>application/vnd.morzer.channel.index.v1.minisig</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each layer is read up to 64 KiB. <code>--json</code> carries <code>channel</code>, <code>reference</code>,
+<code>sequence</code>, <code>issued_at</code>, <code>expires_at</code>, <code>release</code> with its <code>version</code> and
+<code>digest</code>, <code>key_id</code>, <code>manifest_digest</code>, and <code>replaced</code> when an index was
+replaced, with the reason.</p>
+<h3 id="what-it-refuses_3">What it refuses<a class="headerlink" href="#what-it-refuses_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A reference that is not <code>oci://</code>, names no tag, names a digest, a version, or a tag ending in <code>.index</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td>No <code>--key</code>, no file at its path, or <code>--valid-for</code> under <code>1m</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td>A key with a password, or a file that is not a minisign secret key</td>
+<td>6</td>
+</tr>
+<tr>
+<td>A sequence not higher than the index this key already signed under the tag</td>
+<td>2</td>
+</tr>
+<tr>
+<td>No artifact under the channel tag, or a bundle there that does not extract</td>
+<td>2</td>
+</tr>
+<tr>
+<td>The registry refuses the credentials</td>
+<td>2</td>
+</tr>
+<tr>
+<td>The registry cannot be reached, or fails</td>
+<td>7</td>
+</tr>
+</tbody>
+</table>
 <h2 id="release-fetch">release fetch<a class="headerlink" href="#release-fetch" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>&lt;ref&gt;
 morzer<span class="w"> </span>release<span class="w"> </span>fetch<span class="w"> </span>./demo-1.3.0.tar.zst
@@ -3878,7 +4053,7 @@ that was reinstalled, a converge that refuses with</p>
 </code></pre></div>
 <p><strong>Idempotent.</strong> An image already present is not read again, so re-running after
 a partial failure costs nothing for the images that succeeded.</p>
-<h3 id="what-it-refuses_3">What it refuses<a class="headerlink" href="#what-it-refuses_3" title="Permanent link">&para;</a></h3>
+<h3 id="what-it-refuses_4">What it refuses<a class="headerlink" href="#what-it-refuses_4" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>

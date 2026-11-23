@@ -1489,6 +1489,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#signing-the-channels-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Signing the channel's index
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2418,6 +2429,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#signing-the-channels-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Signing the channel's index
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2764,6 +2786,59 @@ records the refusal. Moving
 machine that already took <code>1.3.0</code>. Publish <code>1.3.1</code> with the fix and move the tag
 to it; an operator who needs the old release now runs <code>morzer rollback</code>.
 <code>release push</code> warns when it moves a channel backwards, and moves it anyway.</p>
+<h3 id="signing-the-channels-index">Signing the channel's index<a class="headerlink" href="#signing-the-channels-index" title="Permanent link">&para;</a></h3>
+<p>A channel that stops moving looks the same to a machine whether you released
+nothing or someone who controls the registry froze it on an old release with a
+known hole. A signed index tells the two apart. It names the release the
+channel points at and a date it expires, and you re-sign it before that date
+whether or not you released. A machine that follows the channel and pins your
+key is to warn once the index expires.</p>
+<p>Machines do not read the index yet: this release publishes it, and checking it
+on the machines comes in a later one. What follows describes the check as it is
+designed.</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>index<span class="w"> </span>oci://registry.example/demo/bundle:stable<span class="w"> </span>--key<span class="w"> </span>./release.key
+</code></pre></div>
+<p>It pulls the bundle <code>stable</code> points at and writes its version and content
+digest, a sequence, which is the time in milliseconds, and an expiry seven days
+out. It signs that with the key and pushes it beside the channel as
+<code>stable.index</code>. <code>--valid-for 72h</code> sets another expiry, and <code>--dry-run</code> signs and
+pushes nothing. The <a href="../../reference/release-commands/#release-index">reference</a>
+has the document and what the command refuses.</p>
+<p>Run it after every channel move, and on a schedule shorter than the expiry. The
+key is the one your bundles are signed with, since a machine checks the index
+against the keys it already pins for your releases. It has to have no password,
+because a scheduled job has nobody to type one. If you keep a password on it,
+sign by hand, as shown below.</p>
+<p>The expiry is a trade. A short one notices a freeze sooner, and costs a job that
+must not miss. A re-sign that does not happen makes every machine following the
+channel warn, and refuse to install unattended under <code>auto_apply</code>, until you
+re-sign. Seven days with a daily job leaves six days to notice the job failed.
+Taking the index away does not switch the check off: a machine that accepted
+one keeps judging the channel by it until it expires.</p>
+<p>The sequence check and the push are separate requests, like <code>release push</code>'s,
+so run every <code>release index</code> and <code>release push</code> of a repository in the same
+concurrency group. Two runs that overlap anyway can leave the older index on the
+tag. A machine that took the newer one refuses it as a replay, and the next
+re-sign puts a higher sequence there.</p>
+<p>By hand, write the document, sign it, and push both files under the index tag.
+The digest is the content digest <code>release push</code> printed for the release the
+channel points at:</p>
+<div class="highlight"><pre><span></span><code>cat<span class="w"> </span>&gt;<span class="w"> </span>index.json<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">{"schema": 1, "channel": "stable", "sequence": $(date -u +%s)000,</span>
+<span class="s"> "issued_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",</span>
+<span class="s"> "expires_at": "$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)",</span>
+<span class="s"> "release": {"version": "1.3.0", "digest": "sha256:bcca96e8…"}}</span>
+<span class="s">EOF</span>
+minisign<span class="w"> </span>-Sm<span class="w"> </span>index.json
+oras<span class="w"> </span>push<span class="w"> </span>registry.example/demo/bundle:stable.index<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--artifact-type<span class="w"> </span>application/vnd.morzer.channel.index.v1<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>index.json:application/vnd.morzer.channel.index.v1+json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>index.json.minisig:application/vnd.morzer.channel.index.v1.minisig
+</code></pre></div>
+<p><code>date -d</code> is GNU's. On macOS, write the expiry as
+<code>$(date -u -v+7d +%Y-%m-%dT%H:%M:%SZ)</code>. Each re-sign needs a sequence higher
+than the last one, which the time gives you as long as the clock does not go
+back.</p>
 <h2 id="tell-them-the-digest">Tell them the digest<a class="headerlink" href="#tell-them-the-digest" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>verify<span class="w"> </span>./my-product<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-1
 <span class="c1"># sha256:bcca96e8020143562b3040e9c443f36ae57d8e2594c59b7f2499902416b211c5</span>
