@@ -163,3 +163,43 @@ evidence: rfcs/0037-freshness-of-a-signed-release.md:372
 action: decided
 proposal: ASSUMED — refines decision 25. `--forget-index` is a usage error without `--stage`. It forgets the followed channel's accepted index under the deployment lock, journals that as a `release` operation, then polls; with no accepted index it forgets nothing, journals nothing and says so. Only expiry notifies (decision 28): a refused index is reported by `status` and `doctor`.
 ```
+
+Found on the machine side's review (#412), and decided there. Each refines
+an entry above; they are written here after the fixes landed, so that the rows
+reconciled from this log carry them.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T13:41:00Z
+attempt: 4
+claim: the third entry of 07:29:03Z holds a release behind an expired or disagreeing index at the tick, which runs before the update takes the deployment lock, so a poll that lands while the update waits, or a change of `update.channel`, is not seen
+evidence: internal/lifecycle/ops/channel_index.go:479-500
+action: decided
+proposal: ASSUMED — refines the third entry of 07:29:03Z. An unattended update asks again under its deployment lock whether the channel it was staged from holds the release, judged against that channel's accepted index and the keys in force then, and is refused before anything runs when it does. It is refused too when `update.channel` names another channel by then, since that channel's index says nothing about this release; the next tick follows the new one. An operator's update still does not read the index (decision 30).
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T13:41:00Z
+attempt: 4
+claim: decision 9 puts the index under `<channel>.index`, and a channel tag within five characters of the 128-character tag limit cannot carry that suffix
+evidence: internal/adapters/source/oci/index.go:47
+action: decided
+proposal: ASSUMED — a channel whose tag cannot carry `.index` within the tag limit has no index, as a reference with no tag or a digest reference has none, so its poll neither fails nor records a problem.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-23T13:41:00Z
+attempt: 4
+claim: the last entry of 07:29:03Z journals `--forget-index` without saying in which order it journals and forgets, nor what a plan does
+evidence: internal/lifecycle/ops/channel_index.go:429-470
+action: decided
+proposal: ASSUMED — refines the last entry of 07:29:03Z. `--forget-index` writes its journal record first and forgets the index only once the record is written, so a journal that cannot be written leaves the index accepted. A plan forgets nothing: it reports the sequence it would forget as `would_forget_index`, and polls as if that index were gone.
+```

@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported by `status` and `doctor`, notified once, and holds an unattended
   install.
 
+### Fixed
+
+- An update tick on a channel that has not moved now says which staged
+  release is still waiting and why. It used to say only that the channel was
+  unchanged, so a release held on an earlier night read as nothing waiting.
+
+- A channel-marks file left holding only `null` is now refused as damaged
+  installation state. The next channel poll used to crash on it.
+
 ## [0.19.1] - 2026-11-22
 
 A service with an image mount starts again after the machine restarts, which
