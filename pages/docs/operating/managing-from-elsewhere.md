@@ -146,7 +146,8 @@ document for the release it staged. You do not choose the release or when it
 is installed; the machine's channel and its tick do.
 
 1. Upgrade the manager you publish and read the fleet with first. Rows that
-   name a staged release are schema 3, and an older manager refuses them.
+   name a staged release are schema 3 or later, and an older manager refuses
+   them.
 2. Wait for the machine to stage the release. Its row names it:
 
    ```sh
