@@ -108,6 +108,30 @@ it can be shared, it can be outside anything the manager manages.
 If your product's data lives on a bind mount, it is not in any backup. Use a
 named volume.
 
+## Data a lost machine takes with it
+
+A backup that stays on the machine is lost with the machine. For many products
+that is a nuisance: the data can be rebuilt, synced again or re-imported. For
+some it is not. Keys, device identities and the only copy of a user's uploads
+go with the disk.
+
+If your product holds data like that, say so:
+
+```yaml
+backup:
+  off_machine: expected
+compatibility:
+  min_manager_version: "0.20.0"
+```
+
+`morzer doctor` then warns an operator whose machine has no backup target, and
+names the command that adds one. It never refuses an install, because a first
+install often has its target added minutes later. Declare it only where a lost
+machine means data nobody can get back. A warning on every machine of a product
+that can rebuild its data is one operators learn to ignore. See
+[`backup.off_machine`](../reference/manifest.md#off-machine-backups) for the
+key.
+
 ## Checking it
 
 `morzer release verify` rejects a `consistency` that is not one of the three

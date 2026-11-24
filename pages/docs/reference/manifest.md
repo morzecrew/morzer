@@ -822,11 +822,13 @@ install onto the machine they exist to refuse.
 ## backup
 
 What the manager may do about the project's named volumes, which it captures
-itself rather than through the backup hook.
+itself rather than through the backup hook, and whether the product's backups
+belong off the machine.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `volumes` | map | Keyed by the volume's name in the Compose `volumes:` block. |
+| `off_machine` | `expected` | The product's data cannot be rebuilt, so its backups belong off the machine. Optional; see [below](#off-machine-backups). Needs `compatibility.min_manager_version` 0.20.0. |
 
 Each entry takes one field, and it is **required** — an entry that names a
 volume without saying anything about it is refused at load. Leaving the volume
@@ -859,6 +861,29 @@ manager captures a database volume the hook already owns.
 `hot` is a claim about the product, not a performance hint — see
 [declaring volume consistency](../authoring/backing-up-volumes.md) for what it
 commits a vendor to. Bind mounts are never captured and have no declaration.
+
+### Off-machine backups
+
+```yaml
+backup:
+  off_machine: expected
+compatibility:
+  min_manager_version: "0.20.0"
+```
+
+On a machine with no [backup target](backup-targets.md), `morzer doctor` then
+warns at `backup.target-reachable` and names `morzer backup target add`. A
+product that does not declare it gets OK there. An unreachable target fails the
+check either way. The key takes `expected` only: leave it out for any other
+product.
+
+It is a warning, not a refusal. `init` still installs on a machine with no
+target, because one is often added minutes later. The machine's
+[fleet row](fleet.md#the-backup-block) says `expected: true`, so an authority
+can find such a machine without reading the manifest.
+
+A manifest that declares it needs `compatibility.min_manager_version` of at
+least 0.20.0. An older manager refuses the key as unknown.
 
 ## managed
 

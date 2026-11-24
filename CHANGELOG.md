@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   column. Rows move to schema 4, so upgrade the manager you read the fleet with
   first.
 
+- A release can declare `backup.off_machine: expected` when its data cannot be
+  rebuilt. `doctor` then warns on a machine with no backup target, and the
+  machine's fleet row says `expected`. The key needs
+  `compatibility.min_manager_version` 0.20.0.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index
