@@ -1303,7 +1303,29 @@ type BackupSpec struct {
 	// which is correct for every volume and slow for some. A vendor
 	// declares only where they want something other than the safe default.
 	Volumes map[string]VolumeSpec `yaml:"volumes" json:"volumes,omitempty"`
+
+	// OffMachine is the vendor's claim that the product's data cannot be
+	// rebuilt, so a machine with no backup target loses it with the machine
+	// (RFC 0061 §5.3). `doctor` warns on such a machine, and its fleet row
+	// says `expected`. Absent is every other product, and needs no second
+	// value (decision 8).
+	OffMachine OffMachineExpectation `yaml:"off_machine" json:"off_machine,omitempty"`
 }
+
+// OffMachineExpectation is what a product expects of where its backups go.
+type OffMachineExpectation string
+
+// OffMachineExpected is its one value: the backups belong off the machine.
+const OffMachineExpected OffMachineExpectation = "expected"
+
+// BackupOffMachineMinManagerVersion is the manager release that reads
+// `backup.off_machine` (RFC 0061 decision 10). An older manager refuses the
+// key as unknown; the floor makes that one message naming the version.
+const BackupOffMachineMinManagerVersion = "0.20.0"
+
+// ExpectsOffMachine reports whether the product declares that its backups
+// belong off the machine.
+func (b BackupSpec) ExpectsOffMachine() bool { return b.OffMachine == OffMachineExpected }
 
 // VolumeSpec is one volume's declaration. Listing a volume here means saying
 // something about it: the consistency is required, because the way to ask for
@@ -2034,6 +2056,19 @@ func (m *Manifest) Validate() error {
 			v.add(field+".consistency", "must be %s, got %q",
 				joinConsistencies(VolumeConsistencies), spec.Consistency)
 		}
+	}
+
+	// backup.off_machine
+	switch m.Backup.OffMachine {
+	case "":
+	case OffMachineExpected:
+		if minimum := MustParseVersion(BackupOffMachineMinManagerVersion); m.Compatibility.MinManagerVersion.LessThan(minimum) {
+			v.add("compatibility.min_manager_version",
+				"must be at least %s, because the release declares backup.off_machine and an "+
+					"older manager refuses it", minimum)
+		}
+	default:
+		v.add("backup.off_machine", "must be %q, or absent, got %q", OffMachineExpected, m.Backup.OffMachine)
 	}
 
 	// health

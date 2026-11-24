@@ -13,6 +13,13 @@
     "backup": {
       "additionalProperties": false,
       "properties": {
+        "off_machine": {
+          "description": "Whether the product's backups belong off the machine. `expected` says its data cannot be rebuilt, so `doctor` warns on a machine with no backup target; absent, it does not. Needs compatibility.min_manager_version 0.20.0.",
+          "enum": [
+            "expected"
+          ],
+          "type": "string"
+        },
         "volumes": {
           "additionalProperties": {
             "additionalProperties": false,
