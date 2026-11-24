@@ -206,7 +206,8 @@ listed to build it.
 | `pushed_at` | of the newest backup each configured target took, the time of the oldest; absent when a configured target has taken none |
 | `recovery_recipient` | whether the secret store has a recipient of kind `recovery` |
 | `scheduled` | `false` only when `backup.scheduled` is off; absent otherwise |
-| `problem` | why the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false |
+| `expected` | `true` when the installed release declares [`backup.off_machine: expected`](manifest.md#off-machine-backups); absent otherwise |
+| `problem` | why the release, the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false |
 
 Read `pushed_at` against `last_at`. The same time means the newest backup
 reached every target. An older `pushed_at` says how far the furthest-behind

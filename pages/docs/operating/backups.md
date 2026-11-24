@@ -628,7 +628,11 @@ from the secret store. That pair is the escape hatch for a rebuilt machine — s
 | `backup.target-freshness` | the most recent backup is not on any target |
 
 Both are failures rather than warnings, and both exit
-[3](../reference/exit-codes.md). The second is the one worth watching: it is the
+[3](../reference/exit-codes.md). With no target configured,
+`backup.target-reachable` is OK, unless the release declares
+[`backup.off_machine: expected`](../reference/manifest.md#off-machine-backups).
+Its data cannot be rebuilt, so the check warns and names
+`morzer backup target add`. The second is the one worth watching: it is the
 failure that hides, because the backup ran, the backup succeeded, and the copy
 that would survive the machine is not there.
 

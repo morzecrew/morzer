@@ -363,6 +363,19 @@ func TestEveryManifestRuleIsEnforcedByName(t *testing.T) {
 			},
 			"backup.volumes.uploads.consistency",
 		},
+		// backup.off_machine -- one value, and the manager that reads it
+		// (RFC 0061 decisions 8 and 10)
+		"an off-machine expectation other than expected": {
+			func(m *Manifest) {
+				m.Compatibility.MinManagerVersion = MustParseVersion(BackupOffMachineMinManagerVersion)
+				m.Backup.OffMachine = "required"
+			},
+			"backup.off_machine",
+		},
+		"an off-machine expectation below the manager that reads it": {
+			func(m *Manifest) { m.Backup.OffMachine = OffMachineExpected },
+			"compatibility.min_manager_version: must be at least " + BackupOffMachineMinManagerVersion,
+		},
 
 		// health
 		"a health check with no name": {
@@ -580,5 +593,22 @@ func TestOperationLookup(t *testing.T) {
 	}
 	if _, ok := m.Operation(OpRestore); ok {
 		t.Error("an operation the manifest does not declare was found")
+	}
+}
+
+// The other half of the two off-machine refusals above: at the floor, the key
+// validates and says what it was declared to.
+func TestAnOffMachineExpectationAtTheFloorIsAccepted(t *testing.T) {
+	m := validManifest()
+	m.Compatibility.MinManagerVersion = MustParseVersion(BackupOffMachineMinManagerVersion)
+	m.Backup.OffMachine = OffMachineExpected
+	if err := m.Validate(); err != nil {
+		t.Fatalf("a declaration at the floor was refused: %v", err)
+	}
+	if !m.Backup.ExpectsOffMachine() {
+		t.Fatal("the declaration does not read as expecting off-machine backups")
+	}
+	if (BackupSpec{}).ExpectsOffMachine() {
+		t.Fatal("a product declaring nothing reads as expecting off-machine backups")
 	}
 }

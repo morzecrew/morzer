@@ -545,6 +545,12 @@ func stringSchema(t reflect.Type) map[string]any {
 		out["enum"] = []string{string(domain.FactsRefreshPublish)}
 		out["description"] = "When else the facts task runs. `publish` runs it " +
 			"before every `fleet publish`; absent, it runs after operations only."
+	case reflect.TypeOf(domain.OffMachineExpected):
+		out["enum"] = []string{string(domain.OffMachineExpected)}
+		out["description"] = "Whether the product's backups belong off the machine. " +
+			"`expected` says its data cannot be rebuilt, so `doctor` warns on a machine " +
+			"with no backup target; absent, it does not. Needs " +
+			"compatibility.min_manager_version " + domain.BackupOffMachineMinManagerVersion + "."
 	case reflect.TypeOf(domain.VolumeCold):
 		values := make([]string, len(domain.VolumeConsistencies))
 		for i, c := range domain.VolumeConsistencies {

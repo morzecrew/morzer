@@ -61,15 +61,23 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 		in.Staged = candidate.Version.String()
 	}
 
+	// The installed release, loaded once for the drift count and the
+	// block's `expected`: a load digests the whole release directory.
+	var rel domain.Release
+	relErr := currentErr
+	if relErr == nil && !current.IsZero() {
+		rel, relErr = d.resolveCurrentRelease(ctx, current)
+	}
+
 	in.Health = d.fleetHealth(ctx, inst, current, currentErr)
-	in.Drift = d.fleetDrift(ctx, inst, current, currentErr)
+	in.Drift = d.fleetDrift(ctx, inst, current, currentErr, rel, relErr)
 	in.LastOperation = d.fleetLastOperation(ctx)
 	in.AgeRecipient = d.machineRecipient(ctx)
 	// Named only when the facts it names are here to publish beside it.
 	if _, _, ok := d.keptFacts(inst); ok {
 		in.FactsDigest = inst.Sync.Facts.Digest
 	}
-	in.Backup = d.fleetBackup(ctx, inst)
+	in.Backup = d.fleetBackup(ctx, inst, rel, relErr)
 
 	return domain.NewFleetRow(in)
 }
@@ -77,13 +85,25 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 // fleetBackup is the row's backup block (RFC 0061 §5.1), from local state
 // only: no target is listed, so a publish costs nothing per target. A read
 // that fails leaves its field out and says why in Problem (decision 7).
-func (d *Deps) fleetBackup(ctx context.Context, inst domain.Installation) *domain.FleetBackup {
+//
+// rel is the installed release, zero when none is; relErr is why it could not
+// be read.
+func (d *Deps) fleetBackup(ctx context.Context, inst domain.Installation, rel domain.Release, relErr error) *domain.FleetBackup {
 	block := &domain.FleetBackup{Targets: len(inst.Backup.Targets)}
 	var problems []string
 
 	if inst.Policy.SkipScheduledBackups {
 		off := false
 		block.Scheduled = &off
+	}
+
+	if relErr != nil {
+		// Left out alone, `expected` would read as a product that
+		// expects nothing.
+		problems = append(problems, "cannot read the installed release, so whether it expects "+
+			"off-machine backups is unknown")
+	} else {
+		block.Expected = rel.Manifest.Backup.ExpectsOffMachine()
 	}
 
 	if d.Backup == nil {
@@ -275,6 +295,8 @@ func (d *Deps) fleetDrift(
 	inst domain.Installation,
 	current domain.ReleaseRecord,
 	currentErr error,
+	rel domain.Release,
+	relErr error,
 ) domain.FleetDrift {
 	switch {
 	case currentErr != nil:
@@ -283,9 +305,8 @@ func (d *Deps) fleetDrift(
 		return domain.FleetDrift{Problem: "no release is installed, so nothing renders configuration"}
 	}
 
-	rel, err := d.resolveCurrentRelease(ctx, current)
-	if err != nil {
-		return domain.FleetDrift{Problem: domain.AsError(err).Message}
+	if relErr != nil {
+		return domain.FleetDrift{Problem: domain.AsError(relErr).Message}
 	}
 
 	comparison, err := configComparison(ctx, d, inst, rel, nil)

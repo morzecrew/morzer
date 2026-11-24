@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/internal/release"
 )
 
 // The row's backup block (RFC 0061 P1), read off a publish rather than off the
@@ -30,6 +32,24 @@ func (h *harness) withBackupClock(t *testing.T) {
 		next = next.Add(time.Hour)
 		return next
 	}
+}
+
+// withOffMachineExpected makes the harness's release declare
+// `backup.off_machine: expected`, at the floor that reads it. Before install,
+// so the release record carries the patched bundle's digest.
+func withOffMachineExpected(t *testing.T, h *harness) {
+	t.Helper()
+	path := filepath.Join(h.Release.Root, "manifest.yaml")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	patched := strings.Replace(string(raw), "backup:\n  volumes:\n", "backup:\n  off_machine: expected\n  volumes:\n", 1)
+	require.NotEqual(t, string(raw), patched, "the fixture's backup block is no longer the one this rewrites")
+	patched = strings.Replace(patched, `min_manager_version: "0.0.0"`,
+		`min_manager_version: "`+domain.BackupOffMachineMinManagerVersion+`"`, 1)
+	require.NoError(t, os.WriteFile(path, []byte(patched), 0o644))
+	h.Release, err = release.Load(h.Release.Root)
+	require.NoError(t, err)
+	require.True(t, h.Release.Manifest.Backup.ExpectsOffMachine())
 }
 
 func publishedBackup(t *testing.T, h *harness) domain.FleetBackup {
@@ -225,6 +245,31 @@ func TestAnImportForgetsTheReplacedInstallationsPushes(t *testing.T) {
 	require.NoError(t, err)
 	assert.NoFileExists(t, rebuilt.Deps.Paths.BackupPushesFile(),
 		"the imported installation kept the replaced one's push record")
+}
+
+// A product whose data cannot be rebuilt says so on the row, so an authority
+// with several products can flag the machine without reading each manifest
+// (decision 9). A release that cannot be read is said, never read as a product
+// that expects nothing.
+func TestTheRowSaysTheProductExpectsItsBackupsOffTheMachine(t *testing.T) {
+	h := fleetHarness(t)
+	withOffMachineExpected(t, h)
+	h.withFleetTarget(t)
+
+	block := publishedBackup(t, h)
+	assert.True(t, block.Expected)
+	assert.Empty(t, block.Problem)
+
+	// Modified after install, so it no longer matches its recorded digest.
+	f, err := os.OpenFile(filepath.Join(h.Release.Root, "manifest.yaml"), os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteString("\n# edited\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	block = publishedBackup(t, h)
+	assert.False(t, block.Expected)
+	assert.Contains(t, block.Problem, "cannot read the installed release")
 }
 
 // A target put in place of another holds nothing until a push reaches it.
