@@ -5,7 +5,7 @@
   build had to make are rows 12–19, accepted by the author 2026-10-30 from
   [logs/release-push.md](../logs/release-push.md). P2 was gated on a vendor's
   registry retention deleting a pinned image, and the author ruled 2026-11-24 to
-  build it now: decision 20 lifts the gate, and decisions 21–26 settle what the
+  build it now: decision 20 lifts the gate, and decisions 21–27 settle what the
   design left open.
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
@@ -263,6 +263,7 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 | 24 | `ASSUMED` | A tag that already names the pinned digest counts as tagged, and nothing is written. One that names another digest is refused with exit 2, naming both digests, as decision 16 refuses a version tag that moved, and nothing of the bundle is pushed. Rejected: moving the tag, which strips the protection from the release it was written for. Ruled by the author 2026-11-24. |
 | 25 | `ASSUMED` | Tagging follows the rules P1 set. `--dry-run` resolves every tag and writes none (decision 17). Credentials are the ambient Docker configuration, for each image repository in turn (decision 9). `--json` carries `images`, each with its reference, the tag, and whether it was tagged, already tagged or skipped with the reason, or the error that stopped it (decision 18; names `ASSUMED`). Ruled by the author 2026-11-24. |
 | 26 | `ASSUMED` | The pinned digest is tagged as it is, an index or a single manifest, never a platform's manifest picked out of an index. The tag is a manifest `PUT` of the bytes that digest names, so the image's content does not change. |
+| 27 | `ASSUMED` | **Refines decision 21.** The tag ends in the first 12 hex digits of the pinned digest: `morzer-<product>-<version>-<12 hex>`. Nothing stops a bundle pinning two digests in one repository, as two images built from one repository for different roles, and one tag per repository would refuse the second under decision 24 on every run. With the digest in the name, each pinned digest has its own tag and one digest pinned twice shares one. Its fixed length keeps it from running into a version's pre-release, as an image name would. The 128-character limit counts the suffix. Rejected: the image's name from the manifest, which a version's pre-release runs into (version `1.0.0-rc` with image `api`, and `1.0.0` with `rc-api`, give one tag); and the whole digest, 64 of a tag's 128 characters. From review of #423. |
 
 ## 12. Phasing
 
@@ -270,4 +271,4 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 - **P2** — `--tag-images`, only when a vendor's registry retention deletes a
   pinned image (decision 8).
   *(2026-11-24: decision 20 superseded row 8, and P2 is built now; decisions
-  21–26 settle what it left open.)*
+  21–27 settle what it left open.)*
