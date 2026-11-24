@@ -90,7 +90,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
   a vendor asking.
 - **[0061 — Backup state a fleet can see](0061-backup-state-a-fleet-can-see.md).**
-  📝 Proposed 2026-11-23 from #418. Its `OPEN` rows wait for the author.
+  📝 Proposed 2026-11-23 from #418 and ruled by the author 2026-11-24. P1, the
+  backup block in the fleet row, is built first.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and

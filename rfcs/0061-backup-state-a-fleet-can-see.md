@@ -1,7 +1,7 @@
 # RFC 0061 — Backup state a fleet can see
 
-- **Status:** 📝 Draft — proposed 2026-11-23 from #418. §11's `OPEN` rows
-  wait for the author.
+- **Status:** 📝 Draft — proposed 2026-11-23 from #418, and ruled by the
+  author 2026-11-24: §11's `OPEN` rows as recommended. P1 is built first.
 - **Scope:** What an installation says about its backups, to an authority
   reading its fleet row and to an operator reading `doctor`. Covers a `backup`
   block in the fleet row (fleet schema 4): how many off-machine targets are
@@ -279,32 +279,30 @@ when `recovery_recipient` is false (decision 11).
 
 ## 10. Unresolved questions
 
-The `OPEN` rows in §11, for the author: whether to build now, the shape of
-`pushed`, where it comes from, the manifest key, whether the row carries the
-expectation, `fleet ls`, and the phasing.
+None. The author ruled §11's `OPEN` rows on 2026-11-24, as recommended.
 
 ## 11. Decisions
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `OPEN` | **Build now, or wait?** Recommended: build now. #418 records a machine lost with its keys, and both halves use state morzer already has. |
-| 2 | `OPEN` | **`pushed` as a boolean (#418) or `pushed_at` as a time?** Recommended `pushed_at`: compared with `last_at` it says the same thing, and it also says since when, which a week of failing pushes needs. |
-| 3 | `OPEN` | **Where `pushed_at` comes from: a record written when a push reaches every target, a probe of each target at publish, or the journal?** Recommended the record (§5.2): local, cheap, and loud when lost. A probe costs a listing per target on every publish, and the journal cannot tell a failed push from a retried one. |
+| 1 | `ASSUMED` | **Build now, or wait?** Recommended: build now. #418 records a machine lost with its keys, and both halves use state morzer already has. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
+| 2 | `ASSUMED` | **`pushed` as a boolean (#418) or `pushed_at` as a time?** Recommended `pushed_at`: compared with `last_at` it says the same thing, and it also says since when, which a week of failing pushes needs. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
+| 3 | `ASSUMED` | **Where `pushed_at` comes from: a record written when a push reaches every target, a probe of each target at publish, or the journal?** Recommended the record (§5.2): local, cheap, and loud when lost. A probe costs a listing per target on every publish, and the journal cannot tell a failed push from a retried one. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
 | 4 | `ASSUMED` | The block raises the fleet schema from 3 to 4, and a schema 3 reader refuses the row (RFC 0026 decision 4), so the authority is upgraded first. |
 | 5 | `LOCKED` | The block carries only counts, times and booleans: never a target's URL, name or listing. A URL can carry credentials, and the row is readable by every machine sharing the bucket. Reversing it leaks a credential to every neighbour, which nothing can take back. |
 | 6 | `ASSUMED` | With `backup.scheduled` off (RFC 0030), the block says `scheduled: false`, so a machine backed up at the storage layer is not read as one whose backups stopped. |
 | 7 | `ASSUMED` | A read that fails is `problem` in the block, and a count that could not be taken is never published as zero, for the reason `FleetHealth` gives (`fleet.go:230-249`). |
-| 8 | `OPEN` | **The manifest key: `backup.off_machine: expected`, a boolean such as `backup.require_off_machine: true`, or none?** Recommended `off_machine: expected`, with `backup.target-reachable` warning rather than failing when no target is configured. A failure would fire on every first install before its target is added. |
-| 9 | `OPEN` | **Does the row carry the product's expectation as `expected: true`?** Recommended yes: an authority watching several products can flag a machine without reading each manifest, and it is one boolean. |
+| 8 | `ASSUMED` | **The manifest key: `backup.off_machine: expected`, a boolean such as `backup.require_off_machine: true`, or none?** Recommended `off_machine: expected`, with `backup.target-reachable` warning rather than failing when no target is configured. A failure would fire on every first install before its target is added. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
+| 9 | `ASSUMED` | **Does the row carry the product's expectation as `expected: true`?** Recommended yes: an authority watching several products can flag a machine without reading each manifest, and it is one boolean. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
 | 10 | `ASSUMED` | A manifest using `backup.off_machine` declares `compatibility.min_manager_version` of at least the release that reads it, as RFC 0059 did for `ports` (`ports.go:17-21`). |
-| 11 | `OPEN` | **`fleet ls` shows the block as one column (§5.4), or only `--json` carries it?** Recommended the column: `fleet ls` is where a human reads a fleet. |
-| 12 | `OPEN` | **Phasing: the row (P1) and the manifest key (P2) as two PRs, or one?** Recommended two: each helps alone (#418), and P1 needs no vendor to release anything. |
+| 11 | `ASSUMED` | **`fleet ls` shows the block as one column (§5.4), or only `--json` carries it?** Recommended the column: `fleet ls` is where a human reads a fleet. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
+| 12 | `ASSUMED` | **Phasing: the row (P1) and the manifest key (P2) as two PRs, or one?** Recommended two: each helps alone (#418), and P1 needs no vendor to release anything. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
 | 13 | `ASSUMED` | The push record names each target the copy reached, by a digest of its canonical URL, and `pushed_at` is published only while the record names every target configured now. A count cannot tell a replaced target from the one it replaced, and the replacement has no copy. With no target configured, the row has no `pushed_at`. A digest rather than the URL, so the derived file holds no second copy of a URL that can carry credentials. |
 | 14 | `ASSUMED` | A push replaces the record only when the record does not name every configured target, or when its backup was taken after the recorded one. A retry of an older backup after a newer one reached every target would otherwise move `pushed_at` back, and the row would read as behind. |
 
 ## 12. Phasing
 
 - **P1 — the row.** The push record, the block, schema 4, `fleet ls`, and the
-  fleet reference. Decisions 2–7, 9's field if ruled yes, 11, 13 and 14.
+  fleet reference. Decisions 2–7, 9's field, 11, 13 and 14.
 - **P2 — the manifest key.** `backup.off_machine`, the floor, `doctor`'s
   warning, and the manifest and authoring docs. Decisions 8–10.
