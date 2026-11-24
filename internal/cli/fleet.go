@@ -79,6 +79,10 @@ func newFleetPublishCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// For the row's `last_at`. Best effort, as for `status`: a
+			// machine with no release still publishes, and the row
+			// says the backups were not listed.
+			_ = app.attachBackupEngine(cmd.Context())
 
 			result, err := ops.FleetPublish(cmd.Context(), app.Deps, ops.FleetPublishOptions{
 				TargetOptions: ops.TargetOptions{

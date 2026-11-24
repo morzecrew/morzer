@@ -1150,6 +1150,10 @@ step "fleet publish --dry-run shows the row and writes nothing"
 	fail "fleet publish --dry-run failed: $(cat "${WORK}/fleet-dry.json")"
 jq -e '.data.row.schema == 4 and .data.row.bound != ""' "${WORK}/fleet-dry.json" >/dev/null ||
 	fail "--dry-run described the row instead of producing it"
+# Backups were taken above, so the row names the newest: the block is built
+# from what the binary wires, which no suite test sees.
+jq -e '.data.row.backup.last_at != null' "${WORK}/fleet-dry.json" >/dev/null ||
+	fail "the row names no backup: $(jq -c '.data.row.backup' "${WORK}/fleet-dry.json")"
 [ -z "$(find "${FLEET_TARGET}" -name status.json -print -quit)" ] ||
 	fail "fleet publish --dry-run wrote a row"
 

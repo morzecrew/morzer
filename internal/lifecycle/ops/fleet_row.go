@@ -86,13 +86,15 @@ func (d *Deps) fleetBackup(ctx context.Context, inst domain.Installation) *domai
 		block.Scheduled = &off
 	}
 
-	if d.Backup != nil {
-		if backups, err := d.Backup.List(ctx); err != nil {
-			problems = append(problems, "cannot list backups: "+domain.AsError(err).Message)
-		} else if len(backups) > 0 {
-			at := backups[0].At
-			block.LastAt = &at
-		}
+	if d.Backup == nil {
+		// Never wired: no release resolves. Unread, so said, rather
+		// than a row that reads as no backup taken.
+		problems = append(problems, "cannot list backups: no backup engine is configured")
+	} else if backups, err := d.Backup.List(ctx); err != nil {
+		problems = append(problems, "cannot list backups: "+domain.AsError(err).Message)
+	} else if len(backups) > 0 {
+		at := backups[0].At
+		block.LastAt = &at
 	}
 
 	if record, err := d.backupPushes(); err != nil {
