@@ -298,8 +298,9 @@ func TestTheBackupColumnSaysWhereTheBackupsAre(t *testing.T) {
 		"sandbox": "none left, no recovery key",
 		"delta":   "elsewhere",
 	} {
-		line := fleetLine(t, out, product)
-		assert.Contains(t, line, want, "the backup cell for %s", product)
+		t.Run(product, func(t *testing.T) {
+			assert.Contains(t, fleetLine(t, out, product), want)
+		})
 	}
 	assert.Contains(t, out, "backup: cannot read the backup push record",
 		"the reason the column says unknown must be rendered below the table")
