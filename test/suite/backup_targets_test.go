@@ -649,6 +649,27 @@ func TestDoctorIsSilentAboutTargetsWhenNoneAreConfigured(t *testing.T) {
 	}
 }
 
+// TestDoctorWarnsWhenAProductExpectingOffMachineBackupsHasNoTarget. Its data
+// cannot be rebuilt, so the machine is its only copy; a warning rather than a
+// failure, because a first install has no target until somebody adds one
+// (RFC 0061 decision 8).
+func TestDoctorWarnsWhenAProductExpectingOffMachineBackupsHasNoTarget(t *testing.T) {
+	h := newHarness(t)
+	registry, err := target.NewRegistry(localdir.New())
+	require.NoError(t, err)
+	h.Deps.Targets = registry
+	withOffMachineExpected(t, h)
+	h.install()
+
+	report, err := ops.Doctor(context.Background(), h.Deps)
+	require.NoError(t, err)
+
+	check := findCheck(t, report, "backup.target-reachable")
+	assert.Equal(t, string(events.CheckWarn), check.Status)
+	assert.Contains(t, check.Remedy, "morzer backup target add",
+		"the remedy must name the command that clears it")
+}
+
 // TestAddingATargetChecksItBeforeRecordingIt. A typo that only fails at push
 // time fails during the nightly backup, weeks later.
 func TestAddingATargetChecksItBeforeRecordingIt(t *testing.T) {

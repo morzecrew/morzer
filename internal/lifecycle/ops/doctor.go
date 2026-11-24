@@ -221,6 +221,11 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks, d.checkFileSharing(prober, false))
 	}
 
+	// Whether the product expects its backups off the machine (RFC 0061
+	// §5.3). A release that cannot be read reads as one that does not: its
+	// own check fails already, and a second finding about the same
+	// manifest gives the operator nothing more to do.
+	var expectsOffMachine bool
 	current, currentErr := d.State.CurrentRelease(ctx)
 	if currentErr != nil {
 		// A record that is there and will not read is not a machine that
@@ -238,6 +243,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkConfigDrift(inst, domain.Release{}, "the installed release cannot be read"),
 			d.checkDefinitionDrift(inst, domain.Release{}, "the installed release cannot be read"))
 	} else {
+		expectsOffMachine = rel.Manifest.Backup.ExpectsOffMachine()
 		checks = append(checks, preflight.Architecture(rel.Manifest.Requirements),
 			preflight.Platform(rel.Manifest.Requirements, d.platform()))
 		checks = append(checks, preflight.Tools(d.Tools, rel.Manifest.Requirements)...)
@@ -299,7 +305,7 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 		checks = append(checks, d.checkLastBackup(inst))
 	}
 	if d.Targets != nil {
-		checks = append(checks, d.checkBackupTargets(inst))
+		checks = append(checks, d.checkBackupTargets(inst, expectsOffMachine))
 		if inst.Backup.HasTargets() && d.Backup != nil {
 			checks = append(checks, d.checkBackupTargetFreshness(inst))
 		}
@@ -1940,7 +1946,12 @@ func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 // the registry-reachability case, where needing the network is normal: an
 // unreachable target means the deployment's data is on one disk, which is the
 // state configuring a target was meant to end.
-func (d *Deps) checkBackupTargets(inst domain.Installation) preflight.Check {
+//
+// The one exception to OK with no target is a product that declares
+// `backup.off_machine: expected` (RFC 0061 decision 8): its data cannot be
+// rebuilt, so the machine is its only copy. A warning rather than a failure,
+// because a first install has no target until somebody adds one.
+func (d *Deps) checkBackupTargets(inst domain.Installation, expectsOffMachine bool) preflight.Check {
 	return preflight.Check{
 		ID:          "backup.target-reachable",
 		Category:    preflight.CategoryBackup,
@@ -1958,6 +1969,12 @@ func (d *Deps) checkBackupTargets(inst domain.Installation) preflight.Check {
 				// warning nobody can act on is a warning
 				// everybody learns to ignore. checkLastBackup
 				// already covers having no backups at all.
+				if expectsOffMachine {
+					return preflight.Warn(
+						"run `morzer backup target add <url>` to keep a copy that survives the machine",
+						"no off-machine target is configured, and this product expects its "+
+							"backups off the machine: its data cannot be rebuilt")
+				}
 				return preflight.OK("no off-machine target is configured")
 			}
 
