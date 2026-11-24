@@ -2590,7 +2590,8 @@ document for the release it staged. You do not choose the release or when it
 is installed; the machine's channel and its tick do.</p>
 <ol>
 <li>Upgrade the manager you publish and read the fleet with first. Rows that
-   name a staged release are schema 3, and an older manager refuses them.</li>
+   name a staged release are schema 3 or later, and an older manager refuses
+   them.</li>
 <li>Wait for the machine to stage the release. Its row names it:</li>
 </ol>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>fleet<span class="w"> </span>ls<span class="w"> </span>s3://acme-state/demo<span class="w"> </span>--expect<span class="w"> </span>./roster.yaml<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.data.rows[].row.staged'</span>
