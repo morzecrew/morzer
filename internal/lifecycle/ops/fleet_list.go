@@ -258,6 +258,10 @@ type FleetRowStatus struct {
 	// Stale says the row is older than the threshold this run applied.
 	Stale bool `json:"stale,omitempty"`
 
+	// BackupAge is how long ago the row's `backup.pushed_at` was, rendered.
+	// Empty when the row has none.
+	BackupAge string `json:"backup_age,omitempty"`
+
 	// Problem is why this is not a row anybody can read, when it is not.
 	// A key that produced no row is still a line in the table: a view that
 	// dropped what it could not read would report health it did not
@@ -703,6 +707,9 @@ func (d *Deps) fleetRowAt(
 	status.Row = &row
 	status.Age = fleetAge(row.Age(reading.now))
 	status.Stale = row.Stale(reading.now, reading.stale)
+	if b := row.Backup; b != nil && b.PushedAt != nil {
+		status.BackupAge = fleetAge(reading.now.Sub(b.PushedAt.Time))
+	}
 	return status
 }
 

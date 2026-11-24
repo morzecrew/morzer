@@ -254,6 +254,7 @@ func fleetView(r ops.FleetReport) views.Fleet {
 			Absent:         row.Absent,
 			Age:            row.Age,
 			Stale:          row.Stale,
+			BackupAge:      row.BackupAge,
 			Problem:        row.Problem,
 		})
 	}

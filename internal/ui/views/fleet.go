@@ -57,8 +57,13 @@ type FleetRow struct {
 	// line every other line exists to make legible.
 	Absent bool `json:"absent,omitempty"`
 
-	Age     string `json:"age,omitempty"`
-	Stale   bool   `json:"stale,omitempty"`
+	Age   string `json:"age,omitempty"`
+	Stale bool   `json:"stale,omitempty"`
+
+	// BackupAge is how long ago the row's `pushed_at` was, rendered. Empty
+	// when the row has none.
+	BackupAge string `json:"backup_age,omitempty"`
+
 	Problem string `json:"problem,omitempty"`
 }
 
@@ -91,6 +96,7 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 		{Header: "health", Essential: true},
 		{Header: "published"},
 		{Header: "drift"},
+		{Header: "backup"},
 		{Header: "signature"},
 	}
 	if multi {
@@ -105,6 +111,7 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 			fleetHealth(r),
 			fleetPublished(r),
 			fleetDrift(r),
+			fleetBackup(r),
 			fleetSignature(r),
 		}
 		if multi {
@@ -150,6 +157,9 @@ func fleetDoc(d *ui.Doc, v Fleet) *ui.Doc {
 			}
 			if p := r.Row.Drift.Problem; p != "" {
 				problems = append(problems, []string{fleetName(r), "drift: " + p})
+			}
+			if b := r.Row.Backup; b != nil && b.Problem != "" {
+				problems = append(problems, []string{fleetName(r), "backup: " + b.Problem})
 			}
 		}
 	}
@@ -279,6 +289,38 @@ func fleetSignature(r FleetRow) string {
 }
 
 // fleetDrift renders the count, never a diff -- there is none to render.
+// fleetBackup renders the row's backup block in one column (RFC 0061 §5.4):
+// how long ago the furthest-behind target took a backup, `behind` when that is
+// older than the newest backup, `none left` when nothing is on every target,
+// and `elsewhere` for a machine backed up at the storage layer.
+//
+// `unknown` rather than `none left` when a read failed: the push record may be
+// what could not be read, and `none left` would then be a claim nobody
+// checked. A row from a manager before schema 4 has no block, and shows `—`.
+func fleetBackup(r FleetRow) string {
+	if r.Row == nil || r.Row.Backup == nil {
+		return "—"
+	}
+	b := r.Row.Backup
+	var out string
+	switch {
+	case b.Scheduled != nil && !*b.Scheduled:
+		out = "elsewhere"
+	case b.PushedAt == nil && b.Problem != "":
+		out = "unknown"
+	case b.PushedAt == nil:
+		out = "none left"
+	case b.LastAt != nil && b.PushedAt.Before(b.LastAt.Time):
+		out = r.BackupAge + " (behind)"
+	default:
+		out = r.BackupAge
+	}
+	if b.RecoveryRecipient != nil && !*b.RecoveryRecipient {
+		out += ", no recovery key"
+	}
+	return out
+}
+
 func fleetDrift(r FleetRow) string {
 	if r.Row == nil {
 		return "—"

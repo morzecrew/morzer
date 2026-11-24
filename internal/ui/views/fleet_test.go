@@ -3,6 +3,7 @@ package views_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,8 @@ import (
 
 func fleetRow(product string) views.FleetRow {
 	running, services, drift := 2, 2, 0
+	taken := domain.NewTime(time.Date(2026, 11, 23, 3, 0, 12, 0, time.UTC))
+	recovery := true
 	return views.FleetRow{
 		Target:         "s3://fleet.example/rows",
 		Key:            "fleet/" + product + "/inst_01/status.json",
@@ -29,6 +32,7 @@ func fleetRow(product string) views.FleetRow {
 		InstallationID: "inst_01",
 		Signature:      "signed",
 		Age:            "12m0s ago",
+		BackupAge:      "6h0m0s ago",
 		Row: &domain.FleetRow{
 			Schema:         domain.FleetSchemaVersion,
 			Product:        product,
@@ -36,6 +40,9 @@ func fleetRow(product string) views.FleetRow {
 			Version:        "1.4.0",
 			Health:         domain.FleetHealth{Running: &running, Services: &services},
 			Drift:          domain.FleetDrift{Targets: &drift},
+			Backup: &domain.FleetBackup{
+				Targets: 1, LastAt: &taken, PushedAt: &taken, RecoveryRecipient: &recovery,
+			},
 		},
 	}
 }
@@ -49,12 +56,19 @@ func fleetMixed() views.Fleet {
 
 	stopped := fleetRow("beta")
 	stopped.Row.Health = domain.FleetHealth{Running: &down, Services: &three}
+	newer := domain.NewTime(stopped.Row.Backup.LastAt.Add(24 * time.Hour))
+	stopped.Row.Backup.LastAt = &newer
+	stopped.BackupAge = "30h0m0s ago"
 
 	unchecked := fleetRow("gamma")
 	unchecked.Row.Health = domain.FleetHealth{
 		Problem: "cannot reach the container runtime",
 	}
 	unchecked.Row.Drift = domain.FleetDrift{Problem: "no release is installed"}
+	unchecked.Row.Backup = &domain.FleetBackup{
+		Targets: 1, Problem: "cannot read the backup push record",
+	}
+	unchecked.BackupAge = ""
 	unchecked.Age = "4h0m0s ago"
 	unchecked.Stale = true
 
@@ -63,9 +77,14 @@ func fleetMixed() views.Fleet {
 	sandbox.Signature = "unsigned"
 	sandbox.Row.Drift = domain.FleetDrift{Targets: &oneTarget}
 	sandbox.Row.Health.Attention = 1
+	sandbox.Row.Backup.PushedAt = nil
+	sandbox.BackupAge = ""
 
 	future := fleetRow("delta")
 	future.Age = "in 3h0m0s"
+	off := false
+	future.Row.Backup = &domain.FleetBackup{Scheduled: &off}
+	future.BackupAge = ""
 
 	unreadable := views.FleetRow{
 		Target:         "s3://fleet.example/rows",
@@ -106,6 +125,9 @@ func fleetRostered() views.Fleet {
 
 	stranger := fleetRow("gamma")
 	stranger.Signature = "signed"
+	// Published by a manager before schema 4, which carries no block.
+	stranger.Row.Backup = nil
+	stranger.BackupAge = ""
 
 	absent := views.FleetRow{
 		Key:            "fleet/delta/inst_07/status.json",
@@ -257,6 +279,50 @@ func TestTheReasonAMeasurementIsMissingIsRendered(t *testing.T) {
 // RFC 0026 §8 permits this phase to exist only because the reader states them.
 // A table rendered without them is the complete-looking table the whole design
 // is written against, so it is asserted here as well as at the operation.
+// TestTheBackupColumnSaysWhereTheBackupsAre is RFC 0061 §5.4: each state of
+// the block reads as itself, and a read that failed never reads as `none left`.
+func TestTheBackupColumnSaysWhereTheBackupsAre(t *testing.T) {
+	mixed := fleetMixed()
+	noRecovery := false
+	for i := range mixed.Rows {
+		if mixed.Rows[i].Product == "sandbox" {
+			mixed.Rows[i].Row.Backup.RecoveryRecipient = &noRecovery
+		}
+	}
+	out := render(t, 200, mixed)
+
+	for product, want := range map[string]string{
+		"acme":    "6h0m0s ago",
+		"beta":    "30h0m0s ago (behind)",
+		"gamma":   "unknown",
+		"sandbox": "none left, no recovery key",
+		"delta":   "elsewhere",
+	} {
+		line := fleetLine(t, out, product)
+		assert.Contains(t, line, want, "the backup cell for %s", product)
+	}
+	assert.Contains(t, out, "backup: cannot read the backup push record",
+		"the reason the column says unknown must be rendered below the table")
+	assert.NotContains(t, fleetLine(t, out, "gamma"), "none left",
+		"a push record that could not be read must not read as nothing having left")
+
+	rostered := render(t, 200, fleetRostered())
+	assert.Contains(t, fleetLine(t, rostered, "gamma"), "—",
+		"a schema 3 row carries no block, and shows a dash")
+}
+
+// fleetLine is the table's line for a product: the first line it starts.
+func fleetLine(t *testing.T, out, product string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), product+" ") {
+			return line
+		}
+	}
+	t.Fatalf("no line for %s in:\n%s", product, out)
+	return ""
+}
+
 func TestTheLimitationsAreRendered(t *testing.T) {
 	out := render(t, 100, fleetMixed())
 
