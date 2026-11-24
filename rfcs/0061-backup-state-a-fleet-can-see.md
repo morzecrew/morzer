@@ -99,7 +99,9 @@ Verified against `97c6ceac`.
   later push is journaled as `OpTypeBackup` too (`backup.go:252`), so the
   journal cannot tell a backup whose push failed from one whose push was
   retried and succeeded. Only a listing of each target answers it today, which
-  is what `doctor`'s probe does (`doctor.go:1972`).
+  is what `doctor`'s `backup.target-freshness` does: the newest backup must be
+  on every configured target, each keyed on its canonical URL
+  (`doctor.go:2001-2091`, the key at `doctor.go:2057`).
 - **A recovery recipient** is what `secrets.recovery-recipient` counts:
   recipients of kind `recovery` in the secret store (`doctor.go:784-825`). It
   is a local read.
@@ -172,15 +174,26 @@ completes, by the backup operation's push step and by `backup push`, in a
 derived file beside the channel marks:
 
 ```json
-{"id": "20261123T030012Z", "taken_at": "2026-11-23T03:00:12Z", "targets": 1}
+{"id": "20261123T030012Z", "taken_at": "2026-11-23T03:00:12Z",
+ "targets": ["sha256:9f2c…", "sha256:41ab…"]}
 ```
 
-The file is written only when every configured target took the copy. It is
-derived: deleting it costs a row with no `pushed_at` until the next push, which
-an authority reads as "nothing has left this machine". That is the loud side to
-fail on. Recommended over a probe of each target at publish time, which costs a
-listing per target on every publish, and over the journal, which cannot tell a
-failed push from a retried one (§3) (decision 3).
+`targets` names each target the copy reached, by a digest of its canonical URL,
+the form `backup.target-freshness` keys targets on. A digest, so the file holds
+no second copy of a URL that can carry credentials. `pushed_at` is the record's
+`taken_at` only while at least one target is configured and the record names
+every one of them. A count would not do: a target replaced by another leaves the
+count as it was, and the new target has no copy. So a target added, or one
+replaced, leaves the row without `pushed_at` until a push reaches it. A target
+removed leaves the record standing for the ones that remain (decision 13).
+
+The file is written only when every configured target took the copy.
+
+It is derived: deleting it costs a row with no `pushed_at` until the next push,
+which an authority reads as "nothing has left this machine". That is the loud
+side to fail on. Recommended over a probe of each target at publish time, which
+costs a listing per target on every publish, and over the journal, which cannot
+tell a failed push from a retried one (§3) (decision 3).
 
 ### 5.3 `backup.off_machine: expected`
 
@@ -216,6 +229,8 @@ when `recovery_recipient` is false (decision 11).
   `pushed_at` when absent, and never zero for a count it could not take.
 - The push record is written only when every target took the copy, by both the
   backup operation and `backup push`, and not by a plan.
+- A target replaced by another leaves the row without `pushed_at` until a push
+  reaches the new one. A target removed does not.
 - A reader at schema 3 refuses a schema 4 row as it refuses any newer schema.
 - `doctor` warns for a product declaring `off_machine: expected` with no
   target, and reports OK for one that does not.
@@ -251,6 +266,10 @@ when `recovery_recipient` is false (decision 11).
   the bucket can already see when backup objects appear.
 - **A lost push record reads as nothing pushed.** Accepted: it fails loud, and
   the next successful push writes it again.
+- **The record says what was delivered, not what a target still holds.** A
+  copy deleted at the target, by hand or by a retention rule, still reads as
+  pushed. Accepted: `backup.target-freshness` lists each target and fails on
+  that machine, and a row built from a listing is what decision 3 rejected.
 
 ## 10. Unresolved questions
 
@@ -274,10 +293,11 @@ expectation, `fleet ls`, and the phasing.
 | 10 | `ASSUMED` | A manifest using `backup.off_machine` declares `compatibility.min_manager_version` of at least the release that reads it, as RFC 0059 did for `ports` (`ports.go:17-21`). |
 | 11 | `OPEN` | **`fleet ls` shows the block as one column (§5.4), or only `--json` carries it?** Recommended the column: `fleet ls` is where a human reads a fleet. |
 | 12 | `OPEN` | **Phasing: the row (P1) and the manifest key (P2) as two PRs, or one?** Recommended two: each helps alone (#418), and P1 needs no vendor to release anything. |
+| 13 | `ASSUMED` | The push record names each target the copy reached, by a digest of its canonical URL, and `pushed_at` is published only while the record names every target configured now. A count cannot tell a replaced target from the one it replaced, and the replacement has no copy. With no target configured, the row has no `pushed_at`. A digest rather than the URL, so the derived file holds no second copy of a URL that can carry credentials. |
 
 ## 12. Phasing
 
 - **P1 — the row.** The push record, the block, schema 4, `fleet ls`, and the
-  fleet reference. Decisions 2–7, 9's field if ruled yes, and 11.
+  fleet reference. Decisions 2–7, 9's field if ruled yes, 11 and 13.
 - **P2 — the manifest key.** `backup.off_machine`, the floor, `doctor`'s
   warning, and the manifest and authoring docs. Decisions 8–10.
