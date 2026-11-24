@@ -98,9 +98,9 @@ morzer fleet ls s3://bucket/prefix
 
 ```text
 2 row(s) on file:///tmp/fleet-target
-  PRODUCT  VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
-  demo     1.3.0    2/2 up  0s ago     none   signed
-  web      1.0.0    3/3 up  0s ago     none   signed
+  PRODUCT  VERSION  HEALTH  PUBLISHED  DRIFT  BACKUP      SIGNATURE
+  demo     1.3.0    2/2 up  0s ago     none   3h0m0s ago  signed
+  web      1.0.0    3/3 up  0s ago     none   none left   signed
 
   a row is called stale once it is older than 24h0m0s
 
@@ -150,6 +150,23 @@ The `not checked` case is the one this design exists to make visible: reading
 installation state needs no Docker call, so a machine whose runtime is the
 problem can still publish a row saying exactly that.
 
+### What the backup column says
+
+The `backup` column reads the row's [`backup` block](#the-backup-block):
+
+| Cell | What it means |
+| --- | --- |
+| an age, such as `3h0m0s ago` | every backup target holds a backup at least that new, and it is the newest backup this machine took |
+| an age with `(behind)` | every target holds a backup that new, and the machine has taken a newer one that has not reached every target |
+| `none left` | at least one configured target holds no backup this machine pushed, or no target is configured |
+| `elsewhere` | `backup.scheduled` is off: the machine is backed up at the storage layer |
+| `unknown` | the machine could not read its backups or its push record; the reason is printed below the table |
+| `—` | the row has no block, because a manager before schema 4 published it |
+
+`, no recovery key` follows any of them when the secret store has no recovery
+recipient, the offline key a [lost machine](../operating/recovering-a-lost-machine.md)
+is recovered with.
+
 ## What the row carries
 
 | Field | What it is |
@@ -169,17 +186,47 @@ problem can still publish a row saying exactly that.
 | `sync` | whether sync is enabled, the authority's key id, the serials it applied and refused with the step, class and names, its last fetch, and `pending`, the parameters a document left for the staged release, by name and never by value; absent when no sync target or authority is configured |
 | `facts_digest` | the sha256 of the [facts](desired-state.md#facts) published beside this row, which an authority uses only when they are these |
 | `facts_problem` | why the latest facts run did not replace them, as a class: the task's exit status, too much output, or a run that did not start |
+| `backup` | where this installation's backups are: see [the backup block](#the-backup-block) |
 | `published_at` | when this row was written |
 
-Rows are schema 3, which added `staged` and the `sync` block's `pending`.
-Schema 2 added `age_recipient`, `sync`, `facts_digest` and `facts_problem`. A
+Rows are schema 4, which added `backup`. Schema 3 added `staged` and the
+`sync` block's `pending`. Schema 2 added `age_recipient`, `sync`, `facts_digest` and `facts_problem`. A
 manager refuses a row of a newer schema than it reads as written by a newer
 manager, so upgrade the manager you read the fleet with first.
 
+### The backup block
+
+Built from what the machine already knows when it publishes. No target is
+listed to build it.
+
+| Field | What it is |
+| --- | --- |
+| `targets` | how many backup targets the installation configures |
+| `last_at` | when the newest backup was taken; absent when there is none |
+| `pushed_at` | of the newest backup each configured target took, the time of the oldest; absent when a configured target has taken none |
+| `recovery_recipient` | whether the secret store has a recipient of kind `recovery` |
+| `scheduled` | `false` only when `backup.scheduled` is off; absent otherwise |
+| `problem` | why the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false |
+
+Read `pushed_at` against `last_at`. The same time means the newest backup is on
+every target. An older `pushed_at` says how far the furthest-behind target
+lags. An absent `pushed_at` means at least one target holds nothing this
+machine pushed: a target added or replaced holds nothing until the next push
+reaches it.
+
+`pushed_at` comes from a record the machine keeps of each target that took a
+whole copy, written by the backup operation's push and by `backup push`. The
+record says what was delivered, not what a target still holds: for that, run
+`doctor` on the machine: its
+[`backup.target-freshness`](../operating/backups.md#what-doctor-says) lists
+each target. A deleted record costs a row without `pushed_at` until the next
+push.
+
 ## What the row never carries
 
-Parameter values, hostnames, container logs, configuration content, and anything
-the [support bundle](support-bundle.md) refuses. The payload is deliberately
+Parameter values, hostnames, container logs, configuration content, a backup
+target's URL or name, and anything the [support bundle](support-bundle.md)
+refuses. The payload is deliberately
 smaller than a support bundle and smaller than an attestation: it is a *row*,
 not a record.
 
@@ -269,10 +316,10 @@ yet. Running any real operation gives it one.
 
 ```text
 2 row(s) on file:///tmp/fleet-target
-  PRODUCT                          VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
-  demo/inst_01ACCEPTANCEWENTQUIET  —        —       —          —      —
-  demo                             1.3.0    2/2 up  0s ago     none   verified
-  web                              1.0.0    3/3 up  0s ago     none   verified
+  PRODUCT                          VERSION  HEALTH  PUBLISHED  DRIFT  BACKUP      SIGNATURE
+  demo/inst_01ACCEPTANCEWENTQUIET  —        —       —          —      —           —
+  demo                             1.3.0    2/2 up  0s ago     none   3h0m0s ago  verified
+  web                              1.0.0    3/3 up  0s ago     none   none left   verified
   ROW                              WHAT IT SAYS
   demo/inst_01ACCEPTANCEWENTQUIET  the roster expects this installation; no target holds a row
 
