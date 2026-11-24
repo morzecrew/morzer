@@ -304,11 +304,14 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if d.Backup != nil {
 		checks = append(checks, d.checkLastBackup(inst))
 	}
-	if d.Targets != nil {
+	// With no target configured the check probes nothing, so it needs no
+	// registry: a build that wires none still warns for a product
+	// expecting off-machine backups.
+	if d.Targets != nil || !inst.Backup.HasTargets() {
 		checks = append(checks, d.checkBackupTargets(inst, expectsOffMachine))
-		if inst.Backup.HasTargets() && d.Backup != nil {
-			checks = append(checks, d.checkBackupTargetFreshness(inst))
-		}
+	}
+	if d.Targets != nil && inst.Backup.HasTargets() && d.Backup != nil {
+		checks = append(checks, d.checkBackupTargetFreshness(inst))
 	}
 	if d.Objects != nil || !inst.Backup.HasTargets() {
 		checks = append(checks, d.checkAttestationsPushed(inst))
