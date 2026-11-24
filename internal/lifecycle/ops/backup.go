@@ -290,7 +290,7 @@ func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
 				return nil
 			}
 
-			for _, target := range targets {
+			for i, target := range targets {
 				if _, err := d.Targets.Push(ctx, target, ref.Path, ref.ID); err != nil {
 					// Only this target's partial write is removed.
 					// The copies already placed on the targets
@@ -299,11 +299,15 @@ func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
 					// with less off-machine data than the retry
 					// started with.
 					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
+					// And those targets hold it, so the record
+					// says so (RFC 0061 decision 14).
+					d.notePushes(ctx, targets[:i], ref)
 
 					return domain.BackupError(err,
 						"cannot copy backup %s to %s", ref.ID, target)
 				}
 			}
+			d.notePushes(ctx, targets, ref)
 
 			out = Result{
 				Summary: fmt.Sprintf("backup %s copied to %s", ref.ID, targetSummary(targets)),
@@ -379,7 +383,7 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 			}
 
 			pushed := make([]ports.RemoteRef, 0, len(targets))
-			for _, target := range targets {
+			for i, target := range targets {
 				remote, pushErr := d.Targets.Push(ctx, target, ref.Path, ref.ID)
 				if pushErr != nil {
 					// Only this target's partial write is
@@ -397,6 +401,9 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 					// configured, and invisible until the
 					// machine was gone.
 					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
+					// The targets before it hold the backup whole,
+					// and the record says so (RFC 0061 decision 14).
+					d.notePushes(ctx, targets[:i], ref)
 
 					return domain.BackupError(pushErr,
 						"the backup was taken but could not be copied to %s", target).
@@ -406,6 +413,7 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 				}
 				pushed = append(pushed, remote)
 			}
+			d.notePushes(ctx, targets, ref)
 
 			st.Set(engine.KeyPushedBackups, pushed)
 			st.Detail("%s", targetSummary(targets))

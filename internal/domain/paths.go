@@ -175,6 +175,13 @@ func (p Paths) ChannelMarksFile() string {
 	return filepath.Join(p.ManagerDir(), "channel-marks.json")
 }
 
+// BackupPushesFile records, per backup target, the newest backup it took whole
+// (RFC 0061 §5.2). Derived, like the candidate: deleting it costs a fleet row
+// without `pushed_at` until the next push, so an export does not carry it.
+func (p Paths) BackupPushesFile() string {
+	return filepath.Join(p.ManagerDir(), "backup-pushes.json")
+}
+
 // ChannelIndexesFile records, per channel, the signed index this installation
 // accepted from it and what the last poll found (RFC 0037 §5.2). Like the
 // marks it is not derived, since forgetting a sequence admits a replay, so an

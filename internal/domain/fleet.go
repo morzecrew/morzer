@@ -34,8 +34,9 @@ const (
 	//
 	// 3 added `staged` and `sync.pending` (RFC 0058), so a schema 2 reader
 	// refuses a row from a manager that has them, as it should: the authority
-	// reading the fleet is upgraded first.
-	FleetSchemaVersion = 3
+	// reading the fleet is upgraded first. 4 added the `backup` block
+	// (RFC 0061), under the same rule.
+	FleetSchemaVersion = 4
 
 	// FleetPrefix is the key namespace rows live under on a target.
 	//
@@ -123,6 +124,10 @@ type FleetRow struct {
 	// replace them, as a class. Schema 2.
 	FactsDigest  string `json:"facts_digest,omitempty"`
 	FactsProblem string `json:"facts_problem,omitempty"`
+
+	// Backup is where this installation's backups are, nil only on a row
+	// from a manager before schema 4. Schema 4.
+	Backup *FleetBackup `json:"backup,omitempty"`
 
 	// PublishedAt is when this row was written, and it is what stops an
 	// older row from silently becoming current.
@@ -249,6 +254,47 @@ type FleetHealth struct {
 	Problem string `json:"problem,omitempty"`
 }
 
+// FleetBackup is the row's view of this installation's backups (RFC 0061
+// §5.1), built from local state at publish time.
+//
+// Counts, times and booleans only (decision 5): never a target's URL, name or
+// listing. A URL can carry credentials, and every machine sharing the bucket
+// reads this row.
+type FleetBackup struct {
+	// Targets is how many backup targets the installation configures.
+	Targets int `json:"targets"`
+
+	// LastAt is when the newest backup was taken, nil when there is none or
+	// the backups could not be listed.
+	LastAt *Time `json:"last_at,omitempty"`
+
+	// PushedAt is, of the newest backup each configured target took, the
+	// time of the oldest, so every target holds a backup at least that new
+	// (§5.2). Nil when a configured target has taken none. Equal to LastAt,
+	// the newest backup is on every target; older, it says how far the
+	// furthest-behind target lags.
+	PushedAt *Time `json:"pushed_at,omitempty"`
+
+	// RecoveryRecipient is whether the secret store has a recipient of kind
+	// recovery, nil when the store could not be read: false would say no
+	// recovery key exists when nobody looked.
+	RecoveryRecipient *bool `json:"recovery_recipient,omitempty"`
+
+	// Scheduled is set, to false, only when `backup.scheduled` is off: the
+	// machine is backed up at the storage layer, and its backups have not
+	// stopped (decision 6).
+	Scheduled *bool `json:"scheduled,omitempty"`
+
+	// Expected is whether the product declares `backup.off_machine:
+	// expected` (decision 9). Nothing sets it until the manifest key exists
+	// (RFC 0061 P2); it is in schema 4 so that key needs no schema of its own.
+	Expected bool `json:"expected,omitempty"`
+
+	// Problem is why the backups, the push record or the recipients could
+	// not be read, when one could not (decision 7).
+	Problem string `json:"problem,omitempty"`
+}
+
 // FleetDrift says whether the files on disk still match what the release
 // renders.
 type FleetDrift struct {
@@ -287,6 +333,7 @@ type FleetRowInputs struct {
 	LastOperation  *FleetOperation
 	AgeRecipient   string
 	FactsDigest    string
+	Backup         *FleetBackup
 	PublishedAt    Time
 }
 
@@ -335,6 +382,7 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		Targets: copyCount(in.Drift.Targets),
 		Problem: boundedText(in.Drift.Problem),
 	}
+	row.Backup = in.Backup.copied()
 
 	if op := in.LastOperation; op != nil {
 		row.LastOperation = &FleetOperation{
@@ -345,6 +393,37 @@ func NewFleetRow(in FleetRowInputs) FleetRow {
 		}
 	}
 	return row
+}
+
+// copied detaches the block from the one it was built from and bounds its one
+// free-text field, which carries an error's words.
+func (b *FleetBackup) copied() *FleetBackup {
+	if b == nil {
+		return nil
+	}
+	out := *b
+	out.LastAt = copyTime(b.LastAt)
+	out.PushedAt = copyTime(b.PushedAt)
+	out.RecoveryRecipient = copyBool(b.RecoveryRecipient)
+	out.Scheduled = copyBool(b.Scheduled)
+	out.Problem = boundedText(b.Problem)
+	return &out
+}
+
+func copyTime(t *Time) *Time {
+	if t == nil {
+		return nil
+	}
+	out := *t
+	return &out
+}
+
+func copyBool(b *bool) *bool {
+	if b == nil {
+		return nil
+	}
+	out := *b
+	return &out
 }
 
 // copyCount detaches a count so the row cannot share a pointer with whatever
@@ -531,6 +610,7 @@ func (r FleetRow) Bounded() FleetRow {
 	r.Sync = r.Sync.bounded()
 	r.Health.Problem = boundedText(r.Health.Problem)
 	r.Drift.Problem = boundedText(r.Drift.Problem)
+	r.Backup = r.Backup.copied()
 
 	if r.LastOperation != nil {
 		op := *r.LastOperation

@@ -519,7 +519,7 @@ func TestARowReportsSyncWithoutTheRefusalsText(t *testing.T) {
 
 	row, body := publishedRow(t, r.offsite, inst)
 	assert.NotContains(t, string(body), "PARAM-VALUE-MUST-NOT-TRAVEL", "a refusal's text reached the row")
-	assert.Equal(t, 3, row.Schema)
+	assert.Equal(t, 4, row.Schema)
 	assert.Equal(t, machine, row.AgeRecipient)
 	require.NotNil(t, row.Sync)
 	assert.Equal(t, domain.MinisignKeyID(r.key), row.Sync.AuthorityKeyID)

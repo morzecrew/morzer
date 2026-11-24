@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
@@ -18,6 +19,10 @@ import (
 // and a second source of truth disagrees with the first exactly when it
 // matters. If publishing ever needs a new file on disk, the payload has grown
 // into a record and this design is the wrong one.
+//
+// Two departures, each ruled by the author with this in view: RFC 0057's sync
+// block and facts, and RFC 0061's push record, which says what has left the
+// machine because nothing `status` computes can (backupPushes).
 //
 // The other half of decision 8 is what §10.2 measured: `ls` answers without a
 // Docker call. That is what lets a publisher report the case where the runtime
@@ -64,8 +69,67 @@ func (d *Deps) fleetRow(ctx context.Context, inst domain.Installation, planning 
 	if _, _, ok := d.keptFacts(inst); ok {
 		in.FactsDigest = inst.Sync.Facts.Digest
 	}
+	in.Backup = d.fleetBackup(ctx, inst)
 
 	return domain.NewFleetRow(in)
+}
+
+// fleetBackup is the row's backup block (RFC 0061 §5.1), from local state
+// only: no target is listed, so a publish costs nothing per target. A read
+// that fails leaves its field out and says why in Problem (decision 7).
+func (d *Deps) fleetBackup(ctx context.Context, inst domain.Installation) *domain.FleetBackup {
+	block := &domain.FleetBackup{Targets: len(inst.Backup.Targets)}
+	var problems []string
+
+	if inst.Policy.SkipScheduledBackups {
+		off := false
+		block.Scheduled = &off
+	}
+
+	if d.Backup != nil {
+		if backups, err := d.Backup.List(ctx); err != nil {
+			problems = append(problems, "cannot list backups: "+domain.AsError(err).Message)
+		} else if len(backups) > 0 {
+			at := backups[0].At
+			block.LastAt = &at
+		}
+	}
+
+	if record, err := d.backupPushes(); err != nil {
+		problems = append(problems, "cannot read the backup push record")
+	} else if at, ok := record.PushedAt(configuredPushKeys(inst)); ok {
+		block.PushedAt = &at
+	}
+
+	if d.Secrets != nil {
+		if recipients, err := d.Secrets.Recipients(ctx); err != nil {
+			problems = append(problems, "cannot read recipients: "+domain.AsError(err).Message)
+		} else {
+			has := slices.ContainsFunc(recipients, func(r ports.Recipient) bool {
+				return r.Kind == ports.RecipientRecovery
+			})
+			block.RecoveryRecipient = &has
+		}
+	}
+
+	block.Problem = strings.Join(problems, "; ")
+	return block
+}
+
+// configuredPushKeys names the configured targets as the push record does. A
+// target whose URL does not parse gets a key no entry has, so the row carries
+// no `pushed_at` rather than one that skips it.
+func configuredPushKeys(inst domain.Installation) []string {
+	keys := make([]string, 0, len(inst.Backup.Targets))
+	for _, cfg := range inst.Backup.Targets {
+		ref, err := ports.TargetURL(cfg.URL)
+		if err != nil {
+			keys = append(keys, "unparsed:"+strconv.Itoa(len(keys)))
+			continue
+		}
+		keys = append(keys, domain.BackupPushKey(ref.Canonical()))
+	}
+	return keys
 }
 
 // machineRecipient is this machine's own age recipient, or empty when the
