@@ -183,3 +183,17 @@ moved to 4 (528ddd25), and it now asserts `last_at` (b3ca5b43); the
 column's rows said a target holds what the record says it took (7d4df947).
 
 **Drift count: 1.**
+
+## Review, second round, 2026-11-24
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-24T15:12:10Z
+attempt: 3
+claim: the entry a failed push removes (22cdc8a1) is dropped in memory and then written best effort, as every write of the record is. If that write fails, the record on disk still names the copy the push removed, and the row reads that target as holding it until the next write succeeds. Removing the record on a failed write would help only where unlink still works and the write does not, a full disk; kept as built, for the author to rule.
+evidence: internal/lifecycle/ops/backup_pushes.go:72
+action: decided
+proposal: UNLISTED — the push record stays best effort, including the write that drops an entry after a failed push; the alternative is to remove the record when that write fails, so the row says less rather than more
+```
