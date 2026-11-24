@@ -156,9 +156,9 @@ The `backup` column reads the row's [`backup` block](#the-backup-block):
 
 | Cell | What it means |
 | --- | --- |
-| an age, such as `3h0m0s ago` | every backup target holds a backup at least that new, and it is the newest backup this machine took |
-| an age with `(behind)` | every target holds a backup that new, and the machine has taken a newer one that has not reached every target |
-| `none left` | at least one configured target holds no backup this machine pushed, or no target is configured |
+| an age, such as `3h0m0s ago` | every backup target took a backup at least that new, and it is the newest backup this machine took |
+| an age with `(behind)` | every target took a backup that new, and the machine has taken a newer one that has not reached every target |
+| `none left` | at least one configured target has taken no backup this machine pushed, or no target is configured |
 | `elsewhere` | `backup.scheduled` is off: the machine is backed up at the storage layer |
 | `unknown` | the machine could not read its backups or its push record; the reason is printed below the table |
 | `—` | the row has no block, because a manager before schema 4 published it |
@@ -208,19 +208,20 @@ listed to build it.
 | `scheduled` | `false` only when `backup.scheduled` is off; absent otherwise |
 | `problem` | why the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false |
 
-Read `pushed_at` against `last_at`. The same time means the newest backup is on
-every target. An older `pushed_at` says how far the furthest-behind target
-lags. An absent `pushed_at` means at least one target holds nothing this
-machine pushed: a target added or replaced holds nothing until the next push
-reaches it.
+Read `pushed_at` against `last_at`. The same time means the newest backup
+reached every target. An older `pushed_at` says how far the furthest-behind
+target lags. An absent `pushed_at` means at least one target has taken nothing
+this machine pushed: a target added or replaced has taken nothing until the
+next push reaches it.
 
 `pushed_at` comes from a record the machine keeps of each target that took a
-whole copy, written by the backup operation's push and by `backup push`. The
-record says what was delivered, not what a target still holds: for that, run
-`doctor` on the machine: its
+whole copy, written by the backup operation's push and by `backup push`. A push
+that fails at a target removes what it wrote there, so that target's entry for
+the same backup goes too. The record says what was delivered, not what a target
+still holds: for that, run `doctor` on the machine: its
 [`backup.target-freshness`](../operating/backups.md#what-doctor-says) lists
-each target. A deleted record costs a row without `pushed_at` until the next
-push.
+each target. A deleted record, or an `installation import`, costs a row without
+`pushed_at` until the next push.
 
 ## What the row never carries
 
