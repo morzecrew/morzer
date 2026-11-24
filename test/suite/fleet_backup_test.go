@@ -197,6 +197,36 @@ func TestAFailedRepeatPushForgetsTheCopyItRemoved(t *testing.T) {
 	assert.Nil(t, publishedBackup(t, h).PushedAt)
 }
 
+// An import replaces the installation, so it replaces what that installation
+// pushed: the record is the replaced one's, and its entries name its backups.
+func TestAnImportForgetsTheReplacedInstallationsPushes(t *testing.T) {
+	requireSOPS(t)
+	ctx := context.Background()
+	recoveryPath, recoveryPub := generateRecoveryKey(t)
+	origin := initOriginMachine(t, ctx, recoveryPub)
+
+	exportPath := filepath.Join(t.TempDir(), "demo.export.yaml")
+	_, err := ops.Export(ctx, origin.Deps, ops.ExportOptions{Path: exportPath})
+	require.NoError(t, err)
+	export, err := ops.LoadExport(exportPath)
+	require.NoError(t, err)
+
+	rebuilt := newMachine(t, t.TempDir())
+	var record domain.BackupPushes
+	record.Took(fileKey("/srv/offsite"), "bk_replaced", domain.NewTime(time.Now()))
+	raw, err := json.Marshal(record)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(rebuilt.Deps.Paths.ManagerDir(), 0o750))
+	require.NoError(t, os.WriteFile(rebuilt.Deps.Paths.BackupPushesFile(), raw, 0o640))
+
+	_, err = ops.Import(ctx, rebuilt.Deps, ops.ImportOptions{
+		SourcePath: exportPath, Export: export, IdentityFile: recoveryPath,
+	})
+	require.NoError(t, err)
+	assert.NoFileExists(t, rebuilt.Deps.Paths.BackupPushesFile(),
+		"the imported installation kept the replaced one's push record")
+}
+
 // A target put in place of another holds nothing until a push reaches it.
 func TestAReplacedTargetLeavesTheRowWithoutPushedAt(t *testing.T) {
 	h := fleetHarness(t)
