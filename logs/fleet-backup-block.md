@@ -139,3 +139,47 @@ claim: touched the governed area; the block carries counts, times and booleans o
 evidence: internal/domain/fleet.go:263-295
 action: decided
 ```
+
+## Review, 2026-11-24
+
+```divergence
+decision: 7
+grade: ASSUMED
+class: drift
+at: 2026-11-24T14:42:13Z
+attempt: 3
+claim: §5.1 has the row carry `last_at`, and decision 7 a read that fails as `problem`. `fleet publish` and `sync now` never attached a backup engine, so every row a machine published carried neither, and the suite, which builds the row with an engine in hand, did not see it. Found in review; fixed in b3ca5b43.
+evidence: internal/lifecycle/ops/fleet_row.go:92
+action: departed
+proposal: ASSUMED — unchanged; both commands attach the backup engine as `status` does, and a row built without one carries `problem`
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-24T14:42:13Z
+attempt: 3
+claim: §5.2 sets an entry when a target takes a whole copy and does not say what a failed push does to one. A failed push removes what it wrote by backup id, which can be the copy an earlier push of that backup left, so the failing target's entry goes when it names that backup. Found in review; fixed in 22cdc8a1.
+evidence: internal/domain/backup_pushes.go:53
+action: decided
+proposal: UNLISTED — a push that fails at a target removes that target's entry when it names the backup being pushed; entries naming other backups, and other targets' entries, stay
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-24T14:42:13Z
+attempt: 3
+claim: §5.2 makes the record derived and leaves it out of the export, and does not say what an import does with the one already on the machine. It names the replaced installation's backups, so an import removes it, as it replaces the channel marks. Found in review; fixed in 612d0c6e.
+evidence: internal/lifecycle/ops/recovery.go:726
+action: decided
+proposal: UNLISTED — `installation import` removes the push record, and the imported row has no `pushed_at` until its first push
+```
+
+Also found in review and fixed: the acceptance scenario's row-schema check
+moved to 4 (528ddd25), and it now asserts `last_at` (b3ca5b43); the
+column's rows said a target holds what the record says it took (7d4df947).
+
+**Drift count: 1.**
