@@ -3,7 +3,10 @@
 - **Status:** 🚧 In progress — ruled by the author 2026-10-29: §11's `OPEN`
   rows as recommended. **P1, the command, built 2026-10-30**; the decisions the
   build had to make are rows 12–19, accepted by the author 2026-10-30 from
-  [logs/release-push.md](../logs/release-push.md). P2 is gated on a vendor asking
+  [logs/release-push.md](../logs/release-push.md). P2 was gated on a vendor's
+  registry retention deleting a pinned image, and the author ruled 2026-11-24 to
+  build it now: decision 20 lifts the gate, and decisions 21–26 settle what the
+  design left open.
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
   version with different content, pushes with morzer's own artifact and layer
@@ -241,7 +244,7 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 | 5 | `ASSUMED` | The artifact is the shape `oras push --artifact-type` makes (§5.2), with `ArtifactType` as a constant beside `MediaType`, so the OCI source reads bundles published either way. |
 | 6 | `ASSUMED` | The manifest carries the content digest as the annotation `dev.morzer.bundle.digest`, trusted only to refuse. "Same content" needs an identical layer digest, or a pulled layer whose content digest matches. |
 | 7 | `ASSUMED` | Channel tags move only after the version tag resolves to the manifest just pushed, or to the existing one decision 6 confirmed, one at a time. A failure stops the rest and is reported per channel, and a re-run converges under decision 3. |
-| 8 | `ASSUMED` | **`--tag-images`, from #181, is not in P1.** It is built only when a vendor's registry retention deletes a pinned image: push would need write access to every image repository. Ruled by the author 2026-10-29. |
+| 8 | `ASSUMED` | **`--tag-images`, from #181, is not in P1.** It is built only when a vendor's registry retention deletes a pinned image: push would need write access to every image repository. Ruled by the author 2026-10-29. Superseded by decision 20. |
 | 9 | `ASSUMED` | Credentials are the ambient Docker configuration through `OpenRepository`, with the pull side's loopback-HTTP rule. Push adds no credential flags. |
 | 10 | `ASSUMED` | Output names both digests, each with its use (§5.4); `--json` carries both under distinct keys. |
 | 11 | `ASSUMED` | Before anything is sent, the archive is extracted through the local source and checked as `release verify` checks a directory: sums, templates, and the signature under `--signing-key`. Without that flag a missing signature warns, as `release archive` does. |
@@ -253,9 +256,18 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 | 17 | `LOCKED` | **`--dry-run` runs every check and every registry read, writes nothing, and refuses what push would refuse**; it reports `dry_run: true`, with `published` and each channel's `moved` saying what the run would do. Ruled by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U6). |
 | 18 | `LOCKED` | **A failed channel move exits with that step's error, and `--json` carries the result beside the error**, each channel with `moved` or its `error`. Ruled by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U7). |
 | 19 | `ASSUMED` | **The manifest's `created` annotation is left to oras**, so two pushes of one archive differ in manifest digest; identity never compares manifest digests (decision 6). Accepted by the author 2026-10-30. See [logs/release-push.md](../logs/release-push.md) (U9). |
+| 20 | `ASSUMED` | **Supersedes decision 8.** `--tag-images`, P2, is built now, without waiting for a vendor's registry retention to delete a pinned image. A deleted image goes unnoticed until a customer installs, and the push side of `oras-go` is already a dependency. Ruled by the author 2026-11-24. |
+| 21 | `ASSUMED` | Each image is tagged `morzer-<product>-<version>` in its own repository, with a `+` in the version written as `_`, because a tag cannot carry `+`. A name longer than the 128 characters a tag may carry is refused before any write. A fixed name cannot clash with the vendor's own tags. Rejected: a tag the caller names (#181), one more value each release must spell the same way; and the bare version, which a vendor's own tags may already use. Ruled by the author 2026-11-24. |
+| 22 | `ASSUMED` | `--tag-images <prefix>`, repeatable, names which images are tagged: each `from: registry` image whose repository is under one of the prefixes, matched at a `/` boundary, so `registry.example/demo` takes `registry.example/demo/api` and not `registry.example/demo-old/api`. Every other image is listed as not tagged, with the reason, so a third-party image such as one from Docker Hub is skipped by construction rather than refused at write time. A `from: bundle` image is not tagged, because the bundle carries its bytes. Rejected: every registry image, failing on a refused write, which fails on any third-party image; and every registry image with a warning on a refused write, which makes a permission error read as a choice. Ruled by the author 2026-11-24. |
+| 23 | `ASSUMED` | Images are tagged after §5.1's step 3 has decided that the version may be pushed, or is already published, and before step 4 writes anything of the bundle. A tagging failure stops there, so a published version always has its images protected. A re-run converges, because an image already tagged at its digest counts as tagged (decision 24). Ruled by the author 2026-11-24. |
+| 24 | `ASSUMED` | A tag that already names the pinned digest counts as tagged, and nothing is written. One that names another digest is refused with exit 2, naming both digests, as decision 16 refuses a version tag that moved, and nothing of the bundle is pushed. Rejected: moving the tag, which strips the protection from the release it was written for. Ruled by the author 2026-11-24. |
+| 25 | `ASSUMED` | Tagging follows the rules P1 set. `--dry-run` resolves every tag and writes none (decision 17). Credentials are the ambient Docker configuration, for each image repository in turn (decision 9). `--json` carries `images`, each with its reference, the tag, and whether it was tagged, already tagged or skipped with the reason, or the error that stopped it (decision 18; names `ASSUMED`). Ruled by the author 2026-11-24. |
+| 26 | `ASSUMED` | The pinned digest is tagged as it is, an index or a single manifest, never a platform's manifest picked out of an index. The tag is a manifest `PUT` of the bytes that digest names, so the image's content does not change. |
 
 ## 12. Phasing
 
 - **P1** — the command, decisions 1–7 and 9–11, the docs in §7. One PR.
 - **P2** — `--tag-images`, only when a vendor's registry retention deletes a
   pinned image (decision 8).
+  *(2026-11-24: decision 20 superseded row 8, and P2 is built now; decisions
+  21–26 settle what it left open.)*

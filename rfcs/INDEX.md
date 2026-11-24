@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0029, 0031 and 0039 have each shipped
+only **0023** and **0039** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -87,8 +87,8 @@ phase shipped, and a reader deciding what to work on needs the other half.
   when an operator asks to keep them, and the Quadlet implementation with
   0023 P3.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
-  🚧 P1, the command itself, has shipped. Tagging the pinned images is gated on
-  a vendor asking.
+  🚧 P1, the command itself, has shipped. P2, tagging the images a release pins,
+  was ruled 2026-11-24 to be built now.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
