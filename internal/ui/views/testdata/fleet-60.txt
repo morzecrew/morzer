@@ -6,11 +6,12 @@
   sandbox (dev)    1.4.0    2/2 up, 1 need attention
   delta            1.4.0    2/2 up
   epsilon/inst_09  —        —
-  (signature, drift, published hidden: the terminal is too
-  narrow)
+  (signature, backup, drift, published hidden: the terminal
+  is too narrow)
   ROW              WHAT IT SAYS
   gamma            health: cannot reach the container runti…
   gamma            drift: no release is installed
+  gamma            backup: cannot read the backup push reco…
   epsilon/inst_09  it was written by a newer manager (schem…
 
   a row is called stale once it is older than 24h0m0s

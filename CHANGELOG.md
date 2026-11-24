@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `installation describe` lists the HTTPS servers sent a credential, by secret
   name, and `doctor` warns when one's secret is not set.
 
+- A fleet row now says where the installation's backups are: how many
+  targets, when the newest backup was taken, how new a backup every target
+  holds, and whether a recovery key exists. `fleet ls` shows it in a `backup`
+  column. Rows move to schema 4, so upgrade the manager you read the fleet with
+  first.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index

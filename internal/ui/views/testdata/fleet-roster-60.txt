@@ -4,7 +4,7 @@
   beta/inst_01   —        —       —          —
   gamma          1.4.0    2/2 up  12m0s ago  none
   delta/inst_07  —        —       —          —
-  (signature hidden: the terminal is too narrow)
+  (signature, backup hidden: the terminal is too narrow)
   ROW            WHAT IT SAYS
   beta/inst_01   signed by a key the roster does not name
   gamma          the roster does not name this installation

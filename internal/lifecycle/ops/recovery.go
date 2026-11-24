@@ -2,7 +2,9 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -716,6 +718,13 @@ func stepWriteImportedInstallation(d *Deps, export domain.InstallationExport) en
 			// decision 31).
 			if err := d.replaceChannelIndexes(export.ChannelIndexes); err != nil {
 				return err
+			}
+			// And what was pushed, which names the replaced
+			// installation's backups. The export does not carry it,
+			// so the imported row has no `pushed_at` until its next
+			// push (RFC 0061 §5.2).
+			if err := os.Remove(d.Paths.BackupPushesFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return domain.InstallationError(err, "cannot remove %s", d.Paths.BackupPushesFile())
 			}
 			return d.State.SaveInstallation(ctx, inst)
 		},

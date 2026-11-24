@@ -51,6 +51,9 @@ func newSyncNowCommand(app *App) *cobra.Command {
 			"  morzer sync now --dry-run",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// For the `last_at` of the row a cycle publishes, as `fleet
+			// publish` attaches it.
+			_ = app.attachBackupEngine(cmd.Context())
 			return app.runOperation(cmd.Context(), func(ctx context.Context) (ops.Result, error) {
 				report, err := ops.SyncNow(ctx, app.Deps, ops.SyncOptions{Options: app.operationOptions()})
 				if unattended && errors.Is(err, domain.ErrLocked) {

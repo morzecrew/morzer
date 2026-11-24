@@ -1,9 +1,9 @@
 3 row(s) on s3://fleet.example/rows
-  PRODUCT        VERSION  HEALTH  PUBLISHED  DRIFT  SIGNATURE
-  acme           1.4.0    2/2 up  12m0s ago  none   verified
-  beta/inst_01   —        —       —          —      signed-by-another-key
-  gamma          1.4.0    2/2 up  12m0s ago  none   signed
-  delta/inst_07  —        —       —          —      —
+  PRODUCT        VERSION  HEALTH  PUBLISHED  DRIFT  BACKUP      SIGNATURE
+  acme           1.4.0    2/2 up  12m0s ago  none   6h0m0s ago  verified
+  beta/inst_01   —        —       —          —      —           signed-by-another-key
+  gamma          1.4.0    2/2 up  12m0s ago  none   —           signed
+  delta/inst_07  —        —       —          —      —           —
   ROW            WHAT IT SAYS
   beta/inst_01   signed by a key the roster does not name
   gamma          the roster does not name this installation
