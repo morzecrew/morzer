@@ -187,7 +187,11 @@ count as it was, and the new target has no copy. So a target added, or one
 replaced, leaves the row without `pushed_at` until a push reaches it. A target
 removed leaves the record standing for the ones that remain (decision 13).
 
-The file is written only when every configured target took the copy.
+The file is written only when every configured target took the copy. It replaces
+the record only when the record does not name every configured target, or when
+this backup was taken after the recorded one. A retry of an older backup after a
+newer one reached every target leaves the newer record, so `pushed_at` never
+moves back (decision 14).
 
 It is derived: deleting it costs a row with no `pushed_at` until the next push,
 which an authority reads as "nothing has left this machine". That is the loud
@@ -231,6 +235,8 @@ when `recovery_recipient` is false (decision 11).
   backup operation and `backup push`, and not by a plan.
 - A target replaced by another leaves the row without `pushed_at` until a push
   reaches the new one. A target removed does not.
+- Pushing an older backup after a newer one reached every target leaves
+  `pushed_at` at the newer one.
 - A reader at schema 3 refuses a schema 4 row as it refuses any newer schema.
 - `doctor` warns for a product declaring `off_machine: expected` with no
   target, and reports OK for one that does not.
@@ -294,10 +300,11 @@ expectation, `fleet ls`, and the phasing.
 | 11 | `OPEN` | **`fleet ls` shows the block as one column (§5.4), or only `--json` carries it?** Recommended the column: `fleet ls` is where a human reads a fleet. |
 | 12 | `OPEN` | **Phasing: the row (P1) and the manifest key (P2) as two PRs, or one?** Recommended two: each helps alone (#418), and P1 needs no vendor to release anything. |
 | 13 | `ASSUMED` | The push record names each target the copy reached, by a digest of its canonical URL, and `pushed_at` is published only while the record names every target configured now. A count cannot tell a replaced target from the one it replaced, and the replacement has no copy. With no target configured, the row has no `pushed_at`. A digest rather than the URL, so the derived file holds no second copy of a URL that can carry credentials. |
+| 14 | `ASSUMED` | A push replaces the record only when the record does not name every configured target, or when its backup was taken after the recorded one. A retry of an older backup after a newer one reached every target would otherwise move `pushed_at` back, and the row would read as behind. |
 
 ## 12. Phasing
 
 - **P1 — the row.** The push record, the block, schema 4, `fleet ls`, and the
-  fleet reference. Decisions 2–7, 9's field if ruled yes, 11 and 13.
+  fleet reference. Decisions 2–7, 9's field if ruled yes, 11, 13 and 14.
 - **P2 — the manifest key.** `backup.off_machine`, the floor, `doctor`'s
   warning, and the manifest and authoring docs. Decisions 8–10.
