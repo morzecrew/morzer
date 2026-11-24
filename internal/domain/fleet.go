@@ -285,13 +285,14 @@ type FleetBackup struct {
 	// stopped (decision 6).
 	Scheduled *bool `json:"scheduled,omitempty"`
 
-	// Expected is whether the product declares `backup.off_machine:
-	// expected` (decision 9). Nothing sets it until the manifest key exists
-	// (RFC 0061 P2); it is in schema 4 so that key needs no schema of its own.
+	// Expected is whether the installed release declares
+	// `backup.off_machine: expected` (decision 9), so an authority with
+	// several products can flag a machine without reading each manifest.
+	// Absent with a Problem when the release could not be read.
 	Expected bool `json:"expected,omitempty"`
 
-	// Problem is why the backups, the push record or the recipients could
-	// not be read, when one could not (decision 7).
+	// Problem is why the release, the backups, the push record or the
+	// recipients could not be read, when one could not (decision 7).
 	Problem string `json:"problem,omitempty"`
 }
 
