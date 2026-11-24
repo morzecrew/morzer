@@ -5,8 +5,8 @@
 - **Scope:** What an installation says about its backups, to an authority
   reading its fleet row and to an operator reading `doctor`. Covers a `backup`
   block in the fleet row (fleet schema 4): how many off-machine targets are
-  configured, when the newest backup was taken, when the newest one that left
-  the machine was taken, and whether an offline recovery recipient exists. It
+  configured, when the newest backup was taken, how new a backup every target
+  holds, and whether an offline recovery recipient exists. It
   covers the small record that answers the third question without a network
   call, and a manifest key, `backup.off_machine`, by which a vendor whose data
   cannot be rebuilt makes `doctor` warn about a machine with no target.
@@ -151,11 +151,12 @@ Schema 4 adds one block, built from local state at publish time:
 - `targets`: how many backup targets the installation configures.
 - `last_at`: when the newest backup was taken, from `Backup.List`. Absent when
   there is none.
-- `pushed_at`: when the newest backup that reached every configured target was
-  taken (§5.2). Absent when none has. A reader compares it with `last_at`: the
-  same time means the newest backup left the machine, and an older one says
-  for how long backups have stayed on it. #418 proposed a `pushed` boolean,
-  which cannot say how long (decision 2).
+- `pushed_at`: of the newest backup each configured target took, the time of
+  the oldest (§5.2), so every target holds a backup at least that new. Absent
+  when a configured target has taken none. A reader compares it with
+  `last_at`: the same time means the newest backup is on every target, and an
+  older one says how far the furthest-behind target lags. #418 proposed a
+  `pushed` boolean, which cannot say how far (decision 2).
 - `recovery_recipient`: whether the secret store has a recipient of kind
   `recovery`, as `secrets.recovery-recipient` counts.
 - `scheduled: false`, only when `backup.scheduled` is off, so a machine
@@ -169,29 +170,36 @@ Counts, times and booleans only (decision 5).
 
 ### 5.2 Where `pushed_at` comes from
 
-The newest backup that reached every target is recorded when its push
-completes, by the backup operation's push step and by `backup push`, in a
-derived file beside the channel marks:
+A derived file beside the channel marks records, for each target, the newest
+backup it took whole:
 
 ```json
-{"id": "20261123T030012Z", "taken_at": "2026-11-23T03:00:12Z",
- "targets": ["sha256:9f2c…", "sha256:41ab…"]}
+{"targets": {
+  "sha256:9f2c…": {"id": "20261123T030012Z", "taken_at": "2026-11-23T03:00:12Z"},
+  "sha256:41ab…": {"id": "20261122T030009Z", "taken_at": "2026-11-22T03:00:09Z"}
+}}
 ```
 
-`targets` names each target the copy reached, by a digest of its canonical URL,
-the form `backup.target-freshness` keys targets on. A digest, so the file holds
-no second copy of a URL that can carry credentials. `pushed_at` is the record's
-`taken_at` only while at least one target is configured and the record names
-every one of them. A count would not do: a target replaced by another leaves the
-count as it was, and the new target has no copy. So a target added, or one
-replaced, leaves the row without `pushed_at` until a push reaches it. A target
-removed leaves the record standing for the ones that remain (decision 13).
+Each target is named by a digest of its canonical URL, the form
+`backup.target-freshness` keys targets on. A digest, so the file holds no second
+copy of a URL that can carry credentials.
 
-The file is written only when every configured target took the copy. It replaces
-the record only when the record does not name every configured target, or when
-this backup was taken after the recorded one. A retry of an older backup after a
-newer one reached every target leaves the newer record, so `pushed_at` never
-moves back (decision 14).
+A target's entry is set when that target takes a whole copy, by the backup
+operation's push step and by `backup push`. A push that fails at one target
+removes only that target's partial write and keeps the whole copies on the
+others (`backup.go:295`, `backup.go:385-399`), so those targets hold the backup
+and their entries say so. An entry never moves to a backup taken before the one
+it names, so a retry of an older backup leaves it as it was (decision 14).
+
+`pushed_at` is the oldest entry among the targets configured now: every
+configured target holds a backup taken at or after it, and when it equals
+`last_at` the newest backup is on every target. A configured target with no
+entry, because it was added or replaced another, leaves the row without
+`pushed_at` until a push reaches it. An entry for a target no longer configured
+is ignored, so removing a target never moves `pushed_at` back. One record for
+all targets would not do: it cannot follow a target set that changes between
+pushes, and a count of targets cannot tell a replaced target from the one it
+replaced (decision 13).
 
 It is derived: deleting it costs a row with no `pushed_at` until the next push,
 which an authority reads as "nothing has left this machine". That is the loud
@@ -231,12 +239,16 @@ when `recovery_recipient` is false (decision 11).
 
 - `NewFleetRow` carries each field from its input, omits `last_at` and
   `pushed_at` when absent, and never zero for a count it could not take.
-- The push record is written only when every target took the copy, by both the
-  backup operation and `backup push`, and not by a plan.
+- A target's entry is written when that target takes a whole copy, by both the
+  backup operation and `backup push`, and not by a plan. A push that fails at
+  one target still sets the entries of the targets that took it.
 - A target replaced by another leaves the row without `pushed_at` until a push
   reaches the new one. A target removed does not.
 - Pushing an older backup after a newer one reached every target leaves
   `pushed_at` at the newer one.
+- Adding a target, pushing an older backup to every target, then removing the
+  added target leaves `pushed_at` at the newer backup the remaining targets
+  hold.
 - A reader at schema 3 refuses a schema 4 row as it refuses any newer schema.
 - `doctor` warns for a product declaring `off_machine: expected` with no
   target, and reports OK for one that does not.
@@ -297,8 +309,8 @@ None. The author ruled §11's `OPEN` rows on 2026-11-24, as recommended.
 | 10 | `ASSUMED` | A manifest using `backup.off_machine` declares `compatibility.min_manager_version` of at least the release that reads it, as RFC 0059 did for `ports` (`ports.go:17-21`). |
 | 11 | `ASSUMED` | **`fleet ls` shows the block as one column (§5.4), or only `--json` carries it?** Recommended the column: `fleet ls` is where a human reads a fleet. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
 | 12 | `ASSUMED` | **Phasing: the row (P1) and the manifest key (P2) as two PRs, or one?** Recommended two: each helps alone (#418), and P1 needs no vendor to release anything. Was `OPEN`; ruled by the author 2026-11-24: as recommended. |
-| 13 | `ASSUMED` | The push record names each target the copy reached, by a digest of its canonical URL, and `pushed_at` is published only while the record names every target configured now. A count cannot tell a replaced target from the one it replaced, and the replacement has no copy. With no target configured, the row has no `pushed_at`. A digest rather than the URL, so the derived file holds no second copy of a URL that can carry credentials. |
-| 14 | `ASSUMED` | A push replaces the record only when the record does not name every configured target, or when its backup was taken after the recorded one. A retry of an older backup after a newer one reached every target would otherwise move `pushed_at` back, and the row would read as behind. |
+| 13 | `ASSUMED` | **Refines decision 3.** The push record keeps, for each target, the newest backup it took whole, named by a digest of the target's canonical URL, and `pushed_at` is the oldest entry among the targets configured now. One record for all targets cannot follow a target set that changes between pushes, and a count cannot tell a replaced target from the one it replaced. A configured target with no entry leaves the row without `pushed_at`, as does having no target configured, and an entry for a target no longer configured is ignored. A digest rather than the URL, so the derived file holds no second copy of a URL that can carry credentials. |
+| 14 | `ASSUMED` | A target's entry is set whenever that target takes a whole copy, including in a push that fails at another target, and never moves to a backup taken before the one it names. A retry of an older backup would otherwise move `pushed_at` back, and the row would read as behind. |
 
 ## 12. Phasing
 
