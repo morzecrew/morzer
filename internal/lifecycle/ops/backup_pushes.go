@@ -32,15 +32,17 @@ func (d *Deps) backupPushes() (domain.BackupPushes, error) {
 	return record, nil
 }
 
-// notePushes records that each of these targets took the backup whole.
+// notePushes records that each of the targets in took holds the backup whole,
+// and that the one in lost, where a push of it failed and its copy was
+// removed, may not.
 //
 // Best effort. The copies are on the targets whatever happens here, and a
 // record that is not written costs a fleet row without `pushed_at`, the loud
 // side, so a failure is logged rather than failing a push that succeeded. An
 // unreadable record is replaced by this push's entries: it can then only lack
 // other targets' entries, which also leaves the row without `pushed_at`.
-func (d *Deps) notePushes(ctx context.Context, targets []ports.TargetRef, ref ports.BackupRef) {
-	if len(targets) == 0 {
+func (d *Deps) notePushes(ctx context.Context, ref ports.BackupRef, took []ports.TargetRef, lost ...ports.TargetRef) {
+	if len(took) == 0 && len(lost) == 0 {
 		return
 	}
 	log := logging.FromContext(ctx)
@@ -51,8 +53,13 @@ func (d *Deps) notePushes(ctx context.Context, targets []ports.TargetRef, ref po
 		log.Warn("replacing an unreadable backup push record", "error", domain.AsError(err).Message)
 		record, changed = domain.BackupPushes{}, true
 	}
-	for _, target := range targets {
+	for _, target := range took {
 		if record.Took(domain.BackupPushKey(target.Canonical()), ref.ID, ref.At) {
+			changed = true
+		}
+	}
+	for _, target := range lost {
+		if record.Lost(domain.BackupPushKey(target.Canonical()), ref.ID) {
 			changed = true
 		}
 	}

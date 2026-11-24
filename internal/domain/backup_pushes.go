@@ -46,6 +46,18 @@ func (p *BackupPushes) Took(key, id string, takenAt Time) bool {
 	return true
 }
 
+// Lost records that the target named by key may no longer hold the backup:
+// a failed push of it removes what it wrote there, and that can be the copy
+// an earlier push left. Only an entry naming that backup goes, and reports
+// whether the record changed.
+func (p *BackupPushes) Lost(key, id string) bool {
+	if have, ok := p.Targets[key]; !ok || have.ID != id {
+		return false
+	}
+	delete(p.Targets, key)
+	return true
+}
+
 // PushedAt is the oldest entry among the targets configured now, so every one
 // of them holds a backup taken at or after it.
 //

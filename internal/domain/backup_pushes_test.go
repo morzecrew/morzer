@@ -83,6 +83,22 @@ func TestAnOlderRetryDoesNotMoveAnEntryBack(t *testing.T) {
 	assert.Equal(t, "b2", p.Targets[targetA].ID)
 }
 
+// A failed push removes only the copy of the backup it was pushing, so only
+// an entry naming that backup goes: a retry of an older one that fails leaves
+// the newer entry, and the other targets' entries, as they were.
+func TestAFailedPushForgetsOnlyTheBackupItRemoved(t *testing.T) {
+	var p domain.BackupPushes
+	p.Took(targetA, "b2", at("2026-11-23T03:00:00Z"))
+	p.Took(targetB, "b2", at("2026-11-23T03:00:00Z"))
+
+	assert.False(t, p.Lost(targetA, "b1"), "a failed push of b1 forgot b2")
+	assert.False(t, p.Lost(targetC, "b2"), "a target with no entry changed the record")
+	assert.True(t, p.Lost(targetA, "b2"))
+	assert.NotContains(t, p.Targets, targetA)
+	assert.Equal(t, "b2", p.Targets[targetB].ID, "a failure at one target forgot another's entry")
+	assert.Empty(t, pushedAt(t, p, targetA, targetB))
+}
+
 // The sequence a single record for all targets could not follow: a target
 // added, an older backup pushed to every target, the added target removed.
 func TestAddingATargetPushingOlderThenRemovingItKeepsTheNewer(t *testing.T) {

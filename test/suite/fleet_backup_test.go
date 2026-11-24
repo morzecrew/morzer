@@ -177,6 +177,26 @@ func TestAPartlyFailedPushRecordsTheTargetsThatTookIt(t *testing.T) {
 	assert.NotNil(t, publishedBackup(t, h).PushedAt)
 }
 
+// A failed push removes its copy from the target it failed at, and that may be
+// the copy an earlier push left there: the entry naming it goes too.
+func TestAFailedRepeatPushForgetsTheCopyItRemoved(t *testing.T) {
+	h := fleetHarness(t)
+	_, offsite := h.withFleetTarget(t)
+	h.withBackupClock(t)
+	ref := takeBackup(t, h, true)
+	require.Equal(t, ref.ID, pushRecord(t, h).Targets[fileKey(offsite)].ID)
+
+	// The target's copy gone, and the target no longer writable.
+	require.NoError(t, os.RemoveAll(offsite))
+	require.NoError(t, os.WriteFile(offsite, []byte("not a directory"), 0o600))
+	_, err := ops.Push(context.Background(), h.Deps, ops.PushOptions{BackupID: ref.ID})
+	require.Error(t, err)
+
+	assert.NotContains(t, pushRecord(t, h).Targets, fileKey(offsite),
+		"the record names a copy the failed push removed")
+	assert.Nil(t, publishedBackup(t, h).PushedAt)
+}
+
 // A target put in place of another holds nothing until a push reaches it.
 func TestAReplacedTargetLeavesTheRowWithoutPushedAt(t *testing.T) {
 	h := fleetHarness(t)

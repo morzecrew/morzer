@@ -300,14 +300,16 @@ func Push(ctx context.Context, d *Deps, opts PushOptions) (Result, error) {
 					// started with.
 					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
 					// And those targets hold it, so the record
-					// says so (RFC 0061 decision 14).
-					d.notePushes(ctx, targets[:i], ref)
+					// says so (RFC 0061 decision 14). This one's
+					// copy was removed, and it may have been one
+					// an earlier push left, so its entry goes.
+					d.notePushes(ctx, ref, targets[:i], target)
 
 					return domain.BackupError(err,
 						"cannot copy backup %s to %s", ref.ID, target)
 				}
 			}
-			d.notePushes(ctx, targets, ref)
+			d.notePushes(ctx, ref, targets)
 
 			out = Result{
 				Summary: fmt.Sprintf("backup %s copied to %s", ref.ID, targetSummary(targets)),
@@ -403,7 +405,8 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 					d.unpush(ctx, []ports.RemoteRef{{Target: target, ID: ref.ID}})
 					// The targets before it hold the backup whole,
 					// and the record says so (RFC 0061 decision 14).
-					d.notePushes(ctx, targets[:i], ref)
+					// This one holds none of it now.
+					d.notePushes(ctx, ref, targets[:i], target)
 
 					return domain.BackupError(pushErr,
 						"the backup was taken but could not be copied to %s", target).
@@ -413,7 +416,7 @@ func stepPushBackup(d *Deps, inst domain.Installation) engine.Step {
 				}
 				pushed = append(pushed, remote)
 			}
-			d.notePushes(ctx, targets, ref)
+			d.notePushes(ctx, ref, targets)
 
 			st.Set(engine.KeyPushedBackups, pushed)
 			st.Detail("%s", targetSummary(targets))
