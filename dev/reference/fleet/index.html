@@ -2986,8 +2986,12 @@ listed to build it.</p>
 <td><code>false</code> only when <code>backup.scheduled</code> is off; absent otherwise</td>
 </tr>
 <tr>
+<td><code>expected</code></td>
+<td><code>true</code> when the installed release declares <a href="../manifest/#off-machine-backups"><code>backup.off_machine: expected</code></a>; absent otherwise</td>
+</tr>
+<tr>
 <td><code>problem</code></td>
-<td>why the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false</td>
+<td>why the release, the backups, the push record or the recipients could not be read; a field that could not be read is absent, never zero or false</td>
 </tr>
 </tbody>
 </table>

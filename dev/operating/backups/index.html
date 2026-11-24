@@ -3240,7 +3240,11 @@ from the secret store. That pair is the escape hatch for a rebuilt machine — s
 </tbody>
 </table>
 <p>Both are failures rather than warnings, and both exit
-<a href="../../reference/exit-codes/">3</a>. The second is the one worth watching: it is the
+<a href="../../reference/exit-codes/">3</a>. With no target configured,
+<code>backup.target-reachable</code> is OK, unless the release declares
+<a href="../../reference/manifest/#off-machine-backups"><code>backup.off_machine: expected</code></a>.
+Its data cannot be rebuilt, so the check warns and names
+<code>morzer backup target add</code>. The second is the one worth watching: it is the
 failure that hides, because the backup ran, the backup succeeded, and the copy
 that would survive the machine is not there.</p>
 <p>An <a href="../../reference/installation-commands/">installation export</a> belongs on a

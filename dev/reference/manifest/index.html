@@ -2039,6 +2039,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#off-machine-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Off-machine backups
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2925,6 +2942,23 @@
       </span>
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="backup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#off-machine-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Off-machine backups
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -4382,7 +4416,8 @@ refuse the bundle rather than skip the checks, since one that skipped them would
 install onto the machine they exist to refuse.</p>
 <h2 id="backup">backup<a class="headerlink" href="#backup" title="Permanent link">&para;</a></h2>
 <p>What the manager may do about the project's named volumes, which it captures
-itself rather than through the backup hook.</p>
+itself rather than through the backup hook, and whether the product's backups
+belong off the machine.</p>
 <table>
 <thead>
 <tr>
@@ -4396,6 +4431,11 @@ itself rather than through the backup hook.</p>
 <td><code>volumes</code></td>
 <td>map</td>
 <td>Keyed by the volume's name in the Compose <code>volumes:</code> block.</td>
+</tr>
+<tr>
+<td><code>off_machine</code></td>
+<td><code>expected</code></td>
+<td>The product's data cannot be rebuilt, so its backups belong off the machine. Optional; see <a href="#off-machine-backups">below</a>. Needs <code>compatibility.min_manager_version</code> 0.20.0.</td>
 </tr>
 </tbody>
 </table>
@@ -4456,6 +4496,23 @@ manager captures a database volume the hook already owns.</p>
 <p><code>hot</code> is a claim about the product, not a performance hint — see
 <a href="../../authoring/backing-up-volumes/">declaring volume consistency</a> for what it
 commits a vendor to. Bind mounts are never captured and have no declaration.</p>
+<h3 id="off-machine-backups">Off-machine backups<a class="headerlink" href="#off-machine-backups" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nt">backup</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">off_machine</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">expected</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.20.0"</span>
+</code></pre></div>
+<p>On a machine with no <a href="../backup-targets/">backup target</a>, <code>morzer doctor</code> then
+warns at <code>backup.target-reachable</code> and names <code>morzer backup target add</code>. A
+product that does not declare it gets OK there. An unreachable target fails the
+check either way. The key takes <code>expected</code> only: leave it out for any other
+product.</p>
+<p>It is a warning, not a refusal. <code>init</code> still installs on a machine with no
+target, because one is often added minutes later. The machine's
+<a href="../fleet/#the-backup-block">fleet row</a> says <code>expected: true</code>, so an authority
+can find such a machine without reading the manifest.</p>
+<p>A manifest that declares it needs <code>compatibility.min_manager_version</code> of at
+least 0.20.0. An older manager refuses the key as unknown.</p>
 <h2 id="managed">managed<a class="headerlink" href="#managed" title="Permanent link">&para;</a></h2>
 <p>What a desired-state document an authority publishes may change on an
 installation that follows it. Absent, nothing is: a release opts in name by
