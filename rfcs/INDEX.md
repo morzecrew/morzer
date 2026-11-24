@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** and **0039** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
+only **0023**, **0039** and **0061** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
