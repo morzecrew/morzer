@@ -19,7 +19,7 @@ import (
 // The row's backup block (RFC 0061 P1), read off a publish rather than off the
 // code that builds it: what an authority sees is the question.
 
-// withBackupClock gives the fake backup engine a clock a second apart per
+// withBackupClock gives the fake backup engine a clock an hour apart per
 // backup, so two backups taken in one test are ordered as real ones are.
 func (h *harness) withBackupClock(t *testing.T) {
 	t.Helper()
