@@ -1,12 +1,14 @@
 # RFC 0039 — Publishing a bundle to an OCI registry
 
-- **Status:** 🚧 In progress — ruled by the author 2026-10-29: §11's `OPEN`
-  rows as recommended. **P1, the command, built 2026-10-30**; the decisions the
-  build had to make are rows 12–19, accepted by the author 2026-10-30 from
-  [logs/release-push.md](../logs/release-push.md). P2 was gated on a vendor's
-  registry retention deleting a pinned image, and the author ruled 2026-11-24 to
-  build it now: decision 20 lifts the gate, and decisions 21–28 settle what the
-  design left open.
+- **Status:** ✅ Complete — P1 shipped 2026-10-30 in #197, and P2 2026-11-25
+  in #429. Ruled by the author 2026-10-29: §11's `OPEN` rows as recommended.
+  The decisions P1's build had to make are rows 12–19, accepted by the author
+  2026-10-30 from [logs/release-push.md](../logs/release-push.md). P2 was gated
+  on a vendor's registry retention deleting a pinned image, and the author ruled
+  2026-11-24 to build it now: decision 20 lifts the gate, and decisions 21–28
+  settle what the design left open. Decisions 29–35 record what P2's build and
+  its review added, from
+  [logs/release-tag-images.md](../logs/release-tag-images.md).
 - **Scope:** A `morzer release push` command that publishes a bundle archive to
   an OCI registry: it checks the archive, refuses to overwrite a published
   version with different content, pushes with morzer's own artifact and layer
@@ -265,6 +267,13 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
 | 26 | `ASSUMED` | The pinned digest is tagged as it is, an index or a single manifest, never a platform's manifest picked out of an index. The tag is a manifest `PUT` of the bytes that digest names, so the image's content does not change. |
 | 27 | `ASSUMED` | **Refines decision 21.** The tag ends in the first 12 hex digits of the pinned digest: `morzer-<product>-<version>-<12 hex>`. Nothing stops a bundle pinning two digests in one repository, as two images built from one repository for different roles, and one tag per repository would refuse the second under decision 24 on every run. With the digest in the name, each pinned digest has its own tag and one digest pinned twice shares one. Its fixed length keeps it from running into a version's pre-release, as an image name would. The 128-character limit counts the suffix. Rejected: the image's name from the manifest, which a version's pre-release runs into (version `1.0.0-rc` with image `api`, and `1.0.0` with `rc-api`, give one tag); and the whole digest, 64 of a tag's 128 characters. From review of #423. |
 | 28 | `ASSUMED` | **Refines decision 23.** The guarantee covers the version this push writes: its bundle is written only after every image decision 22 selects is tagged. A version already published, by a push without `--tag-images` or before P2, keeps its bundle when tagging fails. The failure stops before any channel moves (§5.1 step 5) and exits with its error (decision 18), and a re-run converges. Rejected: removing the bundle to restore the guarantee, which takes a version away from machines that already resolved it. From review of #423. |
+| 29 | `ASSUMED` | *(2026-11-25, from the plan of #429)* **Refines decision 22.** A `--tag-images` prefix that selects no `from: registry` image is refused, exit 2, before any registry request, naming the prefix. A typo would otherwise protect nothing while the push succeeds. A prefix that covers only `from: bundle` images selects none too. Ruled by the author 2026-11-25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, a prefix that selects nothing). |
+| 30 | `ASSUMED` | *(2026-11-25, from the plan of #429)* **Refines decision 22.** A prefix is matched against the repository as Docker spells it, host included, so `vendor/api` is `docker.io/vendor/api`. A Docker Hub image a prefix selects is refused, exit 2, before any registry request. Rejected: reaching Docker Hub through `registry-1.docker.io`, which no test here can exercise. Ruled by the author 2026-11-25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, a reference with no host). |
+| 31 | `ASSUMED` | *(2026-11-25, from the plan of #429)* **Refines decisions 23 and 25.** Images are tagged in key order, and the first failure stops the rest, which are listed as not tried, with every channel. A version this run would have written reports `published: false` and reads "did not push". See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, the order). |
+| 32 | `ASSUMED` | *(2026-11-25, from the plan of #429)* **Refines decision 22.** A prefix's trailing `/` is trimmed. A prefix that is empty, carries a scheme, or names a tag or a digest is refused, exit 2. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, what a prefix may look like). |
+| 33 | `ASSUMED` | *(2026-11-25, from the plan and review of #429)* **Refines decision 25.** `images` is omitted without `--tag-images`. Each entry carries `name`, `reference` and `status`: `tagged`, `already-tagged`, `skipped` with `reason`, `failed` with `error`, or `not-tried`. An image the flag selects also carries its `tag`. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, `--json`, and its correction, attempt 2, 2026-11-25T13:31:46Z). |
+| 34 | `ASSUMED` | *(2026-11-25, from the plan of #429)* **Refines decision 26.** A pinned digest the image's repository no longer has stops the push before the bundle is written, with an error naming the image and its reference. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T11:59:18Z, a deleted image). |
+| 35 | `ASSUMED` | *(2026-11-25, from the review of #429)* **Refines decisions 21 and 27.** A `--channel` spelled as the tag `--tag-images` writes for an image is refused, exit 2, before any registry request, when the bundle is pushed to that image's repository. The repositories are compared as a registry compares them: the host in any case, the path exactly. The channel move would write the bundle under the image's tag, and the image would be reported tagged with nothing keeping it. See [logs/release-tag-images.md](../logs/release-tag-images.md) (unlisted, attempt 1, 2026-11-25T13:31:46Z, a channel spelled as an image's tag, and the second review's finding). |
 
 ## 12. Phasing
 
@@ -273,3 +282,4 @@ None. The author ruled §11's `OPEN` rows on 2026-10-29.
   pinned image (decision 8).
   *(2026-11-24: decision 20 superseded row 8, and P2 is to be built now;
   decisions 21–28 settle what it left open.)*
+  *(2026-11-25: P2 was built in #429.)*
