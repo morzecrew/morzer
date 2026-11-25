@@ -79,6 +79,37 @@ func PathsUnder(root, product string) Paths {
 	return p
 }
 
+// UserTree is the user layout's root under a data home, `$XDG_DATA_HOME/morzer`
+// (RFC 0023 row 30). Namespaced, because a product may be named after anything
+// else that lives there.
+func UserTree(dataHome string) string { return filepath.Join(dataHome, "morzer") }
+
+// UserPaths is a user installation's layout: PathsUnder over UserTree, with the
+// render directory moved to the user's tmpfs, `$XDG_RUNTIME_DIR/morzer/<product>`
+// (RFC 0023 row 30). It is the one directory outside the tree, because
+// decrypted secrets live there and nowhere else.
+func UserPaths(dataHome, runtimeDir, product string) Paths {
+	p := PathsUnder(UserTree(dataHome), product)
+	p.RunDir = filepath.Join(runtimeDir, "morzer", product)
+	return p
+}
+
+// UserLayout reports whether p is a user installation's layout: one whose
+// render directory is not where PathsUnder puts it. Derived, as Root is, so it
+// cannot disagree with the directories (logs/quadlet-adapter.md, U2).
+func (p Paths) UserLayout() bool {
+	return p.Product != "" && p.RunDir != filepath.Join(p.Root(), runRoot, p.Product)
+}
+
+// For is the same layout for another product: the same root, and a render
+// directory beside this one. PathsUnder(p.Root(), product) would put a user
+// layout's render directory in its tree, on disk (logs/quadlet-adapter.md, U8).
+func (p Paths) For(product string) Paths {
+	q := PathsUnder(p.Root(), product)
+	q.RunDir = filepath.Join(filepath.Dir(p.RunDir), product)
+	return q
+}
+
 // Root is the prefix PathsUnder was given, and "" for the production layout.
 //
 // The inverse of the constructor above, and derived rather than stored so it

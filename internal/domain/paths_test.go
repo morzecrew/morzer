@@ -55,3 +55,36 @@ func TestTheProductionLayoutRoundTripsToo(t *testing.T) {
 	assert.Equal(t, domain.DefaultPaths("sandbox"), sandbox)
 	assert.Equal(t, "/etc/sandbox", sandbox.EtcDir)
 }
+
+// TestEachLayoutKnowsItsKindAndItsSiblings holds the two derived answers to the
+// constructors, as Root is held above. A user layout read as a --root one would
+// render its secrets in the tree, on disk, and a sibling built from Root alone
+// did exactly that (logs/quadlet-adapter.md, U2 and U8).
+func TestEachLayoutKnowsItsKindAndItsSiblings(t *testing.T) {
+	layouts := []struct {
+		name string
+		of   func(product string) domain.Paths
+		user bool
+	}{
+		{"system", domain.DefaultPaths, false},
+		{"under a root", func(p string) domain.Paths { return domain.PathsUnder("/srv/machine", p) }, false},
+		{"user", func(p string) domain.Paths {
+			return domain.UserPaths("/home/u/.local/share", "/run/user/1000", p)
+		}, true},
+	}
+	for _, l := range layouts {
+		t.Run(l.name, func(t *testing.T) {
+			demo := l.of("demo")
+			assert.Equal(t, l.user, demo.UserLayout())
+			assert.Equal(t, l.of("sandbox"), demo.For("sandbox"))
+		})
+	}
+
+	user := domain.UserPaths("/home/u/.local/share", "/run/user/1000", "demo")
+	assert.Equal(t, "/home/u/.local/share/morzer", user.Root())
+	assert.Equal(t, "/home/u/.local/share/morzer/etc/demo", user.EtcDir)
+	assert.Equal(t, "/home/u/.local/share/morzer/var/lib/demo", user.VarDir)
+	assert.Equal(t, "/home/u/.local/share/morzer/opt/demo", user.OptDir)
+	assert.Equal(t, "/run/user/1000/morzer/demo", user.RunDir)
+	assert.False(t, domain.Paths{}.UserLayout(), "a zero layout is nobody's")
+}

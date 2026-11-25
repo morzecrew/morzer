@@ -819,7 +819,7 @@ func (d *Deps) noSelection() error {
 	// resolved, not from the production one: under a relocated root the
 	// hint named a file that is not there, which is advice an operator
 	// cannot follow.
-	first := domain.PathsUnder(d.Paths.Root(), d.MachineProducts[0])
+	first := d.Paths.For(d.MachineProducts[0])
 	return domain.Usage("this machine has %d installations, so --product is required",
 		len(d.MachineProducts)).
 		WithHint("%s — pass `--product %s`, or `--config %s`; `morzer ls` lists them",

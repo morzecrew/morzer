@@ -328,7 +328,7 @@ func (d *Deps) referencedImages(pruned []ReleaseEntry) (map[string]bool, string)
 
 	stores := []string{d.Paths.ReleasesDir()}
 	for _, product := range inv.Products {
-		stores = append(stores, domain.PathsUnder(d.Paths.Root(), product).ReleasesDir())
+		stores = append(stores, d.Paths.For(product).ReleasesDir())
 	}
 	slices.Sort(stores)
 

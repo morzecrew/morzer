@@ -120,7 +120,7 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 	for _, product := range inv.Undecidable {
 		out = append(out, InstallationEntry{
 			Product: product,
-			Path:    domain.PathsUnder(d.Paths.Root(), product).EtcDir,
+			Path:    d.Paths.For(product).EtcDir,
 			Skipped: true,
 			Problem: "cannot be read by this process, so it is not counted as an " +
 				"installation; re-run as root if it is one",
@@ -287,7 +287,7 @@ func (d *Deps) fillServiceCounts(
 // product), and the clocks and registries.
 func (d *Deps) forInstallation(product string) *Deps {
 	scoped := *d
-	scoped.Paths = domain.PathsUnder(d.Paths.Root(), product)
+	scoped.Paths = d.Paths.For(product)
 	scoped.State = d.StateFor(scoped.Paths)
 
 	scoped.Locker = nil
