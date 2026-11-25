@@ -534,3 +534,52 @@ evidence: internal/lifecycle/ops/settings.go:1180
 action: decided
 proposal: ASSUMED — for a user layout the checks run, and ask whether anyone but root and the user the units run as could replace the binary. The self-update elevation hint keeps asking about root alone, because it suggests sudo, which runs the binary as root.
 ```
+
+### Self-audit of the P3a build, 2026-11-25
+
+Scope: the branch against `origin/main`, 10 commits before this one, about
+1,400 lines across domain, CLI, the systemd and Compose adapters, the
+lifecycle layer, tests and docs. Every branch the build added was sabotaged
+once, and each sabotage failed its test.
+
+- **The self-update hint sent root into a user's tree.** A user
+  installation whose binary only root can replace was told to re-run with
+  `sudo … self-update --root <tree>`. Root would then lock and journal the
+  user's installation and leave root's files in its tree. Fixed: for a user
+  layout the hint installs a manager for the user and runs `init --repair`
+  with it, and names no `sudo` (`internal/lifecycle/ops/self_update.go:419`).
+  This refines U9, which kept that hint asking about root alone.
+- **Lint.** `contextcheck` and `errcheck` flagged two of the new tests.
+  Fixed.
+
+Left as they were, and worth knowing:
+- Completion of `--product` still lists the system's installations for a
+  user, since it re-roots to `--root` or to `/`.
+- Root given `--config` inside a user's tree gets a `--root` layout there,
+  with its render directory in the tree, as any prefixed `--config` did
+  before. Root cannot know that user's data home.
+- The user scope's `Available`, which asks the user's manager, is not
+  exercised by a test: every test that installs units relocates them, and
+  none can start a user manager.
+
+```divergence
+decision: 26
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T21:51:12Z
+attempt: 1
+claim: a user installation's manager runs as its user, with its state and render directory in the user's directories and its units as user units, and the binary check holds those units to the user in root's place
+evidence: internal/cli/supervisor_linux.go:16-22
+action: decided
+```
+
+```divergence
+decision: 30
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T21:51:12Z
+attempt: 1
+claim: a user installation is one tree under $XDG_DATA_HOME/morzer, laid out as --root lays one out, with its render directory at $XDG_RUNTIME_DIR/morzer/<product>
+evidence: internal/domain/paths.go:91-95
+action: decided
+```
