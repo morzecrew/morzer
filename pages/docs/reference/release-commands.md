@@ -494,10 +494,10 @@ Credentials are the ones `docker login` stored for each image's registry, and
 push needs write access to every repository it tags in. `--dry-run` resolves
 every tag and writes none.
 
-`--json` carries `images`, each with `name`, `reference`, `tag` and a `status`:
+`--json` carries `images`, each with `name`, `reference` and a `status`:
 `tagged`, `already-tagged`, `skipped` with its `reason`, `failed` with its
-`error`, or `not-tried` after an earlier failure. Without `--tag-images` there
-is no `images`.
+`error`, or `not-tried` after an earlier failure. Each image a prefix selects
+also carries its `tag`. Without `--tag-images` there is no `images`.
 
 ### The two digests
 
