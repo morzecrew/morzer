@@ -16,8 +16,13 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// Registry is a writable OCI distribution registry held in memory: one
-// repository, enough of the API for a push and the pull that reads it back.
+// Registry is a writable OCI distribution registry held in memory: enough of
+// the API for a push and the pull that reads it back.
+//
+// Tags are held per repository, so a tag written to an image's repository is
+// not one in the bundle's. Manifests and blobs are content-addressed and shared
+// by every repository, which no test here tells apart from a registry that
+// keeps them per repository.
 //
 // Separate from the pull suite's fake, which serves one fixed artifact for
 // every tag -- the shape ten pull tests are written against. A push needs the
@@ -29,7 +34,7 @@ type Registry struct {
 	mu        sync.Mutex
 	blobs     map[string][]byte
 	manifests map[string]stored
-	tags      map[string]string
+	tags      map[string]string // repository:tag -> digest
 
 	// FailTag makes a manifest write under this tag fail, so a test can break
 	// one channel move and watch what the push does about the rest.
@@ -61,6 +66,10 @@ type stored struct {
 	body      []byte
 }
 
+// BundleRepository is the repository the push tests publish to, which Tagged,
+// Manifest and the tag list read.
+const BundleRepository = "demo/bundle"
+
 // NewRegistry returns an empty registry. Serve it with httptest.NewServer; a
 // loopback address is reached over plain HTTP by the OCI adapter's own rule.
 func NewRegistry() *Registry {
@@ -91,21 +100,51 @@ func (r *Registry) Writes() int64 { return r.writes.Load() }
 // same bundle" from "downloaded it to find out".
 func (r *Registry) BlobReads() int64 { return r.blobReads.Load() }
 
-// Tagged reports what a tag points at.
-func (r *Registry) Tagged(tag string) (string, bool) {
+// Tagged reports what a tag in BundleRepository points at.
+func (r *Registry) Tagged(tag string) (string, bool) { return r.TaggedIn(BundleRepository, tag) }
+
+// TaggedIn reports what a tag in a repository points at.
+func (r *Registry) TaggedIn(repository, tag string) (string, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	d, ok := r.tags[tag]
+	d, ok := r.tags[repository+":"+tag]
 	return d, ok
 }
 
-// Manifest returns the manifest a tag or digest addresses, decoded; the zero
-// manifest when there is none.
+// Put stores a manifest as though it had been pushed to repository, under tag
+// unless tag is empty, and returns its digest. It is not counted as a request
+// or a write: it is how a test seeds what a release pins.
+func (r *Registry) Put(repository, tag, mediaType string, body []byte) string {
+	dgst := digestOf(body)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.manifests[dgst] = stored{mediaType: mediaType, body: body}
+	if tag != "" {
+		r.tags[repository+":"+tag] = dgst
+	}
+	return dgst
+}
+
+// Delete removes a manifest and every tag naming it, as a registry's retention
+// does to an image nothing tags.
+func (r *Registry) Delete(dgst string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.manifests, dgst)
+	for key, d := range r.tags {
+		if d == dgst {
+			delete(r.tags, key)
+		}
+	}
+}
+
+// Manifest returns the manifest a tag in BundleRepository or a digest
+// addresses, decoded; the zero manifest when there is none.
 func (r *Registry) Manifest(ref string) ocispec.Manifest {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out ocispec.Manifest
-	if m, ok := r.manifests[r.resolve(ref)]; ok {
+	if m, ok := r.manifests[r.resolve(BundleRepository, ref)]; ok {
 		_ = json.Unmarshal(m.body, &out)
 	}
 	return out
@@ -119,37 +158,46 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case path == "/v2/" || path == "/v2":
 		w.WriteHeader(http.StatusOK)
 	case strings.HasSuffix(path, "/tags/list"):
-		r.listTags(w)
+		r.listTags(w, repositoryOf(path, "/tags/list"))
 	case strings.Contains(path, "/blobs/uploads/"):
 		r.upload(w, req)
 	case strings.Contains(path, "/blobs/"):
 		r.blob(w, req, path[strings.Index(path, "/blobs/")+len("/blobs/"):])
 	case strings.Contains(path, "/manifests/"):
-		r.manifest(w, req, path[strings.Index(path, "/manifests/")+len("/manifests/"):])
+		r.manifest(w, req, repositoryOf(path, "/manifests/"),
+			path[strings.Index(path, "/manifests/")+len("/manifests/"):])
 	default:
 		http.NotFound(w, req)
 	}
 }
 
-// resolve maps a tag to its digest; a digest maps to itself. Callers hold mu.
-func (r *Registry) resolve(ref string) string {
+// repositoryOf is the repository in a request path: /v2/<repository><marker>….
+func repositoryOf(path, marker string) string {
+	return strings.TrimPrefix(path[:strings.Index(path, marker)], "/v2/")
+}
+
+// resolve maps a tag in a repository to its digest; a digest maps to itself.
+// Callers hold mu.
+func (r *Registry) resolve(repository, ref string) string {
 	if strings.HasPrefix(ref, "sha256:") {
 		return ref
 	}
-	return r.tags[ref]
+	return r.tags[repository+":"+ref]
 }
 
-func (r *Registry) listTags(w http.ResponseWriter) {
+func (r *Registry) listTags(w http.ResponseWriter, repository string) {
 	r.mu.Lock()
 	tags := make([]string, 0, len(r.tags))
-	for t := range r.tags {
-		tags = append(tags, t)
+	for key := range r.tags {
+		if tag, ok := strings.CutPrefix(key, repository+":"); ok {
+			tags = append(tags, tag)
+		}
 	}
 	r.mu.Unlock()
 	sort.Strings(tags)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"name": "demo/bundle", "tags": tags})
+	_ = json.NewEncoder(w).Encode(map[string]any{"name": repository, "tags": tags})
 }
 
 // upload is the two-step monolithic push: POST opens a session, PUT with
@@ -199,14 +247,14 @@ func (r *Registry) blob(w http.ResponseWriter, req *http.Request, dgst string) {
 	_, _ = w.Write(body)
 }
 
-func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, ref string) {
+func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, repository, ref string) {
 	if req.Method == http.MethodPut {
-		r.putManifest(w, req, ref)
+		r.putManifest(w, req, repository, ref)
 		return
 	}
 
 	r.mu.Lock()
-	dgst := r.resolve(ref)
+	dgst := r.resolve(repository, ref)
 	m, ok := r.manifests[dgst]
 	denied := r.DenyRead != "" && ref == r.DenyRead
 	r.mu.Unlock()
@@ -235,7 +283,7 @@ func (r *Registry) manifest(w http.ResponseWriter, req *http.Request, ref string
 	_, _ = w.Write(m.body)
 }
 
-func (r *Registry) putManifest(w http.ResponseWriter, req *http.Request, ref string) {
+func (r *Registry) putManifest(w http.ResponseWriter, req *http.Request, repository, ref string) {
 	r.writes.Add(1)
 	if ref == r.FailTag {
 		// A 4xx: the client retries a 5xx, and a test waiting out its
@@ -258,9 +306,9 @@ func (r *Registry) putManifest(w http.ResponseWriter, req *http.Request, ref str
 	r.mu.Lock()
 	r.manifests[dgst] = stored{mediaType: req.Header.Get("Content-Type"), body: body}
 	if !strings.HasPrefix(ref, "sha256:") {
-		r.tags[ref] = dgst
+		r.tags[repository+":"+ref] = dgst
 		if ref == r.Retag {
-			r.tags[ref] = r.Decoy
+			r.tags[repository+":"+ref] = r.Decoy
 		}
 	}
 	r.mu.Unlock()
