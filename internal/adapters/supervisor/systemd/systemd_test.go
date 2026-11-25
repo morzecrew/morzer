@@ -1228,3 +1228,72 @@ func TestUnitsManagerPathsRefusesAnAnswerCutShort(t *testing.T) {
 		t.Errorf("paths = %v; a truncated answer was taken as the whole", paths)
 	}
 }
+
+// A user installation's units belong to the user's own manager (RFC 0023 row
+// 26): written where it reads them, driven with `--user`, wanted by the target
+// a user manager starts, and ordered only against units it has. Each service
+// carries the data home that resolves the installation it was written for
+// (logs/quadlet-adapter.md, U3 and U6).
+func TestAUserScopeDrivesTheUsersOwnManager(t *testing.T) {
+	dir := t.TempDir()
+	runner := fakes.NewScripted()
+	s := systemd.New(runner,
+		systemd.WithUserScope(dir, "XDG_DATA_HOME=/home/u/.local/share"),
+		systemd.WithSystemctl("/usr/bin/systemctl"))
+
+	units, err := s.Units(ports.UnitParams{
+		Product: "demo", ManagerPath: "/home/u/.local/bin/morzer",
+		ConfigPath:  "/home/u/.local/share/morzer/etc/demo/installation.yaml",
+		UpdateTimer: true, FleetTimer: true, SyncTimer: true, DoctorTimer: true,
+		MetricsDir: "/home/u/metrics",
+	})
+	if err != nil {
+		t.Fatalf("Units: %v", err)
+	}
+	ctx := context.Background()
+	if err := s.InstallUnits(ctx, units, ports.EnableAll); err != nil {
+		t.Fatalf("InstallUnits: %v", err)
+	}
+	if _, err := s.Status(ctx, "demo.service"); err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if err := s.RemoveUnits(ctx, []string{"demo-update.timer"}); err != nil {
+		t.Fatalf("RemoveUnits: %v", err)
+	}
+
+	calls := runner.Calls()
+	if len(calls) == 0 {
+		t.Fatal("nothing ran")
+	}
+	for _, c := range calls {
+		if len(c.Argv) < 2 || c.Argv[1] != "--user" {
+			t.Errorf("`%s` drives the system's manager", strings.Join(c.Argv, " "))
+		}
+	}
+
+	services := 0
+	for _, u := range units {
+		body := string(u.Contents)
+		if _, err := os.Stat(filepath.Join(dir, u.Name)); err != nil && u.Name != "demo-update.timer" {
+			t.Errorf("%s is not in the user's unit directory: %v", u.Name, err)
+		}
+		if strings.Contains(body, "network-online.target") {
+			t.Errorf("%s orders against a target only the system's manager has:\n%s", u.Name, body)
+		}
+		if strings.HasSuffix(u.Name, ".service") {
+			services++
+			if !strings.Contains(body, "[Service]\nEnvironment=\"XDG_DATA_HOME=/home/u/.local/share\"\n") {
+				t.Errorf("%s does not carry the data home:\n%s", u.Name, body)
+			}
+		}
+	}
+	if services != 7 {
+		t.Errorf("rendered %d services, want 7", services)
+	}
+	main := string(units[0].Contents)
+	for _, want := range []string{"After=docker.service\n", "Requires=docker.service\n", "WantedBy=default.target\n"} {
+		if !strings.Contains(main, want) {
+			t.Errorf("the product unit lacks %q:\n%s", want, main)
+		}
+	}
+}

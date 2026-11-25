@@ -44,6 +44,12 @@ type Supervisor struct {
 
 	// analyze is systemd-analyze, which owns the calendar grammar.
 	analyze string
+
+	// user writes and drives the units of the user's own manager rather
+	// than the system's (RFC 0023 row 26), and env is what each service
+	// unit carries for it in Environment=.
+	user bool
+	env  []string
 }
 
 type Option func(*Supervisor)
@@ -52,6 +58,14 @@ type Option func(*Supervisor)
 // testable without root.
 func WithUnitDir(dir string) Option {
 	return func(s *Supervisor) { s.unitDir = dir }
+}
+
+// WithUserScope writes units into unitDir for the user's own manager and
+// drives them with `systemctl --user` (RFC 0023 row 26). Every service unit
+// carries env, one KEY=VALUE each, so the manager it runs resolves the same
+// installation the one that wrote it did (logs/quadlet-adapter.md, U6).
+func WithUserScope(unitDir string, env ...string) Option {
+	return func(s *Supervisor) { s.unitDir, s.user, s.env = unitDir, true, env }
 }
 
 func withSystemctl(path string) Option {
@@ -87,7 +101,25 @@ func (s *Supervisor) Available(ctx context.Context) bool {
 	if _, err := os.Stat("/run/systemd/system"); err != nil {
 		return false
 	}
+	if s.user {
+		// The user's own manager, which runs while they are logged in or
+		// lingering. `show` answers whenever it can be reached, where
+		// `is-system-running` fails on a degraded one.
+		_, err := s.runner.Run(ctx, exec.Command{
+			Argv: s.argv("show", "--property=Version"), Timeout: 30 * time.Second, CaptureOutput: true,
+		})
+		return err == nil
+	}
 	return true
+}
+
+// argv is a systemctl command line in this supervisor's scope.
+func (s *Supervisor) argv(args ...string) []string {
+	argv := []string{s.systemctl}
+	if s.user {
+		argv = append(argv, "--user")
+	}
+	return append(argv, args...)
 }
 
 func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope ports.EnableScope) error {
@@ -321,7 +353,7 @@ var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
 // the caller says it could not check.
 func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]string, error) {
 	res, err := s.runner.Run(ctx, exec.Command{
-		Argv:          []string{s.systemctl, "show", unit, "--property=" + strings.Join(execKeys, ",")},
+		Argv:          s.argv("show", unit, "--property="+strings.Join(execKeys, ",")),
 		Timeout:       30 * time.Second,
 		CaptureOutput: true,
 	})
@@ -360,16 +392,20 @@ func (s *Supervisor) daemonReload(ctx context.Context) error {
 
 func (s *Supervisor) run(ctx context.Context, args ...string) error {
 	_, err := s.runner.Run(ctx, exec.Command{
-		Argv:          append([]string{s.systemctl}, args...),
+		Argv:          s.argv(args...),
 		Timeout:       2 * time.Minute,
 		CaptureOutput: true,
 	})
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			hint := "this usually means the manager is not running as root"
+			if s.user {
+				hint = "check that your own systemd manager is running: `systemctl --user status`"
+			}
 			return domain.Internal(err, "systemctl %s failed: %s",
 				strings.Join(args, " "), firstLine(exitErr.Stderr)).
-				WithHint("this usually means the manager is not running as root")
+				WithHint("%s", hint)
 		}
 		return domain.Internal(err, "cannot run systemctl %s", strings.Join(args, " "))
 	}
@@ -387,8 +423,8 @@ func (s *Supervisor) Status(ctx context.Context, unit string) (ports.UnitState, 
 	}
 
 	res, err := s.runner.Run(ctx, exec.Command{
-		Argv: []string{s.systemctl, "show", unit,
-			"--property=LoadState,ActiveState,SubState,UnitFileState,ExecMainStatus"},
+		Argv: s.argv("show", unit,
+			"--property=LoadState,ActiveState,SubState,UnitFileState,ExecMainStatus"),
 		Timeout:       30 * time.Second,
 		CaptureOutput: true,
 	})
@@ -609,12 +645,12 @@ func MetricsTimerUnitName(product string) string   { return product + "-metrics.
 const serviceTemplate = `[Unit]
 Description={{.Description}}
 Documentation=man:{{.Product}}(1)
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
+After={{if not .User}}network-online.target {{end}}docker.service
+{{if not .User}}Wants=network-online.target
+{{end}}Requires=docker.service
 
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 RemainAfterExit=yes
 ExecStart={{.ManagerPath}} apply --startup --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 ExecReload={{.ManagerPath}} apply --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
@@ -630,7 +666,7 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy={{if .User}}default.target{{else}}multi-user.target{{end}}
 `
 
 const backupServiceTemplate = `[Unit]
@@ -639,7 +675,7 @@ After={{.Product}}.service
 Requires=docker.service
 
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=7200
 StandardOutput=journal
@@ -675,11 +711,11 @@ WantedBy=timers.target
 // only thing on the disk.
 const updateServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
@@ -734,11 +770,11 @@ WantedBy=timers.target
 // statement about a moment nobody wants a fleet screen to be showing.
 const fleetServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=300
 StandardOutput=journal
@@ -776,11 +812,11 @@ WantedBy=timers.target
 // tried again, so a restart would only fetch it twice.
 const syncServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
@@ -824,11 +860,11 @@ func (p UnitParams) SyncJitterSeconds() int64 { return p.SyncPeriodSeconds() / 3
 // which systemd records as the unit's failure.
 const doctorServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=900
 StandardOutput=journal
@@ -858,7 +894,7 @@ Description={{.Description}}
 After={{.Product}}.service
 
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 ExecStart={{.ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
 TimeoutStartSec=120
 StandardOutput=journal
@@ -904,8 +940,11 @@ const DefaultUpdateJitter = 30 * time.Minute
 // DefaultBackupSchedule is a nightly backup at a quiet hour.
 const DefaultBackupSchedule = "*-*-* 02:30:00"
 
-// BuildUnits renders the unit set for a product.
-func BuildUnits(p UnitParams) ([]ports.Unit, error) {
+// BuildUnits renders the unit set for a product, for the system's manager.
+func BuildUnits(p UnitParams) ([]ports.Unit, error) { return buildUnits(p, unitData{}) }
+
+// buildUnits renders the unit set in scope, whose UnitParams it ignores.
+func buildUnits(p UnitParams, scope unitData) ([]ports.Unit, error) {
 	// Each schedule is one line of a root-owned file, so this refuses a value
 	// that could be two. The lifecycle layer validates the one an operator can
 	// set, and this is deliberately a second check rather than a repeat of it:
@@ -1034,8 +1073,9 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	for _, spec := range specs {
 		params := p
 		params.Description = spec.desc
+		scope.UnitParams = params
 
-		rendered, err := renderUnit(spec.name, spec.tmpl, params)
+		rendered, err := renderUnit(spec.name, spec.tmpl, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -1044,8 +1084,29 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	return units, nil
 }
 
-func renderUnit(name, tmpl string, p UnitParams) ([]byte, error) {
-	t, err := template.New(name).Option("missingkey=error").Parse(tmpl)
+// unitData is what a template renders: the parameters, and the scope the
+// supervisor writes for. Not fields of UnitParams, which mirrors the port's
+// and so may hold only what the lifecycle layer decides.
+//
+// A user unit names no network-online.target, which only the system manager
+// has, and keeps docker.service, which there is the user's rootless daemon's
+// own unit (logs/quadlet-adapter.md, U3).
+type unitData struct {
+	UnitParams
+	User bool
+	Env  []string
+}
+
+// envTemplate is a service unit's Environment= lines, one per entry, quoted so
+// a path with a space stays one assignment.
+//
+// shortcut: a `%` or `"` in a value is not escaped, as ConfigPath in ExecStart=
+// is not; escape both if a home directory ever carries one.
+const envTemplate = `{{define "env"}}{{range .Env}}Environment="{{.}}"
+{{end}}{{end}}`
+
+func renderUnit(name, tmpl string, p unitData) ([]byte, error) {
+	t, err := template.New(name).Option("missingkey=error").Parse(envTemplate + tmpl)
 	if err != nil {
 		return nil, domain.Internal(err, "cannot parse the %s unit template", name)
 	}
@@ -1103,7 +1164,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	// read as its zero. `TestTheTwoUnitParamsCarryTheSameFields` fails when
 	// the two structs stop agreeing, which is the half of that a test can
 	// see without knowing what each field means.
-	return BuildUnits(UnitParams{
+	return buildUnits(UnitParams{
 		Product:          params.Product,
 		ManagerPath:      params.ManagerPath,
 		ConfigPath:       params.ConfigPath,
@@ -1121,7 +1182,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		DoctorSchedule:   params.DoctorSchedule,
 		DoctorTimer:      params.DoctorTimer,
 		MetricsDir:       params.MetricsDir,
-	})
+	}, unitData{User: s.user, Env: s.env})
 }
 
 // ManagedUnitNames lists the units this supervisor owns for a product.
