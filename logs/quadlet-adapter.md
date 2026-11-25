@@ -583,3 +583,11 @@ claim: a user installation is one tree under $XDG_DATA_HOME/morzer, laid out as 
 evidence: internal/domain/paths.go:91-95
 action: decided
 ```
+
+**Correction, 2026-11-25.** The audit above missed one more defect, which
+`just ci` then found. The CLI test of a user `init` ran the real `docker
+info`. Where no daemon runs, as in CI, the probe could not run and `init`
+went ahead. On a host whose daemon is the system's, `init` was refused and
+the test failed. The user runner now puts a stand-in `docker` on `PATH`, so
+no test asks the host's daemon whose it is. A test of the refusal through
+the CLI was added with it (`test/clitest/user_layout_test.go`).
