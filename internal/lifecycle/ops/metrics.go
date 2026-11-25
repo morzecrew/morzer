@@ -267,10 +267,11 @@ func (d *Deps) checkMetricsTextfile(inst domain.Installation) preflight.Check {
 				return preflight.Warn("name a directory with `morzer config set metrics.textfile=<dir>`",
 					"the metrics directory %s is not a directory", dir)
 			}
-			// Asked only as root: access(2) answers for this user, and
-			// the units write as root. Otherwise a directory the timer
-			// cannot write shows as a stale file below.
-			if os.Geteuid() == 0 {
+			// Asked only as the user the units write as, root or a user
+			// installation's own: access(2) answers for this process.
+			// Otherwise a directory the timer cannot write shows as a
+			// stale file below.
+			if uid, _ := d.unitUser(); os.Geteuid() == uid {
 				if err := unix.Access(dir, unix.W_OK); err != nil {
 					return preflight.Warn("make it writable by the user the units run as",
 						"the metrics directory %s is not writable", dir)
@@ -279,11 +280,11 @@ func (d *Deps) checkMetricsTextfile(inst domain.Installation) preflight.Check {
 			path := filepath.Join(dir, MetricsFileName(metricsRoleStatus, inst.Product))
 			info, err = os.Stat(path)
 			if err != nil {
-				return preflight.Warn(fmt.Sprintf("check the timer: `systemctl status %s-metrics.timer`", inst.Product),
+				return preflight.Warn(fmt.Sprintf("check the timer: `%s status %s-metrics.timer`", d.systemctl(), inst.Product),
 					"nothing has written %s", path)
 			}
 			if age := time.Since(info.ModTime()); age > metricsStaleAfter {
-				return preflight.Warn(fmt.Sprintf("check the timer: `systemctl status %s-metrics.timer`", inst.Product),
+				return preflight.Warn(fmt.Sprintf("check the timer: `%s status %s-metrics.timer`", d.systemctl(), inst.Product),
 					"%s was last written %s ago", path, age.Round(time.Second))
 			}
 			return preflight.OK("written into %s", dir)

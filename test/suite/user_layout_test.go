@@ -63,30 +63,62 @@ func TestInitOfAUserInstallationRefusesTheSystemsEngine(t *testing.T) {
 	assert.True(t, exists, "a probe that could not run refused init")
 }
 
-// doctor asks a user installation's runtime whether the engine is the user's
-// own, and fails it on the system's (RFC 0023 row 32). A system installation is
-// not asked.
-func TestDoctorAsksWhoseTheEngineIs(t *testing.T) {
-	engineScope := func(h *harness) *events.CheckResult {
+// doctor runs a user installation's own checks: whose the engine is, failed on
+// the system's (RFC 0023 row 32), whether the account lingers, and whether a
+// published port needs privilege. A system installation runs none of them.
+func TestDoctorRunsAUserInstallationsOwnChecks(t *testing.T) {
+	ids := []string{"runtime.engine-scope", "system.linger", "network.unprivileged-ports"}
+	checks := func(h *harness) map[string]events.CheckResult {
 		report, err := ops.Doctor(context.Background(), h.Deps)
 		require.NoError(t, err)
-		i := slices.IndexFunc(report.Results, func(c events.CheckResult) bool { return c.ID == "runtime.engine-scope" })
-		if i < 0 {
-			return nil
+		out := map[string]events.CheckResult{}
+		for _, c := range report.Results {
+			if slices.Contains(ids, c.ID) {
+				out[c.ID] = c
+			}
 		}
-		return &report.Results[i]
+		return out
 	}
 
 	user := newHarnessAt(t, "demo", userLayout)
 	user.install()
-	check := engineScope(user)
-	require.NotNil(t, check, "a user installation's engine was not asked about")
-	assert.Equal(t, events.CheckOK, check.Status)
+	got := checks(user)
+	for _, id := range ids {
+		assert.Contains(t, got, id, "a user installation did not run %s", id)
+	}
+	assert.Equal(t, events.CheckOK, got["runtime.engine-scope"].Status)
 
 	user.Runtime.Fail["ProbeEngineScope"] = domain.Preflight(nil, "the Docker daemon is the system's")
-	assert.Equal(t, events.CheckFail, engineScope(user).Status)
+	assert.Equal(t, events.CheckFail, checks(user)["runtime.engine-scope"].Status)
 
 	system := newHarness(t)
 	system.install()
-	assert.Nil(t, engineScope(system), "a system installation's engine was asked whose it is")
+	assert.Empty(t, checks(system), "a system installation ran a user installation's checks")
+}
+
+// doctor asks whether the metrics directory is writable as the user the units
+// write as, which for a user installation is the user running it: a system
+// installation asked by anyone but root is not asked.
+func TestAUserInstallationsMetricsDirectoryIsAskedAsItsUser(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a directory whatever its mode")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o555))       //nolint:gosec // a directory nobody may write is the case under test
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) //nolint:gosec // so the test's own cleanup can remove it
+
+	metrics := func(h *harness) events.CheckResult {
+		inst := h.install()
+		inst.Policy.MetricsTextfile = dir
+		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
+		report, err := ops.Doctor(ctx, h.Deps)
+		require.NoError(t, err)
+		i := slices.IndexFunc(report.Results, func(c events.CheckResult) bool { return c.ID == "metrics.textfile" })
+		require.GreaterOrEqual(t, i, 0)
+		return report.Results[i]
+	}
+
+	assert.Contains(t, metrics(newHarnessAt(t, "demo", userLayout)).Message, "is not writable")
+	assert.NotContains(t, metrics(newHarness(t)).Message, "is not writable")
 }

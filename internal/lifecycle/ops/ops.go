@@ -459,6 +459,15 @@ func (d *Deps) unitUser() (int, string) {
 	return 0, "root"
 }
 
+// systemctl is the command that asks about this installation's units: the
+// user's own manager's for a user installation.
+func (d *Deps) systemctl() string {
+	if d.Paths.UserLayout() {
+		return "systemctl --user"
+	}
+	return "systemctl"
+}
+
 // managerInstallHint is where to install a manager only the units' user and
 // root can replace, then what to run with it.
 func (d *Deps) managerInstallHint(then string) string {

@@ -144,7 +144,7 @@ func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check
 			if err != nil {
 				// Unknown is not safe: an unattended doctor would
 				// pass a check it never made.
-				return preflight.Fail("run `systemctl cat` on the product's units",
+				return preflight.Fail("run `"+d.systemctl()+" cat` on the product's units",
 					"cannot read the binary the units run: %s", domain.AsError(err).Message)
 			}
 			uid, user := d.unitUser()
