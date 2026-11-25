@@ -288,6 +288,30 @@ machine that already took `1.3.0`. Publish `1.3.1` with the fix and move the tag
 to it; an operator who needs the old release now runs `morzer rollback`.
 `release push` warns when it moves a channel backwards, and moves it anyway.
 
+### Keeping the images it pins
+
+Your release pins each image by digest, and a digest is not a tag. A registry
+whose retention deletes untagged images can delete one a published release
+still pins, and nobody notices until a customer installs it. `--tag-images`
+tags every image under the prefix you name before the version is written:
+
+```sh
+morzer release push demo-1.3.0.tar.zst oci://registry.example/demo/bundle \
+    --tag-images registry.example/demo
+```
+
+Each image under the prefix gets a tag such as `morzer-demo-1.3.0-5f1c0e9a2b7d`
+in its own repository, so the push needs write access there too. Third-party
+images outside the prefix, and images [carried in the
+bundle](bundled-images.md), are left alone. Images on Docker Hub can't be
+tagged this way.
+
+If an image can't be tagged, the version is not written and no channel moves.
+That includes an image the registry has already deleted, which no customer
+could pull. Fix it and run the same command again. The
+[reference](../reference/release-commands.md#tagging-the-images-it-pins) has
+the details.
+
 ### Signing the channel's index
 
 A channel that stops moving looks the same to a machine whether you released
