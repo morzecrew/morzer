@@ -65,9 +65,16 @@ func newHarness(t *testing.T) *harness {
 // bundle with the name changed throughout, for a test that needs two products.
 func newHarnessFor(t *testing.T, product string) *harness {
 	t.Helper()
+	return newHarnessAt(t, product, domain.PathsUnder)
+}
 
-	root := t.TempDir()
-	paths := domain.PathsUnder(root, product)
+// newHarnessAt is newHarnessFor in a layout built under a temporary directory,
+// whose root the harness then calls its Root.
+func newHarnessAt(t *testing.T, product string, layout func(dir, product string) domain.Paths) *harness {
+	t.Helper()
+
+	paths := layout(t.TempDir(), product)
+	root := paths.Root()
 
 	// The release is a real copy of the example bundle, so the manifest
 	// loader, the hook ABI and the template renderer are all genuinely

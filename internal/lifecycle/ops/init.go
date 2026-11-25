@@ -227,6 +227,12 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
+	// The engine too, for a user installation: on the system's, it would
+	// share its project with the system's installation (RFC 0023 row 32).
+	if err := d.refuseForeignEngine(ctx); err != nil {
+		return Result{}, err
+	}
+
 	// The schedule too, and for the same reason: systemd refusing it would
 	// surface at unit installation, after everything before it was built.
 	// Shape first, so a value with a line break is refused as one rather

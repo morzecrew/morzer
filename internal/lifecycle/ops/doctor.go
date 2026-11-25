@@ -220,6 +220,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if prober, ok := d.Runtime.(ports.FileSharingProber); ok && d.EngineUser != nil {
 		checks = append(checks, d.checkFileSharing(prober, false))
 	}
+	if prober, ok := d.engineScopeProber(); ok {
+		checks = append(checks, d.checkEngineScope(prober))
+	}
 
 	// Whether the product expects its backups off the machine (RFC 0061
 	// §5.3). A release that cannot be read reads as one that does not: its

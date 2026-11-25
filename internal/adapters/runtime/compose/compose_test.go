@@ -971,3 +971,35 @@ func TestARunThatKeepsItsContainerRemovesNothing(t *testing.T) {
 		t.Errorf("a cleanup that failed changed the run's result: %v, exit %d", err, res.ExitCode)
 	}
 }
+
+// A user installation needs a daemon that is the user's own, which `docker
+// info` says by listing `name=rootless` (RFC 0023 row 32). The system's daemon
+// is refused, and a daemon that cannot be asked is a probe that did not run.
+func TestProbeEngineScopeAcceptsOnlyTheUsersOwnDaemon(t *testing.T) {
+	ctx := context.Background()
+
+	rootless, runner := newRuntime()
+	runner.OnOutput("info --format", `["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]`+"\n")
+	if err := rootless.ProbeEngineScope(ctx); err != nil {
+		t.Errorf("a rootless daemon was refused: %v", err)
+	}
+	if got := strings.Join(runner.Calls()[0].Argv, " "); got != "docker info --format {{json .SecurityOptions}}" {
+		t.Errorf("ran %q", got)
+	}
+
+	system, runner2 := newRuntime()
+	runner2.OnOutput("info --format", `["name=apparmor","name=seccomp,profile=builtin","name=cgroupns"]`)
+	err := system.ProbeEngineScope(ctx)
+	if !errors.Is(err, domain.ErrPreflight) {
+		t.Fatalf("the system's daemon came back as %v", err)
+	}
+	if hint := domain.AsError(err).Hint; !strings.Contains(hint, "docker context use rootless") {
+		t.Errorf("the hint %q does not say how to select the user's daemon", hint)
+	}
+
+	down, runner3 := newRuntime()
+	runner3.OnError("info --format", &exec.ExitError{ExitCode: 1, Stderr: "Cannot connect to the Docker daemon"})
+	if err := down.ProbeEngineScope(ctx); err == nil || errors.Is(err, domain.ErrPreflight) {
+		t.Errorf("a daemon that cannot be asked came back as %v, not a probe that did not run", err)
+	}
+}
