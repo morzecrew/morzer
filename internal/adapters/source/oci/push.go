@@ -370,13 +370,21 @@ func pushTarget(req PushRequest) (string, error) {
 		// Moving it would write the bundle under the image's tag, and the
 		// image would be reported tagged with nothing keeping it.
 		for _, image := range req.Images {
-			if image.Tag == channel && domain.RepositoryOf(image.Ref) == repository {
+			if image.Tag == channel && sameRepository(domain.RepositoryOf(image.Ref), repository) {
 				return "", domain.Usage("the channel %s is the tag --tag-images writes for the image %s in %s", channel, image.Name, repository).
 					WithHint("name channels for what they mean -- stable, edge")
 			}
 		}
 	}
 	return repository, nil
+}
+
+// sameRepository compares two repositories as a registry does: the host in any
+// case, the path exactly.
+func sameRepository(a, b string) bool {
+	aHost, aPath, _ := strings.Cut(a, "/")
+	bHost, bPath, _ := strings.Cut(b, "/")
+	return strings.EqualFold(aHost, bHost) && aPath == bPath
 }
 
 // publish uploads the layer, writes the manifest `oras push --artifact-type`
