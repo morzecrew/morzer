@@ -66,6 +66,21 @@ func TestAUserLayoutWithoutARuntimeDirectoryIsRefused(t *testing.T) {
 	}
 }
 
+// `init` of a user installation is refused on the system's daemon, before it
+// creates anything: the installation would share a Compose project with the
+// system's (RFC 0023 row 32).
+func TestInitOfAUserInstallationRefusesTheSystemsDaemon(t *testing.T) {
+	r := clitest.NewUser(t)
+	t.Setenv("MORZER_TEST_DOCKER_INFO", `["name=seccomp,profile=builtin","name=cgroupns"]`)
+
+	r.Run("init", "--release", r.Bundle, "--profile", "embedded",
+		"--domain", "demo.example", "--no-recovery-recipient", "--install-units=false").
+		ExitCode(3).StderrContains("the Docker daemon is the system's", "docker context use rootless")
+	if _, err := os.Stat(r.Path("data", "morzer", "etc", "demo", "installation.yaml")); !os.IsNotExist(err) {
+		t.Errorf("a refused init wrote the installation: %v", err)
+	}
+}
+
 // A user whose tree holds no installation still manages the system layout, as
 // before (RFC 0023 row 31): an empty tree selects nothing.
 func TestAUserWithNoInstallationKeepsTheSystemLayout(t *testing.T) {

@@ -59,6 +59,11 @@ func New(t *testing.T) *Runner {
 // than root (RFC 0023 row 31). The user's data home, runtime directory and
 // configuration directory are inside Root, so no test reads a real home.
 // Skipped as root, whose layout is the system's.
+//
+// A `docker` on PATH answers `info` with the security options in
+// MORZER_TEST_DOCKER_INFO, a rootless daemon's unless a test says otherwise,
+// and fails everything else as a daemon that is down does. Whatever daemon the
+// host runs is then never asked whose it is.
 func NewUser(t *testing.T) *Runner {
 	t.Helper()
 	if os.Geteuid() == 0 {
@@ -68,6 +73,20 @@ func NewUser(t *testing.T) *Runner {
 	t.Setenv("XDG_DATA_HOME", r.Path("data"))
 	t.Setenv("XDG_RUNTIME_DIR", r.Path("run"))
 	t.Setenv("XDG_CONFIG_HOME", r.Path("config"))
+
+	bin := r.Path("bin")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = info ]; then printf '%s\\n' \"$MORZER_TEST_DOCKER_INFO\"; exit 0; fi\n" +
+		"echo 'Cannot connect to the Docker daemon. Is the docker daemon running?' >&2\nexit 1\n"
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil { //nolint:gosec // a stand-in docker
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("MORZER_TEST_DOCKER_INFO", `["name=seccomp,profile=builtin","name=rootless"]`)
+
 	r.user = true
 	return r
 }
