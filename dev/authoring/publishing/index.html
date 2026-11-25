@@ -1490,6 +1490,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#keeping-the-images-it-pins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping the images it pins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#signing-the-channels-index" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2430,6 +2441,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#keeping-the-images-it-pins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Keeping the images it pins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#signing-the-channels-index" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2789,6 +2811,24 @@ records the refusal. Moving
 machine that already took <code>1.3.0</code>. Publish <code>1.3.1</code> with the fix and move the tag
 to it; an operator who needs the old release now runs <code>morzer rollback</code>.
 <code>release push</code> warns when it moves a channel backwards, and moves it anyway.</p>
+<h3 id="keeping-the-images-it-pins">Keeping the images it pins<a class="headerlink" href="#keeping-the-images-it-pins" title="Permanent link">&para;</a></h3>
+<p>Your release pins each image by digest, and a digest is not a tag. A registry
+whose retention deletes untagged images can delete one a published release
+still pins, and nobody notices until a customer installs it. <code>--tag-images</code>
+tags every image under the prefix you name before the version is written:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>push<span class="w"> </span>demo-1.3.0.tar.zst<span class="w"> </span>oci://registry.example/demo/bundle<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--tag-images<span class="w"> </span>registry.example/demo
+</code></pre></div>
+<p>Each image under the prefix gets a tag such as <code>morzer-demo-1.3.0-5f1c0e9a2b7d</code>
+in its own repository, so the push needs write access there too. Third-party
+images outside the prefix, and images <a href="../bundled-images/">carried in the
+bundle</a>, are left alone. Images on Docker Hub can't be
+tagged this way.</p>
+<p>If an image can't be tagged, the version is not written and no channel moves.
+That includes an image the registry has already deleted, which no customer
+could pull. Fix it and run the same command again. The
+<a href="../../reference/release-commands/#tagging-the-images-it-pins">reference</a> has
+the details.</p>
 <h3 id="signing-the-channels-index">Signing the channel's index<a class="headerlink" href="#signing-the-channels-index" title="Permanent link">&para;</a></h3>
 <p>A channel that stops moving looks the same to a machine whether you released
 nothing or someone who controls the registry froze it on an old release with a

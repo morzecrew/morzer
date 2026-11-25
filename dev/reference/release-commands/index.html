@@ -1792,6 +1792,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tagging-the-images-it-pins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tagging the images it pins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-two-digests" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2785,6 +2796,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tagging-the-images-it-pins" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tagging the images it pins
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-two-digests" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -3565,7 +3587,7 @@ paths and the executable bit, not timestamps, so normalising them changes the
 archive's bytes and not the release's digest.</p>
 <h2 id="release-push">release push<a class="headerlink" href="#release-push" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>push<span class="w"> </span>&lt;archive&gt;<span class="w"> </span>oci://&lt;registry&gt;/&lt;repository&gt;<span class="o">[</span>:&lt;version&gt;<span class="o">]</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="o">[</span>--channel<span class="w"> </span>TAG<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--signing-key<span class="w"> </span>KEY<span class="o">]</span>...
+<span class="w">    </span><span class="o">[</span>--channel<span class="w"> </span>TAG<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--signing-key<span class="w"> </span>KEY<span class="o">]</span>...<span class="w"> </span><span class="o">[</span>--tag-images<span class="w"> </span>PREFIX<span class="o">]</span>...
 </code></pre></div>
 <p>Publishes the archive <code>archive</code> wrote to an <abbr title="Open Container Initiative">OCI</abbr> registry, as the single-layer
 artifact the <a href="#from-an-oci-registry"><abbr title="Open Container Initiative">OCI</abbr> source</a> reads, then moves each
@@ -3588,6 +3610,10 @@ have <code>update --check</code> offer a version the bundle does not carry.</p>
 <tr>
 <td><code>--signing-key</code></td>
 <td>A minisign public key the bundle's signature must verify against. Repeat for several. Without it, a missing signature is warned about, as <code>archive</code> does.</td>
+</tr>
+<tr>
+<td><code>--tag-images</code></td>
+<td>A repository prefix. Each image the release pulls from a registry under it is tagged before the version is written; see <a href="#tagging-the-images-it-pins">Tagging the images it pins</a>. Repeat for several.</td>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
@@ -3636,6 +3662,70 @@ never makes push accept different content.</p>
 two pipelines pushing the same version at once can both pass it. Push from one
 pipeline per repository at a time. If the version tag no longer names what this
 push confirmed by the time the channels move, push moves none and exits 2.</p>
+<h3 id="tagging-the-images-it-pins">Tagging the images it pins<a class="headerlink" href="#tagging-the-images-it-pins" title="Permanent link">&para;</a></h3>
+<p>A release pins each image by digest, and a digest is not a tag, so a registry
+whose retention deletes untagged images can delete one a published release
+still needs. <code>--tag-images</code> tags them first:</p>
+<div class="highlight"><pre><span></span><code>morzer<span class="w"> </span>release<span class="w"> </span>push<span class="w"> </span>demo-1.3.0.tar.zst<span class="w"> </span>oci://registry.example/demo/bundle<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--tag-images<span class="w"> </span>registry.example/demo
+</code></pre></div>
+<p>Each image the release pulls from a registry, and whose repository is under one
+of the prefixes, is tagged <code>morzer-&lt;product&gt;-&lt;version&gt;-&lt;digest&gt;</code> in its own
+repository. A <code>+</code> in the version is written as <code>_</code>, and <code>&lt;digest&gt;</code> is the first
+12 hex digits of the pinned digest. The tag names the pinned digest as it is,
+an index or a single manifest, so the image does not change.</p>
+<table>
+<thead>
+<tr>
+<th>Image</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>from: bundle</code></td>
+<td>Not tagged: the bundle carries its bytes.</td>
+</tr>
+<tr>
+<td>Its repository is not under a prefix</td>
+<td>Not tagged.</td>
+</tr>
+<tr>
+<td>The tag already names the pinned digest</td>
+<td>Already tagged. Nothing is written.</td>
+</tr>
+<tr>
+<td>The tag does not exist</td>
+<td>Tagged.</td>
+</tr>
+<tr>
+<td>The tag names another digest</td>
+<td>Refused, exit 2. The tag is not moved.</td>
+</tr>
+<tr>
+<td>The registry no longer has the pinned digest</td>
+<td>Refused, exit 2: no installation can pull it.</td>
+</tr>
+</tbody>
+</table>
+<p>A prefix matches at a <code>/</code>, so <code>registry.example/demo</code> takes
+<code>registry.example/demo/api</code> and not <code>registry.example/demo-old/api</code>. It is
+matched against the repository with its registry host, as Docker spells it:
+<code>vendor/api</code> is <code>docker.io/vendor/api</code>. Push cannot tag images on Docker Hub,
+so a prefix that selects one is refused.</p>
+<p>Images are tagged in name order once the version is found to be new or already
+published, and before anything of the bundle is written. The first failure
+stops the rest, and no channel moves. A version this push writes therefore
+always has its images tagged, and the first line reads <code>did not push</code> when one
+was not. A version already published keeps its bundle. Fix the cause and run
+the same command again: images already tagged count as tagged.</p>
+<p>Credentials are the ones <code>docker login</code> stored for each image's registry, and
+push needs write access to every repository it tags in. <code>--dry-run</code> resolves
+every tag and writes none.</p>
+<p><code>--json</code> carries <code>images</code>, each with <code>name</code>, <code>reference</code> and a <code>status</code>:
+<code>tagged</code>, <code>already-tagged</code>, <code>skipped</code> with its <code>reason</code>, <code>failed</code> with its
+<code>error</code>, or <code>not-tried</code> after an earlier failure. Each image a prefix selects
+also carries its <code>tag</code>. Without <code>--tag-images</code> there is no <code>images</code>.</p>
 <h3 id="the-two-digests">The two digests<a class="headerlink" href="#the-two-digests" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>pushed demo 1.3.0 to oci://registry.example/demo/bundle:1.3.0
   manifest  sha256:5f1c…  pin with oci://registry.example/demo/bundle@sha256:5f1c…
@@ -3703,6 +3793,22 @@ newer version do not follow a channel backwards.</p>
 </tr>
 <tr>
 <td>The version already published with different content</td>
+<td>2</td>
+</tr>
+<tr>
+<td>A <code>--tag-images</code> prefix with a scheme, a tag or a digest, or one that selects no image</td>
+<td>2</td>
+</tr>
+<tr>
+<td>A selected image on Docker Hub, or an image tag over 128 characters</td>
+<td>2</td>
+</tr>
+<tr>
+<td>A channel spelled as the tag an image gets, when the bundle is pushed to that image's repository</td>
+<td>2</td>
+</tr>
+<tr>
+<td>An image tag that names another digest, or a pinned image the registry no longer has</td>
 <td>2</td>
 </tr>
 <tr>
