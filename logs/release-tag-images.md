@@ -131,3 +131,44 @@ evidence: test/fakes/registry.go:19-32
 action: decided
 proposal: ASSUMED — the fake keeps tags per repository and gains a way to seed a manifest; `Tagged` reads the bundle repository every existing test pushes to. A test arrangement, so it proposes no row
 ```
+
+## Built
+
+P2 is built as planned; nothing departed from the plan above or from a graded
+row. The two `LOCKED` decisions it extends to images, closed out:
+
+```divergence
+decision: D-17
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T12:09:58Z
+attempt: 1
+claim: under --dry-run every image's pinned digest and tag are resolved and none is written; a tag at another digest or a deleted pinned image is refused as the push would refuse it, and each image reports what the run would do
+evidence: internal/adapters/source/oci/push.go:271-275
+action: decided
+```
+
+```divergence
+decision: D-18
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T12:09:58Z
+attempt: 1
+claim: a tagging failure exits with that image's error, and --json carries the result beside it: each image's status, the error that stopped it, the images after it and every channel as not tried
+evidence: internal/cli/release_push.go:132-138
+action: decided
+```
+
+### Proposed rows for RFC 0039 §11
+
+For the author to append, from U1 to U6 above, in order; U7 is a test
+arrangement and proposes no row.
+
+| # | Grade | Decision |
+| --- | --- | --- |
+| 29 | `ASSUMED` | **A `--tag-images` prefix that selects no `from: registry` image is refused**, exit 2, before any registry request. A typo would otherwise protect nothing while the push succeeds. Refines decision 22. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U1). |
+| 30 | `ASSUMED` | **A prefix is matched against the repository as Docker spells it**, host included, so `vendor/api` is `docker.io/vendor/api`; a Docker Hub image a prefix selects is refused, exit 2, before any registry request. Rejected: reaching Docker Hub through `registry-1.docker.io`, which no test here can exercise. Refines decision 22. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U2). |
+| 31 | `ASSUMED` | **Images are tagged in key order, and the first failure stops the rest**, which are listed as not tried, with every channel. A version this run would have written reports `published: false` and reads "did not push". Refines decisions 23 and 25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U3). |
+| 32 | `ASSUMED` | **A prefix's trailing `/` is trimmed; an empty prefix, a scheme, a tag or a digest is refused**, exit 2. Refines decision 22. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U4). |
+| 33 | `ASSUMED` | **`images` is omitted without `--tag-images`.** Each entry carries `name`, `reference`, `tag` and `status`: `tagged`, `already-tagged`, `skipped` with `reason`, `failed` with `error`, or `not-tried`. Refines decision 25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U5). |
+| 34 | `ASSUMED` | **A pinned digest the image's repository no longer has stops the push** before the bundle is written, with an error naming the image. Refines decision 26. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U6). |
