@@ -418,10 +418,12 @@ func TestImageTagNamesTheProductTheVersionAndTheDigest(t *testing.T) {
 		"1.2.0-rc.1":       "morzer-demo-1.2.0-rc.1-0123456789ab",
 		"1.2.0-rc.1+build": "morzer-demo-1.2.0-rc.1_build-0123456789ab",
 	} {
-		got, err := ImageTag("demo", MustParseVersion(version), ref)
-		if err != nil || got != want {
-			t.Errorf("ImageTag(%s) = %q, %v; want %q", version, got, err, want)
-		}
+		t.Run(version, func(t *testing.T) {
+			got, err := ImageTag("demo", MustParseVersion(version), ref)
+			if err != nil || got != want {
+				t.Errorf("ImageTag(%s) = %q, %v; want %q", version, got, err, want)
+			}
+		})
 	}
 
 	long := MustParseVersion("1.2.0-" + strings.Repeat("a", 100))
@@ -503,15 +505,17 @@ func TestImagesToTagRefusesWhatWouldProtectLessThanAsked(t *testing.T) {
 		{"Docker Hub", []string{"docker.io/vendor"}, "hub is on Docker Hub"},
 		{"no host is not Docker Hub's namespace", []string{"vendor"}, "vendor selects no image"},
 	} {
-		_, err := m.ImagesToTag(tc.prefixes)
-		switch {
-		case err == nil:
-			t.Errorf("%s: %v was accepted", tc.name, tc.prefixes)
-		case AsError(err).Code != CodeUsage:
-			t.Errorf("%s: exit code %v, want usage", tc.name, AsError(err).Code)
-		case !strings.Contains(AsError(err).Message, tc.mentions):
-			t.Errorf("%s: %q does not say %q", tc.name, AsError(err).Message, tc.mentions)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := m.ImagesToTag(tc.prefixes)
+			switch {
+			case err == nil:
+				t.Errorf("%v was accepted", tc.prefixes)
+			case AsError(err).Code != CodeUsage:
+				t.Errorf("exit code %v, want usage", AsError(err).Code)
+			case !strings.Contains(AsError(err).Message, tc.mentions):
+				t.Errorf("%q does not say %q", AsError(err).Message, tc.mentions)
+			}
+		})
 	}
 
 	// A port is not a tag.
