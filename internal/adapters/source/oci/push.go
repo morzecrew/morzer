@@ -149,12 +149,14 @@ func (s *Source) Push(ctx context.Context, req PushRequest) (PushResult, error) 
 	}
 
 	if target.Digest == "" {
-		res.Published = true
 		if !req.DryRun {
 			if target, err = publish(ctx, repo, reference, layer, req); err != nil {
 				return res, err
 			}
 		}
+		// Only once written: a result reported beside a failed write
+		// says the version was not pushed.
+		res.Published = true
 	}
 	res.ManifestDigest = target.Digest.String()
 

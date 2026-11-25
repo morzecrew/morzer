@@ -211,6 +211,21 @@ func TestAPublishedVersionKeepsItsBundleWhenTaggingFails(t *testing.T) {
 	}
 }
 
+// The images are tagged and the bundle write then fails: the report lists the
+// tagged images and says the version was not pushed.
+func TestReleasePushReportsABundleWriteThatFailedAfterTagging(t *testing.T) {
+	f := tagFixture(t)
+	f.reg.FailTag = "1.2.0"
+
+	out := f.r.Run("--json", "release", "push", f.archive, f.repo, "--tag-images", f.prefix).
+		Failed().FieldEquals("data.published", false)
+	if got := images(t, out); got["app"]["status"] != "tagged" || got["db"]["status"] != "tagged" {
+		t.Errorf("images = %v", got)
+	}
+	f.r.Run("release", "push", f.archive, f.repo, "--tag-images", f.prefix).
+		Failed().StdoutContains("did not push", "image app")
+}
+
 // Decisions 17 and 25: a dry run resolves every tag and writes none.
 func TestReleasePushDryRunTagsNothing(t *testing.T) {
 	f := tagFixture(t)
