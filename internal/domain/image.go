@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -421,4 +422,141 @@ func normalizeRepository(repo string) string {
 		path = "library/" + path
 	}
 	return host + "/" + path
+}
+
+// What `release push --tag-images` reports for an image (RFC 0039 decision 25).
+const (
+	ImageTagged        = "tagged"
+	ImageAlreadyTagged = "already-tagged"
+	ImageSkipped       = "skipped"
+	ImageTagFailed     = "failed"
+	ImageNotTried      = "not-tried"
+)
+
+// maxTagLength is the longest tag the distribution spec allows.
+const maxTagLength = 128
+
+// ImageTag is the tag `release push --tag-images` writes beside an image a
+// release pins, so a registry's retention keeps it: `morzer-<product>-<version>-<12 hex>`
+// (RFC 0039 decisions 21 and 27).
+//
+// The version's `+` is written as `_`, because a tag cannot carry `+`; every
+// other character a product name or a version may hold, a tag may too. The
+// first 12 hex digits of the pinned digest give each pinned digest its own
+// tag, so two images pinned from one repository never contend for one, and
+// their fixed length keeps a version's pre-release from running into what
+// follows it.
+func ImageTag(product string, version Version, ref string) (string, error) {
+	digest, ok := ImageSpec{Ref: ref}.Digest()
+	_, hex, _ := strings.Cut(digest, ":")
+	if !ok || len(hex) < 12 {
+		return "", ValidationError(nil, "%s pins no digest, so it has no tag to protect it", ref)
+	}
+	tag := fmt.Sprintf("morzer-%s-%s-%s", product, strings.ReplaceAll(version.String(), "+", "_"), hex[:12])
+	if len(tag) > maxTagLength {
+		return "", ValidationError(nil, "the tag for %s, %s, is %d characters, over the %d a tag may carry",
+			ShortImageRef(ref), tag, len(tag), maxTagLength).
+			WithHint("the tag is morzer-<product>-<version>-<12 hex>; a shorter version fits")
+	}
+	return tag, nil
+}
+
+// ImageTagging is what `release push --tag-images` does with one image.
+type ImageTagging struct {
+	// Name is the image's key in the manifest.
+	Name string
+	// Ref is the reference the manifest pins.
+	Ref string
+	// Tag is the tag to write, and empty for an image that is skipped.
+	Tag string
+	// Skip is why the image is not tagged, and empty for one that is.
+	Skip string
+}
+
+// ImagesToTag decides, for every image in key order, whether `release push
+// --tag-images` tags it (RFC 0039 decision 22).
+//
+// An image is tagged when it is pulled from a registry and its repository is
+// under one of the prefixes, matched at a `/`, so `registry.example/demo`
+// takes `registry.example/demo/api` and not `registry.example/demo-old/api`.
+// The repository is spelled as Docker spells it, host included: `vendor/api`
+// is `docker.io/vendor/api`, and so is not under a prefix `vendor`.
+//
+// Everything that would make the push protect less than the vendor asked for
+// is refused before any registry is asked anything: a prefix that is not a
+// repository prefix, a prefix that selects no image, a selected image on
+// Docker Hub, which push cannot reach, and a tag too long to write.
+func (m *Manifest) ImagesToTag(prefixes []string) ([]ImageTagging, error) {
+	cleaned := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		prefix, err := imagePrefix(p)
+		if err != nil {
+			return nil, err
+		}
+		cleaned = append(cleaned, prefix)
+	}
+
+	selects := make([]bool, len(cleaned))
+	out := make([]ImageTagging, 0, len(m.Images))
+	for _, name := range sortedImageNames(m.Images) {
+		spec := m.Images[name]
+		repository := normalizeRepository(RepositoryOf(spec.Ref))
+		under := false
+		for i, prefix := range cleaned {
+			if repository == prefix || strings.HasPrefix(repository, prefix+"/") {
+				under = true
+				selects[i] = selects[i] || !spec.Bundled()
+			}
+		}
+
+		entry := ImageTagging{Name: name, Ref: spec.Ref}
+		switch {
+		case spec.Bundled():
+			entry.Skip = "from: bundle, so the bundle carries its bytes"
+		case !under:
+			entry.Skip = "not under a --tag-images prefix"
+		case strings.HasPrefix(repository, "docker.io/"):
+			return nil, ValidationError(nil, "the image %s is on Docker Hub, where release push cannot tag images", name).
+				WithHint("narrow --tag-images so that it does not cover %s", repository)
+		default:
+			tag, err := ImageTag(m.Metadata.Name, m.Metadata.Version, spec.Ref)
+			if err != nil {
+				return nil, err
+			}
+			entry.Tag = tag
+		}
+		out = append(out, entry)
+	}
+
+	for i, ok := range selects {
+		if !ok {
+			return nil, Usage("--tag-images %s selects no image: no `from: registry` image's repository is under it", cleaned[i]).
+				WithHint("a prefix is matched against the repository with its registry host, as Docker spells it: " +
+					"postgres is docker.io/library/postgres. Run `morzer release show` to see the images")
+		}
+	}
+	return out, nil
+}
+
+// imagePrefix is a --tag-images value as a repository prefix, or the refusal of
+// one that cannot be: a scheme, a tag or a digest.
+func imagePrefix(p string) (string, error) {
+	prefix := strings.TrimRight(p, "/")
+	switch {
+	case prefix == "":
+		return "", Usage("--tag-images needs a repository prefix").
+			WithHint("name the registry and path your images are under: --tag-images registry.example/demo")
+	case strings.Contains(prefix, "://"):
+		return "", Usage("--tag-images %s names a scheme; it takes a repository prefix", p).
+			WithHint("leave out the scheme: --tag-images %s", prefix[strings.Index(prefix, "://")+3:])
+	case strings.Contains(prefix, "@"):
+		return "", Usage("--tag-images %s names a digest; it takes a repository prefix", p)
+	}
+	// A colon in the first segment is the registry's port; anywhere after it
+	// is a tag.
+	if slash := strings.Index(prefix, "/"); slash >= 0 && strings.Contains(prefix[slash+1:], ":") {
+		return "", Usage("--tag-images %s names a tag; it takes a repository prefix", p).
+			WithHint("leave out the tag: --tag-images %s", prefix[:slash+1+strings.Index(prefix[slash+1:], ":")])
+	}
+	return prefix, nil
 }

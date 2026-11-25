@@ -237,11 +237,23 @@ type Pushed struct {
 	ContentDigest  string          `json:"content_digest"`
 	Published      bool            `json:"published"`
 	DryRun         bool            `json:"dry_run"`
+	Images         []PushedImage   `json:"images,omitempty"`
 	Channels       []PushedChannel `json:"channels"`
 }
 
+// PushedImage is one image under --tag-images (RFC 0039 decision 25). Status
+// is one of the domain's Image* statuses.
+type PushedImage struct {
+	Name      string `json:"name"`
+	Reference string `json:"reference"`
+	Tag       string `json:"tag,omitempty"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 // PushedChannel is one channel the push was asked to move. Neither moved nor an
-// error means an earlier channel failed and this one was not tried.
+// error means an earlier step failed and this one was not tried.
 type PushedChannel struct {
 	Name  string `json:"name"`
 	Moved bool   `json:"moved"`
@@ -258,6 +270,10 @@ func init() {
 func pushedDoc(d *ui.Doc, p Pushed) *ui.Doc {
 	verb := "pushed"
 	switch {
+	case !p.Published && p.ManifestDigest == "":
+		// Nothing at the version and nothing written: tagging stopped the
+		// push before the bundle (RFC 0039 decision 23).
+		verb = "did not push"
 	case !p.Published:
 		verb = "already published"
 	case p.DryRun:
@@ -275,7 +291,24 @@ func pushedDoc(d *ui.Doc, p Pushed) *ui.Doc {
 	d.Verbatim(fmt.Sprintf("  content   %s  give customers: morzer update --digest %s",
 		p.ContentDigest, p.ContentDigest))
 
-	fields := make([]ui.Field, 0, len(p.Channels))
+	fields := make([]ui.Field, 0, len(p.Images)+len(p.Channels))
+	for _, i := range p.Images {
+		value := "not tried"
+		switch i.Status {
+		case domain.ImageTagged:
+			value = "tagged " + i.Tag
+			if p.DryRun {
+				value = "would tag " + i.Tag
+			}
+		case domain.ImageAlreadyTagged:
+			value = "already tagged " + i.Tag
+		case domain.ImageSkipped:
+			value = "not tagged: " + i.Reason
+		case domain.ImageTagFailed:
+			value = "not tagged: " + i.Error
+		}
+		fields = append(fields, ui.Field{Label: "image " + i.Name, Value: value})
+	}
 	for _, c := range p.Channels {
 		value := "not tried"
 		switch {

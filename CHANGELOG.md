@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine's fleet row says `expected`. The key needs
   `compatibility.min_manager_version` 0.20.0.
 
+- `morzer release push --tag-images <prefix>` tags each image the release
+  pins under that prefix, in its own repository, so a registry that deletes
+  untagged images keeps them. The version is written only once every such
+  image is tagged, and a pinned image the registry already deleted stops the
+  push.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index

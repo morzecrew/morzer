@@ -407,3 +407,117 @@ func TestImageKeyIsTheNameTheDaemonResolves(t *testing.T) {
 		t.Errorf("an unpinned reference keyed as %q", got)
 	}
 }
+
+// The tag `release push --tag-images` writes (RFC 0039 decisions 21 and 27):
+// a `+` the tag cannot carry is written as `_`, the digest's first 12 hex
+// digits end it, and one past 128 characters is refused.
+func TestImageTagNamesTheProductTheVersionAndTheDigest(t *testing.T) {
+	ref := "registry.example/demo/api@sha256:0123456789ab" + strings.Repeat("f", 52)
+	for version, want := range map[string]string{
+		"1.2.0":            "morzer-demo-1.2.0-0123456789ab",
+		"1.2.0-rc.1":       "morzer-demo-1.2.0-rc.1-0123456789ab",
+		"1.2.0-rc.1+build": "morzer-demo-1.2.0-rc.1_build-0123456789ab",
+	} {
+		got, err := ImageTag("demo", MustParseVersion(version), ref)
+		if err != nil || got != want {
+			t.Errorf("ImageTag(%s) = %q, %v; want %q", version, got, err, want)
+		}
+	}
+
+	long := MustParseVersion("1.2.0-" + strings.Repeat("a", 100))
+	if got, err := ImageTag("demo", long, ref); err == nil {
+		t.Errorf("a tag of %d characters was accepted: %s", len(got), got)
+	}
+	// 128 exactly is a tag: "morzer-" + "demo-" + version + "-" + 12 hex.
+	exact := MustParseVersion("1.2.0-" + strings.Repeat("a", 128-len("morzer-demo-1.2.0--0123456789ab")))
+	if got, err := ImageTag("demo", exact, ref); err != nil || len(got) != 128 {
+		t.Errorf("a tag of 128 characters: %q, %v", got, err)
+	}
+}
+
+func TestImagesToTagSelectsRegistryImagesUnderAPrefix(t *testing.T) {
+	d := "@sha256:" + strings.Repeat("a", 64)
+	m := &Manifest{Images: map[string]ImageSpec{
+		"api":     {Ref: "registry.example/demo/api" + d},
+		"old":     {Ref: "registry.example/demo-old/api" + d},
+		"worker":  {Ref: "registry.example/demo/jobs/worker:2" + d},
+		"bundled": {Ref: "registry.example/demo/bundled" + d, From: ImageFromBundle},
+		"db":      {Ref: "postgres" + d},
+	}}
+	m.Metadata.Name, m.Metadata.Version = "demo", MustParseVersion("1.2.0")
+
+	got, err := m.ImagesToTag([]string{"registry.example/demo/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagged := map[string]bool{}
+	for _, image := range got {
+		if (image.Tag == "") == (image.Skip == "") {
+			t.Errorf("%s has tag %q and skip %q; exactly one is set", image.Name, image.Tag, image.Skip)
+		}
+		tagged[image.Name] = image.Tag != ""
+	}
+	want := map[string]bool{"api": true, "worker": true, "old": false, "bundled": false, "db": false}
+	if len(got) != len(want) {
+		t.Fatalf("%d images listed, want %d: %+v", len(got), len(want), got)
+	}
+	for name, w := range want {
+		if tagged[name] != w {
+			t.Errorf("%s tagged = %t, want %t", name, tagged[name], w)
+		}
+	}
+	if got[0].Name != "api" || got[len(got)-1].Name != "worker" {
+		t.Errorf("not in key order: %+v", got)
+	}
+
+	// A whole repository is a prefix of itself.
+	// api, bundled, db, old, worker: old is the fourth.
+	if got, err := m.ImagesToTag([]string{"registry.example/demo-old/api"}); err != nil || got[3].Tag == "" {
+		t.Errorf("a repository named in full: %+v, %v", got, err)
+	}
+}
+
+// Each refusal happens before any registry is asked anything, so a mistyped
+// prefix costs a message rather than a release whose images nobody protected.
+func TestImagesToTagRefusesWhatWouldProtectLessThanAsked(t *testing.T) {
+	d := "@sha256:" + strings.Repeat("a", 64)
+	m := &Manifest{Images: map[string]ImageSpec{
+		"api":     {Ref: "registry.example/demo/api" + d},
+		"bundled": {Ref: "registry.example/kept/app" + d, From: ImageFromBundle},
+		"hub":     {Ref: "vendor/api" + d},
+	}}
+	m.Metadata.Name, m.Metadata.Version = "demo", MustParseVersion("1.2.0")
+
+	for _, tc := range []struct {
+		name     string
+		prefixes []string
+		mentions string
+	}{
+		{"empty", []string{"/"}, "needs a repository prefix"},
+		{"a scheme", []string{"oci://registry.example/demo"}, "names a scheme"},
+		{"a tag", []string{"registry.example/demo:1.2.0"}, "names a tag"},
+		{"a digest", []string{"registry.example/demo/api" + d}, "names a digest"},
+		{"selects nothing", []string{"registry.example/dem"}, "registry.example/dem selects no image"},
+		{"one of two selects nothing", []string{"registry.example/demo", "registry.example/typo"}, "typo selects no image"},
+		{"covers only a bundled image", []string{"registry.example/kept"}, "kept selects no image"},
+		{"Docker Hub", []string{"docker.io/vendor"}, "hub is on Docker Hub"},
+		{"no host is not Docker Hub's namespace", []string{"vendor"}, "vendor selects no image"},
+	} {
+		_, err := m.ImagesToTag(tc.prefixes)
+		switch {
+		case err == nil:
+			t.Errorf("%s: %v was accepted", tc.name, tc.prefixes)
+		case AsError(err).Code != CodeUsage:
+			t.Errorf("%s: exit code %v, want usage", tc.name, AsError(err).Code)
+		case !strings.Contains(AsError(err).Message, tc.mentions):
+			t.Errorf("%s: %q does not say %q", tc.name, AsError(err).Message, tc.mentions)
+		}
+	}
+
+	// A port is not a tag.
+	ported := &Manifest{Images: map[string]ImageSpec{"api": {Ref: "localhost:5000/demo/api" + d}}}
+	ported.Metadata.Name, ported.Metadata.Version = "demo", MustParseVersion("1.2.0")
+	if _, err := ported.ImagesToTag([]string{"localhost:5000"}); err != nil {
+		t.Errorf("a registry with a port: %v", err)
+	}
+}
