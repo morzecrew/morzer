@@ -487,6 +487,10 @@ func TestImagesToTagRefusesWhatWouldProtectLessThanAsked(t *testing.T) {
 		"api":     {Ref: "registry.example/demo/api" + d},
 		"bundled": {Ref: "registry.example/kept/app" + d, From: ImageFromBundle},
 		"hub":     {Ref: "vendor/api" + d},
+		// Docker Hub's hosts in another case: a host names one server however
+		// it is spelled.
+		"loud":  {Ref: "DOCKER.IO/vendor/api" + d},
+		"index": {Ref: "Index.Docker.io/vendor/api" + d},
 	}}
 	m.Metadata.Name, m.Metadata.Version = "demo", MustParseVersion("1.2.0")
 
@@ -503,6 +507,8 @@ func TestImagesToTagRefusesWhatWouldProtectLessThanAsked(t *testing.T) {
 		{"one of two selects nothing", []string{"registry.example/demo", "registry.example/typo"}, "typo selects no image"},
 		{"covers only a bundled image", []string{"registry.example/kept"}, "kept selects no image"},
 		{"Docker Hub", []string{"docker.io/vendor"}, "hub is on Docker Hub"},
+		{"Docker Hub in capitals", []string{"DOCKER.IO/vendor"}, "loud is on Docker Hub"},
+		{"Docker Hub's index host in any case", []string{"Index.Docker.io"}, "index is on Docker Hub"},
 		{"no host is not Docker Hub's namespace", []string{"vendor"}, "vendor selects no image"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
