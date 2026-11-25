@@ -34,3 +34,27 @@ func TestPushRefusesAnArchiveThePullSideWouldRefuse(t *testing.T) {
 	assert.Contains(t, err.Error(), "limit")
 	assert.Equal(t, domain.ExitUsage, domain.ExitCode(err))
 }
+
+// A registry host is the same host in any case, so a channel spelled as an
+// image's tag is refused however either reference spells the host; the path
+// is compared exactly, as registries do.
+func TestPushTargetRefusesAChannelSpelledAsAnImageTagInAnyHostCase(t *testing.T) {
+	images := []domain.ImageTagging{{Name: "api", Ref: "registry.example/demo/api@sha256:0123", Tag: "morzer-demo-1.2.0-0123"}}
+	for _, tc := range []struct {
+		name, reference string
+		refused         bool
+	}{
+		{"the same spelling", "registry.example/demo/api", true},
+		{"the host in another case", "REGISTRY.example/demo/api", true},
+		{"another path", "registry.example/demo/API", false},
+		{"another repository", "registry.example/demo/bundle", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := pushTarget(PushRequest{
+				Reference: tc.reference, Version: domain.MustParseVersion("1.2.0"),
+				Channels: []string{"morzer-demo-1.2.0-0123"}, Images: images,
+			})
+			assert.Equal(t, tc.refused, err != nil, "%v", err)
+		})
+	}
+}

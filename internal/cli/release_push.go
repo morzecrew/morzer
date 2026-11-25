@@ -24,6 +24,7 @@ func newReleasePushCommand(app *App) *cobra.Command {
 	var (
 		channels    []string
 		signingKeys []string
+		tagImages   []string
 	)
 
 	cmd := &cobra.Command{
@@ -40,6 +41,10 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			"different content it is refused.\n\n" +
 			"It prints two digests. The manifest digest pins oci://…@sha256:; the\n" +
 			"content digest is what customers pass to `morzer update --digest`.\n\n" +
+			"With --tag-images, each image the release pulls from a registry under\n" +
+			"one of the prefixes is first tagged morzer-<product>-<version>-<digest>\n" +
+			"in its own repository, so the registry's retention keeps it. A version\n" +
+			"this push writes is written only once every such image is tagged.\n\n" +
 			"Credentials are the ones `docker login` stored. --dry-run checks and\n" +
 			"reads everything and writes nothing.",
 		Example: "  morzer release push demo-1.3.0.tar.zst oci://registry.example/demo/bundle --channel stable",
@@ -101,6 +106,12 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			if unsigned {
 				warnUnsigned(app)
 			}
+			var images []domain.ImageTagging
+			if len(tagImages) > 0 {
+				if images, err = rel.Manifest.ImagesToTag(tagImages); err != nil {
+					return err
+				}
+			}
 
 			source := oci.New()
 			defer func() { _ = source.Close() }()
@@ -112,15 +123,17 @@ func newReleasePushCommand(app *App) *cobra.Command {
 				Product:       rel.Name(),
 				ContentDigest: rel.Digest,
 				Channels:      channels,
+				Images:        images,
 				DryRun:        app.Flags.dryRun,
 			})
 			for _, warning := range res.Warnings {
 				fmt.Fprintf(app.Stream.Err, "warning: %s\n", warning)
 			}
-			// A push refused before anything was written has nothing to
-			// report. One whose channel move failed does: the version is
-			// in place, and which channels moved is what the re-run needs.
-			if pushErr != nil && len(res.Channels) == 0 {
+			// A push refused before anything was tried has nothing to
+			// report. One whose tagging or channel move failed does: which
+			// images were tagged and which channels moved is what the
+			// re-run needs.
+			if pushErr != nil && len(res.Images) == 0 && len(res.Channels) == 0 {
 				return pushErr
 			}
 
@@ -133,6 +146,9 @@ func newReleasePushCommand(app *App) *cobra.Command {
 				Published:      res.Published,
 				DryRun:         app.Flags.dryRun,
 				Channels:       make([]views.PushedChannel, 0, len(res.Channels)),
+			}
+			for _, i := range res.Images {
+				report.Images = append(report.Images, views.PushedImage(i))
 			}
 			for _, c := range res.Channels {
 				report.Channels = append(report.Channels, views.PushedChannel(c))
@@ -148,6 +164,8 @@ func newReleasePushCommand(app *App) *cobra.Command {
 		"tag to move to the version once it is in place; repeat for several, moved in order")
 	cmd.Flags().StringArrayVar(&signingKeys, "signing-key", nil,
 		"minisign public key the bundle's signature must verify against; repeat for several")
+	cmd.Flags().StringArrayVar(&tagImages, "tag-images", nil,
+		"tag each registry image under this repository prefix before the version is written; repeat for several")
 	return cmd
 }
 

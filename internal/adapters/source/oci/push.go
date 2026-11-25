@@ -49,16 +49,32 @@ type PushRequest struct {
 	// Channels are moved, in order, once the version is in place.
 	Channels []string
 
+	// Images are the bundle's images as --tag-images decided them, each
+	// tagged in its own repository before anything of the bundle is written
+	// (RFC 0039 decision 23). Nil without the flag.
+	Images []domain.ImageTagging
+
 	// DryRun does every check and every read, and writes nothing.
 	DryRun bool
 }
 
 // ChannelMove is what happened to one requested channel. Neither Moved nor
-// Error means an earlier channel failed and this one was not tried.
+// Error means an earlier step failed and this one was not tried.
 type ChannelMove struct {
 	Name  string `json:"name"`
 	Moved bool   `json:"moved"`
 	Error string `json:"error,omitempty"`
+}
+
+// TaggedImage is what happened to one image under --tag-images. Status is one
+// of the domain's Image* statuses.
+type TaggedImage struct {
+	Name      string `json:"name"`
+	Reference string `json:"reference"`
+	Tag       string `json:"tag,omitempty"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 // PushResult is what a push did, or under DryRun would do.
@@ -76,6 +92,7 @@ type PushResult struct {
 	// failed after the push re-runs the same step.
 	Published bool
 
+	Images   []TaggedImage
 	Channels []ChannelMove
 
 	// Warnings are for the caller to print; a push does not refuse over them.
@@ -117,13 +134,29 @@ func (s *Source) Push(ctx context.Context, req PushRequest) (PushResult, error) 
 	if err != nil {
 		return res, err
 	}
+	res.ManifestDigest = target.Digest.String()
+
+	// Decision 23: once the version may be pushed and before anything of it
+	// is written, so a version this push writes always has its images
+	// protected. One already published keeps its bundle (decision 28).
+	if len(req.Images) > 0 {
+		if res.Images, err = tagImages(ctx, req.Images, req.DryRun); err != nil {
+			for _, channel := range req.Channels {
+				res.Channels = append(res.Channels, ChannelMove{Name: channel})
+			}
+			return res, err
+		}
+	}
+
 	if target.Digest == "" {
-		res.Published = true
 		if !req.DryRun {
 			if target, err = publish(ctx, repo, reference, layer, req); err != nil {
 				return res, err
 			}
 		}
+		// Only once written: a result reported beside a failed write
+		// says the version was not pushed.
+		res.Published = true
 	}
 	res.ManifestDigest = target.Digest.String()
 
@@ -168,6 +201,81 @@ func (s *Source) Push(ctx context.Context, req PushRequest) (PushResult, error) 
 		res.Channels = append(res.Channels, ChannelMove{Name: channel, Moved: true})
 	}
 	return res, nil
+}
+
+// tagImages tags each image --tag-images selected, in key order. The first
+// failure stops the rest, which are reported as not tried, as channels are
+// (decision 7): a re-run tags them all, because one already tagged counts.
+func tagImages(ctx context.Context, images []domain.ImageTagging, dryRun bool) ([]TaggedImage, error) {
+	out := make([]TaggedImage, 0, len(images))
+	var stop error
+	for _, image := range images {
+		entry := TaggedImage{Name: image.Name, Reference: image.Ref, Tag: image.Tag}
+		switch {
+		case image.Tag == "":
+			entry.Status, entry.Reason = domain.ImageSkipped, image.Skip
+		case stop != nil:
+			entry.Status = domain.ImageNotTried
+		default:
+			if entry.Status, stop = tagImage(ctx, image, dryRun); stop != nil {
+				entry.Status, entry.Error = domain.ImageTagFailed, domain.AsError(stop).Message
+			}
+		}
+		out = append(out, entry)
+	}
+	return out, stop
+}
+
+// tagImage writes an image's tag in its own repository, with the credentials
+// the ambient Docker configuration holds for it (decision 25).
+//
+// The tag names the pinned digest as it is, an index or a single manifest: the
+// write is a manifest PUT of the bytes that digest names, so the image does not
+// change (decision 26). oras checks the digest the registry answers the write
+// with against the pinned one, so bytes served under the digest that are not
+// its bytes are refused rather than tagged.
+func tagImage(ctx context.Context, image domain.ImageTagging, dryRun bool) (string, error) {
+	repository := domain.RepositoryOf(image.Ref)
+	digest, _ := domain.ImageSpec{Ref: image.Ref}.Digest()
+	repo, err := remoteRepository(repository)
+	if err != nil {
+		return "", err
+	}
+
+	pinned, err := repo.Resolve(ctx, digest)
+	if errors.Is(err, errdef.ErrNotFound) {
+		// What P2 exists to catch: the registry deleted the image, and an
+		// installation of this release would find out at its pull.
+		return "", domain.ValidationError(err, "the image %s pins %s, which %s no longer has",
+			image.Name, digest, repository).
+			WithHint("no installation can pull it; publish a release that pins an image the registry has")
+	}
+	if err != nil {
+		return "", registryError(err, image.Ref)
+	}
+
+	tagged := repository + ":" + image.Tag
+	current, err := repo.Resolve(ctx, image.Tag)
+	switch {
+	case errors.Is(err, errdef.ErrNotFound):
+	case err != nil:
+		return "", registryError(err, tagged)
+	case current.Digest == pinned.Digest:
+		return domain.ImageAlreadyTagged, nil
+	default:
+		// Decision 24. Moving it would strip the protection from the
+		// image it was written for.
+		return "", domain.ValidationError(nil, "%s names %s, not %s, which the image %s pins; nothing of the bundle was pushed",
+			tagged, current.Digest, pinned.Digest, image.Name).
+			WithHint("the tag was moved after it was written; point it back at %s and push again", pinned.Digest)
+	}
+
+	if !dryRun {
+		if err := repo.Tag(ctx, pinned, image.Tag); err != nil {
+			return "", registryError(err, tagged)
+		}
+	}
+	return domain.ImageTagged, nil
 }
 
 // published answers RFC 0039 §5.3: the manifest the version already names when
@@ -259,8 +367,24 @@ func pushTarget(req PushRequest) (string, error) {
 			return "", domain.Usage("the channel %q is not a valid tag", channel).
 				WithHint("a tag is letters, digits, '_', '.' and '-', up to 128 characters")
 		}
+		// Moving it would write the bundle under the image's tag, and the
+		// image would be reported tagged with nothing keeping it.
+		for _, image := range req.Images {
+			if image.Tag == channel && sameRepository(domain.RepositoryOf(image.Ref), repository) {
+				return "", domain.Usage("the channel %s is the tag --tag-images writes for the image %s in %s", channel, image.Name, repository).
+					WithHint("name channels for what they mean -- stable, edge")
+			}
+		}
 	}
 	return repository, nil
+}
+
+// sameRepository compares two repositories as a registry does: the host in any
+// case, the path exactly.
+func sameRepository(a, b string) bool {
+	aHost, aPath, _ := strings.Cut(a, "/")
+	bHost, bPath, _ := strings.Cut(b, "/")
+	return strings.EqualFold(aHost, bHost) && aPath == bPath
 }
 
 // publish uploads the layer, writes the manifest `oras push --artifact-type`

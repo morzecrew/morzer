@@ -408,7 +408,7 @@ archive's bytes and not the release's digest.
 
 ```sh
 morzer release push <archive> oci://<registry>/<repository>[:<version>] \
-    [--channel TAG]... [--signing-key KEY]...
+    [--channel TAG]... [--signing-key KEY]... [--tag-images PREFIX]...
 ```
 
 Publishes the archive `archive` wrote to an OCI registry, as the single-layer
@@ -422,6 +422,7 @@ have `update --check` offer a version the bundle does not carry.
 | --- | --- |
 | `--channel` | A tag to move to the version once it is in place. Repeat for several; they move in order, and the first failure stops the rest. |
 | `--signing-key` | A minisign public key the bundle's signature must verify against. Repeat for several. Without it, a missing signature is warned about, as `archive` does. |
+| `--tag-images` | A repository prefix. Each image the release pulls from a registry under it is tagged before the version is written; see [Tagging the images it pins](#tagging-the-images-it-pins). Repeat for several. |
 | `--dry-run` | Run every check and every registry read, write nothing, and refuse what the push would refuse. |
 
 Before anything is sent, the archive is extracted the way an installation
@@ -449,6 +450,54 @@ The existence check is not atomic: a registry has no conditional tag write, so
 two pipelines pushing the same version at once can both pass it. Push from one
 pipeline per repository at a time. If the version tag no longer names what this
 push confirmed by the time the channels move, push moves none and exits 2.
+
+### Tagging the images it pins
+
+A release pins each image by digest, and a digest is not a tag, so a registry
+whose retention deletes untagged images can delete one a published release
+still needs. `--tag-images` tags them first:
+
+```sh
+morzer release push demo-1.3.0.tar.zst oci://registry.example/demo/bundle \
+    --tag-images registry.example/demo
+```
+
+Each image the release pulls from a registry, and whose repository is under one
+of the prefixes, is tagged `morzer-<product>-<version>-<digest>` in its own
+repository. A `+` in the version is written as `_`, and `<digest>` is the first
+12 hex digits of the pinned digest. The tag names the pinned digest as it is,
+an index or a single manifest, so the image does not change.
+
+| Image | Result |
+| --- | --- |
+| `from: bundle` | Not tagged: the bundle carries its bytes. |
+| Its repository is not under a prefix | Not tagged. |
+| The tag already names the pinned digest | Already tagged. Nothing is written. |
+| The tag does not exist | Tagged. |
+| The tag names another digest | Refused, exit 2. The tag is not moved. |
+| The registry no longer has the pinned digest | Refused, exit 2: no installation can pull it. |
+
+A prefix matches at a `/`, so `registry.example/demo` takes
+`registry.example/demo/api` and not `registry.example/demo-old/api`. It is
+matched against the repository with its registry host, as Docker spells it:
+`vendor/api` is `docker.io/vendor/api`. Push cannot tag images on Docker Hub,
+so a prefix that selects one is refused.
+
+Images are tagged in name order once the version is found to be new or already
+published, and before anything of the bundle is written. The first failure
+stops the rest, and no channel moves. A version this push writes therefore
+always has its images tagged, and the first line reads `did not push` when one
+was not. A version already published keeps its bundle. Fix the cause and run
+the same command again: images already tagged count as tagged.
+
+Credentials are the ones `docker login` stored for each image's registry, and
+push needs write access to every repository it tags in. `--dry-run` resolves
+every tag and writes none.
+
+`--json` carries `images`, each with `name`, `reference` and a `status`:
+`tagged`, `already-tagged`, `skipped` with its `reason`, `failed` with its
+`error`, or `not-tried` after an earlier failure. Each image a prefix selects
+also carries its `tag`. Without `--tag-images` there is no `images`.
 
 ### The two digests
 
@@ -485,6 +534,10 @@ newer version do not follow a channel backwards.
 | An archive over 512 MiB, more than an installation pulls from a registry | 2 |
 | An archive `verify` would refuse, or a signature that does not verify under `--signing-key` | 2 |
 | The version already published with different content | 2 |
+| A `--tag-images` prefix with a scheme, a tag or a digest, or one that selects no image | 2 |
+| A selected image on Docker Hub, or an image tag over 128 characters | 2 |
+| A channel spelled as the tag an image gets, when the bundle is pushed to that image's repository | 2 |
+| An image tag that names another digest, or a pinned image the registry no longer has | 2 |
 | The registry refuses the credentials | 2 |
 | The registry cannot be reached, or fails | 7 |
 
