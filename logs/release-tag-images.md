@@ -172,3 +172,53 @@ arrangement and proposes no row.
 | 32 | `ASSUMED` | **A prefix's trailing `/` is trimmed; an empty prefix, a scheme, a tag or a digest is refused**, exit 2. Refines decision 22. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U4). |
 | 33 | `ASSUMED` | **`images` is omitted without `--tag-images`.** Each entry carries `name`, `reference`, `tag` and `status`: `tagged`, `already-tagged`, `skipped` with `reason`, `failed` with `error`, or `not-tried`. Refines decision 25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U5). |
 | 34 | `ASSUMED` | **A pinned digest the image's repository no longer has stops the push** before the bundle is written, with an error naming the image. Refines decision 26. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U6). |
+
+## Review of #429
+
+Two findings from review are decisions the plan did not list. The first is a
+gap: nothing refused a channel spelled as an image's tag. The second corrects
+U5, which said every entry carries `tag`.
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T13:31:46Z
+attempt: 1
+claim: decisions 21 and 27 name the tag each image gets, and P1 refuses a channel named like a version, but nothing refuses a channel spelled as an image's tag when the bundle is pushed to that image's repository; the channel move then writes the bundle's manifest under the image's tag, and the image is reported tagged while nothing keeps it
+evidence: internal/adapters/source/oci/push.go:357-368
+action: decided
+proposal: ASSUMED — a `--channel` that is the tag `--tag-images` writes for an image, in the repository the bundle is pushed to, is refused with exit 2 before any registry request
+```
+
+```divergence
+decision: unlisted
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T13:31:46Z
+attempt: 2
+claim: U5 above said each entry carries `tag`, and row 33 says the same; a skipped image has no tag, because none is written for it, and the build leaves the field out. Decision 25 names the tag without saying a skipped image has one
+evidence: internal/ui/views/release.go:249
+action: decided
+proposal: ASSUMED — `images` is omitted without `--tag-images`; each entry carries `name`, `reference` and `status`, with `tag` for an image the flag selects, `reason` for a skipped one and `error` for a failed one
+```
+
+### Findings
+
+- **A bundle write that failed after tagging reported `published: true`.**
+  `Push` set `Published` before writing the bundle. P1 never showed the result
+  of a failed write, so the flag was invisible. With images tagged, the report
+  is printed beside the error (D-18), and it read `pushed`. `Published` is now
+  set once the write succeeds, or under `--dry-run` as before.
+- **The reference said every image carries `tag`.** It now says the tag is
+  given for each image the flag selects, as the second entry above records.
+
+### Proposed rows, from review of #429
+
+Row 35 is from the first entry above. Row 33 is restated from the second, and
+replaces the row 33 proposed earlier in this log.
+
+| # | Grade | Decision |
+| --- | --- | --- |
+| 33 | `ASSUMED` | **`images` is omitted without `--tag-images`.** Each entry carries `name`, `reference` and `status`: `tagged`, `already-tagged`, `skipped` with `reason`, `failed` with `error`, or `not-tried`. An image the flag selects also carries its `tag`. Refines decision 25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U5, attempt 2). |
+| 35 | `ASSUMED` | **A `--channel` spelled as an image's tag, in the repository the bundle is pushed to, is refused**, exit 2, before any registry request. The channel move would write the bundle under the image's tag and leave the image unprotected while the push reports it tagged. Refines decisions 21 and 27. See [logs/release-tag-images.md](../logs/release-tag-images.md) (review of #429). |
