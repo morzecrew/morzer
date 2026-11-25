@@ -311,6 +311,8 @@ rewrites the units, refuse a copy another user could replace, which is where a
 copy installed without `sudo` lives. `doctor`'s `manager.binary` fails on units
 that already name one.
 
-To try it without being root, or without touching those paths at all, see
+To run an installation as your own user instead, with rootless Docker, see
+[Running as your own user](../operating/running-as-your-own-user.md). To try it
+without being root, or without touching those paths at all, see
 [Your first deployment](first-deployment.md) — every managed path derives from a
 single prefix, and there is a flag that moves all of them.

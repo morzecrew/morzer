@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   image is tagged, and a pinned image the registry already deleted stops the
   push.
 
+- On Linux, `morzer init` run by a user other than root creates an
+  installation that user owns: in their own directories, run by their own
+  systemd manager on rootless Docker. Their later commands find it, and
+  `morzer ls` says whose installations it lists. With Docker Compose this is
+  untested.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index
