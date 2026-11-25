@@ -125,3 +125,13 @@ func TestAUserInstallationsUnitsMayRunTheUsersOwnBinary(t *testing.T) {
 	assert.Equal(t, events.CheckFail, result.Status)
 	assert.Contains(t, result.Remedy, "--dir ~/.local/bin")
 }
+
+// A user installation's self-update never suggests sudo: root, given the
+// user's tree as its --root, would leave its own files there.
+func TestAUserInstallationsSelfUpdateHintNeedsNoRoot(t *testing.T) {
+	d := &Deps{Paths: domain.UserPaths("/home/u/.local/share", "/run/user/1000", "demo"), ManagerPath: "/usr/local/bin/morzer"}
+	hint := d.elevationHint(SelfUpdateOptions{}, domain.MustParseVersion("0.20.0"))
+	assert.NotContains(t, hint, "sudo")
+	assert.Contains(t, hint, "install.sh | sh -s -- --version 0.20.0")
+	assert.Contains(t, hint, "init --repair")
+}
