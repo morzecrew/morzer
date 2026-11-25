@@ -1369,7 +1369,12 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 	// against the root it derives: both flags name an installation, so both
 	// must be able to say what the machine has when it does not have that
 	// one.
-	a.discoverProducts(a.Flags.root)
+	root := a.Flags.root
+	user := root == "" && a.managesUserTree()
+	if user {
+		root = userTree()
+	}
+	a.discoverProducts(root)
 
 	if product == "" && len(a.machineProducts) == 1 {
 		// Exactly one, or the operator must say which: guessing between
@@ -1399,10 +1404,30 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 		return domain.Paths{}, err
 	}
 
-	if a.Flags.root != "" {
-		return domain.PathsUnder(a.Flags.root, product), nil
+	switch {
+	case user:
+		return userPaths(product)
+	case root != "":
+		return domain.PathsUnder(root, product), nil
 	}
 	return domain.DefaultPaths(product), nil
+}
+
+// managesUserTree reports whether a command no flag points at manages the user
+// layout: run by anyone but root, when the user's tree holds an installation or
+// the command is `init` (RFC 0023 row 31). A tree that cannot be read counts as
+// holding one, so discovery reports why rather than the system layout being
+// managed instead.
+func (a *App) managesUserTree() bool {
+	tree := userTree()
+	if tree == "" {
+		return false
+	}
+	if a.command == "morzer init" {
+		return true
+	}
+	inv, err := ops.DiscoverProducts(tree)
+	return err != nil || len(inv.Products) > 0
 }
 
 // pathsFromConfig derives the layout from an explicit installation.yaml.
@@ -1477,8 +1502,13 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 	// an operator reads after a unit fails.
 	a.discoverProducts(root)
 
-	if root == "" {
+	switch {
+	case root == "":
 		return domain.DefaultPaths(product), nil
+	case root == userTree():
+		// What the user's own units pass. The tree is the user layout,
+		// whose render directory is the user's tmpfs, not <tree>/run.
+		return userPaths(product)
 	}
 	return domain.PathsUnder(root, product), nil
 }
@@ -1591,12 +1621,10 @@ func (a *App) rewireForProduct(ctx context.Context, product string) error {
 	return a.wireAt(ctx, a.pathsFor(product), a.bus, a.redactor, a.log)
 }
 
-// pathsFor is the layout product's installation has, under --root when given.
+// pathsFor is the layout product's installation has: the one this command
+// resolved, for another product.
 func (a *App) pathsFor(product string) domain.Paths {
-	if a.Flags.root != "" {
-		return domain.PathsUnder(a.Flags.root, product)
-	}
-	return domain.DefaultPaths(product)
+	return a.Deps.Paths.For(product)
 }
 
 // stateFor is product's state: the wired one for the product wired, and the one

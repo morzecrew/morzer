@@ -38,6 +38,9 @@ type Runner struct {
 
 	// Bundle is the example release, copied so a test may modify it.
 	Bundle string
+
+	// user runs commands with no --root, in the user layout NewUser set up.
+	user bool
 }
 
 // New returns a runner over an empty root. Nothing is installed yet.
@@ -50,6 +53,23 @@ func New(t *testing.T) *Runner {
 
 	root := t.TempDir()
 	return &Runner{t: t, Root: root, Bundle: hermeticBundle(t)}
+}
+
+// NewUser returns a runner whose commands name no layout, run by a user other
+// than root (RFC 0023 row 31). The user's data home, runtime directory and
+// configuration directory are inside Root, so no test reads a real home.
+// Skipped as root, whose layout is the system's.
+func NewUser(t *testing.T) *Runner {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root manages the system layout")
+	}
+	r := New(t)
+	t.Setenv("XDG_DATA_HOME", r.Path("data"))
+	t.Setenv("XDG_RUNTIME_DIR", r.Path("run"))
+	t.Setenv("XDG_CONFIG_HOME", r.Path("config"))
+	r.user = true
+	return r
 }
 
 // NewInstalled returns a runner over an initialised installation.
@@ -96,6 +116,9 @@ func (r *Runner) RunWithInput(input string, args ...string) Result {
 
 	var out, errOut bytes.Buffer
 	argv := append([]string{"--root", r.Root, "--plain"}, args...)
+	if r.user {
+		argv = append([]string{"--plain"}, args...)
+	}
 
 	code := cli.ExecuteWith(
 		context.Background(),
