@@ -18,7 +18,7 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023**, **0039** and **0061** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
+only **0023** and **0039** have work anybody can pick up: 0027, 0029 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
 a user who is not the author asking, demand for a darwin tier. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
@@ -89,9 +89,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
 - **[0039 — Publishing a bundle to an OCI registry](0039-publishing-a-bundle-to-an-oci-registry.md).**
   🚧 P1, the command itself, has shipped. P2, tagging the images a release pins,
   was ruled 2026-11-24 to be built now.
-- **[0061 — Backup state a fleet can see](0061-backup-state-a-fleet-can-see.md).**
-  📝 Proposed 2026-11-23 from #418 and ruled by the author 2026-11-24. P1, the
-  backup block in the fleet row, is built first.
 
 **An RFC retires from this section the moment it is ✅ Complete or ❌ Rejected**,
 and its row in the index below carries it from then on. The file never moves and
@@ -194,7 +191,7 @@ number in the filename in sync.
 | [0058](0058-values-a-document-gives-the-release-an-installation-updates-to.md) | Values a document gives the release an installation updates to | ✅ Complete | A desired-state document giving values for names the staged release manages and the installed one does not, kept pending until the update to that release takes them. |
 | [0059](0059-ports-a-release-needs-by-address-protocol-and-profile.md) | Ports a release needs, by address, protocol and profile | ✅ Complete | A `requirements.ports` entry naming its address, protocol and profile, so preflight and `machine.ports` check what a release really publishes. |
 | [0060](0060-a-mac-loads-a-bundle-s-images-through-a-relay.md) | A Mac loads a bundle's images through a relay | ✅ Complete | Loading a bundle's own images on a Mac, where Docker Desktop's daemon cannot reach the manager's loopback, by relaying its pull through a container. |
-| [0061](0061-backup-state-a-fleet-can-see.md) | Backup state a fleet can see | 📝 Draft | Letting an authority reading fleet rows, and `doctor` on the machine, tell when an installation's backups would be lost with it: none left the machine, they stopped, or no recovery key. |
+| [0061](0061-backup-state-a-fleet-can-see.md) | Backup state a fleet can see | ✅ Complete | Letting an authority reading fleet rows, and `doctor` on the machine, tell when an installation's backups would be lost with it: none left the machine, they stopped, or no recovery key. |
 
 ## Status legend
 

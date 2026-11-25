@@ -79,3 +79,13 @@ evidence: rfcs/0061-backup-state-a-fleet-can-see.md:233-235
 action: decided
 proposal: ASSUMED — `fleet ls` does not render `expected`; `--json` carries it
 ```
+
+## Review, 2026-11-24
+
+Found in review and fixed in 9f16ea36: `doctor` registered
+`backup.target-reachable` only when the manager had a target registry, so a
+build without one gave a product declaring `backup.off_machine: expected` no
+warning. The manager builds and wires the registry on every command
+(`internal/cli/root.go:1086-1109`), so the product warned as decision 8 has it,
+and the finding is no entry. The check is now registered without a registry
+when no target is configured, since it then probes nothing.

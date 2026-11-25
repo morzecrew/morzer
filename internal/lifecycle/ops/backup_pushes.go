@@ -37,10 +37,14 @@ func (d *Deps) backupPushes() (domain.BackupPushes, error) {
 // removed, may not.
 //
 // Best effort. The copies are on the targets whatever happens here, and a
-// record that is not written costs a fleet row without `pushed_at`, the loud
-// side, so a failure is logged rather than failing a push that succeeded. An
-// unreadable record is replaced by this push's entries: it can then only lack
-// other targets' entries, which also leaves the row without `pushed_at`.
+// record that is not written keeps its earlier entries. The fleet row then
+// shows an older `pushed_at`, which reads as behind, or none where a
+// configured target has no entry: the loud side. The exception is the entry
+// for a target in lost, which stays and still names the copy that was
+// removed (RFC 0061 decision 24). So a failure is logged rather than failing
+// a push that succeeded. An unreadable record is replaced by this push's
+// entries: it can then only lack other targets' entries, which also leaves
+// the row without `pushed_at`.
 func (d *Deps) notePushes(ctx context.Context, ref ports.BackupRef, took []ports.TargetRef, lost ...ports.TargetRef) {
 	if len(took) == 0 && len(lost) == 0 {
 		return

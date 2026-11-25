@@ -197,3 +197,7 @@ evidence: internal/lifecycle/ops/backup_pushes.go:72
 action: decided
 proposal: UNLISTED — the push record stays best effort, including the write that drops an entry after a failed push; the alternative is to remove the record when that write fails, so the row says less rather than more
 ```
+
+The author ruled 2026-11-24 as the last entry leans: the push record stays
+best effort, and the write that drops an entry after a failed push is no
+exception.
