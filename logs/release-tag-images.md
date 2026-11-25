@@ -222,3 +222,15 @@ replaces the row 33 proposed earlier in this log.
 | --- | --- | --- |
 | 33 | `ASSUMED` | **`images` is omitted without `--tag-images`.** Each entry carries `name`, `reference` and `status`: `tagged`, `already-tagged`, `skipped` with `reason`, `failed` with `error`, or `not-tried`. An image the flag selects also carries its `tag`. Refines decision 25. See [logs/release-tag-images.md](../logs/release-tag-images.md) (U5, attempt 2). |
 | 35 | `ASSUMED` | **A `--channel` spelled as an image's tag, in the repository the bundle is pushed to, is refused**, exit 2, before any registry request. The channel move would write the bundle under the image's tag and leave the image unprotected while the push reports it tagged. Refines decisions 21 and 27. See [logs/release-tag-images.md](../logs/release-tag-images.md) (review of #429). |
+
+## Second review of #429
+
+### Findings
+
+- **The channel check compared repositories as written.** A bundle pushed to
+  `REGISTRY.example/demo/app`, with a channel spelled as the tag of an image in
+  `registry.example/demo/app`, was not refused. A registry reads both names as
+  one repository, so the move still wrote the bundle under the image's tag. The
+  host is now compared in any case and the path exactly, as a registry compares
+  them (`internal/adapters/source/oci/push.go:382-388`). Row 35 above holds,
+  with that comparison added.
