@@ -15,8 +15,13 @@ import (
 
 // InstallationEntry is one installation as `ls` reports it.
 type InstallationEntry struct {
-	Product       string         `json:"product"`
-	Path          string         `json:"path"`
+	Product string `json:"product"`
+	Path    string `json:"path"`
+
+	// Layout is "user" for the installations of the user running the
+	// command, in their own tree, and "system" otherwise (RFC 0023 row 31;
+	// logs/quadlet-adapter.md, U4). One listing reads one layout.
+	Layout        string         `json:"layout,omitempty"`
 	SchemaVersion int            `json:"schema_version,omitempty"`
 	Mode          domain.Mode    `json:"mode,omitempty"`
 	Release       domain.Version `json:"release,omitzero"`
@@ -121,6 +126,7 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 		out = append(out, InstallationEntry{
 			Product: product,
 			Path:    d.Paths.For(product).EtcDir,
+			Layout:  layoutName(d.Paths),
 			Skipped: true,
 			Problem: "cannot be read by this process, so it is not counted as an " +
 				"installation; re-run as root if it is one",
@@ -138,7 +144,7 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 func (d *Deps) installationEntry(ctx context.Context, product string, opts ListOptions) InstallationEntry {
 	scoped := d.forInstallation(product)
 
-	entry := InstallationEntry{Product: product, Path: scoped.Paths.EtcDir}
+	entry := InstallationEntry{Product: product, Path: scoped.Paths.EtcDir, Layout: layoutName(d.Paths)}
 
 	// Asked before the state is read, and kept even on a row that has a
 	// problem: "its units are installed and its state will not load" is
@@ -399,4 +405,12 @@ func DiscoverProducts(root string) (Inventory, error) {
 	sort.Strings(inv.Products)
 	sort.Strings(inv.Undecidable)
 	return inv, nil
+}
+
+// layoutName is the layout a listing reads, as InstallationEntry.Layout names it.
+func layoutName(p domain.Paths) string {
+	if p.UserLayout() {
+		return "user"
+	}
+	return "system"
 }
