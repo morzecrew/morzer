@@ -226,6 +226,21 @@ func TestReleasePushReportsABundleWriteThatFailedAfterTagging(t *testing.T) {
 		Failed().StdoutContains("did not push", "image app")
 }
 
+// A channel spelled as the tag an image gets, in that image's own repository,
+// would move the tag onto the bundle and leave the image unprotected.
+func TestReleasePushRefusesAChannelSpelledAsAnImageTag(t *testing.T) {
+	f := tagFixture(t)
+	repo := strings.Replace(f.repo, "/demo/bundle", "/demo/app", 1)
+
+	f.r.Run("release", "push", f.archive, repo, "--tag-images", f.prefix, "--channel", f.appTag).
+		ExitCode(2).OutputContains("the channel "+f.appTag, "image app")
+	if n := f.reg.Requests(); n != 0 {
+		t.Errorf("the registry received %d requests for a push that was refused", n)
+	}
+	// In another repository the same name moves no image's tag.
+	f.r.Run("release", "push", f.archive, f.repo, "--tag-images", f.prefix, "--channel", f.appTag).ExitCode(0)
+}
+
 // Decisions 17 and 25: a dry run resolves every tag and writes none.
 func TestReleasePushDryRunTagsNothing(t *testing.T) {
 	f := tagFixture(t)

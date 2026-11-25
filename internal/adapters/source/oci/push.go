@@ -367,6 +367,14 @@ func pushTarget(req PushRequest) (string, error) {
 			return "", domain.Usage("the channel %q is not a valid tag", channel).
 				WithHint("a tag is letters, digits, '_', '.' and '-', up to 128 characters")
 		}
+		// Moving it would write the bundle under the image's tag, and the
+		// image would be reported tagged with nothing keeping it.
+		for _, image := range req.Images {
+			if image.Tag == channel && domain.RepositoryOf(image.Ref) == repository {
+				return "", domain.Usage("the channel %s is the tag --tag-images writes for the image %s in %s", channel, image.Name, repository).
+					WithHint("name channels for what they mean -- stable, edge")
+			}
+		}
 	}
 	return repository, nil
 }

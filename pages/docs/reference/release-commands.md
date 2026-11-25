@@ -536,6 +536,7 @@ newer version do not follow a channel backwards.
 | The version already published with different content | 2 |
 | A `--tag-images` prefix with a scheme, a tag or a digest, or one that selects no image | 2 |
 | A selected image on Docker Hub, or an image tag over 128 characters | 2 |
+| A channel spelled as the tag an image gets, when the bundle is pushed to that image's repository | 2 |
 | An image tag that names another digest, or a pinned image the registry no longer has | 2 |
 | The registry refuses the credentials | 2 |
 | The registry cannot be reached, or fails | 7 |
