@@ -75,7 +75,7 @@ func TestAUserWithNoInstallationKeepsTheSystemLayout(t *testing.T) {
 	}
 	rows, _ := r.Run("--json", "ls").ExitCode(0).Field("data").([]any)
 	for _, row := range rows {
-		if row.(map[string]any)["layout"] == "user" {
+		if fields, _ := row.(map[string]any); fields["layout"] == "user" {
 			t.Errorf("an empty tree was listed as the user layout: %v", row)
 		}
 	}

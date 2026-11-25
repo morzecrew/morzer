@@ -103,7 +103,6 @@ func TestAUserInstallationsMetricsDirectoryIsAskedAsItsUser(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can write a directory whatever its mode")
 	}
-	ctx := context.Background()
 	dir := t.TempDir()
 	require.NoError(t, os.Chmod(dir, 0o555))       //nolint:gosec // a directory nobody may write is the case under test
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) }) //nolint:gosec // so the test's own cleanup can remove it
@@ -111,8 +110,8 @@ func TestAUserInstallationsMetricsDirectoryIsAskedAsItsUser(t *testing.T) {
 	metrics := func(h *harness) events.CheckResult {
 		inst := h.install()
 		inst.Policy.MetricsTextfile = dir
-		require.NoError(t, h.Deps.State.SaveInstallation(ctx, inst))
-		report, err := ops.Doctor(ctx, h.Deps)
+		require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+		report, err := ops.Doctor(context.Background(), h.Deps)
 		require.NoError(t, err)
 		i := slices.IndexFunc(report.Results, func(c events.CheckResult) bool { return c.ID == "metrics.textfile" })
 		require.GreaterOrEqual(t, i, 0)
