@@ -3,7 +3,11 @@
 - **Status:** 🚧 In progress — **P1 shipped 2026-08-12** as
   `morzer installation describe`; §12.1's question was answered first and the
   answer was yes. P2 remains gated on §6, which the project cannot manufacture,
-  and is not scheduled.
+  and is not scheduled. *(2026-11-25: [RFC 0057](0057-desired-state-an-installation-pulls-and-applies-to-itself.md)
+  decision 11 reversed decision 5 on 2026-11-10, for documents signed by a
+  locally pinned authority key. What RFC 0057 built is a change an installation
+  pulls and applies, not this file, so P2, `apply -f`, is still unbuilt and
+  still gated.)*
 - **Scope:** One file that fully determines an installation, written by
   `installation describe` — proposed as `installation export --declarative`,
   renamed by decision 8 — and reviewable, diffable and committable
@@ -175,7 +179,7 @@ to extend 0016's gate to cover it — not to build a parallel one here.
 | 2 | Secrets are references; the schema cannot express a value | LOCKED | §4.4. A committable file that *can* hold a secret will. |
 | 3 | `apply -f` is the existing operation with a different argument source, or it is not built | LOCKED | §4.1. Its own step sequence would mean the file is a second system. |
 | 4 | Immutable fields are named refusals; a round-tripped export applies cleanly | LOCKED | §4.3. A file that appears to set a field and silently does not is 0007's defect exactly. |
-| 5 | No pull, no watch, no schedule | LOCKED | §4.5. A git-pull loop is a second scheduled network operation with none of 0016's gate. |
+| 5 | *(Reversed by RFC 0057 decision 11, for documents signed by a locally pinned authority key.)* No pull, no watch, no schedule | LOCKED | §4.5. A git-pull loop is a second scheduled network operation with none of 0016's gate. |
 | 6 | The file participates in 0020's precedence chain rather than introducing a fourth selector | LOCKED | `--config` > `--product` > `MORZER_PRODUCT` > discovery. |
 | 7 | `installation describe` and any future `apply -f` share one schema with one producer, pinned by a round-trip test | LOCKED | 0017 established this: without a byte-for-byte equivalence test, *"one producer" decays quietly back into two.* Written as `export --declarative` before decision 8 renamed the command; the name was the only thing that changed, and leaving the old one here would have made this RFC describe two command contracts for one document. |
 | 8 | Where the command lives | LOCKED | Resolved 2026-08-12 as `installation describe`, a verb of its own. `export` produces an artifact whose purpose is to be unreadable without a recovery key; this produces one whose purpose is to be read and committed. Two artifacts differing in exactly the property an operator cares about, behind one verb and a flag, is how somebody publishes the wrong one. |
