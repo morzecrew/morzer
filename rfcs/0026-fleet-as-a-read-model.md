@@ -195,7 +195,7 @@ reports that it cannot see absences — the two limitations have one cause.
 | # | Decision | Grade | Why |
 | --- | --- | --- | --- |
 | 1 | Push-only. The managed machine runs no listener and accepts no inbound connection | LOCKED | The decision the whole RFC exists to preserve; everything else is negotiable. |
-| 2 | The reader cannot act | LOCKED | No `fleet update`, no `fleet exec`, no fan-out. If you want to update ten machines you run ten `morzer update`s over ssh, and the fact that this is tedious is load-bearing: it keeps the destructive path per-machine, per-decision, and locally journalled. |
+| 2 | *(Amended by RFC 0057 decision 12: the reader still cannot act, and `state publish` is a new writer whose documents each machine applies to itself.)* The reader cannot act | LOCKED | No `fleet update`, no `fleet exec`, no fan-out. If you want to update ten machines you run ten `morzer update`s over ssh, and the fact that this is tedious is load-bearing: it keeps the destructive path per-machine, per-decision, and locally journalled. |
 | 3 | Reuses 0009's target registry unchanged | LOCKED | Extracting `ports.ObjectStore` if and only if a fourth method is needed (0025 decision 5). |
 | 4 | Rows carry their problems | LOCKED | §3.4. A view that drops what it cannot read reports health it did not observe. |
 | 5 | Absence requires a roster, and the absence of a roster is reported | LOCKED | §3.3. A partial table presented as complete is the failure mode of every fleet view. |
@@ -203,7 +203,7 @@ reports that it cannot see absences — the two limitations have one cause.
 | 6a | What signs a row | LOCKED | [0028](0028-the-machines-signing-identity.md)'s per-installation minisign key, over the object's bytes as published — see §3.6. |
 | 6b | The reader's trust anchor is the roster, never the row | LOCKED | §3.6. A row carrying the key that verifies it is a row that verifies itself, and the attacker §9 names — another machine with write access to the shared bucket — holds a valid key of its own. It would replace the row *and* the key, and the signature would check out. The roster decision 5 already requires is where a public key is bound to an installation id; a row signed by anything else is displayed carrying that problem, per decision 4. |
 | 7 | Dev-mode drops fleet targets, via a single generalised drop list | LOCKED | §3.5, and §10.1 measured that no such list exists yet — so this decision creates it. |
-| 8 | No new state | LOCKED | The published object is derived entirely from what `status`/`ls` already compute. §10.2 confirms `ls` needs no Docker call, so a publisher can report the case where the runtime is the problem. If publishing needs the manager to record something new, that is a signal the payload is too big. |
+| 8 | *(Amended by RFC 0057 decision 12: the row gains the `sync` block and `age_recipient`. RFC 0061 decision 15 departs from it too, for the backup push record.)* No new state | LOCKED | The published object is derived entirely from what `status`/`ls` already compute. §10.2 confirms `ls` needs no Docker call, so a publisher can report the case where the runtime is the problem. If publishing needs the manager to record something new, that is a signal the payload is too big. |
 
 ## 5. Non-goals, and what reopens each
 
