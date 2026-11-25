@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
+	"github.com/morzecrew/morzer/internal/infra/atomicfs"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -85,4 +87,41 @@ func TestDoctorFailsUnitsThatRunABinaryAnotherUserCanReplace(t *testing.T) {
 	d.Paths = domain.PathsUnder(t.TempDir(), "demo")
 	supervisor.ManagerPaths = map[string][]string{"demo": {own}}
 	assert.Equal(t, events.CheckOK, run().Status, "units under --root were checked")
+}
+
+// A user installation's units run as its user (RFC 0023 row 26), so the binary
+// they run may be the user's own, and still nobody else's. The write refuses
+// what doctor fails (logs/quadlet-adapter.md, U9).
+func TestAUserInstallationsUnitsMayRunTheUsersOwnBinary(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root manages the system layout")
+	}
+	dir := t.TempDir()
+	if who, err := atomicfs.ReplaceableByOthers(dir, os.Geteuid()); err != nil || who != "" {
+		t.Skipf("the temporary directory is not one only this user can write: %s %v", who, err)
+	}
+	own := filepath.Join(dir, "morzer")
+	require.NoError(t, os.WriteFile(own, []byte("#!/bin/sh\n"), 0o755)) //nolint:gosec // a stand-in binary
+	supervisor := fakes.NewSupervisor()
+	supervisor.Present = true
+	supervisor.ManagerPaths = map[string][]string{"demo": {own}}
+	d := &Deps{
+		Paths:       domain.UserPaths(t.TempDir(), t.TempDir(), "demo"),
+		ManagerPath: own, ManagerVersion: domain.MustParseVersion("0.16.0"), Supervisor: supervisor,
+	}
+	run := func() events.CheckResult {
+		return d.checkUnitsManagerBinary(domain.Installation{Product: "demo"}).Run(context.Background())
+	}
+
+	require.NoError(t, d.checkManagerBinary())
+	assert.Equal(t, events.CheckOK, run().Status)
+
+	require.NoError(t, os.Chmod(own, 0o775)) //nolint:gosec // a group that can write it is the case under test
+	err := d.checkManagerBinary()
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	assert.Contains(t, err.Error(), fmt.Sprintf("as uid %d", os.Geteuid()))
+	assert.Contains(t, domain.AsError(err).Hint, "--dir ~/.local/bin")
+	result := run()
+	assert.Equal(t, events.CheckFail, result.Status)
+	assert.Contains(t, result.Remedy, "--dir ~/.local/bin")
 }

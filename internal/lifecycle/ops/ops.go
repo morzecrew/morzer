@@ -139,8 +139,9 @@ type Deps struct {
 	// passes or fails on which machine ran it.
 	FreeSpace func(string) (int64, error)
 
-	// ReplaceableByNonRoot says who other than root could replace a file.
-	// Injectable for the same reason: a test cannot make a file root's.
+	// ReplaceableByNonRoot says who other than root, and the user the
+	// units run as, could replace a file. Injectable for the same reason: a
+	// test cannot make a file root's.
 	ReplaceableByNonRoot func(string) (string, error)
 
 	// EngineUser is who the engine reads the host's files as, where that is
@@ -436,13 +437,37 @@ func (d *Deps) platform() string {
 	return runtime.GOOS
 }
 
-// replaceableByNonRoot says who other than root could replace the file at path,
-// or "" when nobody could.
-func (d *Deps) replaceableByNonRoot(path string) (string, error) {
+// replaceableByOthers says who other than root and uid could replace the file
+// at path, or "" when nobody could.
+func (d *Deps) replaceableByOthers(path string, uid int) (string, error) {
 	if d.ReplaceableByNonRoot != nil {
 		return d.ReplaceableByNonRoot(path)
 	}
-	return atomicfs.ReplaceableByNonRoot(path)
+	return atomicfs.ReplaceableByOthers(path, uid)
+}
+
+// unitsRun reports whether a supervisor runs this layout's units: the system's
+// and a user's own do, and under --root they are files in a tree nothing runs.
+func (d *Deps) unitsRun() bool { return d.Paths.Root() == "" || d.Paths.UserLayout() }
+
+// unitUser is who the units run as: root, or for a user installation the user
+// who manages it (RFC 0023 row 26), with how a message names them.
+func (d *Deps) unitUser() (int, string) {
+	if d.Paths.UserLayout() {
+		return os.Geteuid(), fmt.Sprintf("uid %d", os.Geteuid())
+	}
+	return 0, "root"
+}
+
+// managerInstallHint is where to install a manager only the units' user and
+// root can replace, then what to run with it.
+func (d *Deps) managerInstallHint(then string) string {
+	if d.Paths.UserLayout() {
+		return fmt.Sprintf("install the manager where only you and root can replace it with "+
+			"`curl -fsSL https://morzecrew.github.io/morzer/install.sh | sh -s -- --version %s "+
+			"--dir ~/.local/bin`, then %s with that copy", d.ManagerVersion, then)
+	}
+	return ""
 }
 
 func (d *Deps) now() time.Time {

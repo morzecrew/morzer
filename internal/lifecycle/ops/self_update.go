@@ -417,7 +417,8 @@ func canWriteIn(dir string) error {
 // root whatever that user puts there, so then it is how to install one for
 // root instead.
 func (d *Deps) elevationHint(opts SelfUpdateOptions, target domain.Version) string {
-	who, err := d.replaceableByNonRoot(d.ManagerPath)
+	// Root alone, whatever layout: sudo runs this copy as root.
+	who, err := d.replaceableByOthers(d.ManagerPath, 0)
 	if err == nil && who == "" {
 		return "re-run with elevation: " + sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts)
 	}

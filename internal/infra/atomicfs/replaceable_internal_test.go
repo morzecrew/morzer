@@ -33,6 +33,7 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 	for name, tc := range map[string]struct {
 		tree map[string]statInfo
 		path string // the deepest entry when empty
+		uid  int    // who the units run as besides root
 		want string
 	}{
 		"root's all the way up": {
@@ -79,6 +80,20 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 			path: "/opt/safe/link/../morzer",
 			want: "/home/alice is owned by uid 1000, not root",
 		},
+		"a user's own binary, for that user's units": {
+			tree: map[string]statInfo{"/home/alice/.local/bin/morzer": {mode: 0o755, uid: 1000}, "/home/alice/.local/bin": {mode: fs.ModeDir | 0o755, uid: 1000}},
+			uid:  1000,
+		},
+		"another user's directory, for alice's units": {
+			tree: map[string]statInfo{"/home/alice/.local/bin/morzer": {mode: 0o755, uid: 1000}, "/home/alice/.local/bin": {mode: fs.ModeDir | 0o755, uid: 1001}},
+			uid:  1000,
+			want: "/home/alice/.local/bin is owned by uid 1001, not root or uid 1000",
+		},
+		"the user's own directory, which their group can write": {
+			tree: map[string]statInfo{"/home/alice/.local/bin/morzer": {mode: 0o755, uid: 1000}, "/home/alice/.local/bin": {mode: fs.ModeDir | 0o775, uid: 1000, gid: 1000}},
+			uid:  1000,
+			want: "/home/alice/.local/bin is writable by group 1000",
+		},
 		"a chain of links only root can repoint": {
 			tree: map[string]statInfo{
 				"/opt/safe/morzer": {mode: fs.ModeSymlink | 0o777, link: "/usr/local/bin/morzer"}, "/opt/safe": root, "/opt": root,
@@ -117,7 +132,7 @@ func TestEveryDirectoryAboveTheBinaryCounts(t *testing.T) {
 					path = p
 				}
 			}
-			who, err := replaceableByNonRoot(path, lstat, readlink, noACL)
+			who, err := replaceableByOthers(path, tc.uid, lstat, readlink, noACL)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, who)
 		})
@@ -157,7 +172,7 @@ func TestAnACLOnTheWayToTheBinaryCounts(t *testing.T) {
 				asked = d
 				return p + " has an ACL", nil
 			}
-			who, err := replaceableByNonRoot("/opt/safe/morzer", lstat, readlink, acl)
+			who, err := replaceableByOthers("/opt/safe/morzer", 0, lstat, readlink, acl)
 			require.NoError(t, err)
 			assert.Equal(t, granted+" has an ACL", who)
 			assert.Equal(t, dir, asked, "whether %s is a directory", granted)
@@ -170,7 +185,7 @@ func TestAnACLOnTheWayToTheBinaryCounts(t *testing.T) {
 		}
 		return "", nil
 	}
-	_, err := replaceableByNonRoot("/opt/safe/morzer", lstat, readlink, unreadable)
+	_, err := replaceableByOthers("/opt/safe/morzer", 0, lstat, readlink, unreadable)
 	require.ErrorContains(t, err, "cannot read the ACL of /usr")
 }
 

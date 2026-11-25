@@ -555,7 +555,13 @@ func CheckOwner(path string, wantUID, wantGID int) (ok bool, detail string, err 
 // does not count, since there only an entry's owner may rename it. A Mac's ACL
 // counts too: an entry in it that lets anyone but root replace the entry, or
 // give themselves a right that does (RFC 0055 decision 23).
-func ReplaceableByNonRoot(path string) (string, error) {
+func ReplaceableByNonRoot(path string) (string, error) { return ReplaceableByOthers(path, 0) }
+
+// ReplaceableByOthers is ReplaceableByNonRoot for units that run as uid: an
+// entry may be owned by root or by uid, and still by nobody else and writable
+// by no group or other user. A user installation's units run as its user, who
+// can replace their own binary anyway (RFC 0023 row 26).
+func ReplaceableByOthers(path string, uid int) (string, error) {
 	wd := "/"
 	if !filepath.IsAbs(path) {
 		var err error
@@ -563,7 +569,7 @@ func ReplaceableByNonRoot(path string) (string, error) {
 			return "", domain.Internal(err, "cannot resolve %s", path)
 		}
 	}
-	return replaceableByNonRoot(absolute(path, wd), os.Lstat, os.Readlink, aclOf)
+	return replaceableByOthers(absolute(path, wd), uid, os.Lstat, os.Readlink, aclOf)
 }
 
 // absolute makes path absolute against wd without cleaning it. `..` after a
@@ -580,14 +586,14 @@ func absolute(path, wd string) string {
 // limit.
 const maxLinks = 40
 
-// replaceableByNonRoot resolves an absolute path one entry at a time, from the
+// replaceableByOthers resolves an absolute path one entry at a time, from the
 // root down as the kernel does, and judges every entry it meets: each
 // directory, each link and each link's target, and the file. lstat, readlink
 // and acl are the filesystem, so a test can stand one in.
-func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), readlink func(string) (string, error),
+func replaceableByOthers(path string, uid int, lstat func(string) (fs.FileInfo, error), readlink func(string) (string, error),
 	acl func(p string, dir bool) (string, error)) (string, error) {
 	judge := func(p string, info fs.FileInfo) (string, error) {
-		if who := replaceableEntry(p, info); who != "" {
+		if who := replaceableEntry(p, info, uid); who != "" {
 			return who, nil
 		}
 		return acl(p, info.IsDir())
@@ -640,15 +646,17 @@ func replaceableByNonRoot(path string, lstat func(string) (fs.FileInfo, error), 
 	return "", nil
 }
 
-// replaceableEntry says why someone other than root could replace one entry,
-// or "".
-func replaceableEntry(p string, info fs.FileInfo) string {
+// replaceableEntry says why someone other than root and trusted could replace
+// one entry, or "".
+func replaceableEntry(p string, info fs.FileInfo, trusted int) string {
 	uid, gid := Owner(info)
 	mode := info.Mode()
 	sticky := info.IsDir() && mode&os.ModeSticky != 0
 	switch {
-	case uid != 0:
+	case uid != 0 && uid != trusted && trusted == 0:
 		return fmt.Sprintf("%s is owned by uid %d, not root", p, uid)
+	case uid != 0 && uid != trusted:
+		return fmt.Sprintf("%s is owned by uid %d, not root or uid %d", p, uid, trusted)
 	case mode&os.ModeSymlink != 0:
 		// A link's own mode means nothing; who can repoint it is decided
 		// by its owner and its directory.
