@@ -18,9 +18,9 @@ A list rather than a table, deliberately: the index table below is parsed, and a
 second table of the same shape is a second set of rows for the same numbers.
 
 **Being listed here is not the same as being scheduled.** Of the entries below,
-only **0023** has work anybody can pick up: 0027, 0029 and 0031 have each shipped
+only **0023** has work anybody can pick up: 0027 and 0031 have each shipped
 a phase and gated the next one on a condition this project cannot manufacture —
-a user who is not the author asking, demand for a darwin tier. Those are not
+a user who is not the author asking, an operator asking to keep images. Those are not
 stalls, and 0027's own text says that if the condition never arrives, never
 building P2 is the correct outcome. Each
 bullet says which it is, because 🚧 in the table cannot: the status records that a
@@ -75,11 +75,6 @@ phase shipped, and a reader deciding what to work on needs the other half.
   P1 shipped as `installation describe`. **P2 is gated on a user who is not the
   author asking for it**, and if that never happens the correct outcome is that
   P2 is never built.
-- **[0029 — macOS as a development host](0029-macos-as-a-development-host.md).**
-  P1 shipped: the tree compiles and vets for darwin on both architectures, gated
-  in CI, and `install.sh`'s "build from source" advice is true. P2 — a published
-  darwin archive and the tier around it — is gated on somebody who is not the
-  author asking for it.
 - **[0031 — Images of pruned releases](0031-images-of-pruned-releases.md).**
   🚧 P1, the measurement on a real daemon, and P2, the build, have shipped:
   a pruned release's images leave the store unless a release of any
@@ -156,7 +151,7 @@ number in the filename in sync.
 | [0026](0026-fleet-as-a-read-model.md) | Fleet as a read model | ✅ Complete | Seeing many machines without a control plane: each publishes one signed row to a bucket, the reader can never act, and a roster names who is expected and which key each signs with. |
 | [0027](0027-desired-state-in-a-repository.md) | Desired state in a repository | 🚧 In progress | One file that fully determines an installation, written to be read rather than applied — and the boundary written down so applying it stays gated. |
 | [0028](0028-the-machines-signing-identity.md) | The machine's signing identity | ✅ Complete | The key three other RFCs assumed a machine already had: what may sign for itself, why that does not reopen the rule keeping release keys off hosts, and what a rebuild does to a chain. |
-| [0029](0029-macos-as-a-development-host.md) | macOS as a development host | 🚧 In progress | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
+| [0029](0029-macos-as-a-development-host.md) | macOS as a development host | ✅ Complete | Making `GOOS=darwin` compile, and then bounding what that means: a tier for authoring and evaluating bundles on a Mac, never for running a production installation. |
 | [0030](0030-unit-enablement-is-the-operators.md) | Unit enablement is the operator's | ✅ Complete | Where the manager's authority over its own units ends: `systemctl disable` sticks until `init --repair`, an installation can declare no backup timer, and the units stay in `/etc/systemd/system`. |
 | [0031](0031-images-of-pruned-releases.md) | Images of pruned releases | 🚧 In progress | Removing the images a pruned release leaves in the runtime's store, without touching any that a release of another installation on the same machine still names. |
 | [0032](0032-secrets-a-non-root-container-can-read.md) | Secrets a non-root container can read | ✅ Complete | Letting a bundle name the numeric owner of a rendered secret file, so a container that does not run as root can read the Compose file secret the manager renders for it. |

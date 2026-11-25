@@ -1,16 +1,19 @@
 # RFC 0029 — macOS as a development host
 
-- **Status:** 🚧 In progress — **P1 shipped (2026-08-13)**. `GOOS=darwin go
-  build ./...` and `go vet ./...` are clean for `amd64` and `arm64`, gated in
-  `just ci` as `darwin-check`, and `install.sh`'s advice is true for the first
-  time. Three decisions moved during execution and §15 records each: **11**
-  departed (the prompt keeps its own ioctl pair rather than adopting
-  `x/term.ReadPassword`, which would have reintroduced a race the code exists to
-  close), **12** resolved to the fail-safe stub rather than the real
+- **Status:** ✅ Complete — **P1 shipped (2026-08-13)**, and P2's work shipped
+  2026-11-18 under [RFC 0055](0055-macos-as-a-host-for-an-installation.md).
+  `GOOS=darwin go build ./...` and `go vet ./...` are clean for `amd64` and
+  `arm64`, gated in `just ci` as `darwin-check`, and `install.sh`'s advice is
+  true for the first time. Three decisions moved during execution and §15
+  records each: **11** departed (the prompt keeps its own ioctl pair rather than
+  adopting `x/term.ReadPassword`, which would have reintroduced a race the code
+  exists to close), **12** resolved to the fail-safe stub rather than the real
   `SysctlKinfoProc`, and **3** widened from `go build` to `go build` *and* `go
   vet`. That last one has a cause: §3.1's count of six sites was two short
   because it counted what `go build` reaches, and test files are invisible to
-  it. P2 remains **demand-gated** on §6.
+  it. P2 was not built as scoped here: RFC 0055 decision 1 makes macOS a host
+  for an installation that runs unattended, and supersedes decisions 1, 4 and 6.
+  RFC 0055 built what P2 listed for that host instead (§13).
 - **Scope:** Making `GOOS=darwin` compile, and then making it *mean* something
   bounded. P1 is four compile fixes, a fail-safe stub for a fifth site, and one
   honest error message: the binary builds from source on a Mac, and nothing else
@@ -507,12 +510,12 @@ P1 makes P2 cheap to pick up later. That is P1's second job.
 
 | # | Grade | Decision |
 | --- | --- | --- |
-| 1 | `LOCKED` | macOS is a **development and evaluation** platform, never a production host. Everything else in this RFC follows from this row; reversing it reopens the supervisor, the ephemeral-storage mechanism and the layout together. |
+| 1 | `LOCKED` | *(Superseded by RFC 0055 decision 1.)* macOS is a **development and evaluation** platform, never a production host. Everything else in this RFC follows from this row; reversing it reopens the supervisor, the ephemeral-storage mechanism and the layout together. |
 | 2 | `LOCKED` | P1 is unconditional and P2 is demand-gated (§6). P1's deliverable is "it compiles and the refusal is true", nothing more. |
 | 3 | `LOCKED` | `GOOS=darwin go build ./...` joins `just ci` in P1, for **both** `darwin/amd64` and `darwin/arm64`. Without it the gap returns and the message becomes false again — which is how it got here; and with only one arch it would miss exactly the class of defect site 1 belongs to. |
-| 4 | `LOCKED` | No launchd adapter. `Supervisor.Available()` returning false is the design; the port already handles a nil supervisor at every call site (§3.2). |
+| 4 | `LOCKED` | *(Superseded by RFC 0055 decision 1.)* No launchd adapter. `Supervisor.Available()` returning false is the design; the port already handles a nil supervisor at every call site (§3.2). |
 | 5 | `LOCKED` | No RAM disk. The downgrade is **stated** rather than mechanised, and `doctor` states it on every run (§5.6). |
-| 6 | `LOCKED` | On darwin, an unrooted invocation is refused (§5.5). The tier is enforced mechanically because a documented tier is not one. |
+| 6 | `LOCKED` | *(Superseded by RFC 0055 decision 1.)* On darwin, an unrooted invocation is refused (§5.5). The tier is enforced mechanically because a documented tier is not one. |
 | 7 | `LOCKED` | `""` from `FilesystemType` must stop being reachable on darwin before it keeps meaning OK. Fixing the check by widening the guard instead of answering the question is refused — see [0010](0010-compose-volume-capture.md) and §3.4. |
 | 8 | `LOCKED` | Platform differences are per-OS files, not runtime branches, so Linux behaviour is unchanged by construction rather than by test. |
 | 9 | `LOCKED` | No acceptance lane on macOS, and the docs say why rather than carrying a TODO (§3.5). It is **declined, not impossible**: Intel runners exist and `colima` works there, but that lane would prove `darwin/amd64` while every user of this tier is on Apple silicon. A green badge for an architecture nobody runs is worse than an acknowledged gap. |
@@ -531,6 +534,10 @@ refusal (§5.5), `FilesystemType` on darwin and the `doctor` wording (§5.6), th
 `macos-latest` unit lane (§5.7), the Platforms documentation (§9). Ordered so
 the Docker Desktop spike (§11) runs first, because it is the one that can
 invalidate the rest.
+*(2026-11-25: P2 was not built as scoped here. RFC 0055 reversed decision 1
+and, by 2026-11-18, built the darwin/arm64 archive and the installer, darwin
+`FilesystemType` and `doctor`, the `macos-latest` lane and the Platforms page,
+after its own Docker Desktop spike. The rooted refusal went with decision 6.)*
 
 ## 14. What this draft owed a measurement
 
