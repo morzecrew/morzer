@@ -515,7 +515,7 @@ func (m *Manifest) ImagesToTag(prefixes []string) ([]ImageTagging, error) {
 			entry.Skip = "from: bundle, so the bundle carries its bytes"
 		case !under:
 			entry.Skip = "not under a --tag-images prefix"
-		case strings.HasPrefix(repository, "docker.io/"):
+		case onHub(repository):
 			return nil, ValidationError(nil, "the image %s is on Docker Hub, where release push cannot tag images", name).
 				WithHint("narrow --tag-images so that it does not cover %s", repository)
 		default:
@@ -536,6 +536,14 @@ func (m *Manifest) ImagesToTag(prefixes []string) ([]ImageTagging, error) {
 		}
 	}
 	return out, nil
+}
+
+// onHub reports whether a repository is on Docker Hub. The host is
+// compared in any case, because normalizeRepository keeps it as written and
+// `DOCKER.IO` names the same server.
+func onHub(repository string) bool {
+	host, _, _ := strings.Cut(repository, "/")
+	return strings.EqualFold(host, "docker.io") || strings.EqualFold(host, "index.docker.io")
 }
 
 // imagePrefix is a --tag-images value as a repository prefix, or the refusal of
