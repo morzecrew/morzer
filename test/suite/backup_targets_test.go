@@ -308,8 +308,12 @@ func TestRetentionOnATargetKeepsTheSamePolicyAsLocally(t *testing.T) {
 //
 // A manifest naming no installation is left alone too. Nothing says whose it
 // is, and the safe answer to "may I delete a backup I cannot attribute" is no.
+// So is one naming this installation's id under another product.
+//
+// A product other than demo, so the fake has to name the installation it was
+// given, as the real engine does, for this installation's own backups to count.
 func TestRetentionOnATargetLeavesOtherInstallationsBackupsAlone(t *testing.T) {
-	h := newHarness(t)
+	h := newHarnessFor(t, "relay")
 	inst, offsite := h.withTargets(t)
 
 	inst.Policy.RetainBackups = 2
@@ -317,17 +321,19 @@ func TestRetentionOnATargetLeavesOtherInstallationsBackupsAlone(t *testing.T) {
 
 	// Older than anything this installation takes, so a retention pass
 	// that counted them would put every one past the keep count.
-	foreign := map[string]string{
-		"20200101T000001Z": "inst_01NEIGHBOUR",
-		"20200101T000002Z": "inst_01NEIGHBOUR",
-		"20200101T000003Z": "inst_01NEIGHBOUR",
-		"20200101T000004Z": "",
+	type owner struct{ installation, product string }
+	foreign := map[string]owner{
+		"20200101T000001Z": {"inst_01NEIGHBOUR", inst.Product},
+		"20200101T000002Z": {"inst_01NEIGHBOUR", inst.Product},
+		"20200101T000003Z": {"inst_01NEIGHBOUR", inst.Product},
+		"20200101T000004Z": {"", inst.Product},
+		"20200101T000005Z": {inst.ID, "other"},
 	}
-	for id, owner := range foreign {
+	for id, who := range foreign {
 		at, err := time.Parse("20060102T150405Z", id)
 		require.NoError(t, err)
 		body, err := json.Marshal(ports.BackupManifest{
-			SchemaVersion: 1, ID: id, InstallationID: owner, Product: inst.Product,
+			SchemaVersion: 1, ID: id, InstallationID: who.installation, Product: who.product,
 			CreatedAt: domain.NewTime(at), Reason: "scheduled",
 		})
 		require.NoError(t, err)
