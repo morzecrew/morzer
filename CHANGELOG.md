@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On a backup target that several installations share, retention now
+  removes only the installation's own backups. It used to count every backup
+  on the target, so each installation deleted the others' past its own keep
+  count. A backup whose manifest names no installation is never removed.
+
 - An update tick on a channel that has not moved now says which staged
   release is still waiting and why. It used to say only that the channel was
   unchanged, so a release held on an earlier night read as nothing waiting.
