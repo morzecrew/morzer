@@ -43,6 +43,14 @@ func TestTheUsersTreeIsKnownBeforeItExists(t *testing.T) {
 	assert.True(t, isUserTree(filepath.Join(dotdot, "real", "later", "morzer")), "where the kernel would make it")
 	assert.False(t, isUserTree(filepath.Join(dotdot, "later", "morzer")), "where cleaning the target first puts it")
 
+	// A trailing slash in a link's target does not stop it being followed:
+	// data is alias/, and alias is later, not yet made.
+	slashed := t.TempDir()
+	require.NoError(t, os.Symlink("alias/", filepath.Join(slashed, "data")))
+	require.NoError(t, os.Symlink("later", filepath.Join(slashed, "alias")))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(slashed, "data"))
+	assert.True(t, isUserTree(filepath.Join(slashed, "later", "morzer")), "through a target with a trailing slash")
+
 	// A loop ends, naming nothing the user's.
 	loop := t.TempDir()
 	require.NoError(t, os.Symlink("b", filepath.Join(loop, "a")))

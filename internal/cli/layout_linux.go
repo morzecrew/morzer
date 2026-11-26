@@ -74,20 +74,12 @@ func resolve(p string, hops int) string {
 	return filepath.Join(resolve(dir, hops), base)
 }
 
-// rawSplit splits p at its last separator without cleaning either half, so a
-// `..` stays where the kernel meets it.
+// rawSplit splits an absolute p at its last separator without cleaning either
+// half, so a `..` stays where the kernel meets it. A trailing slash splits off
+// an empty base, so the link before it is still followed.
 func rawSplit(p string) (dir, base string) {
-	p = strings.TrimRight(p, "/")
 	i := strings.LastIndexByte(p, '/')
-	switch {
-	case p == "":
-		return "/", ""
-	case i < 0:
-		return p, ""
-	case i == 0:
-		return "/", p[1:]
-	}
-	return p[:i], p[i+1:]
+	return p[:max(i, 1)], p[i+1:]
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
