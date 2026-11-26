@@ -81,16 +81,105 @@ const helperImageEnv = "MORZER_VOLUME_HELPER_IMAGE"
 // it, an unpinned MORZER_VOLUME_HELPER_IMAGE reads as "available" right up
 // until backup night, when every volume operation refuses it -- and the check
 // whose whole job is to find that out beforehand said it was fine.
-func (r *Runtime) HelperImagePinned() bool {
-	return digestPinned.MatchString(r.HelperImage())
+func (h VolumeHelper) HelperImagePinned() bool {
+	return digestPinned.MatchString(h.HelperImage())
 }
 
 // HelperImage reports the image this runtime reads volumes through.
-func (r *Runtime) HelperImage() string {
-	if r.helperImage == "" {
+func (h VolumeHelper) HelperImage() string {
+	if h.Image == "" {
 		return DefaultHelperImage
 	}
-	return r.helperImage
+	return h.Image
+}
+
+// VolumeHelper reads and writes a volume through a helper container, for an
+// engine whose CLI takes Docker's `run`, `rm` and image commands. This runtime
+// drives Docker's; the Quadlet adapter drives Podman's with the same code, so
+// the size bound a backup's space check rests on is written once (RFC 0023
+// P3b). The helper is also the only way to read a rootless volume whatever uid
+// wrote into it (RFC 0023 §12 item 5).
+type VolumeHelper struct {
+	Runner exec.Runner
+
+	// Bin is the engine's CLI, which the commands run and the hints name.
+	Bin string
+
+	// Image overrides DefaultHelperImage. Empty uses the default.
+	Image string
+
+	Redact []string
+
+	// HasImage reports whether a reference is in the engine's image store,
+	// as the runtime's own ImageInspector answers it.
+	HasImage func(ctx context.Context, ref string) (bool, error)
+
+	// Command builds one helper run as the runtime builds its other
+	// commands, so the environment, the redaction and the output sink are
+	// the same.
+	Command func(cfg ports.RuntimeConfig, timeout time.Duration, argv ...string) exec.Command
+
+	// EngineHint begins the hint of a capture that failed, naming what to
+	// check about the engine.
+	EngineHint string
+
+	// PullHint is the hint for a helper image that is not on this machine,
+	// with one %s for the image's reference.
+	PullHint string
+}
+
+// volumes is this runtime's helper: Docker's CLI and this runtime's commands.
+func (r *Runtime) volumes() VolumeHelper {
+	return VolumeHelper{
+		Runner:     r.runner,
+		Bin:        r.docker,
+		Image:      r.helperImage,
+		Redact:     r.redact,
+		HasImage:   r.HasImage,
+		Command:    r.command,
+		EngineHint: "check that the Docker daemon is running",
+		PullHint: "run `docker pull %s` while this machine has a network, or, on the " +
+			"containerd image store, `docker load` an archive of it",
+	}
+}
+
+// HelperImagePinned reports whether the configured helper image is pinned by
+// digest. Exported so `doctor` applies the rule the capture enforces.
+func (r *Runtime) HelperImagePinned() bool { return r.volumes().HelperImagePinned() }
+
+// HelperImage reports the image this runtime reads volumes through.
+func (r *Runtime) HelperImage() string { return r.volumes().HelperImage() }
+
+// LocalHelperImage resolves the helper image as the volume operations do.
+// Exported so `doctor` and the pull of the helper ask what the capture asks.
+func (r *Runtime) LocalHelperImage(ctx context.Context) (image string, local bool, err error) {
+	return r.volumes().LocalHelperImage(ctx)
+}
+
+func (r *Runtime) requireHelper(ctx context.Context, needs string) (string, error) {
+	return r.volumes().RequireHelper(ctx, needs)
+}
+
+func (r *Runtime) removeContainer(ctx context.Context, name string) string {
+	return r.volumes().RemoveContainer(ctx, name)
+}
+
+// CaptureVolume writes a volume's contents to destPath as an uncompressed tar,
+// through VolumeHelper.CaptureVolume.
+func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, destPath string) error {
+	return r.volumes().CaptureVolume(ctx, cfg, volume, destPath)
+}
+
+// RestoreVolume replaces a volume's contents with a tar, through
+// VolumeHelper.RestoreVolume.
+func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, srcPath string) error {
+	return r.volumes().RestoreVolume(ctx, cfg, volume, srcPath)
+}
+
+// VolumeSize reports an upper bound on the bytes a capture of this volume
+// writes, through VolumeHelper.VolumeSize.
+func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volume string) (int64, error) {
+	return r.volumes().VolumeSize(ctx, cfg, volume)
 }
 
 var (
@@ -261,8 +350,8 @@ func addUser(index map[string]map[string]bool, key, service string) {
 // directory the manager may not run as root in, and the manager then cannot
 // overwrite or remove it -- so the plaintext copy of somebody's uploads would
 // survive the backup that encrypted it.
-func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, destPath string) error {
-	image, err := r.requireHelper(ctx, backupNeedsHelper)
+func (h VolumeHelper) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, destPath string) error {
+	image, err := h.RequireHelper(ctx, backupNeedsHelper)
 	if err != nil {
 		return err
 	}
@@ -280,14 +369,14 @@ func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	// escape hatch documented for an operator whose registry does not carry
 	// busybox is "any image with a POSIX tar" -- and a strict POSIX tar has
 	// no long options at all.
-	cmd := r.helperCommand(cfg, image, volume, true, "tar", "-C", "/src", "-cf", "-", ".")
+	cmd := h.helperCommand(cfg, image, volume, true, "tar", "-C", "/src", "-cf", "-", ".")
 	cmd.Stdout = out
 
-	if _, err := r.runner.Run(ctx, cmd); err != nil {
+	if _, err := h.Runner.Run(ctx, cmd); err != nil {
 		_ = out.Close()
 		_ = os.Remove(destPath)
 		return wrapExit(err, "cannot read volume "+volume,
-			"check that the Docker daemon is running and that "+domain.ShortImageRef(r.HelperImage())+" is available")
+			h.EngineHint+" and that "+domain.ShortImageRef(h.HelperImage())+" is available")
 	}
 	if err := out.Close(); err != nil {
 		// Removed like every other failure here, and for the reason
@@ -307,8 +396,8 @@ func (r *Runtime) CaptureVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 // does not contain beside files it does, producing a volume that matches no
 // point in time -- and beside a database restored to an exact one, that is how
 // an upload record without its file is made.
-func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, srcPath string) error {
-	image, err := r.requireHelper(ctx, backupNeedsHelper)
+func (h VolumeHelper) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, volume, srcPath string) error {
+	image, err := h.RequireHelper(ctx, backupNeedsHelper)
 	if err != nil {
 		return err
 	}
@@ -340,16 +429,16 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	// taken, so the run below is refused rather than writing beside it, and
 	// that refusal is reported as the removal's.
 	name := restoreHelperName(volume)
-	notRemoved := r.removeContainer(ctx, name)
+	notRemoved := h.RemoveContainer(ctx, name)
 
-	cmd := r.helperCommand(cfg, image, volume, false, "sh", "-c", replace)
+	cmd := h.helperCommand(cfg, image, volume, false, "sh", "-c", replace)
 	cmd.Stdin = in
 
-	if _, err := r.runner.Run(ctx, cmd); err != nil {
+	if _, err := h.Runner.Run(ctx, cmd); err != nil {
 		if notRemoved != "" {
 			return wrapExit(err, "cannot restore volume "+volume+": the helper an earlier restore "+
 				"left writing it could not be removed: "+notRemoved,
-				"remove it with `docker rm --force "+name+"`, then restore again")
+				"remove it with `"+h.Bin+" rm --force "+name+"`, then restore again")
 		}
 		return wrapExit(err, "cannot restore volume "+volume,
 			"the volume may now be partially written; it holds what the backup "+
@@ -358,13 +447,13 @@ func (r *Runtime) RestoreVolume(ctx context.Context, cfg ports.RuntimeConfig, vo
 	return nil
 }
 
-// removeContainer force-removes a container and returns why it could not, or
+// RemoveContainer force-removes a container and returns why it could not, or
 // "" when it is gone or never existed.
-func (r *Runtime) removeContainer(ctx context.Context, name string) string {
-	res, err := r.runner.Run(ctx, exec.Command{
-		Argv:          []string{r.docker, "rm", "--force", name},
+func (h VolumeHelper) RemoveContainer(ctx context.Context, name string) string {
+	res, err := h.Runner.Run(ctx, exec.Command{
+		Argv:          []string{h.Bin, "rm", "--force", name},
 		Timeout:       30 * time.Second,
-		Redact:        r.redact,
+		Redact:        h.Redact,
 		CaptureOutput: true,
 	})
 	if err == nil {
@@ -389,8 +478,8 @@ func (r *Runtime) removeContainer(ctx context.Context, name string) string {
 // fills the disk during the copy, which happens after the services have already
 // been stopped; a size that reads too high refuses a backup early, in front of
 // an operator who can look at `df`. So this errs high wherever it must choose.
-func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volume string) (int64, error) {
-	image, err := r.requireHelper(ctx, backupNeedsHelper)
+func (h VolumeHelper) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volume string) (int64, error) {
+	image, err := h.RequireHelper(ctx, backupNeedsHelper)
 	if err != nil {
 		return 0, err
 	}
@@ -435,12 +524,12 @@ func (r *Runtime) VolumeSize(ctx context.Context, cfg ports.RuntimeConfig, volum
 		`{ du -sk --apparent-size /src 2>/dev/null || ` +
 		`du -skb /src 2>/dev/null; }; du -sk /src`
 
-	cmd := r.helperCommand(cfg, image, volume, true, "sh", "-c", measure)
+	cmd := h.helperCommand(cfg, image, volume, true, "sh", "-c", measure)
 	cmd.CaptureOutput = true
 	cmd.Timeout = 30 * time.Minute
 	cmd.OnLine = nil
 
-	res, err := r.runner.Run(ctx, cmd)
+	res, err := h.Runner.Run(ctx, cmd)
 	if err != nil {
 		// The only failure here the space check may proceed past, and it
 		// is marked at the one place that knows the measurement never
@@ -665,7 +754,7 @@ func largestSize(volume, stdout string) (int64, error) {
 }
 
 // helperCommand builds a `docker run` that mounts one volume.
-func (r *Runtime) helperCommand(
+func (h VolumeHelper) helperCommand(
 	cfg ports.RuntimeConfig, image, volume string, readOnly bool, argv ...string,
 ) exec.Command {
 	mount := volume + ":/dst"
@@ -679,7 +768,7 @@ func (r *Runtime) helperCommand(
 	}
 
 	full := []string{
-		r.docker, "run", "--rm", "--interactive",
+		h.Bin, "run", "--rm", "--interactive",
 		// The helper reads a volume and writes a tar. It has no reason
 		// to reach a network, and taking it away means a compromised
 		// helper image cannot exfiltrate what it was given to copy.
@@ -696,7 +785,7 @@ func (r *Runtime) helperCommand(
 	// Zero timeout: the caller's context governs. A hundred-gigabyte
 	// volume takes as long as it takes, and a fixed limit here would be a
 	// limit on how large a volume the manager can back up.
-	cmd := r.command(cfg, 0, full...)
+	cmd := h.Command(cfg, 0, full...)
 	cmd.CaptureOutput = false
 	return cmd
 }
@@ -706,7 +795,7 @@ func (r *Runtime) helperCommand(
 // any volume names a valid container.
 func restoreHelperName(volume string) string { return "morzer-restore-" + volume }
 
-// requireHelper refuses before running anything when the image cannot be
+// RequireHelper refuses before running anything when the image cannot be
 // trusted to be the same image next time, or is not on this machine.
 //
 // The second is why it exists: the alternative is `docker run` trying to pull
@@ -718,17 +807,16 @@ func restoreHelperName(volume string) string { return "morzer-restore-" + volume
 //
 // It returns what `docker run` names: the reference, or the ID LocalHelperImage
 // found it by.
-func (r *Runtime) requireHelper(ctx context.Context, needs string) (string, error) {
-	image, local, err := r.LocalHelperImage(ctx)
+func (h VolumeHelper) RequireHelper(ctx context.Context, needs string) (string, error) {
+	image, local, err := h.LocalHelperImage(ctx)
 	if err != nil {
 		return "", err
 	}
 	if !local {
-		ref := r.HelperImage()
+		ref := h.HelperImage()
 		return "", domain.RuntimeError(domain.ErrToolMissing,
 			"the volume helper image %s is not on this machine", domain.ShortImageRef(ref)).
-			WithHint("run `docker pull %s` while this machine has a network, or, on the "+
-				"containerd image store, `docker load` an archive of it; %s", ref, needs)
+			WithHint(h.PullHint+"; %s", ref, needs)
 	}
 	return image, nil
 }
@@ -744,8 +832,8 @@ func (r *Runtime) requireHelper(ctx context.Context, needs string) (string, erro
 // digest of the content, so that image is the pinned one.
 //
 // Exported so `doctor` and the pull of the helper ask what the capture asks.
-func (r *Runtime) LocalHelperImage(ctx context.Context) (image string, local bool, err error) {
-	ref := r.HelperImage()
+func (h VolumeHelper) LocalHelperImage(ctx context.Context) (image string, local bool, err error) {
+	ref := h.HelperImage()
 
 	// Before asking whether the image is here, because the dangerous case
 	// is the one where it *is*: a tag that resolves locally runs, and runs
@@ -754,11 +842,11 @@ func (r *Runtime) LocalHelperImage(ctx context.Context) (image string, local boo
 	// through an image the operator did not choose, and the operator would
 	// go on believing their own was in use.
 	if !digestPinned.MatchString(ref) {
-		return "", false, unpinnedHelper(ref)
+		return "", false, unpinnedHelperFor(h.Bin, ref)
 	}
 
 	for _, candidate := range []string{ref, ref[strings.LastIndex(ref, "@")+1:]} {
-		present, err := r.HasImage(ctx, candidate)
+		present, err := h.HasImage(ctx, candidate)
 		if err != nil {
 			return "", false, err
 		}
@@ -773,13 +861,18 @@ func (r *Runtime) LocalHelperImage(ctx context.Context) (image string, local boo
 // for.
 const backupNeedsHelper = "volumes are read through a container, so a backup cannot capture them without it"
 
-// unpinnedHelper refuses a helper image that names no digest.
-func unpinnedHelper(ref string) error {
+// unpinnedHelper refuses a helper image that names no digest, in Docker's
+// words.
+func unpinnedHelper(ref string) error { return unpinnedHelperFor("docker", ref) }
+
+// unpinnedHelperFor refuses a helper image that names no digest, naming bin's
+// command for reading one.
+func unpinnedHelperFor(bin, ref string) error {
 	return domain.ValidationError(nil,
 		"the volume helper image %q is not pinned by digest", ref).
 		WithHint("volumes are read through this image with the product's "+
 			"data mounted, so it must name a digest: set %s to a "+
-			"`name@sha256:...` reference. `docker image inspect "+
+			"`name@sha256:...` reference. `"+bin+" image inspect "+
 			"--format '{{index .RepoDigests 0}}' %s` prints the digest "+
 			"of the tag you have; leaving the variable unset uses the "+
 			"pinned busybox this manager ships with",
