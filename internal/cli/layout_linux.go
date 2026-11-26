@@ -39,15 +39,21 @@ func userDataHome() string {
 // as another tree its secrets would render inside it.
 func isUserTree(root string) bool {
 	tree := userTree()
-	switch {
-	case tree == "" || root == "":
-		return false
-	case root == tree:
-		return true
+	return tree != "" && root != "" && resolved(root) == resolved(tree)
+}
+
+// resolved is p with its symlinks resolved, through its nearest existing
+// ancestor while p itself does not exist yet.
+func resolved(p string) string {
+	p = filepath.Clean(p)
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
 	}
-	a, errA := filepath.EvalSymlinks(root)
-	b, errB := filepath.EvalSymlinks(tree)
-	return errA == nil && errB == nil && a == b
+	parent := filepath.Dir(p)
+	if parent == p {
+		return p
+	}
+	return filepath.Join(resolved(parent), filepath.Base(p))
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
