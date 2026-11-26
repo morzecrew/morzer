@@ -124,6 +124,11 @@ func TestAUserInstallationsUnitsMayRunTheUsersOwnBinary(t *testing.T) {
 	result := run()
 	assert.Equal(t, events.CheckFail, result.Status)
 	assert.Contains(t, result.Remedy, "--dir ~/.local/bin")
+
+	// Units the user's manager will run at its next start are read even
+	// while it does not answer this shell.
+	supervisor.Present = false
+	assert.Equal(t, events.CheckFail, run().Status, "an unanswering manager passed units it never read")
 }
 
 // A user installation's self-update never suggests sudo: root, given the

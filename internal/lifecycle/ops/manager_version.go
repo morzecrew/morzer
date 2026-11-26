@@ -137,7 +137,10 @@ func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check
 		Description: "only root can replace the manager the units run",
 		Fatal:       true,
 		Run: func(ctx context.Context) events.CheckResult {
-			if !d.unitsRun() || d.Supervisor == nil || !d.Supervisor.Available(ctx) {
+			// A user's manager may not answer this shell and still run
+			// the units it has at its next start, so a user installation's
+			// are read whatever Available says.
+			if !d.unitsRun() || d.Supervisor == nil || (!d.Paths.UserLayout() && !d.Supervisor.Available(ctx)) {
 				return preflight.OK("no systemd units to check")
 			}
 			paths, err := d.Supervisor.UnitsManagerPaths(ctx, inst.Product)
