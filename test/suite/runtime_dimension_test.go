@@ -344,3 +344,21 @@ func TestInitInstallsWithTheRuntimeNamedOfTwoDeclared(t *testing.T) {
 	assert.Equal(t, "quadlet", inst.RuntimeName())
 	assert.Same(t, second, h.Deps.Runtime, "the operation goes on with the adapter it chose")
 }
+
+// --runtime names one of the runtimes a release declares, so without a release
+// it is refused, by the plan as by the operation, before init writes anything.
+func TestARuntimeNamedWithoutAReleaseIsRefusedUpFront(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	for _, dryRun := range []bool{true, false} {
+		opts := ops.InitOptions{Product: "demo", NoRecoveryKey: true, Runtime: "compose"}
+		opts.DryRun = dryRun
+		_, err := ops.Init(ctx, h.Deps, opts)
+		assert.ErrorContains(t, err, "--runtime needs a release", "dry run: %v", dryRun)
+	}
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists, "a refused init wrote the installation")
+}

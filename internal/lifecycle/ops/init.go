@@ -214,6 +214,11 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			WithHint("pass --release <bundle>, whose manifest declares which " +
 				"parameters exist and what they accept")
 	}
+	// And --runtime, which names one of the runtimes a release declares.
+	if opts.Runtime != "" && opts.ReleasePath == "" {
+		return Result{}, domain.Usage("--runtime needs a release, whose manifest declares the runtimes").
+			WithHint("pass --release <bundle> with it, or leave --runtime for `update`'s release to decide")
+	}
 
 	// A repair over secret state that already has a recovery recipient has
 	// made this choice, and the step that adds one has nothing to do. Asking
@@ -1387,10 +1392,6 @@ func stepStoreSourceCredential(d *Deps, src *InitSource) engine.Step {
 func (d *Deps) runtimeForNewInstallation(ctx context.Context, st *engine.State, opts InitOptions) (string, error) {
 	rel, ok := st.Get(engine.KeyRelease)
 	if !ok {
-		if opts.Runtime != "" {
-			return "", domain.Usage("--runtime needs a release, whose manifest declares the runtimes").
-				WithHint("pass --release <bundle> with it, or leave --runtime for `update`'s release to decide")
-		}
 		return "", nil
 	}
 	r, ok := rel.(domain.Release)
