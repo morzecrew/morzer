@@ -1415,9 +1415,9 @@ func (a *App) resolvePaths(ctx context.Context) (domain.Paths, error) {
 
 // managesUserTree reports whether a command no flag points at manages the user
 // layout: run by anyone but root, when the user's tree holds an installation or
-// the command is `init` (RFC 0023 row 31). A tree that cannot be read counts as
-// holding one, so discovery reports why rather than the system layout being
-// managed instead.
+// the command is `init` (RFC 0023 row 31). A tree that cannot be read, or that
+// holds a directory that cannot be, counts as holding one, so discovery
+// reports why rather than the system layout being managed instead.
 func (a *App) managesUserTree() bool {
 	tree := userTree()
 	if tree == "" {
@@ -1427,7 +1427,7 @@ func (a *App) managesUserTree() bool {
 		return true
 	}
 	inv, err := ops.DiscoverProducts(tree)
-	return err != nil || len(inv.Products) > 0
+	return err != nil || len(inv.Products) > 0 || len(inv.Undecidable) > 0
 }
 
 // pathsFromConfig derives the layout from an explicit installation.yaml.

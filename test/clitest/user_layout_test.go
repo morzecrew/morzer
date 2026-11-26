@@ -155,3 +155,22 @@ func TestAnUnreadableUserInstallationIsNotSentToRoot(t *testing.T) {
 	}
 	t.Fatalf("the unreadable directory was not listed: %v", rows)
 }
+
+// A user tree whose only installation cannot be read is still the user's: the
+// command lists that row rather than managing the system's installations.
+func TestAUserTreeHoldingOnlyAnUnreadableInstallationIsTheUsers(t *testing.T) {
+	r := clitest.NewUser(t)
+	sealed := r.Path("data", "morzer", "etc", "sandbox")
+	if err := os.MkdirAll(sealed, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o750) })
+
+	r.Run("--json", "ls").ExitCode(0).
+		FieldEquals("data.0.product", "sandbox").
+		FieldEquals("data.0.layout", "user")
+}
+
