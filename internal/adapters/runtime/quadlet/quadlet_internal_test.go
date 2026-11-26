@@ -65,7 +65,14 @@ func TestAUnitTheAdapterCannotRunAsWrittenIsRefused(t *testing.T) {
 		"another's network":         {web + "Network=shared\n", `does not start with "demo-"`},
 		"a container name":          {web + "ContainerName=web\n", "ContainerName=web"},
 		"a pod":                     {web + "Pod=demo-p.pod\n", "pod"},
-		"a relative env file":       {web + "EnvironmentFile=app.env\n", "relative path"},
+		"a relative env file":       {web + "EnvironmentFile=app.env\n", "resolves against"},
+		// Quadlet joins it onto the unit directory before systemd expands
+		// it (measured on Podman 6.1.1).
+		"an env file under a variable":   {web + "EnvironmentFile=${DEMO_RELEASE_DIR}/app.env\n", "resolves against"},
+		"a container name specifier":     {web + "ContainerName=demo-%N\n", "systemd expands"},
+		"a container name variable":      {web + "ContainerName=demo-$X\n", "systemd expands"},
+		"a mount the manager cannot see": {web + "Mount=type=volume,source=demo-data,target=/m\n", "Mount="},
+		"a variable naming a volume":     {web + "Volume=${DEMO_PARAM_DATA}:/data\n", "not a path once its values are set"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -79,11 +86,35 @@ func TestAUnitTheAdapterCannotRunAsWrittenIsRefused(t *testing.T) {
 func TestWhatTheAdapterCanRunIsAccepted(t *testing.T) {
 	_, err := checkBundle(bundleOf(t, "demo", map[string]string{
 		"demo-web.container": web + "Volume=demo-data.volume:/data\nVolume=${DEMO_SECRETS_DIR}/t:/run/t:ro\n" +
-			"Volume=demo-cache:/cache\nNetwork=demo-net.network\nContainerName=demo-web-1\n",
+			"Volume=demo-cache:/cache\nNetwork=demo-net.network\nContainerName=demo-web-1\n" +
+			"Mount=type=tmpfs,target=/scratch\n",
 		"demo-data.volume": "[Volume]\n",
 		"demo-net.network": "[Network]\n",
 	}))
 	assert.NoError(t, err)
+}
+
+// A variable that sets a path is a bind, which systemd expands at start; one
+// whose value is not a path would make a named volume no file declares.
+func TestAVolumeUnderAVariableIsAPathOnceSet(t *testing.T) {
+	cfg := bundleOf(t, "demo", map[string]string{"demo-web.container": web + "Volume=${DEMO_PARAM_DATA}:/data\n"})
+	cfg.Env = map[string]string{"DEMO_PARAM_DATA": "/srv/data"}
+	_, err := checkBundle(cfg)
+	assert.NoError(t, err)
+	cfg.Env["DEMO_PARAM_DATA"] = "demo-data"
+	_, err = checkBundle(cfg)
+	assert.ErrorContains(t, err, "not a path once its values are set")
+}
+
+// A volume or network unit's name, and a container's, can coincide:
+// both files would generate demo-data-volume.service.
+func TestTwoFilesGeneratingOneUnitAreRefused(t *testing.T) {
+	_, err := checkBundle(bundleOf(t, "demo", map[string]string{
+		"demo-web.container":         web,
+		"demo-data-volume.container": web,
+		"demo-data.volume":           "[Volume]\n",
+	}))
+	assert.ErrorContains(t, err, "generates the unit demo-data-volume.service")
 }
 
 func TestOptionsAndProfilesAreRefused(t *testing.T) {
@@ -119,6 +150,11 @@ func TestAUnitIsReadAsSystemdReadsIt(t *testing.T) {
 
 	_, err = parseUnit("x", []byte("Image=x\n"))
 	assert.ErrorContains(t, err, "before any section")
+
+	entries, err = parseUnit("x", []byte("[Container]\nExec=sh \\\n# a comment\n  -c true\n"))
+	require.NoError(t, err, "a comment inside a continuation is skipped, as systemd skips it")
+	exec, _ = (unitFile{entries: entries}).last("Container", "Exec")
+	assert.Equal(t, "sh    -c true", exec)
 }
 
 // systemd reads the parameter file at every start (RFC 0023 row 29, measured),

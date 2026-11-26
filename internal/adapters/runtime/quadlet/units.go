@@ -107,9 +107,14 @@ func parseUnit(name string, text []byte) ([]entry, error) {
 	lines := strings.Split(string(text), "\n")
 	for i, raw := range lines {
 		line := strings.TrimRight(raw, "\r")
+		// A comment is skipped inside a continuation too, as systemd skips
+		// it, and the assignment goes on after it.
+		if trimmed := strings.TrimSpace(line); trimmed != "" && (trimmed[0] == '#' || trimmed[0] == ';') {
+			continue
+		}
 		if pending.Len() == 0 {
 			trimmed := strings.TrimSpace(line)
-			if trimmed == "" || trimmed[0] == '#' || trimmed[0] == ';' {
+			if trimmed == "" {
 				continue
 			}
 			if strings.HasPrefix(trimmed, "[") {
@@ -154,6 +159,9 @@ var serviceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 type bundle struct {
 	product string
 	units   []unitFile
+
+	// env are the values the files are checked against, when they are.
+	env map[string]string
 }
 
 // loadBundle reads the files cfg names and checks their names. Every name is
@@ -166,6 +174,7 @@ func loadBundle(cfg ports.RuntimeConfig) (bundle, error) {
 		return b, domain.Internal(nil, "a Quadlet configuration names no product")
 	}
 	seen := map[string]bool{}
+	generated := map[string]string{}
 	for _, path := range cfg.Files {
 		name := filepath.Base(path)
 		kind := strings.TrimPrefix(filepath.Ext(name), ".")
@@ -194,7 +203,16 @@ func loadBundle(cfg ports.RuntimeConfig) (bundle, error) {
 		if err != nil {
 			return b, domain.ValidationError(err, "cannot read Quadlet file %s", name)
 		}
-		b.units = append(b.units, unitFile{name: name, kind: kind, service: service, text: text, entries: entries})
+		u := unitFile{name: name, kind: kind, service: service, text: text, entries: entries}
+		// Two files can generate one unit: `demo-data-volume.container`
+		// and `demo-data.volume` both become `demo-data-volume.service`,
+		// and the second would replace the first.
+		if other, ok := generated[u.unitName()]; ok {
+			return b, refusal(name, "generates the unit %s, as %s does, so one would replace the other",
+				u.unitName(), other)
+		}
+		generated[u.unitName()] = name
+		b.units = append(b.units, u)
 	}
 	return b, nil
 }
