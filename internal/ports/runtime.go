@@ -59,13 +59,19 @@ type Runtime interface {
 	// Restart restarts the named services, or all of them when empty.
 	Restart(ctx context.Context, cfg RuntimeConfig, services []string) error
 
-	// Stop halts the named services without removing their containers,
+	// Stop halts the named services without removing their definitions,
 	// networks or volumes. Empty stops the whole project.
 	//
 	// Distinct from Down, which tears the project down: this is the half of
 	// the pair that a backup uses to quiesce writers before reading their
-	// storage, and it has to be reversible by Start without recreating
-	// anything.
+	// storage, and it has to be reversible by Start without changing what
+	// runs.
+	//
+	// What it keeps is the definition each service was created from, the
+	// values it was created with, and every declared volume. A container's
+	// writable layer is not among them: under Quadlet a stop removes the
+	// container and Start runs a new one from the same unit and values
+	// (RFC 0023 row 29).
 	Stop(ctx context.Context, cfg RuntimeConfig, services []string, timeout time.Duration) error
 
 	// Start starts services Stop halted, without reconciling against the
@@ -73,9 +79,10 @@ type Runtime interface {
 	//
 	// Deliberately not Up: Up converges, which may recreate a container
 	// whose definition has drifted. Resuming a stack after a backup must
-	// put back exactly what was stopped -- an operation that quietly
-	// recreated a container as a side effect of taking a backup would be a
-	// backup that changed the deployment.
+	// put back what was stopped, from the definition and the values it was
+	// created with, even when cfg now carries others -- an operation that
+	// quietly applied a changed definition as a side effect of taking a
+	// backup would be a backup that changed the deployment.
 	Start(ctx context.Context, cfg RuntimeConfig, services []string) error
 
 	// RunOneShot runs a service to completion -- migrations, admin jobs.
@@ -778,6 +785,21 @@ type EngineScopeProber interface {
 	// the engine is not the user's own; any other error is a probe that did
 	// not run.
 	ProbeEngineScope(ctx context.Context) error
+}
+
+// EngineUnitNamer names the unit a runtime's engine runs as, so the manager's
+// own units can require it and start after it.
+//
+// The systemd supervisor used to name Docker's unit itself, which was it
+// stating which runtime the machine uses, and a runtime with no daemon then had
+// a product unit that could never start (RFC 0023 row 14). Optional like the
+// capabilities around it: rootless Podman runs each container from a unit of
+// its own, so there is no engine to wait for, and it declines. For §6's count it
+// is forced by the second adapter (logs/quadlet-adapter.md, "The P3b build").
+type EngineUnitNamer interface {
+	// EngineUnit returns the unit's name. Empty means the same as not
+	// implementing the interface.
+	EngineUnit() string
 }
 
 // ProjectStorage is everything a project's resolved configuration mounts.

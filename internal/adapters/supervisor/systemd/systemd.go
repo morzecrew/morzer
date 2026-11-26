@@ -602,6 +602,12 @@ type UnitParams struct {
 	// forgets this field gets scheduled backups, which is the direction a
 	// forgotten field must fall.
 	SkipBackupTimer bool
+
+	// EngineUnit is the unit the runtime's engine runs as, which the product
+	// and backup units require and start after, and empty when the runtime
+	// has none to wait for. The runtime names it, so these templates name no
+	// runtime.
+	EngineUnit string
 }
 
 // unitSpec is one unit to render: its name, its template, the description that
@@ -646,10 +652,11 @@ func MetricsTimerUnitName(product string) string   { return product + "-metrics.
 const serviceTemplate = `[Unit]
 Description={{.Description}}
 Documentation=man:{{.Product}}(1)
-After={{if not .User}}network-online.target {{end}}docker.service
-{{if not .User}}Wants=network-online.target
-{{end}}Requires=docker.service
-
+{{if not .User}}After=network-online.target{{with .EngineUnit}} {{.}}{{end}}
+Wants=network-online.target
+{{else}}{{with .EngineUnit}}After={{.}}
+{{end}}{{end}}{{with .EngineUnit}}Requires={{.}}
+{{end}}
 [Service]
 {{template "env" .}}Type=oneshot
 RemainAfterExit=yes
@@ -672,9 +679,9 @@ WantedBy={{if .User}}default.target{{else}}multi-user.target{{end}}
 
 const backupServiceTemplate = `[Unit]
 Description={{.Description}}
-After={{.Product}}.service
-Requires=docker.service
-
+After={{.Product}}.service{{with .EngineUnit}} {{.}}{{end}}
+{{with .EngineUnit}}Requires={{.}}
+{{end}}
 [Service]
 {{template "env" .}}Type=oneshot
 ExecStart={{command .ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
@@ -1100,8 +1107,9 @@ func buildUnits(p UnitParams, scope unitData) ([]ports.Unit, error) {
 // and so may hold only what the lifecycle layer decides.
 //
 // A user unit names no network-online.target, which only the system manager
-// has, and keeps docker.service, which there is the user's rootless daemon's
-// own unit (logs/quadlet-adapter.md, U3).
+// has, and keeps the runtime's engine unit. For Compose that is docker.service,
+// which in the user's manager is rootless Docker's own unit
+// (logs/quadlet-adapter.md, U3).
 type unitData struct {
 	UnitParams
 	User bool
@@ -1268,6 +1276,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		DoctorSchedule:   params.DoctorSchedule,
 		DoctorTimer:      params.DoctorTimer,
 		MetricsDir:       params.MetricsDir,
+		EngineUnit:       params.EngineUnit,
 	}, unitData{User: s.user, Env: s.env})
 }
 

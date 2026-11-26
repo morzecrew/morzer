@@ -1245,7 +1245,7 @@ func TestAUserScopeDrivesTheUsersOwnManager(t *testing.T) {
 		Product: "demo", ManagerPath: "/home/u/.local/bin/morzer",
 		ConfigPath:  "/home/u/.local/share/morzer/etc/demo/installation.yaml",
 		UpdateTimer: true, FleetTimer: true, SyncTimer: true, DoctorTimer: true,
-		MetricsDir: "/home/u/metrics",
+		MetricsDir: "/home/u/metrics", EngineUnit: "docker.service",
 	})
 	if err != nil {
 		t.Fatalf("Units: %v", err)
@@ -1295,6 +1295,69 @@ func TestAUserScopeDrivesTheUsersOwnManager(t *testing.T) {
 		if !strings.Contains(main, want) {
 			t.Errorf("the product unit lacks %q:\n%s", want, main)
 		}
+	}
+}
+
+// TestTheUnitsWaitOnlyForTheEngineTheRuntimeNames. The product unit and the
+// backup service require the runtime's engine and start after it, and the
+// runtime names it. `Requires=` alone starts the engine beside the backup, not
+// before it, so a backup the timer started while the engine was down could run
+// before the engine answered. A runtime with no engine, such as rootless Podman, names
+// none, and a unit that still required one would never start (RFC 0023
+// row 14). Compose names docker.service, and its units render as they always
+// have.
+func TestTheUnitsWaitOnlyForTheEngineTheRuntimeNames(t *testing.T) {
+	header := func(t *testing.T, units []ports.Unit, name string) string {
+		t.Helper()
+		for _, u := range units {
+			if u.Name == name {
+				body := string(u.Contents)
+				head, _, _ := strings.Cut(body, "\n[Service]")
+				return head
+			}
+		}
+		t.Fatalf("no unit %s", name)
+		return ""
+	}
+	params := systemd.UnitParams{Product: "demo", ManagerPath: "/usr/local/bin/morzer"}
+
+	withEngine := params
+	withEngine.EngineUnit = "docker.service"
+	units, err := systemd.BuildUnits(withEngine)
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+	if got, want := header(t, units, "demo.service"), "[Unit]\nDescription=demo (managed by morzer)\n"+
+		"Documentation=man:demo(1)\nAfter=network-online.target docker.service\n"+
+		"Wants=network-online.target\nRequires=docker.service\n"; got != want {
+		t.Errorf("the product unit's header changed:\n got %q\nwant %q", got, want)
+	}
+	if got, want := header(t, units, "demo-backup.service"),
+		"[Unit]\nDescription=demo backup\nAfter=demo.service docker.service\nRequires=docker.service\n"; got != want {
+		t.Errorf("the backup service does not wait for the engine it requires:\n got %q\nwant %q", got, want)
+	}
+
+	units, err = systemd.BuildUnits(params)
+	if err != nil {
+		t.Fatalf("BuildUnits: %v", err)
+	}
+	if got, want := header(t, units, "demo.service"), "[Unit]\nDescription=demo (managed by morzer)\n"+
+		"Documentation=man:demo(1)\nAfter=network-online.target\nWants=network-online.target\n"; got != want {
+		t.Errorf("with no engine, the product unit's header is:\n got %q\nwant %q", got, want)
+	}
+	if got, want := header(t, units, "demo-backup.service"),
+		"[Unit]\nDescription=demo backup\nAfter=demo.service\n"; got != want {
+		t.Errorf("with no engine, the backup service's header is:\n got %q\nwant %q", got, want)
+	}
+
+	user := systemd.New(fakes.NewScripted(), systemd.WithUserScope(t.TempDir(), "XDG_DATA_HOME=/home/u/.local/share"))
+	units, err = user.Units(ports.UnitParams{Product: "demo", ManagerPath: "/home/u/.local/bin/morzer"})
+	if err != nil {
+		t.Fatalf("Units: %v", err)
+	}
+	if got, want := header(t, units, "demo.service"),
+		"[Unit]\nDescription=demo (managed by morzer)\nDocumentation=man:demo(1)\n"; got != want {
+		t.Errorf("with no engine, the user's product unit's header is:\n got %q\nwant %q", got, want)
 	}
 }
 

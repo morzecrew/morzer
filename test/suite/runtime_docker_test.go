@@ -105,6 +105,23 @@ services:
 	})
 }
 
+func TestStartKeepsValuesContract_Compose(t *testing.T) {
+	dockerlab.Require(t)
+	dockerlab.Pull(t, dockerlab.ImageBusybox)
+
+	contract.RunStartKeepsValuesSuite(t, func(t *testing.T) (ports.Runtime, ports.RuntimeConfig) {
+		return compose.New(infraexec.New()), dockerlab.Project(t, fmt.Sprintf(`
+services:
+  app:
+    image: %s
+    init: true
+    command: ["sh", "-c", "while true; do sleep 1; done"]
+    environment:
+      VALUE: ${%s}
+`, dockerlab.ImageBusybox, contract.ValueVar))
+	})
+}
+
 // TestComposeDownKeepsTheVolumeAndDownWithVolumesDoesNot is the claim the
 // whole compensation design rests on, checked by writing a byte and looking
 // for it afterwards.

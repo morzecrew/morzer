@@ -128,6 +128,13 @@ func (r *Runtime) command(cfg ports.RuntimeConfig, timeout time.Duration, argv .
 // point of the port method is that nothing higher up has to.
 func (r *Runtime) Name() string { return "compose" }
 
+var _ ports.EngineUnitNamer = (*Runtime)(nil)
+
+// EngineUnit is the Docker daemon's systemd unit, which the manager's units
+// require. In a user's own manager it names rootless Docker's unit, which has
+// the same name (logs/quadlet-adapter.md, U3).
+func (r *Runtime) EngineUnit() string { return "docker.service" }
+
 // OptionProject is the manifest option naming this deployment's Compose
 // project -- the namespace containers, networks and volumes are created in.
 //
