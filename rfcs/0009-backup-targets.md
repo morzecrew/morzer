@@ -658,3 +658,22 @@ RFC 0026 §10.3 measured is now created through RustFS's own admin API, which
 takes plain JSON. That measurement was re-taken against RustFS and still holds
 in all three directions, and it still fails when the policy is widened to
 `s3:*` or to the whole bucket.
+
+### 2026-11-26 — retention on a target counts only the installation's own backups
+
+The amendment of 2026-08-04 on listing prefixes says the ids this manager
+writes "are fixed-length timestamps and cannot collide". That holds within one
+installation and not across several. A target that several installations share
+(#436) holds ids taken on different machines, and two backups taken in the same
+second have the same one.
+
+§5.6 has retention apply "the same policy to the target", and the local pass
+only ever sees the installation's own backups. The remote pass counted every
+manifest it listed, so on a shared target each installation's retention deleted
+the others' backups past its own keep count.
+
+Retention on a target now counts and removes only the manifests that name this
+installation's id and product, and never one that names no installation. Two
+things remain: colliding ids, and credentials that cannot be limited to one
+installation. #436 proposes a layout that would remove both. Until then the
+reference page says to give each installation a target with its own prefix.

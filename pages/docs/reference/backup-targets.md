@@ -115,6 +115,31 @@ files — an interrupted restore leaves decrypted components in a staging
 directory beside the encrypted ones — and copying those would put a plaintext
 database dump on a second machine.
 
+## Several installations on one target
+
+A target can hold the backups of several installations, for example when every
+machine in a fleet is given the same URL. Retention on the target counts and
+removes only the installation's own backups: those whose manifest names its
+installation id and product. A backup whose manifest names no installation is
+never removed.
+
+Two things are still shared:
+
+- **Backup ids.** An id is the second the backup was taken, so two
+  installations that back up in the same second write into one directory, and
+  the second push replaces the first's files.
+- **Credentials.** Retention lists, reads and deletes at the target's root, so
+  no credential can be limited to one installation's backups.
+
+To avoid both, give each installation a target with a prefix of its own, such
+as `s3://bucket/fleet/backups/<machine>`. The manager lists only one level under
+a target's root, so installations with separate prefixes never see each other's
+backups, and each credential can be limited to its prefix.
+
+An installation re-created with `init` gets a new installation id. Its
+retention does not count the backups its predecessor left on the target, so
+remove those by hand or with a lifecycle rule.
+
 ## Recovering an identity without downloading the backup
 
 Every backup carries the deployment's identity, and reading it does not require
