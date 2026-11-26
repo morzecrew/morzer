@@ -1040,6 +1040,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		compose.WithHelperImage(os.Getenv(VolumeHelperImageEnv)),
 		ingestRelay(paths),
 	)
+	// Every runtime this host can run, the incumbent first as the default.
+	// The installation a command is on picks among them by the name it
+	// records (RFC 0023 G5), below.
+	runtimes := append([]ports.Runtime{runtime}, hostRuntimes(runner, outputSink, redactor.Values())...)
 	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
 	if engineUser != nil {
@@ -1104,6 +1108,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		// And their locks, for the one command that holds all of them.
 		LockerFor: func(p domain.Paths) ports.Locker { return lock.ForLayout(p) },
 		Runtime:   runtime,
+		Runtimes:  runtimes,
 		Secrets:   secrets,
 		Source:    sources,
 		Targets:   targets,
@@ -1141,6 +1146,10 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 		MachineProducts: a.machineProducts,
 		ProductNamed:    a.installationChosen(),
 	}
+
+	// Before anything below copies Runtime: the adapter is the one the
+	// installation records, or the default with none yet.
+	deps.SelectRuntime(ctx)
 
 	// Notification targets live in the installation, which does not exist
 	// during `init`, so this is best-effort and lazy in the same sense the

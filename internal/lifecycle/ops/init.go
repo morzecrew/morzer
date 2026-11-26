@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,7 +41,13 @@ type InitOptions struct {
 	// Profiles is the selection of deployment profiles to record, checked
 	// against the release when one is staged (RFC 0053 decision 15).
 	Profiles []string
-	Domains  []string
+
+	// Runtime names the runtime to install with, one the release declares.
+	// Required when it declares several, and checked when it declares one
+	// (logs/quadlet-adapter.md, "The wiring": decision 12 expired).
+	Runtime string
+
+	Domains []string
 
 	// Mode declares this machine a sandbox. Empty means production.
 	//
@@ -273,7 +280,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	validated := false
 	if opts.DryRun && opts.ReleasePath != "" {
 		var err error
-		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters, opts.Profiles); err != nil {
+		if validated, err = d.checkPlannedRelease(ctx, opts.ReleasePath, opts.Parameters, opts.Profiles, d.requestedRuntime(ctx, opts)); err != nil {
 			return Result{}, err
 		}
 	}
@@ -761,8 +768,11 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	if opts.Source != nil {
 		inst.Sources.HTTPS = []domain.HTTPSSource{opts.Source.Entry}
 	}
-	runtime, err := d.runtimeForNewInstallation(st)
+	runtime, err := d.runtimeForNewInstallation(ctx, st, opts)
 	if err != nil {
+		return domain.Installation{}, err
+	}
+	if err := d.useRuntime(runtime); err != nil {
 		return domain.Installation{}, err
 	}
 	inst.Runtime = runtime
@@ -1083,7 +1093,7 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 			// checks them, so a release this manager will not run
 			// refuses a repair before the installed release is
 			// replaced.
-			runtime, err := runtimeForRelease(rel)
+			runtime, err := runtimeForRelease(rel, d.requestedRuntime(ctx, opts))
 			if err != nil {
 				return err
 			}
@@ -1333,28 +1343,44 @@ func stepStoreSourceCredential(d *Deps, src *InitSource) engine.Step {
 // runtimeForNewInstallation decides which runtime this installation is fixed
 // to, and refuses rather than guessing (RFC 0023 decisions 3 and 5).
 //
-// The rule is deliberately narrow while there is one adapter. A release
-// declaring exactly one runtime fixes the installation to it. A release
-// declaring several is refused, because choosing between them means knowing
-// which this manager can actually drive, and the only honest answers to that
-// today are a branch on a runtime's name -- which decision 7 forbids and
-// `tools/runtimecheck` fails the build over -- or a name injected at the
-// composition root that every test would set and no test would exercise as
-// production leaves it. Refusing costs a bundle nobody ships yet; either
-// alternative costs the architecture test this RFC exists to run.
+// A release declaring one runtime fixes the installation to it. One declaring
+// several needs the operator to name one: there is no probing, because which
+// runtime a machine should run is not something its installed tools answer
+// (G5). Decision 12 refused such a release until the second adapter gave the
+// manager a way to know what it drives without branching on a name; the
+// adapters now answer that themselves, and useRuntime refuses a runtime this
+// host has none for.
 //
 // An installation created with no release at all records nothing, and
 // Installation.RuntimeName reads that as the legacy runtime.
-func (d *Deps) runtimeForNewInstallation(st *engine.State) (string, error) {
+func (d *Deps) runtimeForNewInstallation(ctx context.Context, st *engine.State, opts InitOptions) (string, error) {
 	rel, ok := st.Get(engine.KeyRelease)
 	if !ok {
+		if opts.Runtime != "" {
+			return "", domain.Usage("--runtime needs a release, whose manifest declares the runtimes").
+				WithHint("pass --release <bundle> with it, or leave --runtime for `update`'s release to decide")
+		}
 		return "", nil
 	}
 	r, ok := rel.(domain.Release)
 	if !ok {
 		return "", nil
 	}
-	return runtimeForRelease(r)
+	return runtimeForRelease(r, d.requestedRuntime(ctx, opts))
+}
+
+// requestedRuntime is the runtime init is asked for: the one named, or on a
+// repair the one the installation runs, which a repair carries (decision 3), so
+// the release has to declare it.
+func (d *Deps) requestedRuntime(ctx context.Context, opts InitOptions) string {
+	if opts.Runtime != "" || !opts.Repair {
+		return opts.Runtime
+	}
+	existing, err := d.State.LoadInstallation(ctx)
+	if err != nil || existing.ID == "" {
+		return ""
+	}
+	return existing.RuntimeName()
 }
 
 // runtimeOptionsFor reads the staged release's options for one runtime.
@@ -1387,22 +1413,37 @@ func runtimeOptionsFor(st *engine.State, runtime string) map[string]string {
 // of the rule would otherwise have to drive a whole operation to reach three
 // lines of `switch`. A decision that can only be exercised through the machinery
 // around it is a decision that gets exercised once, by the happy path.
-func runtimeForRelease(r domain.Release) (string, error) {
+//
+// requested is what the operator named, or nothing. It is checked against what
+// the release declares whatever their number, so a typo is refused rather than
+// recorded.
+func runtimeForRelease(r domain.Release, requested string) (string, error) {
 	declared := r.Manifest.DeclaredRuntimes()
 	names := declared.Names()
-	switch len(names) {
-	case 0:
-		return "", nil
-	case 1:
-		return names[0], nil
-	default:
+	if len(names) == 0 {
+		// Nothing declared runs on the legacy runtime, which naming
+		// changes nothing about.
+		if requested == "" || requested == (domain.Installation{}).RuntimeName() {
+			return "", nil
+		}
 		return "", domain.ValidationError(nil,
-			"this release declares %d runtimes and the manager cannot yet choose between them",
-			len(names)).
-			WithHint("it declares: %s — installing a release that declares more than one "+
-				"arrives with the second runtime adapter",
-				strings.Join(names, ", "))
+			"this release declares no runtime, so it runs on %s, not %s",
+			(domain.Installation{}).RuntimeName(), requested)
 	}
+	if requested != "" {
+		if !slices.Contains(names, requested) {
+			return "", domain.ValidationError(nil,
+				"this release does not declare the %s runtime", requested).
+				WithHint("it declares: %s", strings.Join(names, ", "))
+		}
+		return requested, nil
+	}
+	if len(names) == 1 {
+		return names[0], nil
+	}
+	return "", domain.Usage("this release declares %d runtimes; choose one with --runtime", len(names)).
+		WithHint("it declares: %s. The runtime is fixed when the installation is created "+
+			"and does not transition, so it is never picked for you", strings.Join(names, ", "))
 }
 
 // secretSchema resolves the release's secret schema, tolerating an

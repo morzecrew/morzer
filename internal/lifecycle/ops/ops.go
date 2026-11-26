@@ -66,7 +66,16 @@ type Deps struct {
 	// (RFC 0046 decision 7). Nil in a build that never does.
 	LockerFor func(domain.Paths) ports.Locker
 
+	// Runtime is the adapter for the runtime the installation in hand is
+	// fixed to: SelectRuntime points it there from the installation's
+	// state, and `init` and `installation import` when they learn it.
 	Runtime ports.Runtime
+
+	// Runtimes are every runtime adapter this manager can drive on this
+	// host, the default first (logs/quadlet-adapter.md, "The wiring").
+	// Nil means Runtime alone.
+	Runtimes []ports.Runtime
+
 	Secrets ports.SecretStore
 	Backup  ports.BackupEngine
 
@@ -557,7 +566,7 @@ func (d *Deps) warnDeprecations(m domain.Manifest) {
 // nothing outside it is touched and it is gone before this returns. The local
 // source already does the same thing inside Resolve, for the same reason.
 func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
-	set map[string]string, profiles []string) (bool, error) {
+	set map[string]string, profiles []string, requested string) (bool, error) {
 	ref, err := ports.ParseRef(releasePath)
 	if err != nil {
 		return false, err
@@ -602,14 +611,17 @@ func (d *Deps) checkPlannedRelease(ctx context.Context, releasePath string,
 	if err := m.Requirements.PlatformRefusal(d.platform(), "release "+m.Metadata.Version.String()); err != nil {
 		return false, err
 	}
-	// And the selection, as the write-installation step checks it against the
-	// staged release, platform included.
+	// And the runtime and the selection, as the write-installation step
+	// checks them against the staged release, platform included.
+	rel := domain.Release{Manifest: m}
+	runtime, err := runtimeForRelease(rel, requested)
+	if err != nil {
+		return false, err
+	}
+	if err := d.canDrive(runtime); err != nil {
+		return false, err
+	}
 	if len(profiles) > 0 {
-		rel := domain.Release{Manifest: m}
-		runtime, err := runtimeForRelease(rel)
-		if err != nil {
-			return false, err
-		}
 		if _, err := rel.Selection(runtime, profiles, d.platform()); err != nil {
 			return false, err
 		}
@@ -1086,7 +1098,8 @@ func (d *Deps) parameters(rel domain.Release, inst domain.Installation) (domain.
 }
 
 // drivesRuntime reports whether the wired adapter is the runtime an
-// installation is fixed to, and which one it is when it is not.
+// installation is fixed to, and which runtimes this manager drives when it is
+// not.
 //
 // Two values compared, neither of which this layer has to recognise: one comes
 // out of installation state, the other out of the adapter (decision 7). One
@@ -1102,8 +1115,94 @@ func (d *Deps) drivesRuntime(inst domain.Installation) (drives string, ok bool) 
 	if d.Runtime == nil {
 		return "", true
 	}
-	have := d.Runtime.Name()
-	return have, inst.RuntimeName() == have
+	if inst.RuntimeName() == d.Runtime.Name() {
+		return d.Runtime.Name(), true
+	}
+	return d.runtimeNames(), false
+}
+
+// EveryRuntime lists the runtimes this manager can drive on this host, the
+// default first.
+func (d *Deps) EveryRuntime() []ports.Runtime {
+	if len(d.Runtimes) > 0 {
+		return d.Runtimes
+	}
+	if d.Runtime != nil {
+		return []ports.Runtime{d.Runtime}
+	}
+	return nil
+}
+
+// runtimeNamed is the adapter that drives the named runtime here, or nil.
+// Compared by the adapters' own names, never by one spelled here (decision 7).
+func (d *Deps) runtimeNamed(name string) ports.Runtime {
+	for _, r := range d.EveryRuntime() {
+		if r.Name() == name {
+			return r
+		}
+	}
+	return nil
+}
+
+// runtimeNames joins the names of the runtimes this manager drives, for a
+// message about one it does not.
+func (d *Deps) runtimeNames() string {
+	var names []string
+	for _, r := range d.EveryRuntime() {
+		names = append(names, r.Name())
+	}
+	return strings.Join(names, " and ")
+}
+
+// selectRuntimeFor points Runtime at the adapter for inst's runtime. With no
+// adapter for it Runtime is left as it was, and drivesRuntime reports the
+// mismatch where the operation refuses.
+func (d *Deps) selectRuntimeFor(inst domain.Installation) {
+	if r := d.runtimeNamed(inst.RuntimeName()); r != nil {
+		d.Runtime = r
+	}
+}
+
+// SelectRuntime points Runtime at the runtime the installation this command
+// is on records, which is how the composition root picks between its adapters
+// (RFC 0023 G5). Without a readable installation the default stays: there is
+// nothing to be fixed to yet, and a state that will not load is reported by
+// whatever reads it next, not here.
+func (d *Deps) SelectRuntime(ctx context.Context) {
+	if d.State == nil {
+		return
+	}
+	if ok, err := d.State.InstallationExists(ctx); err != nil || !ok {
+		return
+	}
+	inst, err := d.State.LoadInstallation(ctx)
+	if err != nil {
+		return
+	}
+	d.selectRuntimeFor(inst)
+}
+
+// useRuntime fixes Runtime to the named runtime for an installation being
+// created, and refuses one this host has no adapter for: refused here, before
+// anything is written, rather than by the first operation after it.
+func (d *Deps) useRuntime(name string) error {
+	if err := d.canDrive(name); err != nil || name == "" {
+		return err
+	}
+	d.Runtime = d.runtimeNamed(name)
+	return nil
+}
+
+// canDrive refuses a runtime this host has no adapter for. Nothing named is
+// the legacy runtime, and a Deps with no runtime wired refuses nothing, as
+// drivesRuntime does not.
+func (d *Deps) canDrive(name string) error {
+	if name == "" || len(d.EveryRuntime()) == 0 || d.runtimeNamed(name) != nil {
+		return nil
+	}
+	return domain.ValidationError(nil,
+		"this manager cannot drive the %s runtime on this host; it drives %s",
+		name, d.runtimeNames())
 }
 
 // runtimeBaseline resolves what this installation is running under: the options

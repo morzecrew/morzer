@@ -26,6 +26,7 @@ func newInitCommand(app *App) *cobra.Command {
 		product          string
 		releasePath      string
 		profiles         []string
+		runtimeName      string
 		domains          []string
 		recoveryKey      string
 		noRecoveryKey    bool
@@ -146,6 +147,7 @@ func newInitCommand(app *App) *cobra.Command {
 				Product:              product,
 				ReleasePath:          releasePath,
 				Profiles:             profileFlag(profiles),
+				Runtime:              runtimeName,
 				Domains:              domains,
 				RecoveryRecipient:    recoveryKey,
 				NoRecoveryKey:        noRecoveryKey,
@@ -256,6 +258,8 @@ func newInitCommand(app *App) *cobra.Command {
 	f.StringVar(&releasePath, "release", "", "release bundle to stage during init")
 	f.StringSliceVar(&profiles, "profile", nil,
 		"deployment profile from the release manifest; repeat, or separate with commas, for several")
+	f.StringVar(&runtimeName, "runtime", "",
+		"runtime to install with, one the release declares; required when it declares several, and fixed for good")
 	f.StringSliceVar(&domains, "domain", nil, "public domain; repeat for several, the first is canonical")
 	f.StringVar(&recoveryKey, "recovery-recipient", "", "offline age public key that can decrypt the secret state")
 	f.BoolVar(&noRecoveryKey, "no-recovery-recipient", false,

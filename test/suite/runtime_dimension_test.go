@@ -2,7 +2,9 @@ package suite
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +16,7 @@ import (
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // The runtime an installation is fixed to, at the two places RFC 0023 P2 left
@@ -248,4 +251,50 @@ func TestEveryToolTheRuntimeAsksForHasAProbe(t *testing.T) {
 				"the runtime asks for %q and the tool catalogue has never heard of it", name)
 		}
 	}
+}
+
+// G5, which retired decision 12. A release declaring two runtimes installs
+// with the one the operator names, and never with one picked for them; a
+// runtime this host has no adapter for is refused before anything is written.
+func TestInitInstallsWithTheRuntimeNamedOfTwoDeclared(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
+		"runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)), 0o644))
+	initWith := func(runtime string, dryRun bool) error {
+		opts := ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Runtime: runtime}
+		opts.DryRun = dryRun
+		_, err := ops.Init(ctx, h.Deps, opts)
+		return err
+	}
+	noInstallation := func(msg string) {
+		exists, err := h.Deps.State.InstallationExists(ctx)
+		require.NoError(t, err)
+		assert.False(t, exists, msg)
+	}
+
+	assert.ErrorContains(t, initWith("", true), "choose one with --runtime", "the plan refuses as the operation does")
+	assert.ErrorContains(t, initWith("", false), "choose one with --runtime")
+	noInstallation("a refused choice writes nothing")
+
+	assert.ErrorContains(t, initWith("quadlet", true), "cannot drive the quadlet runtime on this host")
+	assert.ErrorContains(t, initWith("quadlet", false), "cannot drive the quadlet runtime on this host")
+	noInstallation("a runtime with no adapter here writes nothing")
+
+	second := fakes.NewRuntime()
+	second.RuntimeName = "quadlet"
+	h.Deps.Runtimes = []ports.Runtime{h.Runtime, second}
+	require.NoError(t, initWith("quadlet", false))
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "quadlet", inst.RuntimeName())
+	assert.Same(t, second, h.Deps.Runtime, "the operation goes on with the adapter it chose")
 }

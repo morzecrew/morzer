@@ -682,9 +682,12 @@ func TestARepairWithTheSameBundleLeavesTheReleaseDirectoryInPlace(t *testing.T) 
 	assert.Equal(t, rootMode, modeOf(installed.Root), "a repair changed the mode of the release's directory")
 }
 
-// A bundle of the installed version that this manager cannot run is refused
-// before it replaces the installed release, whether or not a profile is named.
-func TestARepairWithABundleDeclaringTwoRuntimesLeavesTheInstalledReleaseUntouched(t *testing.T) {
+// A repair keeps the installation's runtime (RFC 0023 decision 3), so a bundle
+// of the installed version that does not declare it is refused before it
+// replaces the installed release, whether or not a profile is named. One that
+// declares it beside another is repaired onto it, with no --runtime: the
+// choice was made when the installation was created.
+func TestARepairWithABundleWithoutTheInstallationsRuntimeLeavesTheInstalledReleaseUntouched(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
 	h.setHookEnv()
@@ -697,18 +700,27 @@ func TestARepairWithABundleDeclaringTwoRuntimesLeavesTheInstalledReleaseUntouche
 	installed, err := h.Deps.State.CurrentRelease(ctx)
 	require.NoError(t, err)
 
-	two := filepath.Join(t.TempDir(), "bundle-1.2.0")
-	copyBundle(t, src, two)
-	manifest := filepath.Join(two, "manifest.yaml")
-	raw, err := os.ReadFile(manifest)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
-		"runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)), 0o644))
+	rewritten := func(from, to string) string {
+		dir := filepath.Join(t.TempDir(), "bundle-1.2.0")
+		copyBundle(t, src, dir)
+		manifest := filepath.Join(dir, "manifest.yaml")
+		raw, err := os.ReadFile(manifest)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), from, to, 1)), 0o644))
+		return dir
+	}
 
-	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: two, Repair: true})
-
-	require.ErrorContains(t, err, "cannot yet choose between them")
+	other := rewritten("runtimes:\n  compose:\n", "runtimes:\n  quadlet:\n")
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: other, Repair: true})
+	require.ErrorContains(t, err, "does not declare the compose runtime")
 	landed, err := release.Load(installed.Root)
 	require.NoError(t, err)
-	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a bundle this manager cannot run replaced the installed release")
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a bundle this installation cannot run on replaced the installed release")
+
+	both := rewritten("runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n")
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: both, Repair: true})
+	require.NoError(t, err)
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "compose", inst.RuntimeName(), "a repair carries the runtime")
 }

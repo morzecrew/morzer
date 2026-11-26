@@ -184,6 +184,9 @@ func (d *Deps) installationEntry(ctx context.Context, product string, opts ListO
 	entry.SchemaVersion = inst.SchemaVersion
 	entry.Mode = inst.Mode
 	entry.Stopped = inst.Stopped
+	// Each row through its own runtime: the one the command was wired with
+	// is the default's, or another installation's.
+	scoped.selectRuntimeFor(inst)
 
 	current, err := scoped.State.CurrentRelease(ctx)
 	switch {
