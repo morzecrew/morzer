@@ -262,7 +262,8 @@ func TestAOneShotsLogIsReadBackStreamByStream(t *testing.T) {
 // is given, so a product whose name holds a dash still has its services told
 // apart from its prefix.
 func TestTheBundleIsReadWithoutPodman(t *testing.T) {
-	root := t.TempDir()
+	base := t.TempDir()
+	root := filepath.Join(base, "release")
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "quadlet"), 0o700))
 	write := func(name, text string) {
 		require.NoError(t, os.WriteFile(filepath.Join(root, "quadlet", name), []byte(text), 0o600))
@@ -282,6 +283,9 @@ func TestTheBundleIsReadWithoutPodman(t *testing.T) {
 
 	_, err = (&Runtime{}).ReadBundle("other", root, []string{"quadlet/my-app-web.container"})
 	assert.ErrorContains(t, err, `does not start with "other-"`)
+	// A readable file, so only the release's bounds can refuse it.
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "outside"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "outside", "my-app-web.container"), []byte(web), 0o600))
 	_, err = (&Runtime{}).ReadBundle("my-app", root, []string{"../outside/my-app-web.container"})
 	assert.Error(t, err, "a file outside the release is not read")
 }
