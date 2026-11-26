@@ -329,7 +329,7 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 			}
 			for line := range strings.Lines(string(data)) {
 				key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-				fields := strings.Fields(value)
+				fields := ExecWords(value)
 				if !ok || !slices.Contains(execKeys, strings.TrimSpace(key)) || len(fields) == 0 {
 					continue
 				}
@@ -344,8 +344,9 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 
 // execPathPattern is a command's binary in `systemctl show`'s rendering of an
 // Exec property: `{ path=/usr/local/bin/morzer ; argv[]=… ; … }`, once per
-// command. Anchored to the brace, since an argument may carry `path=` too.
-var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
+// command. Anchored to the brace, since an argument may carry `path=` too, and
+// ended by the argv that follows, since a path may carry a space.
+var execPathPattern = regexp.MustCompile(`\{ path=(.+?) ; argv\[\]=`)
 
 // effectiveExecPaths is every binary systemd would run for a unit, as it
 // loaded it. Asked only about a unit whose file is installed, so a query that
@@ -652,8 +653,8 @@ After={{if not .User}}network-online.target {{end}}docker.service
 [Service]
 {{template "env" .}}Type=oneshot
 RemainAfterExit=yes
-ExecStart={{.ManagerPath}} apply --startup --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
-ExecReload={{.ManagerPath}} apply --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} apply --startup --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
+ExecReload={{command .ManagerPath}} apply --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 
 # Exit 12 is requires-manual-intervention. Restarting on it would loop
 # forever and bury the reason in the journal.
@@ -676,7 +677,7 @@ Requires=docker.service
 
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=7200
 StandardOutput=journal
 StandardError=journal
@@ -716,7 +717,7 @@ After={{if not .User}}network-online.target {{end}}{{.Product}}.service
 {{end}}
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
 StandardError=journal
@@ -775,7 +776,7 @@ After={{if not .User}}network-online.target {{end}}{{.Product}}.service
 {{end}}
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=300
 StandardOutput=journal
 StandardError=journal
@@ -817,7 +818,7 @@ After={{if not .User}}network-online.target {{end}}{{.Product}}.service
 {{end}}
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
 StandardError=journal
@@ -865,7 +866,7 @@ After={{if not .User}}network-online.target {{end}}{{.Product}}.service
 {{end}}
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=900
 StandardOutput=journal
 StandardError=journal
@@ -895,7 +896,7 @@ After={{.Product}}.service
 
 [Service]
 {{template "env" .}}Type=oneshot
-ExecStart={{.ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=120
 StandardOutput=journal
 StandardError=journal
@@ -962,6 +963,16 @@ func buildUnits(p UnitParams, scope unitData) ([]ports.Unit, error) {
 				"the %s carries a line break and would add a directive to the unit",
 				s.field)
 		}
+	}
+
+	// systemd refuses a command whose path carries a quote, a backslash or a
+	// control character, however it is quoted, and would load none of these.
+	if strings.ContainsFunc(p.ManagerPath, func(r rune) bool {
+		return r < ' ' || r == 0x7f || strings.ContainsRune(`"'\`, r)
+	}) {
+		return nil, domain.Preflight(nil,
+			"the manager's path %q carries a character systemd refuses in a unit's command", p.ManagerPath).
+			WithHint("install the manager in a directory whose path has no quote, backslash or control character")
 	}
 
 	// Trimmed, not just compared: a whitespace-only schedule is non-empty, so
@@ -1097,16 +1108,91 @@ type unitData struct {
 	Env  []string
 }
 
-// envTemplate is a service unit's Environment= lines, one per entry, quoted so
-// a path with a space stays one assignment.
-//
-// shortcut: a `%` or `"` in a value is not escaped, as ConfigPath in ExecStart=
-// is not; escape both if a home directory ever carries one.
-const envTemplate = `{{define "env"}}{{range .Env}}Environment="{{.}}"
+// envTemplate is a service unit's Environment= lines, one per entry, each one
+// quoted word, so a path with a space stays one assignment.
+const envTemplate = `{{define "env"}}{{range .Env}}Environment={{value .}}
 {{end}}{{end}}`
 
+// unitQuoted escapes what would end a double-quoted systemd word or be read as
+// an escape inside it, and doubles `%`, which systemd expands as a specifier
+// inside quotes too.
+var unitQuoted = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`, "\r", `\r`, "%", "%%")
+
+// unitValue is s as one double-quoted systemd word, as an Environment= line
+// takes it.
+func unitValue(s string) string { return `"` + unitQuoted.Replace(s) + `"` }
+
+// unitCommand is s as the command of an Exec*= line: as it stands while nothing
+// in it is special to systemd, which is every ordinary path, and otherwise
+// quoted as unitValue quotes it. ExecWords reads it back.
+func unitCommand(s string) string {
+	if !strings.ContainsAny(s, " \t\n\r\"'\\%") {
+		return s
+	}
+	return unitValue(s)
+}
+
+// unitArg is s as an argument after the command, where systemd also expands
+// variables, so a `$` is doubled.
+func unitArg(s string) string { return unitCommand(strings.ReplaceAll(s, "$", "$$")) }
+
+// ExecWords splits the value of an Exec*= line into its words, undoing what
+// unitCommand and unitArg write: quotes, C escapes, a doubled `%`, and a
+// doubled `$` after the command. A specifier or a variable is left as written.
+func ExecWords(value string) []string {
+	var words []string
+	var word strings.Builder
+	inWord, quote := false, byte(0)
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case quote == 0 && (c == ' ' || c == '\t'):
+			if inWord {
+				words, inWord = append(words, word.String()), false
+				word.Reset()
+			}
+			continue
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote == 0 && (c == '"' || c == '\''):
+			quote = c
+		case c == '\\' && i+1 < len(value):
+			i++
+			word.WriteByte(unescaped(value[i]))
+		case c == '%' && i+1 < len(value) && value[i+1] == '%':
+			i++
+			word.WriteByte('%')
+		default:
+			word.WriteByte(c)
+		}
+		inWord = true
+	}
+	if inWord {
+		words = append(words, word.String())
+	}
+	for i := 1; i < len(words); i++ {
+		words[i] = strings.ReplaceAll(words[i], "$$", "$")
+	}
+	return words
+}
+
+// unescaped is the byte a C escape names.
+func unescaped(c byte) byte {
+	switch c {
+	case 'n':
+		return '\n'
+	case 't':
+		return '\t'
+	case 'r':
+		return '\r'
+	}
+	return c
+}
+
+var unitFuncs = template.FuncMap{"command": unitCommand, "arg": unitArg, "value": unitValue}
+
 func renderUnit(name, tmpl string, p unitData) ([]byte, error) {
-	t, err := template.New(name).Option("missingkey=error").Parse(envTemplate + tmpl)
+	t, err := template.New(name).Funcs(unitFuncs).Option("missingkey=error").Parse(envTemplate + tmpl)
 	if err != nil {
 		return nil, domain.Internal(err, "cannot parse the %s unit template", name)
 	}

@@ -1297,3 +1297,81 @@ func TestAUserScopeDrivesTheUsersOwnManager(t *testing.T) {
 		}
 	}
 }
+
+// A path systemd would split or expand reaches it as one word it reads back
+// unchanged: a home with a space, a `%` it would take for a specifier, a `$`
+// for a variable, and in an argument a quote or a backslash, which systemd
+// refuses in a command's path. The binary check reads the same path back, from
+// the files and from systemd's own answer. An ordinary path is written as it
+// stands, so a system installation's units are what they were.
+func TestUnitPathsReachSystemdAsOneWordEach(t *testing.T) {
+	odd := `/home/a b/50%/$HOME/q"uo't\e`
+	manager := `/home/a b/50%/$HOME/bin/morzer`
+	config := filepath.Join(odd, "share", "morzer", "etc", "demo", "installation.yaml")
+	dir := t.TempDir()
+	s := systemd.New(nil, systemd.WithUserScope(dir, "XDG_DATA_HOME="+odd+"/share"))
+	units, err := s.Units(ports.UnitParams{
+		Product: "demo", ManagerPath: manager, ConfigPath: config,
+		UpdateTimer: true, DoctorTimer: true,
+	})
+	if err != nil {
+		t.Fatalf("Units: %v", err)
+	}
+	for _, u := range units {
+		if err := os.WriteFile(filepath.Join(dir, u.Name), u.Contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for line := range strings.Lines(string(u.Contents)) {
+			line = strings.TrimSuffix(line, "\n")
+			if value, ok := strings.CutPrefix(line, "Environment="); ok &&
+				value != `"XDG_DATA_HOME=/home/a b/50%%/$HOME/q\"uo't\\e/share"` {
+				t.Errorf("%s: Environment=%s", u.Name, value)
+			}
+			key, value, _ := strings.Cut(line, "=")
+			if !strings.HasPrefix(key, "Exec") {
+				continue
+			}
+			// systemd expands a variable in an argument, never in the
+			// command's path.
+			if !strings.Contains(value, `/$HOME/bin/morzer" `) || !strings.Contains(value, "/$$HOME/q") {
+				t.Errorf("%s: a `$` is not written as systemd reads it: %s", u.Name, line)
+			}
+			words := systemd.ExecWords(value)
+			if words[0] != manager || !slices.Equal(words[len(words)-2:], []string{"--config", config}) {
+				t.Errorf("%s: %s reads back as %q", u.Name, line, words)
+			}
+		}
+	}
+	paths, err := s.UnitsManagerPaths(context.Background(), "demo")
+	if err != nil || !slices.Equal(paths, []string{manager}) {
+		t.Errorf("the units' binary reads back as %q, %v; want %q", paths, err, manager)
+	}
+
+	asked, runner, askedDir := newSupervisor(t)
+	if err := os.WriteFile(filepath.Join(askedDir, "demo.service"), []byte("[Service]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.OnOutput("show demo.service",
+		"ExecStart={ path=/home/a b/bin/morzer ; argv[]=/home/a b/bin/morzer apply ; ignore_errors=no }\n")
+	if paths, err := asked.UnitsManagerPaths(context.Background(), "demo"); err != nil ||
+		!slices.Contains(paths, "/home/a b/bin/morzer") {
+		t.Errorf("systemd's answer reads back as %q, %v", paths, err)
+	}
+
+	for _, refused := range []string{`/opt/q"uo/morzer`, `/opt/it's/morzer`, `/opt/b\s/morzer`, "/opt/l\nf/morzer"} {
+		if _, err := s.Units(ports.UnitParams{Product: "demo", ManagerPath: refused}); !errors.Is(err, domain.ErrPreflight) {
+			t.Errorf("a manager at %q was written into a command systemd refuses: %v", refused, err)
+		}
+	}
+
+	plain, err := systemd.New(nil).Units(ports.UnitParams{
+		Product: "demo", ManagerPath: "/usr/local/bin/morzer", ConfigPath: "/etc/demo/installation.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Units: %v", err)
+	}
+	if want := "ExecStart=/usr/local/bin/morzer apply --startup --plain --log-format json " +
+		"--config /etc/demo/installation.yaml\n"; !strings.Contains(string(plain[0].Contents), want) {
+		t.Errorf("an ordinary path is not written as it stands:\n%s", plain[0].Contents)
+	}
+}

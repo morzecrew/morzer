@@ -115,7 +115,7 @@ func startsTheManager(path string, paths domain.Paths) bool {
 	lines := bufio.NewScanner(f)
 	for lines.Scan() {
 		if exec, ok := strings.CutPrefix(lines.Text(), "ExecStart="); ok {
-			args := strings.Fields(exec)
+			args := systemd.ExecWords(exec)
 			// ManagerPath resolves symlinks, so a unit can name the binary a
 			// `morzer` link points at; that is this one, if any.
 			if len(args) < 6 || (filepath.Base(args[0]) != "morzer" && args[0] != systemd.ManagerPath()) ||
