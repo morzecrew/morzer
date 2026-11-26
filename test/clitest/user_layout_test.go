@@ -174,3 +174,28 @@ func TestAUserTreeHoldingOnlyAnUnreadableInstallationIsTheUsers(t *testing.T) {
 		FieldEquals("data.0.layout", "user")
 }
 
+// Completion falls back to the units the manager wrote for an installation it
+// cannot read, and for the user's tree those are the user's own units.
+func TestProductCompletionFallsBackToTheUsersOwnUnits(t *testing.T) {
+	r := initUser(t)
+	sealed := r.Path("data", "morzer", "etc", "sandbox")
+	if err := os.MkdirAll(sealed, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o750) })
+	units := r.Path("config", "systemd", "user")
+	if err := os.MkdirAll(units, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unit := "[Service]\nExecStart=/usr/local/bin/morzer apply --startup --plain --log-format json --config " +
+		filepath.Join(r.Path("data", "morzer"), "etc", "sandbox", "installation.yaml") + "\n"
+	if err := os.WriteFile(filepath.Join(units, "sandbox.service"), []byte(unit), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Run("__complete", "--product", "").ExitCode(0).
+		OutputContains("demo\t", "sandbox\tnot readable as this user", ":4")
+}

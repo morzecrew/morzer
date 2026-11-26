@@ -22,5 +22,11 @@ func newSupervisor(runner exec.Runner, paths domain.Paths) ports.Supervisor {
 }
 
 // supervisedProducts names the products whose service unit the manager wrote,
-// for a completion that cannot read the installations themselves.
-func supervisedProducts(root string) []string { return unitProducts(systemd.UnitDir, root) }
+// for a completion that cannot read the installations themselves: the user's
+// own units for the user's tree.
+func supervisedProducts(root string, user bool) []string {
+	if user {
+		return unitProducts(userUnitDir(), root)
+	}
+	return unitProducts(systemd.UnitDir, root)
+}

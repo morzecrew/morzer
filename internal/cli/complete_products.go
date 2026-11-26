@@ -38,11 +38,12 @@ func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobr
 	// The completion request parses the line after setup ran, so the root
 	// setup saw is not the one the line names: re-root a copy.
 	d := *a.Deps
-	d.Paths = domain.PathsUnder(a.Flags.root, "")
-	if a.Flags.root == "" && a.managesUserTree() {
+	root, user := a.Flags.root, false
+	if root == "" && a.managesUserTree() {
 		// The user's own, as `morzer ls` with no flag lists them.
-		d.Paths = domain.PathsUnder(userTree(), "")
+		root, user = userTree(), true
 	}
+	d.Paths = domain.PathsUnder(root, "")
 
 	entries, err := ops.ListInstallations(cmd.Context(), &d, ops.ListOptions{})
 	unreadable := err != nil
@@ -57,7 +58,7 @@ func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobr
 		out = append(out, cobra.CompletionWithDesc(e.Product, describeForCompletion(e)))
 	}
 	if unreadable {
-		for _, product := range supervisedProducts(a.Flags.root) {
+		for _, product := range supervisedProducts(root, user) {
 			if !offered[product] {
 				offered[product] = true
 				out = append(out, cobra.CompletionWithDesc(product, "not readable as this user"))
