@@ -263,6 +263,50 @@ func RunRecreateSuite(t *testing.T, newRuntime RuntimeFactory) {
 	})
 }
 
+// ValueVar is the variable the start-keeps-values fixture's service reads.
+const ValueVar = "CONTRACT_VALUE"
+
+// RunStartKeepsValuesSuite pins that Start brings back the values a service was
+// created with, not the ones the configuration carries now (RFC 0023 row 29).
+//
+// A backup stops services and starts them again, and an operator's `config
+// set` may have changed a value in between without anything being re-created
+// yet. Under Compose a start keeps what the container was created with. Under
+// Quadlet a stop removes the container, and systemd reads the values again at
+// every start, so the adapter has to keep its own copy for Start to read.
+//
+// Its own factory, because the fake models no values. The configuration names
+// one service, `app`, that stays up and has VALUE set from ValueVar in its
+// environment.
+func RunStartKeepsValuesSuite(t *testing.T, newRuntime RuntimeFactory) {
+	t.Helper()
+	ctx := context.Background()
+	value := func(t *testing.T, rt ports.Runtime, cfg ports.RuntimeConfig) string {
+		t.Helper()
+		res, err := rt.Exec(ctx, cfg, "app", []string{"sh", "-c", `printf %s "$VALUE"`})
+		require.NoError(t, err)
+		require.True(t, res.OK(), "reading the value failed: %s", res.Output)
+		return res.Stdout
+	}
+
+	t.Run("start brings back the values a service was created with", func(t *testing.T) {
+		rt, cfg := newRuntime(t)
+		cfg.Env = map[string]string{ValueVar: "before"}
+		require.NoError(t, rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}))
+		// The positive control: without it a service that never saw the
+		// value would read "" both times and prove nothing.
+		require.Equal(t, "before", value(t, rt, cfg))
+
+		changed := cfg
+		changed.Env = map[string]string{ValueVar: "after"}
+		require.NoError(t, rt.Stop(ctx, changed, nil, 30*time.Second))
+		require.NoError(t, rt.Start(ctx, changed, nil))
+
+		assert.Equal(t, "before", value(t, rt, changed),
+			"Start applied a value the service was not created with")
+	})
+}
+
 // runInspectionSuite covers what `morzer logs`, `ps` and `stats` read.
 //
 // These three are the ones a fake cannot prove on its own, in opposite
