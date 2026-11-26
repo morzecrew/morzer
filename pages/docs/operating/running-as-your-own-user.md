@@ -72,7 +72,10 @@ you run with no flag finds it there.
 
 `$XDG_DATA_HOME` is `~/.local/share` when it is unset, and `$XDG_CONFIG_HOME`
 is `~/.config`. The units carry the data home they were written with, so they
-find the same installation if you set it only in your shell.
+find the same installation if you set it only in your shell. Your own commands
+find it only with that same data home. Run with another, a `--config` into the
+old tree reads it as a tree of its own and renders its secrets inside it, on
+disk, so set `XDG_DATA_HOME` in your profile rather than in one shell.
 
 ## Which installation a command manages
 
