@@ -24,20 +24,41 @@ func userTree() string {
 	return ""
 }
 
-// userDataHome is the XDG data home, or "" with no home to default it from.
+// userDataHome is the XDG data home, or "" with neither an absolute
+// $XDG_DATA_HOME nor a home to default it from.
 func userDataHome() string {
-	home, err := os.UserHomeDir()
-	if err != nil || !filepath.IsAbs(home) {
-		return ""
+	home, _ := os.UserHomeDir()
+	if data := dataHome(os.Getenv, home); filepath.IsAbs(data) {
+		return data
 	}
-	return dataHome(os.Getenv, home)
+	return ""
+}
+
+// isUserTree reports whether root is this user's tree, by any path that
+// resolves to it: a data home behind a symlink is still the user's, and read
+// as another tree its secrets would render inside it.
+func isUserTree(root string) bool {
+	tree := userTree()
+	switch {
+	case tree == "" || root == "":
+		return false
+	case root == tree:
+		return true
+	}
+	a, errA := filepath.EvalSymlinks(root)
+	b, errB := filepath.EvalSymlinks(tree)
+	return errA == nil && errB == nil && a == b
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
-// it, `$XDG_CONFIG_HOME/systemd/user`.
+// it, `$XDG_CONFIG_HOME/systemd/user`, or "" with neither an absolute
+// $XDG_CONFIG_HOME nor a home to default it from.
 func userUnitDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(configHome(os.Getenv, home), "systemd", "user")
+	if config := configHome(os.Getenv, home); filepath.IsAbs(config) {
+		return filepath.Join(config, "systemd", "user")
+	}
+	return ""
 }
 
 // userPaths is product's layout in this user's tree. Refused while
@@ -50,6 +71,13 @@ func userPaths(product string) (domain.Paths, error) {
 			"XDG_RUNTIME_DIR is not set, and a user installation renders its secrets there").
 			WithHint("run this from your own login session, or set XDG_RUNTIME_DIR=/run/user/%d",
 				os.Geteuid())
+	}
+	if userUnitDir() == "" {
+		// Else its units would be written relative to wherever the
+		// command ran.
+		return domain.Paths{}, domain.Preflight(nil,
+			"HOME is not set, and a user installation's units are written under it").
+			WithHint("run this from your own login session, or set HOME or XDG_CONFIG_HOME")
 	}
 	return domain.UserPaths(userDataHome(), run, product), nil
 }

@@ -1505,7 +1505,7 @@ func (a *App) pathsFromConfig() (domain.Paths, error) {
 	switch {
 	case root == "":
 		return domain.DefaultPaths(product), nil
-	case root == userTree():
+	case isUserTree(root):
 		// What the user's own units pass. The tree is the user layout,
 		// whose render directory is the user's tmpfs, not <tree>/run.
 		return userPaths(product)

@@ -8,6 +8,8 @@ import "github.com/morzecrew/morzer/internal/domain"
 
 func userTree() string { return "" }
 
+func isUserTree(string) bool { return false }
+
 func userPaths(product string) (domain.Paths, error) {
 	return domain.Paths{}, domain.Internal(nil, "there is no user layout for %s on macOS", product)
 }

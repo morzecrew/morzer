@@ -51,6 +51,31 @@ func TestInitWithoutRootLandsInTheUsersTree(t *testing.T) {
 		ExitCode(0).FieldEquals("data.0.layout", "user")
 }
 
+// The user's tree is the user layout by any path that resolves to it, and with
+// no HOME while $XDG_DATA_HOME names it. Read as a tree of its own, a --config
+// into it would render its secrets inside it, on disk. With no home for its
+// units either, the command is refused rather than writing them relative to
+// wherever it ran.
+func TestTheUsersTreeIsRecognisedByAnyPathToIt(t *testing.T) {
+	r := clitest.NewUser(t)
+	if err := os.MkdirAll(r.Path("real"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(r.Path("real"), r.Path("data")); err != nil {
+		t.Fatal(err)
+	}
+	r.Run("init", "--release", r.Bundle, "--profile", "embedded",
+		"--domain", "demo.example", "--no-recovery-recipient", "--install-units=false").ExitCode(0)
+
+	config := r.Path("real", "morzer", "etc", "demo", "installation.yaml")
+	r.Run("--json", "--config", config, "ls").ExitCode(0).FieldEquals("data.0.layout", "user")
+
+	t.Setenv("HOME", "")
+	r.Run("--json", "ls").ExitCode(0).FieldEquals("data.0.layout", "user")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	r.Run("ls").ExitCode(3).StderrContains("HOME is not set")
+}
+
 // Without $XDG_RUNTIME_DIR a user installation has no tmpfs to render its
 // secrets into, and the command is refused rather than given a directory on
 // disk (logs/quadlet-adapter.md, U1).
