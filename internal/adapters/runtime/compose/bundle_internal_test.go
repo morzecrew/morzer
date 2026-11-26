@@ -28,7 +28,7 @@ func TestReadBundleReportsWhatTheFilesDefineAndInterpolate(t *testing.T) {
 `)
 	write("compose/db.yaml", "services:\n  db:\n    image: ${DEMO_IMAGE_DB}\n")
 
-	got, err := (&Runtime{}).ReadBundle(root, []string{"compose/compose.yaml", "compose/db.yaml"})
+	got, err := (&Runtime{}).ReadBundle("demo", root, []string{"compose/compose.yaml", "compose/db.yaml"})
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"app", "db"}, got.Services)
@@ -52,7 +52,7 @@ func TestReadBundleFollowsAnIncludeInsideTheBundle(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "compose", "db", "db.yaml"),
 		[]byte("include: [../other.yaml]\nservices:\n  db:\n    image: ${DEMO_IMAGE_DB}\n"), 0o600))
 
-	got, err := (&Runtime{}).ReadBundle(root, []string{"compose/compose.yaml"})
+	got, err := (&Runtime{}).ReadBundle("demo", root, []string{"compose/compose.yaml"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"app", "db", "worker"}, got.Services)
 	assert.False(t, got.ServicesPartial)
@@ -72,7 +72,7 @@ func TestReadBundleSaysWhenAnIncludeIsOutOfReach(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(root, "compose.yaml"),
 			[]byte("include:\n  - "+inc+"\nservices:\n  app:\n    image: x\n"), 0o600))
 
-		got, err := (&Runtime{}).ReadBundle(root, []string{"compose.yaml"})
+		got, err := (&Runtime{}).ReadBundle("demo", root, []string{"compose.yaml"})
 		require.NoError(t, err, inc)
 		assert.Equal(t, []string{"app"}, got.Services, inc)
 		assert.True(t, got.ServicesPartial, inc)

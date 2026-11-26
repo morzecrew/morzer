@@ -217,3 +217,31 @@ func TestAOneShotsLogIsReadBackStreamByStream(t *testing.T) {
 	stdout, _, _, _ = readRunLog(filepath.Join(t.TempDir(), "absent.log"))
 	assert.Empty(t, stdout, "a one-shot that wrote nothing has nothing to read")
 }
+
+// `release verify` reads the files where no Podman is installed. The product
+// is given, so a product whose name holds a dash still has its services told
+// apart from its prefix.
+func TestTheBundleIsReadWithoutPodman(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "quadlet"), 0o700))
+	write := func(name, text string) {
+		require.NoError(t, os.WriteFile(filepath.Join(root, "quadlet", name), []byte(text), 0o600))
+	}
+	write("my-app-web.container", "# ${MY_APP_PARAM_GONE} is not read\n[Container]\n"+
+		"Image=${MY_APP_IMAGE_WEB}\nPublishPort=${MY_APP_PARAM_PORT}:80\nExec=sh -c \"echo $$HOME\"\n")
+	write("my-app-migrate.container", web+"\n[Service]\nType=oneshot\n")
+	write("my-app-data.volume", "[Volume]\n")
+
+	got, err := (&Runtime{}).ReadBundle("my-app", root, []string{
+		"quadlet/my-app-web.container", "quadlet/my-app-migrate.container", "quadlet/my-app-data.volume",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"migrate", "web"}, got.Services, "a one-shot is a service, a volume is not")
+	assert.Equal(t, []string{"MY_APP_IMAGE_WEB", "MY_APP_PARAM_PORT"}, got.Variables)
+	assert.False(t, got.ServicesPartial)
+
+	_, err = (&Runtime{}).ReadBundle("other", root, []string{"quadlet/my-app-web.container"})
+	assert.ErrorContains(t, err, `does not start with "other-"`)
+	_, err = (&Runtime{}).ReadBundle("my-app", root, []string{"../outside/my-app-web.container"})
+	assert.Error(t, err, "a file outside the release is not read")
+}

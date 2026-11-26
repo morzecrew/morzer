@@ -121,7 +121,7 @@ func checkArchivable(app *App, rel domain.Release) error {
 		return domain.ValidationError(err, "cannot read %s", sums)
 	}
 
-	if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
+	if err := checkBundleIntegrity(rel, app.Deps.EveryRuntime()); err != nil {
 		return err
 	}
 

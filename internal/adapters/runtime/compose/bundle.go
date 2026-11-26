@@ -29,8 +29,9 @@ var interpolation = regexp.MustCompile(`\$\$|\$\{?([A-Za-z_][A-Za-z0-9_]*)`)
 // line naming a variable is not a reference to it. An `include` is followed as
 // Compose follows it, relative to the file that includes it, while it stays
 // inside the bundle; one that does not, such as a remote one, leaves the
-// services it adds unknown, and says so.
-func (r *Runtime) ReadBundle(root string, files []string) (ports.BundleFiles, error) {
+// services it adds unknown, and says so. The product is not needed: a Compose
+// file names its services as keys.
+func (r *Runtime) ReadBundle(_, root string, files []string) (ports.BundleFiles, error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return ports.BundleFiles{}, domain.ValidationError(err, "cannot read the release at %s", root)

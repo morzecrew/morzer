@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -429,6 +430,42 @@ func TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare(t *tes
 	restore()
 
 	r.Run("release", "verify", r.Bundle).ExitCode(0)
+}
+
+// TestVerifyChecksEveryRuntimeTheReleaseDeclares: an installation may be
+// created on any runtime its release declares, so each one's files are read,
+// and a problem names the runtime whose files have it
+// (logs/quadlet-adapter.md, "The wiring").
+func TestVerifyChecksEveryRuntimeTheReleaseDeclares(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the Quadlet adapter is wired on Linux only")
+	}
+	r := clitest.New(t)
+	dir := filepath.Join(r.Bundle, "quadlet")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	write := func(name, text string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600))
+	}
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_APP}\n")
+	write("demo-db.container", "[Container]\nImage=${DEMO_IMAGE_DB}\n")
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), "runtimes:\n",
+		"runtimes:\n  quadlet:\n    files: [quadlet/demo-app.container, quadlet/demo-db.container]\n", 1)), 0o600))
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
+
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_AP}\n")
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains("quadlet: DEMO_IMAGE_AP is interpolated")
+
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_APP}\n")
+	require.NoError(t, os.Remove(filepath.Join(dir, "demo-db.container")))
+	write("demo-dbb.container", "[Container]\nImage=${DEMO_IMAGE_DB}\n")
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), "runtimes:\n",
+		"runtimes:\n  quadlet:\n    files: [quadlet/demo-app.container, quadlet/demo-dbb.container]\n", 1)), 0o600))
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains(`quadlet: secret "db_password" restarts service "db"`)
 }
 
 // TestVerifyAndShowReadTheArchiveAnAuthorShips: the archive `release archive`
