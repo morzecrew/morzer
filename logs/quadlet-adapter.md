@@ -591,3 +591,65 @@ went ahead. On a host whose daemon is the system's, `init` was refused and
 the test failed. The user runner now puts a stand-in `docker` on `PATH`, so
 no test asks the host's daemon whose it is. A test of the refusal through
 the CLI was added with it (`test/clitest/user_layout_test.go`).
+
+## Review of #434, round 1, 2026-11-26
+
+Bot review of the P3a branch found nine defects, and each was reproduced
+and fixed in its own commit. Four of them were decisions the rows leave
+open, recorded below as U10–U13. These entries were written after the
+fixes they govern, not before. That is a lapse, recorded as one.
+
+Left as it was, and worth knowing: a tree outside `$XDG_DATA_HOME/morzer`
+is read as a tree of its own, so a `--config` into a user installation's
+tree, from a command run with a different data home, renders its secrets
+inside the tree, on disk. Only a mark the installation keeps of its own
+layout could tell the two apart, which is a schema change. The docs page
+now says to keep one data home (`pages/docs/operating/running-as-your-own-user.md:72-77`).
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U10, row 32 says Compose needs the user's own daemon, and U7 asked only at init and in doctor; a unit's or a shell's command reaching the system's daemon later would change the system installation of the same product
+evidence: internal/lifecycle/ops/ops.go:666-671
+action: decided
+proposal: ASSUMED — every command of a user installation that takes the deployment lock, and exec, which takes none, asks whose the engine is before it waits on or changes anything, in its own environment. A probe that cannot run does not refuse, since the command that needs the engine then fails on its own.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U11, row 30 places the tree at $XDG_DATA_HOME/morzer and does not say how a path names it; compared as spelled, a --config through a symlink's target read the tree as a tree of its own, with its secrets on disk
+evidence: internal/cli/layout_linux.go:37-52
+action: decided
+proposal: ASSUMED — a root is the user's tree when it resolves to the same directory. An absolute $XDG_DATA_HOME is honoured with HOME unset, and a user layout with no absolute config home for its units is refused.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U12, user units carry paths from the user's home, where a space or a % is the user's to choose, and the units wrote every path as it stood
+evidence: internal/adapters/supervisor/systemd/systemd.go:1113-1137
+action: decided
+proposal: ASSUMED — unit paths and Environment= values are written as one systemd word each, unchanged when nothing in them is special. A manager path with a quote, a backslash or a control character is refused at render, since systemd refuses such a command however it is quoted (`systemd-analyze --user verify`: "Executable path contains special characters").
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U13, U9 held a user installation's units to the binary check but kept its skip when the manager does not answer, which for a user's manager does not mean the units never run
+evidence: internal/lifecycle/ops/manager_version.go:140-145
+action: decided
+proposal: ASSUMED — a user installation's units are read whatever Available says, and a check that cannot read them fails, as it does for a system installation's.
+```
