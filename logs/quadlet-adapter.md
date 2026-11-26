@@ -995,3 +995,117 @@ Row 29's consequences 1 and 4 are in this PR as well:
 - The comments on `Stop` and `Start` (`internal/ports/runtime.go`) now
   promise what row 29 protects. That is the definition, the values and every
   declared volume, but not a container's writable layer.
+
+## The adapter, 2026-11-26
+
+On branch `quadlet-adapter-build`, merging `quadlet-p3b` (#439) and
+`compose-volume-helper` (#440). P3b now ships as three PRs rather than two:
+#439, the helper shared with Compose (#440), and this adapter with its suite.
+Choosing the runtime at `init` (G5), the tool catalogue, `doctor` with no
+installation, the docs and the changelog follow in a fourth, when the adapter
+is wired. Until then no command reaches it, so row 12 stays in force.
+
+### Measured while building it, 2026-11-26
+
+On the development host, Podman 6.1.1 and systemd 261, with scratch units
+under `$XDG_RUNTIME_DIR/containers/systemd/morzer/`, removed afterwards.
+
+1. **Quadlet reads only its own kinds of file.** A `parameters.env` beside
+   the units was ignored, and `[Container]` keys in a drop-in were applied
+   (dry run).
+2. **A container's lines reach the user's journal with `CONTAINER_NAME`
+   set,** at priority 6 for stdout and 3 for stderr. Podman's and systemd's
+   own lines about the unit carry no `CONTAINER_NAME`.
+3. **The parameter file takes `KEY="..."` with `\\`, `\"` and `\$` escaped.**
+   A value holding a space, a quote, a backslash, a dollar and a percent sign
+   reached the container unchanged.
+4. **`Exec=` is expanded by systemd**, so a `$` meant for the container's
+   shell has to be written `$$`.
+5. **`podman stats --format '{{json .ContainerStats}}'` gives numbers,** not
+   the display strings Compose parses. The user's cgroup here delegates
+   `cpu memory pids` and not `io`, and Podman then reports block IO as zero.
+6. **A stop leaves a unit failed with exit 143** when the container ends on
+   SIGTERM, and 137 when a shell as PID 1 ignores it until the kill.
+7. **Under a Quadlet unit, a one-shot's output reached neither the unit's
+   stdout nor the journal with `LogDriver=passthrough`.** The same `podman run`
+   under `systemd-run` wrote it to both, with each property of the generated
+   unit added one at a time (`Type=oneshot`, `Delegate=yes`, `KillMode=mixed`,
+   `PODMAN_SYSTEMD_UNIT`). With `LogDriver=k8s-file` and a log path of the
+   run's own, every line was written as `<instant> <stream> <F|P> <text>`.
+
+```divergence
+decision: 28
+grade: ASSUMED
+kind: resolved
+at: 2026-11-26T14:46:11Z
+attempt: 1
+claim: row 28 is honoured, and the units, their drop-ins and the parameter copy live in the user's runtime directory, which a reboot clears, so nothing an earlier boot left can start before `apply --startup` has rendered and installed it again
+evidence: internal/adapters/runtime/quadlet/quadlet.go:135-152
+action: decided
+proposal: ASSUMED — as row 28, with the units in `$XDG_RUNTIME_DIR/containers/systemd/morzer/<product>/`; a unit outside the installation that requires one of them finds no unit at boot, rather than one that fails on a missing parameter file
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T14:46:11Z
+attempt: 1
+claim: a container that ends on the SIGTERM of a stop exits 143, and systemd counts that as a failure, so every Stop, the cold backup capture's included, left the unit failed and the user's manager degraded
+evidence: internal/adapters/runtime/quadlet/install.go:100-107
+action: decided
+proposal: ASSUMED — the adapter's drop-in sets SuccessExitStatus=143 on every container unit
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T14:46:11Z
+attempt: 1
+claim: RunOneShot needs stdout apart from stderr, because facts are read from stdout alone, and a passthrough container's output under a Quadlet unit reached neither the unit's stdout nor the journal
+evidence: internal/adapters/runtime/quadlet/oneshot.go:147-148
+action: decided
+proposal: ASSUMED — a one-shot runs as a transient copy of its unit that logs to a k8s-file of its own; the adapter reads stdout and stderr back from it, line by line in the order they arrived
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T14:46:11Z
+attempt: 1
+claim: a one-shot can run before the first Up, the first apply's migration does, when nothing is installed and its unit's volumes and networks do not exist
+evidence: internal/adapters/runtime/quadlet/oneshot.go:64-68
+action: decided
+proposal: ASSUMED — before the first Up a one-shot installs the bundle, parameters included; after it, it writes only the bundle's volumes and networks, and leaves the running services' definitions and values as Up left them (row 29)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T14:46:11Z
+attempt: 1
+claim: logs cite line ranges in compose/volumes.go, and the log checker fails a citation past a file's end, so moving the volume helper to a package of its own failed `just log-check` on logs/macos-host.md and logs/restore-resume.md, whose entries may not be edited
+evidence: internal/adapters/runtime/compose/volumes.go:102
+action: decided
+proposal: ASSUMED — the helper stays in the Compose package as an exported VolumeHelper, and the Quadlet adapter imports it, as launchd imports the systemd supervisor (#440)
+```
+
+Declined for this PR, each for the wiring PR to settle:
+- **`BundleReader`.** `ReadBundle(root, files)` is given no product, and a
+  Quadlet file's service is its name without the product's prefix. A
+  product name may itself contain a dash, so the prefix cannot be found
+  from the files alone. Answering it needs the product passed in, a change
+  to an existing capability's signature, and that is the next PR's question.
+- **`ImageIngester`** (G7). The loopback registry Compose ingests through
+  has to be shared the way the volume helper is.
+- **`RegistryProber`.** Not measured yet: whether Podman can probe a registry
+  without pulling.
+- **`HookVarSupplier`, `OptionResolver`, `FileSharingProber`,
+  `EngineScopeProber`, `EngineUnitNamer`.** Nothing to answer: no
+  runtime-supplied hook variable, no options, no file sharing, a rootless
+  Podman is the user's own, and there is no daemon unit.
+
+**Drift count: 0.**
