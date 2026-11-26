@@ -26,4 +26,17 @@ func TestTheUsersTreeIsKnownBeforeItExists(t *testing.T) {
 	assert.True(t, isUserTree(filepath.Join(dir, "data", "morzer")))
 	assert.False(t, isUserTree(filepath.Join(real, "other")))
 	assert.False(t, isUserTree(""))
+
+	// A data home that links to a directory not yet made, relatively.
+	dangling := t.TempDir()
+	require.NoError(t, os.Symlink("later", filepath.Join(dangling, "data")))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dangling, "data"))
+	assert.True(t, isUserTree(filepath.Join(dangling, "later", "morzer")), "a dangling link's target")
+
+	// A loop ends, naming nothing the user's.
+	loop := t.TempDir()
+	require.NoError(t, os.Symlink("b", filepath.Join(loop, "a")))
+	require.NoError(t, os.Symlink("a", filepath.Join(loop, "b")))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(loop, "a"))
+	assert.False(t, isUserTree(filepath.Join(real, "morzer")))
 }

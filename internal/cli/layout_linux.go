@@ -42,18 +42,30 @@ func isUserTree(root string) bool {
 	return tree != "" && root != "" && resolved(root) == resolved(tree)
 }
 
-// resolved is p with its symlinks resolved, through its nearest existing
-// ancestor while p itself does not exist yet.
-func resolved(p string) string {
-	p = filepath.Clean(p)
+// resolved is p with its symlinks resolved: through its nearest existing
+// ancestor while p itself does not exist yet, and through a link whose target
+// does not exist yet either.
+func resolved(p string) string { return resolve(filepath.Clean(p), 0) }
+
+// maxLinkHops bounds the links resolve follows by hand, as the kernel bounds
+// its own, so a loop ends.
+const maxLinkHops = 40
+
+func resolve(p string, hops int) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
+	}
+	if target, err := os.Readlink(p); err == nil && hops < maxLinkHops {
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(p), target)
+		}
+		return resolve(filepath.Clean(target), hops+1)
 	}
 	parent := filepath.Dir(p)
 	if parent == p {
 		return p
 	}
-	return filepath.Join(resolved(parent), filepath.Base(p))
+	return filepath.Join(resolve(parent, hops), filepath.Base(p))
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
