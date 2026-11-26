@@ -696,9 +696,12 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 	// A user installation's command on a daemon not the user's own would
 	// change the system's installation of the same product (RFC 0023 row
 	// 32). Asked once the lock is held, so a command that waited behind
-	// another is asked about the daemon it is about to use.
-	if err := d.refuseForeignEngine(ctx); err != nil {
-		return err
+	// another is asked about the daemon it is about to use. Not `init`'s:
+	// it may not know its runtime yet, and asks once it does.
+	if opType != domain.OpTypeInit {
+		if err := d.refuseForeignEngine(ctx); err != nil {
+			return err
+		}
 	}
 
 	return fn(ctx)

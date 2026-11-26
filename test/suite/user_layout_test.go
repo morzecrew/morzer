@@ -14,6 +14,8 @@ import (
 	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/events"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
+	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // userLayout is a user installation's layout under a test's directory (RFC
@@ -156,4 +158,62 @@ func TestAUserInstallationsMetricsDirectoryIsAskedAsItsUser(t *testing.T) {
 
 	assert.Contains(t, metrics(newHarnessAt(t, "demo", userLayout)).Message, "is not writable")
 	assert.NotContains(t, metrics(newHarness(t)).Message, "is not writable")
+}
+
+// `init` asks about the engine of the runtime it installs with. A user's
+// installation on a runtime with no daemon of its own is not refused over the
+// Docker daemon being the system's, and one on Compose still is, by the
+// runtime it names or the one its release declares (RFC 0023 row 32).
+func TestInitAsksTheEngineOfTheRuntimeItInstallsWith(t *testing.T) {
+	ctx := context.Background()
+	harnessFor := func(declare string) (*harness, string) {
+		h := newHarnessAt(t, "demo", userLayout)
+		h.setHookEnv()
+		realIdentity(t, h)
+		h.Runtime.Fail["ProbeEngineScope"] = domain.Preflight(nil, "the Docker daemon is the system's")
+		h.Deps.Runtimes = []ports.Runtime{h.Runtime, runtimeNamingTools{fakes.NewRuntime(), "quadlet", nil}}
+		src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+		copyBundle(t, testBundlePath(t), src)
+		retargetManifest(t, src, h.Root)
+		manifest := filepath.Join(src, "manifest.yaml")
+		raw, err := os.ReadFile(manifest)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), "runtimes:\n", declare, 1)), 0o644))
+		return h, src
+	}
+	both := "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n"
+	exists := func(h *harness) bool {
+		ok, err := h.Deps.State.InstallationExists(ctx)
+		require.NoError(t, err)
+		return ok
+	}
+
+	h, src := harnessFor(both)
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Runtime: "quadlet"})
+	require.NoError(t, err, "a runtime with no daemon of its own was refused over Docker's")
+	assert.True(t, exists(h))
+
+	h, src = harnessFor(both)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Runtime: "compose"})
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	assert.False(t, exists(h), "named, the runtime's engine is asked before anything is created")
+
+	h, src = harnessFor("runtimes:\n")
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.ErrorIs(t, err, domain.ErrPreflight, "the release's own runtime is asked once it is staged")
+	assert.False(t, exists(h), "and before the installation is written")
+
+	h, src = harnessFor(both)
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.ErrorContains(t, err, "choose one with --runtime",
+		"with the choice not made, no runtime's engine is the one to ask about")
+
+	// The release's only runtime, with Compose's files under it.
+	h, src = harnessFor("runtimes:\n")
+	raw, err := os.ReadFile(filepath.Join(src, "manifest.yaml"))
+	require.NoError(t, err)
+	only := strings.Replace(string(raw), "runtimes:\n  compose:\n", "runtimes:\n  quadlet:\n", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(src, "manifest.yaml"), []byte(only), 0o644))
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.NoError(t, err, "a release declaring one runtime with no daemon was refused over Docker's")
 }

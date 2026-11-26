@@ -236,8 +236,19 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 
 	// The engine too, for a user installation: on the system's, it would
 	// share its project with the system's installation (RFC 0023 row 32).
-	if err := d.refuseForeignEngine(ctx); err != nil {
-		return Result{}, err
+	// Asked of the runtime the installation will run on: the one --runtime
+	// names, or with no release the default. A release that leaves the
+	// choice to itself is known once it is staged, and asked then, before
+	// the installation is written.
+	if opts.Runtime != "" {
+		if err := d.useRuntime(opts.Runtime); err != nil {
+			return Result{}, err
+		}
+	}
+	if opts.Runtime != "" || opts.ReleasePath == "" {
+		if err := d.refuseForeignEngine(ctx); err != nil {
+			return Result{}, err
+		}
 	}
 
 	// The schedule too, and for the same reason: systemd refusing it would
@@ -774,6 +785,11 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	}
 	if err := d.useRuntime(runtime); err != nil {
 		return domain.Installation{}, err
+	}
+	if opts.Runtime == "" && opts.ReleasePath != "" {
+		if err := d.refuseForeignEngine(ctx); err != nil {
+			return domain.Installation{}, err
+		}
 	}
 	inst.Runtime = runtime
 	// Checked against the staged release and kept in its layering order, as
