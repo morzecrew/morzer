@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/running-as-your-own-user/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running as your own user
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
         
   
@@ -1698,6 +1727,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         On a Mac
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-your-own-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        For your own installation
       </span>
     </span>
   </a>
@@ -2834,6 +2874,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#for-your-own-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        For your own installation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3304,6 +3355,12 @@ given no selector is refused, and the refusal names what it found:</p>
 <code>new</code>, <code>verify</code>, <code>pack</code>, <code>build</code> and <code>archive</code>.</p>
 <p><a href="../../operating/several-installations/">Several installations</a> is the whole
 picture: what two deployments share, and what <code>doctor</code> says about it.</p>
+<p>On Linux, who runs the command decides which installations discovery looks at.
+Root, under <code>sudo</code> too, looks at the system's. Anyone else looks at their own,
+under <code>$XDG_DATA_HOME/morzer</code>, when it holds one or the command is <code>init</code>, and
+at the system's otherwise. <code>--config</code> naming a file in that tree selects that
+user's installation. See
+<a href="../../operating/running-as-your-own-user/">Running as your own user</a>.</p>
 <h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -4043,6 +4100,33 @@ no tmpfs. <code>system.units</code> reads launchd's jobs, which only root can. I
 while the start at boot is held after an exit 12, until <code>sudo morzer apply</code>
 succeeds, and while a schedule is not loaded, which then runs at no time
 before the next boot.</p>
+<h3 id="for-your-own-installation">For your own installation<a class="headerlink" href="#for-your-own-installation" title="Permanent link">&para;</a></h3>
+<p>An installation of a user other than root, in their own tree (see
+<a href="../../operating/running-as-your-own-user/">Running as your own user</a>), adds
+these. <code>manager.binary</code> holds the binary its units run to the same rule, with
+that user in root's place.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runtime.engine-scope</code></td>
+<td>Fails while the Docker daemon is not the user's own: <code>docker info</code> lists no <code>name=rootless</code>. On the system's daemon, the installation and a system one of the same product would share a Compose project. <code>init</code>, every command that changes the installation, and <code>exec</code> refuse there too. Warns when the daemon cannot be asked.</td>
+</tr>
+<tr>
+<td><code>system.linger</code></td>
+<td>Warns while the account does not linger, so its units stop at logout and do not start at boot. The remedy is <code>sudo loginctl enable-linger &lt;user&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>network.unprivileged-ports</code></td>
+<td>Warns while the release publishes a port below <code>net.ipv4.ip_unprivileged_port_start</code>, which an engine without <code>CAP_NET_BIND_SERVICE</code> cannot bind.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="history">history<a class="headerlink" href="#history" title="Permanent link">&para;</a></h2>
 <p>Lists the operations the installation ran, newest first: every <code>apply</code>,
 <code>update</code>, <code>rollback</code>, <code>backup</code>, <code>restore</code>, <code>task run</code> and the rest, with its

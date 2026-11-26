@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/running-as-your-own-user/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running as your own user
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
         
   
@@ -4897,8 +4926,10 @@ user:</p>
   manager.</li>
 <li><strong>A manager that cannot give the file away refuses</strong> to render it, exit 6,
   naming the secret. It never falls back to a file it owns, which would fail
-  later as <code>Permission denied</code> inside the container. The manager runs as root
-  wherever it installs units, and only root can give a file to another user.</li>
+  later as <code>Permission denied</code> inside the container. Only root can give a
+  file to another user, so an installation
+  <a href="../../operating/running-as-your-own-user/">run as its own user</a> refuses a
+  secret whose owner is someone else.</li>
 <li><strong>On macOS, <code>owner</code> is not enforced.</strong> Docker Desktop reads the Mac's files
   as the user who runs it, whatever uid the container runs as. A container
   reads a secret only when that user can, and then every container uid can.

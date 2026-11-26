@@ -980,6 +980,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/running-as-your-own-user/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running as your own user
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
         
   
@@ -2833,13 +2862,17 @@ way:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"product"</span><span class="p">:</span><span class="w"> </span><span class="s2">"demo"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/etc/demo"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"layout"</span><span class="p">:</span><span class="w"> </span><span class="s2">"system"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"schema_version"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"release"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.4.0"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"units"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"services"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"running"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<p><code>schema_version</code> is <abbr title="JavaScript Object Notation">JSON</abbr>-only; <code>mode</code>, <code>release</code>, <code>problem</code>, <code>services</code> and
+<p><code>layout</code> is <code>user</code> when the installations are those of the user running the
+command, in their own tree, and <code>system</code> otherwise; the table then says so
+beneath it (see <a href="../../operating/running-as-your-own-user/">Running as your own user</a>).
+<code>schema_version</code> is <abbr title="JavaScript Object Notation">JSON</abbr>-only; <code>mode</code>, <code>release</code>, <code>problem</code>, <code>services</code> and
 <code>services_problem</code> are present only when they apply. <code>units</code> is always present
 and is <code>null</code> when the supervisor could not be read — <code>0</code> is a real answer,
 produced by <code>init --install-units=false</code>.</p>
