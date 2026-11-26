@@ -1284,3 +1284,14 @@ command is wired with. The check inside the step remains, for a caller that
 names no runtime.
 
 **Drift count: 0.**
+
+A second correction, 2026-11-26. Reading the manifest early whenever no
+runtime was named broke the plan over a remote reference. That plan does not
+fetch, and now it did, failing on a registry that does not answer. It also
+moved a broken archive's refusal out of the step that reports it. Four
+clitests in `deprecation_test.go` caught both. The manifest is now read early
+for the runtime only when it is read anyway, for the product's name, or when
+the bundle is on this machine. A manifest that does not read is left to the
+steps.
+
+**Drift count: 0.**
