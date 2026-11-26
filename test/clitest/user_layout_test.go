@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/morzecrew/morzer/test/clitest"
@@ -105,6 +106,32 @@ func TestInitOfAUserInstallationRefusesTheSystemsDaemon(t *testing.T) {
 		ExitCode(3).StderrContains("the Docker daemon is the system's", "docker context use rootless")
 	if _, err := os.Stat(r.Path("data", "morzer", "etc", "demo", "installation.yaml")); !os.IsNotExist(err) {
 		t.Errorf("a refused init wrote the installation: %v", err)
+	}
+}
+
+// Named by --product, a remote release is still read before init creates
+// anything, so a user's init is refused over the system's daemon as it is
+// with a bundle on this machine. The one download serves the staging step too.
+func TestInitOfAUserInstallationFromARegistryRefusesTheSystemsDaemonFirst(t *testing.T) {
+	r := clitest.NewUser(t)
+	archive := filepath.Join(t.TempDir(), "bundle.tar.zst")
+	r.Run("release", "build", r.Bundle).ExitCode(0)
+	r.Run("release", "archive", r.Bundle, "-o", archive).ExitCode(0)
+	var downloads atomic.Int32
+	ref := serveChannelCounting(t, archive, &downloads)
+	args := []string{"init", "--release", ref, "--product", "demo", "--profile", "embedded",
+		"--domain", "demo.example", "--no-recovery-recipient", "--install-units=false"}
+
+	t.Setenv("MORZER_TEST_DOCKER_INFO", `["name=seccomp,profile=builtin","name=cgroupns"]`)
+	r.Run(args...).ExitCode(3).StderrContains("the Docker daemon is the system's")
+	if _, err := os.Stat(r.Path("data", "morzer", "etc", "demo", "age")); !os.IsNotExist(err) {
+		t.Errorf("a refused init created the machine's identity: %v", err)
+	}
+
+	t.Setenv("MORZER_TEST_DOCKER_INFO", `["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]`)
+	r.Run(args...).ExitCode(0)
+	if got := downloads.Load(); got != 2 {
+		t.Errorf("two commands downloaded the bundle %d times, want once each", got)
 	}
 }
 

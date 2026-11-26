@@ -86,14 +86,15 @@ func newInitCommand(app *App) *cobra.Command {
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
 			//
-			// So is the runtime a release leaves to itself, when the
-			// manifest is read anyway or is on this machine: `init`
-			// asks its engine before it creates anything, which needs
-			// to know which runtime that is. A remote one named by
-			// --product is not fetched for it, and a manifest that does
-			// not read is left to the steps that report it; `init`
-			// then asks once the staged release has chosen. A repair
-			// keeps the runtime its installation records.
+			// So is the runtime a release leaves to itself: `init` asks
+			// its engine before it creates anything, which needs to
+			// know which runtime that is. A remote one named by
+			// --product is fetched for it too, into the command's cache
+			// the staging step reads, except by a plan, which fetches
+			// nothing. A manifest that does not read is left to the
+			// steps that report it, and `init` then asks once the
+			// staged release has chosen. A repair keeps the runtime its
+			// installation records.
 			needRuntime := runtimeName == "" && !repair
 			if product == "" && releasePath != "" {
 				manifest, err := app.releaseManifest(cmd.Context(), releasePath)
@@ -107,8 +108,8 @@ func newInitCommand(app *App) *cobra.Command {
 					}
 				}
 			} else if needRuntime && releasePath != "" {
-				if ref, err := ports.ParseRef(releasePath); err == nil && ref.IsLocal() {
-					if manifest, err := release.ManifestAt(ref.Location); err == nil {
+				if ref, err := ports.ParseRef(releasePath); err == nil && (ref.IsLocal() || !app.Flags.dryRun) {
+					if manifest, err := app.releaseManifest(cmd.Context(), releasePath); err == nil {
 						if runtimeName, err = ops.RuntimeForManifest(manifest); err != nil {
 							return err
 						}
