@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -42,18 +43,43 @@ func isUserTree(root string) bool {
 	return tree != "" && root != "" && resolved(root) == resolved(tree)
 }
 
-// resolved is p with its symlinks resolved, through its nearest existing
-// ancestor while p itself does not exist yet.
-func resolved(p string) string {
-	p = filepath.Clean(p)
+// resolved is p with its symlinks resolved: through its nearest existing
+// ancestor while p itself does not exist yet, and through a link whose target
+// does not exist yet either.
+func resolved(p string) string { return resolve(filepath.Clean(p), 0) }
+
+// maxLinkHops bounds the links resolve follows by hand, as the kernel bounds
+// its own, so a loop ends.
+const maxLinkHops = 40
+
+func resolve(p string, hops int) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
 	}
-	parent := filepath.Dir(p)
-	if parent == p {
+	if target, err := os.Readlink(p); err == nil && hops < maxLinkHops {
+		if !filepath.IsAbs(target) {
+			// Beside the link and not cleaned: a `..` in the target
+			// follows the links ahead of it, which cleaning would skip.
+			dir, _ := rawSplit(p)
+			target = dir + "/" + target
+		}
+		return resolve(target, hops+1)
+	}
+	dir, base := rawSplit(p)
+	if dir == p {
 		return p
 	}
-	return filepath.Join(resolved(parent), filepath.Base(p))
+	// dir comes back with no link left in it, so a `..` in base is its
+	// parent, as Join takes it.
+	return filepath.Join(resolve(dir, hops), base)
+}
+
+// rawSplit splits an absolute p at its last separator without cleaning either
+// half, so a `..` stays where the kernel meets it. A trailing slash splits off
+// an empty base, so the link before it is still followed.
+func rawSplit(p string) (dir, base string) {
+	i := strings.LastIndexByte(p, '/')
+	return p[:max(i, 1)], p[i+1:]
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
