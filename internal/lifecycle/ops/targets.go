@@ -149,12 +149,24 @@ func targetSummary(refs []ports.TargetRef) string {
 // policy too few to contradict itself; they run at different times against
 // different listings, so the worst they can disagree about is an extra copy
 // retained.
+//
+// Only this installation's own backups are counted or removed. One target can
+// hold several installations' backups (#436), and the local pass only ever sees
+// its own; counting the others let each installation's retention delete the
+// rest past its own keep count. A manifest naming no installation is not
+// counted either, because nothing says it is this installation's to delete.
 func (d *Deps) remoteRetention(
-	ctx context.Context, ref ports.TargetRef, policy ports.RetentionPolicy,
+	ctx context.Context, inst domain.Installation, ref ports.TargetRef, policy ports.RetentionPolicy,
 ) ([]string, error) {
-	manifests, err := d.Targets.List(ctx, ref)
+	listed, err := d.Targets.List(ctx, ref)
 	if err != nil {
 		return nil, err
+	}
+	var manifests []ports.BackupManifest
+	for _, m := range listed {
+		if m.InstallationID == inst.ID && m.Product == inst.Product {
+			manifests = append(manifests, m)
+		}
 	}
 
 	// List is newest-first, which is the order Prunes reads.

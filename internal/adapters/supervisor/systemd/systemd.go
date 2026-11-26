@@ -679,7 +679,7 @@ WantedBy={{if .User}}default.target{{else}}multi-user.target{{end}}
 
 const backupServiceTemplate = `[Unit]
 Description={{.Description}}
-After={{.Product}}.service
+After={{.Product}}.service{{with .EngineUnit}} {{.}}{{end}}
 {{with .EngineUnit}}Requires={{.}}
 {{end}}
 [Service]
