@@ -108,6 +108,11 @@ test-race:
 test-docker *args:
     go test -tags docker -p 1 -timeout 25m {{args}} ./test/...
 
+# Not run in CI: no lane for it has been watched go red (RFC 0023 §12).
+# Run the Quadlet suites against this user's rootless Podman. Needs podman.
+test-podman *args:
+    go test -tags podman -p 1 -timeout 25m {{args}} ./test/suite/
+
 # Same, with coverage, for the union.
 test-docker-cover:
     go test -tags docker -p 1 -timeout 25m -coverpkg=./internal/... \
