@@ -96,6 +96,11 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 
 	out := ports.ExitResult{Duration: time.Since(started)}
 	out.Stdout, out.Stderr, out.Output, out.Truncated = readRunLog(paths.log)
+	// Read from a file rather than through the runner, so scrubbed here
+	// as the runner scrubs what it captures.
+	out.Stdout = exec.Redact(r.redact, out.Stdout)
+	out.Stderr = exec.Redact(r.redact, out.Stderr)
+	out.Output = exec.Redact(r.redact, out.Output)
 
 	states, err := r.unitStates(ctx, []string{unit})
 	if err != nil {
