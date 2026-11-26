@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -257,6 +258,59 @@ func TestAOneShotsLogIsReadBackStreamByStream(t *testing.T) {
 	assert.Empty(t, stdout, "a one-shot that wrote nothing has nothing to read")
 }
 
+// No record, line or stream of a one-shot's log is held past the capture
+// bound, however long a line the one-shot wrote without a newline.
+func TestAOneShotsLogIsBoundedHoweverLongALine(t *testing.T) {
+	limit := exec.DefaultMaxCapture
+	path := filepath.Join(t.TempDir(), "run.log")
+	piece := strings.Repeat("x", limit/2)
+	var log strings.Builder
+	for range 4 {
+		log.WriteString("2026-11-26T17:44:33.1+03:00 stdout P " + piece + "\n")
+	}
+	log.WriteString("2026-11-26T17:44:33.2+03:00 stdout F end\n")
+	log.WriteString("2026-11-26T17:44:33.3+03:00 stderr F " + strings.Repeat("y", 2*limit) + "\n")
+	require.NoError(t, os.WriteFile(path, []byte(log.String()), 0o600))
+
+	stdout, stderr, output, truncated := readRunLog(path)
+	assert.True(t, truncated)
+	assert.LessOrEqual(t, len(stdout), limit, "the pieces of one line are bounded as they are joined")
+	assert.LessOrEqual(t, len(stderr), limit, "one record is bounded as it is read")
+	assert.LessOrEqual(t, len(output), 2*limit)
+}
+
+// The copy of a service a one-shot runs has a container of its own, so a
+// service that names its container keeps running beside it; and its timeout
+// keeps a fraction of a second.
+func TestAOneShotsCopyNamesItsOwnContainer(t *testing.T) {
+	dir := t.TempDir()
+	p := runPaths{
+		unit: filepath.Join(dir, "demo-web-run-1.container"), dropIn: filepath.Join(dir, "demo-web-run-1.container.d"),
+		env: filepath.Join(dir, "demo-web-run-1.env"), log: filepath.Join(dir, "demo-web-run-1.log"),
+		status: filepath.Join(dir, "demo-web-run-1.status"),
+	}
+	u := unitFile{name: "demo-web.container", kind: kindContainer, text: []byte(web + "ContainerName=demo-web-1\n")}
+	require.NoError(t, p.write(u, "demo-web-run-1", nil, ports.RunOptions{Timeout: 1500 * time.Millisecond}))
+	got, err := os.ReadFile(filepath.Join(p.dropIn, dropIn))
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "\nContainerName=demo-web-run-1\n")
+	assert.Contains(t, string(got), "\nTimeoutStartSec=1500ms\n")
+}
+
+// With no service installed, as after a reboot before the first apply, an
+// unfiltered journal would be every other service's, so nothing is read.
+func TestLogsWithNothingInstalledReadNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the adapter refuses root")
+	}
+	r := &Runtime{runtimeDir: t.TempDir()}
+	rc, err := r.Logs(context.Background(), ports.RuntimeConfig{Product: "demo"}, ports.LogOptions{})
+	require.NoError(t, err)
+	got, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
 // recorder is a runner that runs nothing and remembers what it was asked.
 type recorder struct{ argv [][]string }
 
@@ -281,18 +335,4 @@ func TestBothNamesOfAVolumeAreRemoved(t *testing.T) {
 		removed = append(removed, a[len(a)-1])
 	}
 	assert.ElementsMatch(t, []string{"demo-old", "demo-new"}, removed)
-}
-
-// With no service installed, as after a reboot before the first apply, an
-// unfiltered journal would be every other service's, so nothing is read.
-func TestLogsWithNothingInstalledReadNothing(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("the adapter refuses root")
-	}
-	r := &Runtime{runtimeDir: t.TempDir()}
-	rc, err := r.Logs(context.Background(), ports.RuntimeConfig{Product: "demo"}, ports.LogOptions{})
-	require.NoError(t, err)
-	got, err := io.ReadAll(rc)
-	require.NoError(t, err)
-	assert.Empty(t, got)
 }

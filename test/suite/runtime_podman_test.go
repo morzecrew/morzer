@@ -414,3 +414,42 @@ func TestQuadletTargetedUpRecreatesWhatTheValuesChange(t *testing.T) {
 		t.Errorf("the service outside the named ones reads %q, while its unit now names another value", got)
 	}
 }
+
+// TestQuadletOneShotOfANamedContainerLeavesTheServiceRunning. The copy a
+// one-shot runs names a container of its own: Quadlet runs with --replace, so
+// under the service's name it would take the running service's place. Its
+// output is scrubbed as the runner scrubs, and a status systemd counts as a
+// success still reaches the caller.
+func TestQuadletOneShotOfANamedContainerLeavesTheServiceRunning(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	pullPodman(t, quadletBusybox)
+	rt, cfg := quadletProject(t, map[string]string{
+		"app.container": fmt.Sprintf("[Container]\nImage=%s\nRunInit=true\n%s\nContainerName=%%s-app-1\n\n[Service]\nSuccessExitStatus=4\n",
+			quadletBusybox, loop),
+	})
+	cfg = fixVolumeRefs(t, cfg)
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	scrubbed := quadlet.New(infraexec.New(), quadlet.WithRedaction([]string{"s3cr3t-value"}))
+	res, err := scrubbed.RunOneShot(ctx, cfg, "app", ports.RunOptions{
+		Argv: []string{"sh", "-c", "echo the secret is s3cr3t-value; exit 4"}, Remove: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Stdout+res.Output, "s3cr3t-value") {
+		t.Errorf("the one-shot's output carries a redacted value: %q", res.Stdout)
+	}
+	if res.ExitCode != 4 {
+		t.Errorf("the one-shot exited %d, want 4, which the unit counts as a success", res.ExitCode)
+	}
+	out, err := osexec.Command("podman", "ps", "--format", "{{.Names}}").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), cfg.Product+"-app-1") {
+		t.Errorf("the service's container no longer runs after the one-shot:\n%s", out)
+	}
+}
