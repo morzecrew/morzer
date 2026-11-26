@@ -217,3 +217,27 @@ func TestInitAsksTheEngineOfTheRuntimeItInstallsWith(t *testing.T) {
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
 	require.NoError(t, err, "a release declaring one runtime with no daemon was refused over Docker's")
 }
+
+// Asked again once init holds the lock, as every command that takes it is: the
+// daemon this init waited to use may not be the one it was first asked about.
+// The fake answers its first probe and refuses every one after it.
+func TestInitIsAskedAboutTheEngineAgainOnceItHoldsTheLock(t *testing.T) {
+	ctx := context.Background()
+	h := newHarnessAt(t, "demo", userLayout)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	h.Runtime.OnCall = func(method string) {
+		if method == "ProbeEngineScope" {
+			h.Runtime.Fail[method] = domain.Preflight(nil, "the Docker daemon is the system's")
+		}
+	}
+
+	_, err := ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Runtime: "compose"})
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists, "an init refused under the lock wrote the installation")
+}

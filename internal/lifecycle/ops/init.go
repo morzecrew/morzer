@@ -265,7 +265,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 			return Result{}, err
 		}
 	}
-	if opts.Runtime != "" || opts.ReleasePath == "" || opts.Repair {
+	if runtimeKnownUpFront(opts) {
 		if err := d.refuseForeignEngine(ctx); err != nil {
 			return Result{}, err
 		}
@@ -359,6 +359,15 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 
 	var result engine.Result
 	runErr := d.withLock(ctx, opID, domain.OpTypeInit, opts.Options, func(ctx context.Context) error {
+		// Asked again once the lock is held, as every command that takes
+		// it is, so an init that waited behind another is asked about the
+		// engine it is about to use. A runtime the staged release chooses
+		// is asked when the installation is written instead.
+		if runtimeKnownUpFront(opts) {
+			if err := d.refuseForeignEngine(ctx); err != nil {
+				return err
+			}
+		}
 		// Under the lock, a repair's setting as it stands now: a `config
 		// set` that withdrew it while this waited is honoured.
 		if !opts.DryRun {
@@ -806,7 +815,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	if err := d.useRuntime(runtime); err != nil {
 		return domain.Installation{}, err
 	}
-	if opts.Runtime == "" && opts.ReleasePath != "" && !opts.Repair {
+	if !runtimeKnownUpFront(opts) {
 		if err := d.refuseForeignEngine(ctx); err != nil {
 			return domain.Installation{}, err
 		}
@@ -1399,6 +1408,13 @@ func (d *Deps) runtimeForNewInstallation(ctx context.Context, st *engine.State, 
 		return "", nil
 	}
 	return runtimeForRelease(r, d.requestedRuntime(ctx, opts))
+}
+
+// runtimeKnownUpFront reports whether init knows its runtime before it stages
+// the release: the one --runtime names, which the CLI also names for a release
+// declaring one, a repair's, or with no release the default.
+func runtimeKnownUpFront(opts InitOptions) bool {
+	return opts.Runtime != "" || opts.ReleasePath == "" || opts.Repair
 }
 
 // requestedRuntime is the runtime init is asked for: the one named, or on a
