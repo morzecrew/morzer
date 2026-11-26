@@ -690,3 +690,30 @@ evidence: internal/cli/layout_linux.go:47-58
 action: decided
 proposal: ASSUMED — as U11 attempt 1, with each side resolved through its nearest existing ancestor.
 ```
+
+## After #434, 2026-11-26
+
+#434 merged during its third review round. That round found one more
+defect, fixed on its own branch: a data home that links to a directory
+not yet made did not resolve, so the user's tree was compared as a literal
+path. It refines U11 again.
+
+Still open, and the author's to decide: U10 lets a command go ahead when
+`docker info` cannot be run or times out, since the command that needs the
+engine then fails on its own. A daemon that times out on `info` and then
+answers would run that command unchecked. Refusing instead would also
+refuse every locked command that needs no engine, a config change say,
+while the daemon is down, and `init` with no release yet
+(`internal/lifecycle/ops/engine_scope.go:53-62`).
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T08:58:19Z
+attempt: 3
+claim: U11, a data home that links to a directory not yet made did not resolve, so the user's tree was compared as a literal path and a --config under the link's target read it as a tree of its own
+evidence: internal/cli/layout_linux.go:54-69
+action: decided
+proposal: ASSUMED — as U11 attempt 2, with a link that does not resolve followed by hand, at most 40 links deep.
+```
