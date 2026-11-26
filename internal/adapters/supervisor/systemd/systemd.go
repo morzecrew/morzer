@@ -44,6 +44,12 @@ type Supervisor struct {
 
 	// analyze is systemd-analyze, which owns the calendar grammar.
 	analyze string
+
+	// user writes and drives the units of the user's own manager rather
+	// than the system's (RFC 0023 row 26), and env is what each service
+	// unit carries for it in Environment=.
+	user bool
+	env  []string
 }
 
 type Option func(*Supervisor)
@@ -52,6 +58,14 @@ type Option func(*Supervisor)
 // testable without root.
 func WithUnitDir(dir string) Option {
 	return func(s *Supervisor) { s.unitDir = dir }
+}
+
+// WithUserScope writes units into unitDir for the user's own manager and
+// drives them with `systemctl --user` (RFC 0023 row 26). Every service unit
+// carries env, one KEY=VALUE each, so the manager it runs resolves the same
+// installation the one that wrote it did (logs/quadlet-adapter.md, U6).
+func WithUserScope(unitDir string, env ...string) Option {
+	return func(s *Supervisor) { s.unitDir, s.user, s.env = unitDir, true, env }
 }
 
 func withSystemctl(path string) Option {
@@ -87,7 +101,25 @@ func (s *Supervisor) Available(ctx context.Context) bool {
 	if _, err := os.Stat("/run/systemd/system"); err != nil {
 		return false
 	}
+	if s.user {
+		// The user's own manager, which runs while they are logged in or
+		// lingering. `show` answers whenever it can be reached, where
+		// `is-system-running` fails on a degraded one.
+		_, err := s.runner.Run(ctx, exec.Command{
+			Argv: s.argv("show", "--property=Version"), Timeout: 30 * time.Second, CaptureOutput: true,
+		})
+		return err == nil
+	}
 	return true
+}
+
+// argv is a systemctl command line in this supervisor's scope.
+func (s *Supervisor) argv(args ...string) []string {
+	argv := []string{s.systemctl}
+	if s.user {
+		argv = append(argv, "--user")
+	}
+	return append(argv, args...)
 }
 
 func (s *Supervisor) InstallUnits(ctx context.Context, units []ports.Unit, scope ports.EnableScope) error {
@@ -297,7 +329,7 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 			}
 			for line := range strings.Lines(string(data)) {
 				key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-				fields := strings.Fields(value)
+				fields := ExecWords(value)
 				if !ok || !slices.Contains(execKeys, strings.TrimSpace(key)) || len(fields) == 0 {
 					continue
 				}
@@ -312,8 +344,9 @@ func (s *Supervisor) UnitsManagerPaths(ctx context.Context, product string) ([]s
 
 // execPathPattern is a command's binary in `systemctl show`'s rendering of an
 // Exec property: `{ path=/usr/local/bin/morzer ; argv[]=… ; … }`, once per
-// command. Anchored to the brace, since an argument may carry `path=` too.
-var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
+// command. Anchored to the brace, since an argument may carry `path=` too, and
+// ended by the argv that follows, since a path may carry a space.
+var execPathPattern = regexp.MustCompile(`\{ path=(.+?) ; argv\[\]=`)
 
 // effectiveExecPaths is every binary systemd would run for a unit, as it
 // loaded it. Asked only about a unit whose file is installed, so a query that
@@ -321,7 +354,7 @@ var execPathPattern = regexp.MustCompile(`\{ path=([^ ;]+)`)
 // the caller says it could not check.
 func (s *Supervisor) effectiveExecPaths(ctx context.Context, unit string) ([]string, error) {
 	res, err := s.runner.Run(ctx, exec.Command{
-		Argv:          []string{s.systemctl, "show", unit, "--property=" + strings.Join(execKeys, ",")},
+		Argv:          s.argv("show", unit, "--property="+strings.Join(execKeys, ",")),
 		Timeout:       30 * time.Second,
 		CaptureOutput: true,
 	})
@@ -360,16 +393,20 @@ func (s *Supervisor) daemonReload(ctx context.Context) error {
 
 func (s *Supervisor) run(ctx context.Context, args ...string) error {
 	_, err := s.runner.Run(ctx, exec.Command{
-		Argv:          append([]string{s.systemctl}, args...),
+		Argv:          s.argv(args...),
 		Timeout:       2 * time.Minute,
 		CaptureOutput: true,
 	})
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			hint := "this usually means the manager is not running as root"
+			if s.user {
+				hint = "check that your own systemd manager is running: `systemctl --user status`"
+			}
 			return domain.Internal(err, "systemctl %s failed: %s",
 				strings.Join(args, " "), firstLine(exitErr.Stderr)).
-				WithHint("this usually means the manager is not running as root")
+				WithHint("%s", hint)
 		}
 		return domain.Internal(err, "cannot run systemctl %s", strings.Join(args, " "))
 	}
@@ -387,8 +424,8 @@ func (s *Supervisor) Status(ctx context.Context, unit string) (ports.UnitState, 
 	}
 
 	res, err := s.runner.Run(ctx, exec.Command{
-		Argv: []string{s.systemctl, "show", unit,
-			"--property=LoadState,ActiveState,SubState,UnitFileState,ExecMainStatus"},
+		Argv: s.argv("show", unit,
+			"--property=LoadState,ActiveState,SubState,UnitFileState,ExecMainStatus"),
 		Timeout:       30 * time.Second,
 		CaptureOutput: true,
 	})
@@ -609,15 +646,15 @@ func MetricsTimerUnitName(product string) string   { return product + "-metrics.
 const serviceTemplate = `[Unit]
 Description={{.Description}}
 Documentation=man:{{.Product}}(1)
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
+After={{if not .User}}network-online.target {{end}}docker.service
+{{if not .User}}Wants=network-online.target
+{{end}}Requires=docker.service
 
 [Service]
-Type=oneshot
+{{template "env" .}}Type=oneshot
 RemainAfterExit=yes
-ExecStart={{.ManagerPath}} apply --startup --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
-ExecReload={{.ManagerPath}} apply --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+ExecStart={{command .ManagerPath}} apply --startup --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
+ExecReload={{command .ManagerPath}} apply --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 
 # Exit 12 is requires-manual-intervention. Restarting on it would loop
 # forever and bury the reason in the journal.
@@ -630,7 +667,7 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy={{if .User}}default.target{{else}}multi-user.target{{end}}
 `
 
 const backupServiceTemplate = `[Unit]
@@ -639,8 +676,8 @@ After={{.Product}}.service
 Requires=docker.service
 
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} backup --unattended --yes --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=7200
 StandardOutput=journal
 StandardError=journal
@@ -675,12 +712,12 @@ WantedBy=timers.target
 // only thing on the disk.
 const updateServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} update --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
 StandardError=journal
@@ -734,12 +771,12 @@ WantedBy=timers.target
 // statement about a moment nobody wants a fleet screen to be showing.
 const fleetServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} fleet publish --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=300
 StandardOutput=journal
 StandardError=journal
@@ -776,12 +813,12 @@ WantedBy=timers.target
 // tried again, so a restart would only fetch it twice.
 const syncServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} sync now --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=3600
 StandardOutput=journal
 StandardError=journal
@@ -824,12 +861,12 @@ func (p UnitParams) SyncJitterSeconds() int64 { return p.SyncPeriodSeconds() / 3
 // which systemd records as the unit's failure.
 const doctorServiceTemplate = `[Unit]
 Description={{.Description}}
-After=network-online.target {{.Product}}.service
-Wants=network-online.target
-
+After={{if not .User}}network-online.target {{end}}{{.Product}}.service
+{{if not .User}}Wants=network-online.target
+{{end}}
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} doctor --unattended --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=900
 StandardOutput=journal
 StandardError=journal
@@ -858,8 +895,8 @@ Description={{.Description}}
 After={{.Product}}.service
 
 [Service]
-Type=oneshot
-ExecStart={{.ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{.ConfigPath}}{{end}}
+{{template "env" .}}Type=oneshot
+ExecStart={{command .ManagerPath}} metrics --textfile {{.MetricsDir}} --plain --log-format json{{if .ConfigPath}} --config {{arg .ConfigPath}}{{end}}
 TimeoutStartSec=120
 StandardOutput=journal
 StandardError=journal
@@ -904,8 +941,11 @@ const DefaultUpdateJitter = 30 * time.Minute
 // DefaultBackupSchedule is a nightly backup at a quiet hour.
 const DefaultBackupSchedule = "*-*-* 02:30:00"
 
-// BuildUnits renders the unit set for a product.
-func BuildUnits(p UnitParams) ([]ports.Unit, error) {
+// BuildUnits renders the unit set for a product, for the system's manager.
+func BuildUnits(p UnitParams) ([]ports.Unit, error) { return buildUnits(p, unitData{}) }
+
+// buildUnits renders the unit set in scope, whose UnitParams it ignores.
+func buildUnits(p UnitParams, scope unitData) ([]ports.Unit, error) {
 	// Each schedule is one line of a root-owned file, so this refuses a value
 	// that could be two. The lifecycle layer validates the one an operator can
 	// set, and this is deliberately a second check rather than a repeat of it:
@@ -923,6 +963,16 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 				"the %s carries a line break and would add a directive to the unit",
 				s.field)
 		}
+	}
+
+	// systemd refuses a command whose path carries a quote, a backslash or a
+	// control character, however it is quoted, and would load none of these.
+	if strings.ContainsFunc(p.ManagerPath, func(r rune) bool {
+		return r < ' ' || r == 0x7f || strings.ContainsRune(`"'\`, r)
+	}) {
+		return nil, domain.Preflight(nil,
+			"the manager's path %q carries a character systemd refuses in a unit's command", p.ManagerPath).
+			WithHint("install the manager in a directory whose path has no quote, backslash or control character")
 	}
 
 	// Trimmed, not just compared: a whitespace-only schedule is non-empty, so
@@ -1034,8 +1084,9 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	for _, spec := range specs {
 		params := p
 		params.Description = spec.desc
+		scope.UnitParams = params
 
-		rendered, err := renderUnit(spec.name, spec.tmpl, params)
+		rendered, err := renderUnit(spec.name, spec.tmpl, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -1044,8 +1095,104 @@ func BuildUnits(p UnitParams) ([]ports.Unit, error) {
 	return units, nil
 }
 
-func renderUnit(name, tmpl string, p UnitParams) ([]byte, error) {
-	t, err := template.New(name).Option("missingkey=error").Parse(tmpl)
+// unitData is what a template renders: the parameters, and the scope the
+// supervisor writes for. Not fields of UnitParams, which mirrors the port's
+// and so may hold only what the lifecycle layer decides.
+//
+// A user unit names no network-online.target, which only the system manager
+// has, and keeps docker.service, which there is the user's rootless daemon's
+// own unit (logs/quadlet-adapter.md, U3).
+type unitData struct {
+	UnitParams
+	User bool
+	Env  []string
+}
+
+// envTemplate is a service unit's Environment= lines, one per entry, each one
+// quoted word, so a path with a space stays one assignment.
+const envTemplate = `{{define "env"}}{{range .Env}}Environment={{value .}}
+{{end}}{{end}}`
+
+// unitQuoted escapes what would end a double-quoted systemd word or be read as
+// an escape inside it, and doubles `%`, which systemd expands as a specifier
+// inside quotes too.
+var unitQuoted = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\t", `\t`, "\r", `\r`, "%", "%%")
+
+// unitValue is s as one double-quoted systemd word, as an Environment= line
+// takes it.
+func unitValue(s string) string { return `"` + unitQuoted.Replace(s) + `"` }
+
+// unitCommand is s as the command of an Exec*= line: as it stands while nothing
+// in it is special to systemd, which is every ordinary path, and otherwise
+// quoted as unitValue quotes it. ExecWords reads it back.
+func unitCommand(s string) string {
+	if !strings.ContainsAny(s, " \t\n\r\"'\\%") {
+		return s
+	}
+	return unitValue(s)
+}
+
+// unitArg is s as an argument after the command, where systemd also expands
+// variables, so a `$` is doubled.
+func unitArg(s string) string { return unitCommand(strings.ReplaceAll(s, "$", "$$")) }
+
+// ExecWords splits the value of an Exec*= line into its words, undoing what
+// unitCommand and unitArg write: quotes, C escapes, a doubled `%`, and a
+// doubled `$` after the command. A specifier or a variable is left as written.
+func ExecWords(value string) []string {
+	var words []string
+	var word strings.Builder
+	inWord, quote := false, byte(0)
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case quote == 0 && (c == ' ' || c == '\t'):
+			if inWord {
+				words, inWord = append(words, word.String()), false
+				word.Reset()
+			}
+			continue
+		case quote != 0 && c == quote:
+			quote = 0
+		case quote == 0 && (c == '"' || c == '\''):
+			quote = c
+		case c == '\\' && i+1 < len(value):
+			i++
+			word.WriteByte(unescaped(value[i]))
+		case c == '%' && i+1 < len(value) && value[i+1] == '%':
+			i++
+			word.WriteByte('%')
+		default:
+			word.WriteByte(c)
+		}
+		inWord = true
+	}
+	if inWord {
+		words = append(words, word.String())
+	}
+	for i := 1; i < len(words); i++ {
+		words[i] = strings.ReplaceAll(words[i], "$$", "$")
+	}
+	return words
+}
+
+// unescaped is the byte a C escape names.
+func unescaped(c byte) byte {
+	switch c {
+	case 'n':
+		return '\n'
+	case 't':
+		return '\t'
+	case 'r':
+		return '\r'
+	}
+	return c
+}
+
+var unitFuncs = template.FuncMap{"command": unitCommand, "arg": unitArg, "value": unitValue}
+
+func renderUnit(name, tmpl string, p unitData) ([]byte, error) {
+	t, err := template.New(name).Funcs(unitFuncs).Option("missingkey=error").Parse(envTemplate + tmpl)
 	if err != nil {
 		return nil, domain.Internal(err, "cannot parse the %s unit template", name)
 	}
@@ -1103,7 +1250,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 	// read as its zero. `TestTheTwoUnitParamsCarryTheSameFields` fails when
 	// the two structs stop agreeing, which is the half of that a test can
 	// see without knowing what each field means.
-	return BuildUnits(UnitParams{
+	return buildUnits(UnitParams{
 		Product:          params.Product,
 		ManagerPath:      params.ManagerPath,
 		ConfigPath:       params.ConfigPath,
@@ -1121,7 +1268,7 @@ func (s *Supervisor) Units(params ports.UnitParams) ([]ports.Unit, error) {
 		DoctorSchedule:   params.DoctorSchedule,
 		DoctorTimer:      params.DoctorTimer,
 		MetricsDir:       params.MetricsDir,
-	})
+	}, unitData{User: s.user, Env: s.env})
 }
 
 // ManagedUnitNames lists the units this supervisor owns for a product.

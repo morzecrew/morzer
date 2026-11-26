@@ -15,8 +15,13 @@ import (
 
 // InstallationEntry is one installation as `ls` reports it.
 type InstallationEntry struct {
-	Product       string         `json:"product"`
-	Path          string         `json:"path"`
+	Product string `json:"product"`
+	Path    string `json:"path"`
+
+	// Layout is "user" for the installations of the user running the
+	// command, in their own tree, and "system" otherwise (RFC 0023 row 31;
+	// logs/quadlet-adapter.md, U4). One listing reads one layout.
+	Layout        string         `json:"layout,omitempty"`
 	SchemaVersion int            `json:"schema_version,omitempty"`
 	Mode          domain.Mode    `json:"mode,omitempty"`
 	Release       domain.Version `json:"release,omitzero"`
@@ -117,13 +122,20 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 	// whether the machine is bare or whether this process could not see it
 	// -- and that is the only question these rows answer, so they carry
 	// nothing else.
+	// Root lists the system's installations, so for the user's own it is no
+	// way to read one.
+	remedy := "re-run as root if it is one"
+	if d.Paths.UserLayout() {
+		remedy = "if it is one, check that you can read its directory"
+	}
 	for _, product := range inv.Undecidable {
 		out = append(out, InstallationEntry{
 			Product: product,
-			Path:    domain.PathsUnder(d.Paths.Root(), product).EtcDir,
+			Path:    d.Paths.For(product).EtcDir,
+			Layout:  layoutName(d.Paths),
 			Skipped: true,
 			Problem: "cannot be read by this process, so it is not counted as an " +
-				"installation; re-run as root if it is one",
+				"installation; " + remedy,
 		})
 	}
 	return out, nil
@@ -138,7 +150,7 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 func (d *Deps) installationEntry(ctx context.Context, product string, opts ListOptions) InstallationEntry {
 	scoped := d.forInstallation(product)
 
-	entry := InstallationEntry{Product: product, Path: scoped.Paths.EtcDir}
+	entry := InstallationEntry{Product: product, Path: scoped.Paths.EtcDir, Layout: layoutName(d.Paths)}
 
 	// Asked before the state is read, and kept even on a row that has a
 	// problem: "its units are installed and its state will not load" is
@@ -287,7 +299,7 @@ func (d *Deps) fillServiceCounts(
 // product), and the clocks and registries.
 func (d *Deps) forInstallation(product string) *Deps {
 	scoped := *d
-	scoped.Paths = domain.PathsUnder(d.Paths.Root(), product)
+	scoped.Paths = d.Paths.For(product)
 	scoped.State = d.StateFor(scoped.Paths)
 
 	scoped.Locker = nil
@@ -399,4 +411,12 @@ func DiscoverProducts(root string) (Inventory, error) {
 	sort.Strings(inv.Products)
 	sort.Strings(inv.Undecidable)
 	return inv, nil
+}
+
+// layoutName is the layout a listing reads, as InstallationEntry.Layout names it.
+func layoutName(p domain.Paths) string {
+	if p.UserLayout() {
+		return "user"
+	}
+	return "system"
 }

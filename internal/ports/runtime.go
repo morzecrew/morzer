@@ -765,6 +765,21 @@ type FileSharingProber interface {
 	ProbeFileSharing(ctx context.Context, read, write []string) error
 }
 
+// EngineScopeProber says whether the engine a runtime drives is the user's own,
+// for an installation in the user layout (RFC 0023 row 32). On the system's
+// engine, a user installation and a system one of the same product would select
+// one project and share its containers and named volumes.
+//
+// Optional like the capabilities around it: an engine that is the user's by
+// construction has nothing to probe. For §6's count it is forced by row 32, not
+// by the second adapter (logs/quadlet-adapter.md, U7).
+type EngineScopeProber interface {
+	// ProbeEngineScope returns an error wrapping domain.ErrPreflight when
+	// the engine is not the user's own; any other error is a probe that did
+	// not run.
+	ProbeEngineScope(ctx context.Context) error
+}
+
 // ProjectStorage is everything a project's resolved configuration mounts.
 type ProjectStorage struct {
 	// Volumes are the named volumes, sorted by name so plans and manifests

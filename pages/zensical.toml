@@ -54,6 +54,7 @@ nav = [
         "operating/looking-inside.md",
         "operating/asking-for-help.md",
         "operating/several-installations.md",
+        "operating/running-as-your-own-user.md",
         "operating/managing-from-elsewhere.md",
         "operating/recovering-a-lost-machine.md",
     ] },

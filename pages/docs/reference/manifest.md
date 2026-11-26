@@ -1153,8 +1153,10 @@ secrets:
   manager.
 - **A manager that cannot give the file away refuses** to render it, exit 6,
   naming the secret. It never falls back to a file it owns, which would fail
-  later as `Permission denied` inside the container. The manager runs as root
-  wherever it installs units, and only root can give a file to another user.
+  later as `Permission denied` inside the container. Only root can give a
+  file to another user, so an installation
+  [run as its own user](../operating/running-as-your-own-user.md) refuses a
+  secret whose owner is someone else.
 - **On macOS, `owner` is not enforced.** Docker Desktop reads the Mac's files
   as the user who runs it, whatever uid the container runs as. A container
   reads a secret only when that user can, and then every container uid can.

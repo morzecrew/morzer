@@ -404,3 +404,289 @@ P3a ships before P3b, and each is its own PR.
   through the `docker` group is refused at `init` and reported by `doctor`.
   The check is the Compose adapter's. P3a adds it, with a test against a fake
   `docker info`.
+
+## The P3a build, 2026-11-25
+
+On branch `user-layout` from `main` at `62423d97`. The P3a plan above
+predates RFC 0055 (macOS as a host), so its anchors were refreshed against
+`main` first:
+- Layout resolution is `resolvePaths`, `pathsFromConfig` and `pathsFor` in
+  `internal/cli/root.go`. `runRoot` is per OS (`domain/paths_default.go`,
+  `domain/paths_darwin.go`).
+- The supervisor is picked per OS in `internal/cli/supervisor_linux.go` and
+  `supervisor_darwin.go`. The Linux one already receives the layout and
+  ignores it.
+- The manager-binary check goes through `Deps.replaceableByNonRoot`
+  (`internal/lifecycle/ops/ops.go:441`), whose callers are
+  `settings.go:1183`, `manager_version.go:151` and `self_update.go:420`.
+- `secrets.render_to` defaults from `DefaultPaths` (`domain/manifest.go:1535`),
+  but nothing reads it at runtime: the render and `SECRETS_DIR` use
+  `Paths.SecretsRenderDir()`. It needs no code change. The docs say a bundle
+  reaches its secrets through `SECRETS_DIR`.
+
+The author agreed the leans on U1–U5 on 2026-11-25. Each entry is written
+before the code it governs. U6–U9 are what the refreshed survey found.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U1, a user layout with $XDG_RUNTIME_DIR unset has no tmpfs to render secrets into, and the rows do not say what happens then
+evidence: rfcs/0023-runtimes-beyond-compose.md:354
+action: decided
+proposal: ASSUMED — a command that would manage the user layout is refused while $XDG_RUNTIME_DIR is unset or not absolute, with a hint naming /run/user/<uid>. Nothing falls back to a directory on disk, because RunDir holds decrypted secrets (domain/paths.go:50).
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U2, the rows do not say how code knows it is managing a user layout
+evidence: internal/domain/paths.go:93-95
+action: decided
+proposal: ASSUMED — Paths derives it, as it derives Root(): a layout whose RunDir is not <Root()>/<runRoot>/<product> is a user layout. No field is stored, so it cannot disagree with the directories.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U3, a user manager has no network-online.target, so the units' ordering on it means nothing there. The agreed lean dropped docker.service too, but in the user scope that name is rootless Docker's own user unit, which dockerd-rootless-setuptool.sh installs, and row 32 requires that daemon
+evidence: internal/adapters/supervisor/systemd/systemd.go:612-614
+action: decided
+proposal: ASSUMED — user units drop After=/Wants=network-online.target and keep After=/Requires=docker.service, which there names the user's rootless daemon. The product unit is WantedBy=default.target, and the timers stay WantedBy=timers.target, which the user manager has too.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U4, the rows do not say what `morzer ls` lists for a user other than root
+evidence: internal/lifecycle/ops/list.go:106
+action: decided
+proposal: ASSUMED — `ls` lists the layout row 31 picks, and says which layout it is, in its text and as `layout` in its JSON.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U5, RFC 0055 runs the manager as root on a Mac and leaves a per-user installation undesigned, and macOS sets no $XDG_RUNTIME_DIR
+evidence: rfcs/0055-macos-as-a-host-for-an-installation.md:694
+action: decided
+proposal: ASSUMED — the user layout exists on Linux only, through per-OS files in internal/cli. On a Mac every command keeps the system layout, as today.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U6, a unit's --config names the tree by path, and pathsFromConfig can tell it is the user tree only by comparing it with $XDG_DATA_HOME/morzer. A user manager usually does not carry a data home set in a shell profile, so a unit would read the tree as a --root layout and render secrets under it, on disk
+evidence: internal/adapters/supervisor/systemd/systemd.go:619
+action: decided
+proposal: ASSUMED — user units carry Environment=XDG_DATA_HOME naming the data home they were written for, so the unit resolves the tree the command that wrote it resolved.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U7, row 32 makes the daemon check the Compose adapter's, and nothing above the adapter can reach a check the port does not name
+evidence: internal/ports/runtime.go:760
+action: decided
+proposal: ASSUMED — an optional capability, ports.EngineScopeProber, which the Compose adapter implements from `docker info`, in the shape of FileSharingProber. init and doctor call it only for a user layout. For §6 it is forced by row 32, not by the second adapter.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U8, the lifecycle layer derives another product's layout as PathsUnder(d.Paths.Root(), product), which for a user layout puts that product's RunDir in the tree, on disk
+evidence: internal/lifecycle/ops/list.go:290
+action: decided
+proposal: ASSUMED — Paths.For(product) is the same layout for another product, keeping its render directory's parent. Every PathsUnder(d.Paths.Root(), …) above the CLI and pathsFor in it use it.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-25T21:26:00Z
+attempt: 1
+claim: U9, the manager-binary checks run only where Root() is empty, so a user layout would skip them, while row 26 names that check as one the user units reach
+evidence: internal/lifecycle/ops/settings.go:1180
+action: decided
+proposal: ASSUMED — for a user layout the checks run, and ask whether anyone but root and the user the units run as could replace the binary. The self-update elevation hint keeps asking about root alone, because it suggests sudo, which runs the binary as root.
+```
+
+### Self-audit of the P3a build, 2026-11-25
+
+Scope: the branch against `origin/main`, 10 commits before this one, about
+1,400 lines across domain, CLI, the systemd and Compose adapters, the
+lifecycle layer, tests and docs. Every branch the build added was sabotaged
+once, and each sabotage failed its test.
+
+- **The self-update hint sent root into a user's tree.** A user
+  installation whose binary only root can replace was told to re-run with
+  `sudo … self-update --root <tree>`. Root would then lock and journal the
+  user's installation and leave root's files in its tree. Fixed: for a user
+  layout the hint installs a manager for the user and runs `init --repair`
+  with it, and names no `sudo` (`internal/lifecycle/ops/self_update.go:419`).
+  This refines U9, which kept that hint asking about root alone.
+- **Lint.** `contextcheck` and `errcheck` flagged two of the new tests.
+  Fixed.
+
+Left as they were, and worth knowing:
+- Completion of `--product` still lists the system's installations for a
+  user, since it re-roots to `--root` or to `/`.
+- Root given `--config` inside a user's tree gets a `--root` layout there,
+  with its render directory in the tree, as any prefixed `--config` did
+  before. Root cannot know that user's data home.
+- The user scope's `Available`, which asks the user's manager, is not
+  exercised by a test: every test that installs units relocates them, and
+  none can start a user manager.
+
+```divergence
+decision: 26
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T21:51:12Z
+attempt: 1
+claim: a user installation's manager runs as its user, with its state and render directory in the user's directories and its units as user units, and the binary check holds those units to the user in root's place
+evidence: internal/cli/supervisor_linux.go:16-22
+action: decided
+```
+
+```divergence
+decision: 30
+grade: LOCKED
+kind: resolved
+at: 2026-11-25T21:51:12Z
+attempt: 1
+claim: a user installation is one tree under $XDG_DATA_HOME/morzer, laid out as --root lays one out, with its render directory at $XDG_RUNTIME_DIR/morzer/<product>
+evidence: internal/domain/paths.go:91-95
+action: decided
+```
+
+**Correction, 2026-11-25.** The audit above missed one more defect, which
+`just ci` then found. The CLI test of a user `init` ran the real `docker
+info`. Where no daemon runs, as in CI, the probe could not run and `init`
+went ahead. On a host whose daemon is the system's, `init` was refused and
+the test failed. The user runner now puts a stand-in `docker` on `PATH`, so
+no test asks the host's daemon whose it is. A test of the refusal through
+the CLI was added with it (`test/clitest/user_layout_test.go`).
+
+## Review of #434, round 1, 2026-11-26
+
+Bot review of the P3a branch found nine defects, and each was reproduced
+and fixed in its own commit. Four of them were decisions the rows leave
+open, recorded below as U10–U13. These entries were written after the
+fixes they govern, not before. That is a lapse, recorded as one.
+
+Left as it was, and worth knowing: a tree outside `$XDG_DATA_HOME/morzer`
+is read as a tree of its own, so a `--config` into a user installation's
+tree, from a command run with a different data home, renders its secrets
+inside the tree, on disk. Only a mark the installation keeps of its own
+layout could tell the two apart, which is a schema change. The docs page
+now says to keep one data home (`pages/docs/operating/running-as-your-own-user.md:72-77`).
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U10, row 32 says Compose needs the user's own daemon, and U7 asked only at init and in doctor; a unit's or a shell's command reaching the system's daemon later would change the system installation of the same product
+evidence: internal/lifecycle/ops/ops.go:666-671
+action: decided
+proposal: ASSUMED — every command of a user installation that takes the deployment lock, and exec, which takes none, asks whose the engine is before it waits on or changes anything, in its own environment. A probe that cannot run does not refuse, since the command that needs the engine then fails on its own.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U11, row 30 places the tree at $XDG_DATA_HOME/morzer and does not say how a path names it; compared as spelled, a --config through a symlink's target read the tree as a tree of its own, with its secrets on disk
+evidence: internal/cli/layout_linux.go:37-52
+action: decided
+proposal: ASSUMED — a root is the user's tree when it resolves to the same directory. An absolute $XDG_DATA_HOME is honoured with HOME unset, and a user layout with no absolute config home for its units is refused.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U12, user units carry paths from the user's home, where a space or a % is the user's to choose, and the units wrote every path as it stood
+evidence: internal/adapters/supervisor/systemd/systemd.go:1113-1137
+action: decided
+proposal: ASSUMED — unit paths and Environment= values are written as one systemd word each, unchanged when nothing in them is special. A manager path with a quote, a backslash or a control character is refused at render, since systemd refuses such a command however it is quoted (`systemd-analyze --user verify`: "Executable path contains special characters").
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T07:58:24Z
+attempt: 1
+claim: U13, U9 held a user installation's units to the binary check but kept its skip when the manager does not answer, which for a user's manager does not mean the units never run
+evidence: internal/lifecycle/ops/manager_version.go:140-145
+action: decided
+proposal: ASSUMED — a user installation's units are read whatever Available says, and a check that cannot read them fails, as it does for a system installation's.
+```
+
+## Review of #434, round 2, 2026-11-26
+
+Four more defects, each fixed in its own commit: the daemon was asked
+before the lock was held, a tree not yet made was not known by a symlink
+target's spelling, a user tree holding only unreadable installations fell
+back to the system layout, and completion's fallback read the system's
+units for the user's tree. The first two refine U10 and U11.
+
+Left as it is: a command still resolves the Docker context on each call,
+so a context switched while it runs is not caught. Pinning the endpoint
+the probe approved would mean resolving the context once and passing it to
+every Docker call the adapter makes.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T08:30:18Z
+attempt: 2
+claim: U10, asked before the lock, a command that waited behind another ran on whatever daemon the context named by the time it held the lock
+evidence: internal/lifecycle/ops/ops.go:686-691
+action: decided
+proposal: ASSUMED — as U10 attempt 1, except that a command that takes the deployment lock asks once it holds it, just before it changes anything.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T08:30:18Z
+attempt: 2
+claim: U11, compared only when both sides resolved, a symlink target's spelling of a user tree not yet made read as a tree of its own
+evidence: internal/cli/layout_linux.go:47-58
+action: decided
+proposal: ASSUMED — as U11 attempt 1, with each side resolved through its nearest existing ancestor.
+```

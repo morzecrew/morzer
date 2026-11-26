@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -1177,17 +1178,21 @@ func settingsSummary(changed []string, plan settingsPlan, dryRun bool) string {
 // timer tick. Only in the production layout, where the units are systemd's;
 // under --root they are files in a tree nothing runs.
 func (d *Deps) checkManagerBinary() error {
-	if d.Paths.Root() != "" || d.ManagerPath == "" {
+	if !d.unitsRun() || d.ManagerPath == "" {
 		return nil
 	}
-	who, err := d.replaceableByNonRoot(d.ManagerPath)
+	uid, user := d.unitUser()
+	who, err := d.replaceableByOthers(d.ManagerPath, uid)
 	if err != nil || who == "" {
 		return err
 	}
-	return domain.Preflight(nil, "the units would run %s as root, and %s", d.ManagerPath, who).
-		WithHint("install the manager where only root can replace it, then run this again with that copy: "+
+	hint := d.managerInstallHint("run this again")
+	if hint == "" {
+		hint = fmt.Sprintf("install the manager where only root can replace it, then run this again with that copy: "+
 			"curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s --dir /usr/local/bin",
 			d.ManagerVersion)
+	}
+	return domain.Preflight(nil, "the units would run %s as %s, and %s", d.ManagerPath, user, who).WithHint("%s", hint)
 }
 
 func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {

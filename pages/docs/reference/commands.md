@@ -74,6 +74,13 @@ Commands that touch no installation are unaffected: `version`, `self-update`, `l
 [Several installations](../operating/several-installations.md) is the whole
 picture: what two deployments share, and what `doctor` says about it.
 
+On Linux, who runs the command decides which installations discovery looks at.
+Root, under `sudo` too, looks at the system's. Anyone else looks at their own,
+under `$XDG_DATA_HOME/morzer`, when it holds one or the command is `init`, and
+at the system's otherwise. `--config` naming a file in that tree selects that
+user's installation. See
+[Running as your own user](../operating/running-as-your-own-user.md).
+
 ## Index
 
 | Command | What it does |
@@ -518,6 +525,19 @@ no tmpfs. `system.units` reads launchd's jobs, which only root can. It warns
 while the start at boot is held after an exit 12, until `sudo morzer apply`
 succeeds, and while a schedule is not loaded, which then runs at no time
 before the next boot.
+
+### For your own installation
+
+An installation of a user other than root, in their own tree (see
+[Running as your own user](../operating/running-as-your-own-user.md)), adds
+these. `manager.binary` holds the binary its units run to the same rule, with
+that user in root's place.
+
+| Check | What it means |
+| --- | --- |
+| `runtime.engine-scope` | Fails while the Docker daemon is not the user's own: `docker info` lists no `name=rootless`. On the system's daemon, the installation and a system one of the same product would share a Compose project. `init`, every command that changes the installation, and `exec` refuse there too. Warns when the daemon cannot be asked. |
+| `system.linger` | Warns while the account does not linger, so its units stop at logout and do not start at boot. The remedy is `sudo loginctl enable-linger <user>`. |
+| `network.unprivileged-ports` | Warns while the release publishes a port below `net.ipv4.ip_unprivileged_port_start`, which an engine without `CAP_NET_BIND_SERVICE` cannot bind. |
 
 ## history
 

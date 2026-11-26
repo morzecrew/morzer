@@ -155,6 +155,13 @@ func installationsDoc(d *ui.Doc, entries []ops.InstallationEntry, status bool) *
 		d.Checks(0, notes)
 	}
 
+	// Said once, since one listing reads one layout: a user who also has the
+	// system's installations needs to know these are not those.
+	if len(entries) > 0 && entries[0].Layout == "user" {
+		d.Blank()
+		d.Text(0, "%s", t.Dim("your own installations, in the user layout; as root, `morzer ls` lists the system's"))
+	}
+
 	if status && len(entries) > 0 {
 		// In the output rather than only in the docs. The counts are
 		// read without the deployment lock, deliberately -- a listing

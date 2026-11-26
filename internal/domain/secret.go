@@ -173,7 +173,7 @@ func (d SecretDeclaration) RenderError(err error) error {
 	if d.Owner.Set && errors.Is(err, syscall.EPERM) {
 		return SecretsError(err, "cannot give secret %q to owner %s", d.Name, d.Owner).
 			WithHint("giving a file to another user needs root; run the manager as root, " +
-				"as it runs wherever it installs units")
+				"for an installation in the system layout")
 	}
 	return SecretsError(err, "cannot render secret %q", d.Name)
 }

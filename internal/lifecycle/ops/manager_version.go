@@ -137,31 +137,41 @@ func (d *Deps) checkUnitsManagerBinary(inst domain.Installation) preflight.Check
 		Description: "only root can replace the manager the units run",
 		Fatal:       true,
 		Run: func(ctx context.Context) events.CheckResult {
-			if d.Paths.Root() != "" || d.Supervisor == nil || !d.Supervisor.Available(ctx) {
+			// A user's manager may not answer this shell and still run
+			// the units it has at its next start, so a user installation's
+			// are read whatever Available says.
+			if !d.unitsRun() || d.Supervisor == nil || (!d.Paths.UserLayout() && !d.Supervisor.Available(ctx)) {
 				return preflight.OK("no systemd units to check")
 			}
 			paths, err := d.Supervisor.UnitsManagerPaths(ctx, inst.Product)
 			if err != nil {
 				// Unknown is not safe: an unattended doctor would
 				// pass a check it never made.
-				return preflight.Fail("run `systemctl cat` on the product's units",
+				return preflight.Fail("run `"+d.systemctl()+" cat` on the product's units",
 					"cannot read the binary the units run: %s", domain.AsError(err).Message)
 			}
+			uid, user := d.unitUser()
 			for _, path := range paths {
-				who, err := d.replaceableByNonRoot(path)
+				who, err := d.replaceableByOthers(path, uid)
 				if err != nil {
 					return preflight.Fail("reinstall the manager, then run `init --repair` with it",
 						"the units run %s, which cannot be checked: %s", path, domain.AsError(err).Message)
 				}
 				if who != "" {
-					return preflight.Fail(fmt.Sprintf("install the manager where only root can replace it with "+
-						"`curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s "+
-						"--dir /usr/local/bin`, then run `sudo /usr/local/bin/morzer init --repair`", d.ManagerVersion),
-						"the units run %s as root, and %s", path, who)
+					hint := d.managerInstallHint("run `init --repair`")
+					if hint == "" {
+						hint = fmt.Sprintf("install the manager where only root can replace it with "+
+							"`curl -fsSL https://morzecrew.github.io/morzer/install.sh | sudo sh -s -- --version %s "+
+							"--dir /usr/local/bin`, then run `sudo /usr/local/bin/morzer init --repair`", d.ManagerVersion)
+					}
+					return preflight.Fail(hint, "the units run %s as %s, and %s", path, user, who)
 				}
 			}
 			if len(paths) == 0 {
 				return preflight.OK("no units installed")
+			}
+			if user != "root" {
+				return preflight.OK("only root and %s can replace %s", user, strings.Join(paths, ", "))
 			}
 			return preflight.OK("only root can replace %s", strings.Join(paths, ", "))
 		},

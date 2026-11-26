@@ -220,6 +220,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if prober, ok := d.Runtime.(ports.FileSharingProber); ok && d.EngineUser != nil {
 		checks = append(checks, d.checkFileSharing(prober, false))
 	}
+	if prober, ok := d.engineScopeProber(); ok {
+		checks = append(checks, d.checkEngineScope(prober))
+	}
 
 	// Whether the product expects its backups off the machine (RFC 0061
 	// §5.3). A release that cannot be read reads as one that does not: its
@@ -265,6 +268,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 			d.checkDefinitionDrift(inst, rel, ""),
 			d.checkHealth(inst, rel),
 		)
+		if d.Paths.UserLayout() {
+			checks = append(checks, d.checkUnprivilegedPorts(inst, rel))
+		}
 		if d.Runtime != nil {
 			checks = append(checks,
 				d.checkVolumeHelperImage(inst, rel),
@@ -287,6 +293,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	// temporarily unreachable should still be told a fixed version exists.
 	// Inside that branch, a broken release silently removed the check.
 	checks = append(checks, d.checkUpdateAvailable(inst), d.checkManagerVersion(inst), d.checkMetricsTextfile(inst))
+	if d.Paths.UserLayout() {
+		checks = append(checks, d.checkLinger())
+	}
 	if inst.Update.FollowsChannel() {
 		checks = append(checks, d.checkChannelIndex(inst))
 	}
@@ -1740,7 +1749,7 @@ func (d *Deps) checkHealth(inst domain.Installation, rel domain.Release) preflig
 func (d *Deps) checkUnits(inst domain.Installation) preflight.Check {
 	// A Mac's units are launchd's jobs (RFC 0055 §5.6).
 	mac := d.platform() == "darwin"
-	description, inspect := "systemd units are installed and enabled", "`systemctl status`"
+	description, inspect := "systemd units are installed and enabled", "`"+d.systemctl()+" status`"
 	if mac {
 		description, inspect = "launchd jobs are installed and enabled", "`launchctl print system/<job>`"
 	}
@@ -2152,7 +2161,7 @@ func (d *Deps) checkLastBackup(inst domain.Installation) preflight.Check {
 			if age > stale {
 				return preflight.Warn(
 					"run `morzer backup`, and check that the backup timer is active "+
-						"(`systemctl list-timers`)",
+						"(`"+d.systemctl()+" list-timers`)",
 					"the most recent backup is %s old (threshold %s)",
 					age.Round(time.Hour), stale)
 			}

@@ -469,6 +469,9 @@ func (r *Runtime) ProbeFileSharing(ctx context.Context, read, write []string) er
 	return r.record("ProbeFileSharing")
 }
 
+// ProbeEngineScope is the user-layout probe; Fail decides whose the engine is.
+func (r *Runtime) ProbeEngineScope(context.Context) error { return r.record("ProbeEngineScope") }
+
 func (r *Runtime) HelperImage() string { return "busybox@sha256:" + strings.Repeat("f", 64) }
 
 // CaptureVolume writes the simulated contents out, recording who was running

@@ -193,7 +193,7 @@ func SelfUpdate(ctx context.Context, d *Deps, opts SelfUpdateOptions) (ManagerUp
 	for _, product := range inv.Undecidable {
 		out.Warnings = append(out.Warnings, fmt.Sprintf("%s cannot be read by this process, so the swap "+
 			"does not hold its locks; if it is an installation, re-run as root",
-			domain.PathsUnder(d.Paths.Root(), product).EtcDir))
+			d.Paths.For(product).EtcDir))
 	}
 	out.Warnings = append(out.Warnings, d.unitsElsewhere(ctx, inv.Products)...)
 
@@ -329,7 +329,7 @@ func (d *Deps) lockEveryInstallation(ctx context.Context, products []string, opI
 		return release, domain.Internal(nil, "this build cannot lock another installation")
 	}
 	for _, product := range products {
-		locker := d.LockerFor(domain.PathsUnder(d.Paths.Root(), product))
+		locker := d.LockerFor(d.Paths.For(product))
 		for _, name := range []string{"deployment", outboxLock} {
 			rel, err := locker.Acquire(ctx, name, ports.LockOptions{Owner: ports.LockOwner{
 				PID:         os.Getpid(),
@@ -382,7 +382,7 @@ func (d *Deps) journalManagerUpdate(ctx context.Context, product, opID string, s
 	if d.StateFor == nil {
 		return domain.Internal(nil, "this build cannot read installation state")
 	}
-	state := d.StateFor(domain.PathsUnder(d.Paths.Root(), product))
+	state := d.StateFor(d.Paths.For(product))
 	// The ID is a convenience to a reader; an installation whose state does
 	// not load still gets the record.
 	inst, _ := state.LoadInstallation(ctx)
@@ -417,7 +417,15 @@ func canWriteIn(dir string) error {
 // root whatever that user puts there, so then it is how to install one for
 // root instead.
 func (d *Deps) elevationHint(opts SelfUpdateOptions, target domain.Version) string {
-	who, err := d.replaceableByNonRoot(d.ManagerPath)
+	// A user installation is its user's, so never root's to update: `sudo`
+	// with its --root would write root's files into the user's tree.
+	if d.Paths.UserLayout() {
+		return fmt.Sprintf("install the manager for yourself instead with `curl -fsSL "+
+			"https://morzecrew.github.io/morzer/install.sh | sh -s -- --version %s --dir ~/.local/bin`, then run "+
+			"`init --repair` with that copy", target)
+	}
+	// Root alone, whatever layout: sudo runs this copy as root.
+	who, err := d.replaceableByOthers(d.ManagerPath, 0)
 	if err == nil && who == "" {
 		return "re-run with elevation: " + sudoSelfUpdate(d.ManagerPath, d.Paths.Root(), opts)
 	}

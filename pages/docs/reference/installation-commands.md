@@ -47,6 +47,7 @@ way:
 {
   "product": "demo",
   "path": "/etc/demo",
+  "layout": "system",
   "schema_version": 5,
   "release": "1.4.0",
   "units": 5,
@@ -54,6 +55,9 @@ way:
 }
 ```
 
+`layout` is `user` when the installations are those of the user running the
+command, in their own tree, and `system` otherwise; the table then says so
+beneath it (see [Running as your own user](../operating/running-as-your-own-user.md)).
 `schema_version` is JSON-only; `mode`, `release`, `problem`, `services` and
 `services_problem` are present only when they apply. `units` is always present
 and is `null` when the supervisor could not be read — `0` is a real answer,
