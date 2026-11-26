@@ -653,3 +653,40 @@ evidence: internal/lifecycle/ops/manager_version.go:140-145
 action: decided
 proposal: ASSUMED — a user installation's units are read whatever Available says, and a check that cannot read them fails, as it does for a system installation's.
 ```
+
+## Review of #434, round 2, 2026-11-26
+
+Four more defects, each fixed in its own commit: the daemon was asked
+before the lock was held, a tree not yet made was not known by a symlink
+target's spelling, a user tree holding only unreadable installations fell
+back to the system layout, and completion's fallback read the system's
+units for the user's tree. The first two refine U10 and U11.
+
+Left as it is: a command still resolves the Docker context on each call,
+so a context switched while it runs is not caught. Pinning the endpoint
+the probe approved would mean resolving the context once and passing it to
+every Docker call the adapter makes.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T08:30:18Z
+attempt: 2
+claim: U10, asked before the lock, a command that waited behind another ran on whatever daemon the context named by the time it held the lock
+evidence: internal/lifecycle/ops/ops.go:686-691
+action: decided
+proposal: ASSUMED — as U10 attempt 1, except that a command that takes the deployment lock asks once it holds it, just before it changes anything.
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T08:30:18Z
+attempt: 2
+claim: U11, compared only when both sides resolved, a symlink target's spelling of a user tree not yet made read as a tree of its own
+evidence: internal/cli/layout_linux.go:47-58
+action: decided
+proposal: ASSUMED — as U11 attempt 1, with each side resolved through its nearest existing ancestor.
+```
