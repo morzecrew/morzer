@@ -7,4 +7,4 @@ import (
 
 // hostRuntimes is runtimes_linux.go's counterpart: a Mac runs the incumbent
 // alone, since Quadlet needs systemd.
-func hostRuntimes(exec.Runner, func(exec.Line), []string) []ports.Runtime { return nil }
+func hostRuntimes(exec.Runner, func(exec.Line), []string, int) []ports.Runtime { return nil }

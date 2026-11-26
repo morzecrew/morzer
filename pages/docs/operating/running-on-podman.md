@@ -40,7 +40,8 @@ exercise it yet.
   `sudo`.
 
 Root cannot run this runtime. An installation of it runs as the user who
-owns it, in that user's manager, and the adapter refuses root.
+owns it, in that user's manager, so `init` run as root refuses it, and
+`doctor` run as root does not report its tools.
 
 ## Create it
 

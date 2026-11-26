@@ -1043,7 +1043,7 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	// Every runtime this host can run, the incumbent first as the default.
 	// The installation a command is on picks among them by the name it
 	// records (RFC 0023 G5), below.
-	runtimes := append([]ports.Runtime{runtime}, hostRuntimes(runner, outputSink, redactor.Values())...)
+	runtimes := append([]ports.Runtime{runtime}, hostRuntimes(runner, outputSink, redactor.Values(), os.Geteuid())...)
 	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
 	if engineUser != nil {
