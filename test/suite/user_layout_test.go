@@ -78,10 +78,20 @@ func TestAUserInstallationsCommandsAreRefusedOnTheSystemsEngine(t *testing.T) {
 
 	h.Runtime.Fail["ProbeEngineScope"] = domain.Preflight(nil, "the Docker daemon is the system's")
 	h.Runtime.Calls = nil
+	// Asked once the lock is held, so a command that waited behind another
+	// is asked about the daemon it is about to use.
+	unlocked := 0
+	h.Runtime.OnCall = func(method string) {
+		if _, held, _ := h.Locker.Owner(ctx, "deployment"); method == "ProbeEngineScope" && !held {
+			unlocked++
+		}
+	}
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.ErrorIs(t, err, domain.ErrPreflight)
 	_, err = ops.Restart(ctx, h.Deps, ops.RestartOptions{Services: []string{"app"}})
 	require.ErrorIs(t, err, domain.ErrPreflight)
+	assert.Zero(t, unlocked, "a command was asked about the daemon before it held the lock")
+	h.Runtime.OnCall = nil
 	_, err = ops.ExecInService(ctx, h.Deps, ops.ExecOptions{Service: "app", Argv: []string{"true"}})
 	require.ErrorIs(t, err, domain.ErrPreflight)
 	// Validate renders the configuration and asks no daemon anything.

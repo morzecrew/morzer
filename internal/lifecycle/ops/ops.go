@@ -663,13 +663,6 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 		return fn(ctx)
 	}
 
-	// A user installation's command on a daemon not the user's own would
-	// change the system's installation of the same product (RFC 0023 row
-	// 32), so it is refused before it waits on, or takes, anything.
-	if err := d.refuseForeignEngine(ctx); err != nil {
-		return err
-	}
-
 	release, err := d.Locker.Acquire(ctx, "deployment", ports.LockOptions{
 		Wait: opts.Wait,
 		Owner: ports.LockOwner{
@@ -687,6 +680,14 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 			logging.FromContext(ctx).Error("cannot release the deployment lock", "error", err)
 		}
 	}()
+
+	// A user installation's command on a daemon not the user's own would
+	// change the system's installation of the same product (RFC 0023 row
+	// 32). Asked once the lock is held, so a command that waited behind
+	// another is asked about the daemon it is about to use.
+	if err := d.refuseForeignEngine(ctx); err != nil {
+		return err
+	}
 
 	return fn(ctx)
 }
