@@ -237,15 +237,16 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 	// The engine too, for a user installation: on the system's, it would
 	// share its project with the system's installation (RFC 0023 row 32).
 	// Asked of the runtime the installation will run on: the one --runtime
-	// names, or with no release the default. A release that leaves the
-	// choice to itself is known once it is staged, and asked then, before
-	// the installation is written.
+	// names, the one a repair's installation records and the command was
+	// wired with, or with no release the default. A release that leaves
+	// the choice to itself is known once it is staged, and asked then,
+	// before the installation is written; the CLI names it first.
 	if opts.Runtime != "" {
 		if err := d.useRuntime(opts.Runtime); err != nil {
 			return Result{}, err
 		}
 	}
-	if opts.Runtime != "" || opts.ReleasePath == "" {
+	if opts.Runtime != "" || opts.ReleasePath == "" || opts.Repair {
 		if err := d.refuseForeignEngine(ctx); err != nil {
 			return Result{}, err
 		}
@@ -786,7 +787,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 	if err := d.useRuntime(runtime); err != nil {
 		return domain.Installation{}, err
 	}
-	if opts.Runtime == "" && opts.ReleasePath != "" {
+	if opts.Runtime == "" && opts.ReleasePath != "" && !opts.Repair {
 		if err := d.refuseForeignEngine(ctx); err != nil {
 			return domain.Installation{}, err
 		}
@@ -1420,6 +1421,13 @@ func runtimeOptionsFor(st *engine.State, runtime string) map[string]string {
 		options[key] = value
 	}
 	return options
+}
+
+// RuntimeForManifest is the runtime a release declaring one installs with, for
+// `init` to know before it creates anything: empty when it declares none, and
+// refused, asking for --runtime, when it declares several.
+func RuntimeForManifest(m domain.Manifest) (string, error) {
+	return runtimeForRelease(domain.Release{Manifest: m}, "")
 }
 
 // runtimeForRelease is the decision itself, split from the state plumbing above

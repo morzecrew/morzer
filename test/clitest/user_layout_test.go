@@ -3,6 +3,7 @@ package clitest_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -198,4 +199,40 @@ func TestProductCompletionFallsBackToTheUsersOwnUnits(t *testing.T) {
 
 	r.Run("__complete", "--product", "").ExitCode(0).
 		OutputContains("demo\t", "sandbox\tnot readable as this user", ":4")
+}
+
+// A release declaring Compose and Quadlet installs, for a user, with the one
+// named, and the system's Docker daemon refuses only the Compose one: the
+// Quadlet runtime has no daemon of its own to ask about. With none named,
+// `init` asks for one before it creates anything (RFC 0023 row 32, G5).
+func TestInitOfAUserInstallationAsksTheEngineOfItsRuntime(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the Quadlet adapter is wired on Linux only")
+	}
+	r := clitest.NewUser(t)
+	t.Setenv("MORZER_TEST_DOCKER_INFO", `["name=seccomp,profile=builtin","name=cgroupns"]`)
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	both := strings.Replace(string(raw), "runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)
+	if err := os.WriteFile(manifest, []byte(both), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installation := r.Path("data", "morzer", "etc", "demo", "installation.yaml")
+	initWith := func(extra ...string) clitest.Result {
+		return r.Run(append([]string{"init", "--release", r.Bundle, "--domain", "demo.example",
+			"--no-recovery-recipient", "--install-units=false"}, extra...)...)
+	}
+
+	initWith().ExitCode(2).StderrContains("choose one with --runtime")
+	initWith("--runtime", "compose", "--profile", "embedded").ExitCode(3).StderrContains("the Docker daemon is the system's")
+	if _, err := os.Stat(installation); !os.IsNotExist(err) {
+		t.Fatalf("a refused init wrote the installation: %v", err)
+	}
+	initWith("--runtime", "quadlet").ExitCode(0)
+	if _, err := os.Stat(installation); err != nil {
+		t.Errorf("init on the Quadlet runtime wrote no installation: %v", err)
+	}
 }

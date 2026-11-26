@@ -84,13 +84,24 @@ func newInitCommand(app *App) *cobra.Command {
 				return err
 			}
 			// The product name may come from the bundle, so it is
-			// resolved before the paths are finalised.
-			if product == "" && releasePath != "" {
+			// resolved before the paths are finalised. So is the
+			// runtime a release leaves to itself: `init` asks its
+			// engine before it creates anything, which it can only do
+			// knowing which runtime that is. A repair keeps the one the
+			// installation records.
+			if releasePath != "" && (product == "" || (runtimeName == "" && !repair)) {
 				manifest, err := app.releaseManifest(cmd.Context(), releasePath)
 				if err != nil {
 					return err
 				}
-				product = manifest.Metadata.Name
+				if product == "" {
+					product = manifest.Metadata.Name
+				}
+				if runtimeName == "" && !repair {
+					if runtimeName, err = ops.RuntimeForManifest(manifest); err != nil {
+						return err
+					}
+				}
 			}
 			// A repair is about an installation that exists, so it
 			// finds it the way every other command does: the one this

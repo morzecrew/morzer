@@ -1270,3 +1270,17 @@ proposal: ASSUMED — as row 32, asked of the runtime `init` installs with, once
 ```
 
 **Drift count: 0.**
+
+Correction to the section above, 2026-11-26. Asking the engine only once the
+staged release had chosen the runtime moved the refusal into a step. A user's
+`init` on the system's Docker daemon then exited 11, after its changes were
+rolled back, where it had exited 3 before anything was created.
+`TestInitOfAUserInstallationRefusesTheSystemsDaemon` caught it. Now the CLI
+reads the manifest it already reads for the product's name, and names the
+release's one runtime before `init` runs, through `ops.RuntimeForManifest`.
+A release declaring several runtimes is refused there, exit 2, asking for
+`--runtime`. A repair asks the runtime its installation records, which the
+command is wired with. The check inside the step remains, for a caller that
+names no runtime.
+
+**Drift count: 0.**
