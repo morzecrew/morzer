@@ -27,6 +27,7 @@ import (
 	"github.com/morzecrew/morzer/internal/adapters/managerfeed/signed"
 	"github.com/morzecrew/morzer/internal/adapters/render/gotemplate"
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
+	"github.com/morzecrew/morzer/internal/adapters/runtime/quadlet"
 	"github.com/morzecrew/morzer/internal/adapters/secrets/sopsage"
 	signminisign "github.com/morzecrew/morzer/internal/adapters/sign/minisign"
 	"github.com/morzecrew/morzer/internal/adapters/source"
@@ -124,6 +125,10 @@ type App struct {
 	// same failed lookup, and nothing at the point of failure can tell them
 	// apart without the inventory.
 	machineProducts []string
+
+	// bundleRuntimes are the adapters a `release` command reads a bundle's
+	// files with, set where the runtimes are wired.
+	bundleRuntimes []ports.Runtime
 
 	// machineInventory is why that list is empty, when it is empty because
 	// nobody could read it.
@@ -1044,6 +1049,11 @@ func (a *App) wireAt(ctx context.Context, paths domain.Paths, bus *events.Bus, r
 	// The installation a command is on picks among them by the name it
 	// records (RFC 0023 G5), below.
 	runtimes := append([]ports.Runtime{runtime}, hostRuntimes(runner, outputSink, redactor.Values(), os.Geteuid())...)
+	// What a `release` command reads a bundle's files with: an adapter of
+	// every runtime this build has, whichever this host or user can run,
+	// since reading a runtime's files runs none of it. A release checked
+	// on a Mac, or as root in a build container, is checked as on Linux.
+	a.bundleRuntimes = []ports.Runtime{runtime, quadlet.New(runner)}
 	var deps *ops.Deps
 	storeOpts := []sopsage.Option{sopsage.WithLocker(locker)}
 	if engineUser != nil {

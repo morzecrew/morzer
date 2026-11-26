@@ -339,7 +339,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 				fmt.Fprintf(app.Stream.Err, "warning: %s; `release build` refuses it\n", p)
 			}
 
-			if err := checkBundleIntegrity(rel, app.Deps.EveryRuntime()); err != nil {
+			if err := checkBundleIntegrity(rel, app.bundleRuntimes); err != nil {
 				return err
 			}
 

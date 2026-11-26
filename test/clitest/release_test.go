@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -435,11 +434,9 @@ func TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare(t *tes
 // TestVerifyChecksEveryRuntimeTheReleaseDeclares: an installation may be
 // created on any runtime its release declares, so each one's files are read,
 // and a problem names the runtime whose files have it
-// (logs/quadlet-adapter.md, "The wiring").
+// (logs/quadlet-adapter.md, "The wiring"). On every host: reading a runtime's
+// files runs none of it, so a Mac checks a Quadlet bundle as Linux does.
 func TestVerifyChecksEveryRuntimeTheReleaseDeclares(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("the Quadlet adapter is wired on Linux only")
-	}
 	r := clitest.New(t)
 	dir := filepath.Join(r.Bundle, "quadlet")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
