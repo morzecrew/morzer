@@ -967,3 +967,31 @@ rows for RFC 0023 when U1 to U13 and these are reconciled.
     neither a bundle `.volume` file nor prefixed.
 - **Q2 (a).** A `.container` with `[Service] Type=oneshot` is one `Up`
   never starts. `RunOneShot` runs any `.container`.
+
+## The P3b build, 2026-11-26
+
+On branch `quadlet-p3b`. First PR: the engine capability, the restated
+comments on `Stop` and `Start`, and the contract case for values across
+them.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T13:58:50Z
+attempt: 1
+claim: the product unit and the backup service require docker.service whatever the runtime, so the Supervisor states which runtime the machine uses, and a Quadlet installation's product unit would never start
+evidence: internal/adapters/supervisor/systemd/systemd.go:649-651
+action: decided
+proposal: ASSUMED — the runtime names the unit its engine runs as through an optional capability, ports.EngineUnitNamer, and the Supervisor requires and orders after that unit only when there is one. Compose answers docker.service, so its units render byte for byte as before. Counted for §6 as the first addition the second adapter forces.
+```
+
+Row 29's consequences 1 and 4 are in this PR as well:
+- `RunStartKeepsValuesSuite` (`test/contract/runtime.go`) brings a service
+  up with one value, stops it, and starts it with another value in
+  `cfg.Env`. It expects the first value. It runs against Compose now and
+  will run against Quadlet in the next PR. The fake models no values, so it
+  is not run there.
+- The comments on `Stop` and `Start` (`internal/ports/runtime.go`) now
+  promise what row 29 protects. That is the definition, the values and every
+  declared volume, but not a container's writable layer.
