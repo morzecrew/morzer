@@ -212,6 +212,13 @@ type UnitParams struct {
 	// and empty when the installation exports no metrics, which leaves the
 	// pair out (RFC 0047 decisions 2 and 15).
 	MetricsDir string
+
+	// EngineUnit is the unit the runtime's engine runs as, which the
+	// product and backup units require and start after. Empty for a runtime
+	// with no engine to wait for. The runtime names it, through
+	// EngineUnitNamer, so the supervisor does not decide which runtime the
+	// machine uses.
+	EngineUnit string
 }
 
 // Unit is a supervisor unit to install.

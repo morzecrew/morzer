@@ -780,6 +780,21 @@ type EngineScopeProber interface {
 	ProbeEngineScope(ctx context.Context) error
 }
 
+// EngineUnitNamer names the unit a runtime's engine runs as, so the manager's
+// own units can require it and start after it.
+//
+// The systemd supervisor used to name Docker's unit itself, which was it
+// stating which runtime the machine uses, and a runtime with no daemon then had
+// a product unit that could never start (RFC 0023 row 14). Optional like the
+// capabilities around it: rootless Podman runs each container from a unit of
+// its own, so there is no engine to wait for, and it declines. For §6's count it
+// is forced by the second adapter (logs/quadlet-adapter.md, "The P3b build").
+type EngineUnitNamer interface {
+	// EngineUnit returns the unit's name. Empty means the same as not
+	// implementing the interface.
+	EngineUnit() string
+}
+
 // ProjectStorage is everything a project's resolved configuration mounts.
 type ProjectStorage struct {
 	// Volumes are the named volumes, sorted by name so plans and manifests

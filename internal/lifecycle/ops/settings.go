@@ -1259,7 +1259,20 @@ func (d *Deps) unitParams(inst domain.Installation) ports.UnitParams {
 		// The metrics pair, carrying the directory it writes into
 		// (RFC 0047 decisions 2 and 15).
 		MetricsDir: inst.Policy.MetricsTextfile,
+
+		// Named by the runtime, so the units wait for its engine without
+		// this layer saying which one it is (RFC 0023 row 14).
+		EngineUnit: d.engineUnit(),
 	}
+}
+
+// engineUnit is the unit the runtime's engine runs as, and empty for a runtime
+// that names none.
+func (d *Deps) engineUnit() string {
+	if namer, ok := d.Runtime.(ports.EngineUnitNamer); ok {
+		return namer.EngineUnit()
+	}
+	return ""
 }
 
 // refreshUnits makes the installed unit set match what the installation
