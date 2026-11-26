@@ -122,6 +122,13 @@ func TestAUserWithNoInstallationKeepsTheSystemLayout(t *testing.T) {
 	}
 }
 
+// --product completes the user's own installations, as `morzer ls` with no flag
+// lists them.
+func TestProductCompletesTheUsersOwnInstallations(t *testing.T) {
+	r := initUser(t)
+	r.Run("__complete", "--product", "").ExitCode(0).OutputContains("demo\t", ":4")
+}
+
 // A directory in the user's tree that cannot be read is listed with what to do
 // about it, and that is not to re-run as root, which lists the system's
 // installations instead.

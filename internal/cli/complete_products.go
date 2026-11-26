@@ -39,6 +39,10 @@ func (a *App) completeProducts(cmd *cobra.Command, _ []string, _ string) ([]cobr
 	// setup saw is not the one the line names: re-root a copy.
 	d := *a.Deps
 	d.Paths = domain.PathsUnder(a.Flags.root, "")
+	if a.Flags.root == "" && a.managesUserTree() {
+		// The user's own, as `morzer ls` with no flag lists them.
+		d.Paths = domain.PathsUnder(userTree(), "")
+	}
 
 	entries, err := ops.ListInstallations(cmd.Context(), &d, ops.ListOptions{})
 	unreadable := err != nil
