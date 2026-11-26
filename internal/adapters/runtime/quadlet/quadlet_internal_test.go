@@ -1,6 +1,7 @@
 package quadlet
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -252,4 +254,30 @@ func TestAOneShotsLogIsReadBackStreamByStream(t *testing.T) {
 
 	stdout, _, _, _ = readRunLog(filepath.Join(t.TempDir(), "absent.log"))
 	assert.Empty(t, stdout, "a one-shot that wrote nothing has nothing to read")
+}
+
+// recorder is a runner that runs nothing and remembers what it was asked.
+type recorder struct{ argv [][]string }
+
+func (r *recorder) Run(_ context.Context, cmd exec.Command) (exec.Result, error) {
+	r.argv = append(r.argv, cmd.Argv)
+	return exec.Result{}, nil
+}
+func (r *recorder) Look(name string) (string, error) { return name, nil }
+
+// An installed `.volume` file and the declared one of the same name may set
+// different names; Down with volumes removes both.
+func TestBothNamesOfAVolumeAreRemoved(t *testing.T) {
+	rec := &recorder{}
+	r := &Runtime{runner: rec, podman: "podman"}
+	b := bundle{product: "demo", units: []unitFile{
+		{name: "demo-data.volume", kind: kindVolume, entries: []entry{{section: "Volume", key: "VolumeName", value: "demo-old"}}},
+		{name: "demo-data.volume", kind: kindVolume, entries: []entry{{section: "Volume", key: "VolumeName", value: "demo-new"}}},
+	}}
+	require.NoError(t, r.removeVolumes(context.Background(), b))
+	var removed []string
+	for _, a := range rec.argv {
+		removed = append(removed, a[len(a)-1])
+	}
+	assert.ElementsMatch(t, []string{"demo-old", "demo-new"}, removed)
 }

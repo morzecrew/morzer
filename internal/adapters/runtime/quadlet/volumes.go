@@ -116,14 +116,26 @@ func appendOnce(list []string, s string) []string {
 
 // removeVolumes removes the volumes the installation declares. One already
 // gone is not an error: the data is gone either way.
+//
+// Each `.volume` file is asked for its own name, so an installed file and the
+// declared one of the same name that set different names both go.
 func (r *Runtime) removeVolumes(ctx context.Context, b bundle) error {
-	seen := map[string]bool{}
+	var actual []string
+	for _, u := range b.units {
+		if u.kind == kindVolume {
+			actual = append(actual, volumeName(u))
+		}
+	}
 	for _, v := range b.storage(nil).Volumes {
-		if seen[v.Actual] {
+		actual = append(actual, v.Actual)
+	}
+	seen := map[string]bool{}
+	for _, name := range actual {
+		if seen[name] {
 			continue
 		}
-		seen[v.Actual] = true
-		res, err := r.podmanRun(ctx, 5*time.Minute, "volume", "rm", v.Actual)
+		seen[name] = true
+		res, err := r.podmanRun(ctx, 5*time.Minute, "volume", "rm", name)
 		if err == nil {
 			continue
 		}
@@ -131,7 +143,7 @@ func (r *Runtime) removeVolumes(ctx context.Context, b bundle) error {
 		if asExit(err, &exitErr) && strings.Contains(res.Stderr+exitErr.Stderr, "no such volume") {
 			continue
 		}
-		return wrapExit(err, "cannot remove volume "+v.Actual, "")
+		return wrapExit(err, "cannot remove volume "+name, "")
 	}
 	return nil
 }
