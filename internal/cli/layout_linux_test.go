@@ -33,6 +33,16 @@ func TestTheUsersTreeIsKnownBeforeItExists(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(dangling, "data"))
 	assert.True(t, isUserTree(filepath.Join(dangling, "later", "morzer")), "a dangling link's target")
 
+	// A `..` in a link's target follows the links ahead of it: data is
+	// alias/../later, and alias is real/nested, so data is real/later.
+	dotdot := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dotdot, "real", "nested"), 0o750))
+	require.NoError(t, os.Symlink(filepath.Join("real", "nested"), filepath.Join(dotdot, "alias")))
+	require.NoError(t, os.Symlink("alias/../later", filepath.Join(dotdot, "data")))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(dotdot, "data"))
+	assert.True(t, isUserTree(filepath.Join(dotdot, "real", "later", "morzer")), "where the kernel would make it")
+	assert.False(t, isUserTree(filepath.Join(dotdot, "later", "morzer")), "where cleaning the target first puts it")
+
 	// A loop ends, naming nothing the user's.
 	loop := t.TempDir()
 	require.NoError(t, os.Symlink("b", filepath.Join(loop, "a")))

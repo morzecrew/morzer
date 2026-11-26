@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/morzecrew/morzer/internal/domain"
 )
@@ -57,15 +58,36 @@ func resolve(p string, hops int) string {
 	}
 	if target, err := os.Readlink(p); err == nil && hops < maxLinkHops {
 		if !filepath.IsAbs(target) {
-			target = filepath.Join(filepath.Dir(p), target)
+			// Beside the link and not cleaned: a `..` in the target
+			// follows the links ahead of it, which cleaning would skip.
+			dir, _ := rawSplit(p)
+			target = dir + "/" + target
 		}
-		return resolve(filepath.Clean(target), hops+1)
+		return resolve(target, hops+1)
 	}
-	parent := filepath.Dir(p)
-	if parent == p {
+	dir, base := rawSplit(p)
+	if dir == p {
 		return p
 	}
-	return filepath.Join(resolve(parent, hops), filepath.Base(p))
+	// dir comes back with no link left in it, so a `..` in base is its
+	// parent, as Join takes it.
+	return filepath.Join(resolve(dir, hops), base)
+}
+
+// rawSplit splits p at its last separator without cleaning either half, so a
+// `..` stays where the kernel meets it.
+func rawSplit(p string) (dir, base string) {
+	p = strings.TrimRight(p, "/")
+	i := strings.LastIndexByte(p, '/')
+	switch {
+	case p == "":
+		return "/", ""
+	case i < 0:
+		return p, ""
+	case i == 0:
+		return "/", p[1:]
+	}
+	return p[:i], p[i+1:]
 }
 
 // userUnitDir is where the user's systemd manager reads the units written for
