@@ -265,8 +265,13 @@ func (e journalEntry) text() string {
 // lines about a container, and systemd's about its unit, carry no container
 // name and are left out, as Compose leaves out its own.
 //
-// Tail counts the merged stream, not each container, because journalctl
-// reads the units as one journal.
+// The journal is read for the services' container names rather than their
+// units, so Tail counts container lines and not the unit's own, and with
+// `--all`, so a line longer than 4096 bytes is not replaced by a null. Tail
+// counts the merged stream, not each container, because journalctl reads them
+// as one journal. With no service installed, as after a reboot before the
+// first apply, there is nothing to read, and an unfiltered journal would be
+// every other service's.
 func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.LogOptions) (io.ReadCloser, error) {
 	dir, err := r.unitDir(cfg.Product)
 	if err != nil {
@@ -280,13 +285,17 @@ func (r *Runtime) Logs(ctx context.Context, cfg ports.RuntimeConfig, opts ports.
 	if len(services) == 0 {
 		services = b.started()
 	}
-	args := []string{r.journalctl, "--user", "--output", "json", "--no-pager", "--quiet"}
+	if len(services) == 0 {
+		return io.NopCloser(strings.NewReader("")), nil
+	}
+	args := []string{r.journalctl, "--user", "--output", "json", "--all", "--no-pager", "--quiet"}
 	for _, s := range services {
 		u, ok := b.service(s)
 		if !ok {
 			return nil, domain.ValidationError(nil, "no installed Quadlet file defines the service %q", s)
 		}
-		args = append(args, "--unit", u.unitName())
+		// Matches on one field are alternatives.
+		args = append(args, "CONTAINER_NAME="+b.containerName(u))
 	}
 	if opts.Tail > 0 {
 		args = append(args, "--lines", strconv.Itoa(opts.Tail))

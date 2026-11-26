@@ -2,6 +2,7 @@ package quadlet
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -280,4 +281,18 @@ func TestBothNamesOfAVolumeAreRemoved(t *testing.T) {
 		removed = append(removed, a[len(a)-1])
 	}
 	assert.ElementsMatch(t, []string{"demo-old", "demo-new"}, removed)
+}
+
+// With no service installed, as after a reboot before the first apply, an
+// unfiltered journal would be every other service's, so nothing is read.
+func TestLogsWithNothingInstalledReadNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the adapter refuses root")
+	}
+	r := &Runtime{runtimeDir: t.TempDir()}
+	rc, err := r.Logs(context.Background(), ports.RuntimeConfig{Product: "demo"}, ports.LogOptions{})
+	require.NoError(t, err)
+	got, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
