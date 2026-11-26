@@ -717,3 +717,15 @@ evidence: internal/cli/layout_linux.go:54-69
 action: decided
 proposal: ASSUMED — as U11 attempt 2, with a link that does not resolve followed by hand, at most 40 links deep.
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T09:24:44Z
+attempt: 4
+claim: U11, a dangling link's target was cleaned before it was followed, so a `..` in it skipped the link ahead of it and named another tree
+evidence: internal/cli/layout_linux.go:55-75
+action: decided
+proposal: ASSUMED — as U11 attempt 3, with a link's target resolved component by component, as the kernel resolves it, and links followed by hand only as far as the kernel's own 40.
+```
