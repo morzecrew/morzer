@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
+	"github.com/morzecrew/morzer/internal/adapters/runtime/quadlet"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
@@ -227,6 +229,49 @@ func TestARuntimeThatNamesNoToolsIsNotGuessedAt(t *testing.T) {
 
 type runtimeWithoutTools struct{ ports.Runtime }
 
+// A runtime standing in for one of several, with its own name and tools.
+type runtimeNamingTools struct {
+	ports.Runtime
+	name  string
+	tools []string
+}
+
+func (r runtimeNamingTools) Name() string            { return r.name }
+func (r runtimeNamingTools) RequiredTools() []string { return r.tools }
+
+// With several runtimes wired, the next installation may use any of them, so a
+// host missing one runtime's tools is not unfit: each runtime's tools are
+// warnings, and what fails is no runtime having all of its own
+// (logs/quadlet-adapter.md, "The wiring").
+func TestDoctorWithSeveralRuntimesNeedsOneOfThemReady(t *testing.T) {
+	h := newHarness(t)
+	ready := runtimeNamingTools{h.Runtime, "first", nil}
+	missing := runtimeNamingTools{h.Runtime, "second", []string{"no-such-tool"}}
+	results := func() map[string]events.CheckResult {
+		report, err := ops.Doctor(context.Background(), h.Deps)
+		require.NoError(t, err)
+		out := map[string]events.CheckResult{}
+		for _, r := range report.Results {
+			out[r.ID] = r
+		}
+		return out
+	}
+
+	h.Deps.Runtime, h.Deps.Runtimes = ready, []ports.Runtime{ready, missing}
+	got := results()
+	assert.Equal(t, events.CheckWarn, got["tools.no-such-tool"].Status,
+		"a runtime the next installation need not use is not a reason to fail")
+	assert.Contains(t, got["tools.no-such-tool"].Description, "second runtime")
+	assert.Equal(t, events.CheckOK, got["runtime.tools"].Status)
+	assert.Equal(t, "first", got["runtime.tools"].Message)
+
+	alsoMissing := runtimeNamingTools{h.Runtime, "first", []string{"no-such-tool"}}
+	h.Deps.Runtime, h.Deps.Runtimes = alsoMissing, []ports.Runtime{alsoMissing, missing}
+	got = results()
+	assert.Equal(t, events.CheckFail, got["runtime.tools"].Status, "with no runtime ready there is nothing to init with")
+	assert.Contains(t, got["runtime.tools"].Message, "first, second")
+}
+
 // The adapter names tools; the registry probes them. Nothing else asserts that
 // the two vocabularies are the same one, and a name the catalogue has no probe
 // for does not fail quietly -- it produces an internal error wearing a doctor
@@ -240,15 +285,16 @@ func TestEveryToolTheRuntimeAsksForHasAProbe(t *testing.T) {
 	ctx := context.Background()
 	registry := tools.NewRegistry(infraexec.New())
 
-	runtime := compose.New(infraexec.New())
-	names := runtime.RequiredTools()
-	require.NotEmpty(t, names)
+	for _, runtime := range []ports.ToolRequirer{compose.New(infraexec.New()), quadlet.New(infraexec.New())} {
+		names := runtime.RequiredTools()
+		require.NotEmpty(t, names)
 
-	for _, name := range names {
-		_, err := registry.Lookup(ctx, name)
-		if err != nil {
-			assert.NotContains(t, err.Error(), "no version probe is defined",
-				"the runtime asks for %q and the tool catalogue has never heard of it", name)
+		for _, name := range names {
+			_, err := registry.Lookup(ctx, name)
+			if err != nil {
+				assert.NotContains(t, err.Error(), "no version probe is defined",
+					"the runtime asks for %q and the tool catalogue has never heard of it", name)
+			}
 		}
 	}
 }
