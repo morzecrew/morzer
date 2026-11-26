@@ -741,3 +741,215 @@ evidence: internal/cli/layout_linux.go:80-83
 action: decided
 proposal: ASSUMED — as U11 attempt 4, with a trailing slash split off as an empty name, so the link before it is followed.
 ```
+
+## After #435, 2026-11-26
+
+#435 merged as `da059ec0`, with U11 attempts 3 to 5.
+
+The author ruled the open U10 question on 2026-11-26: keep it as built. A
+user installation's command goes ahead when `docker info` cannot be run or
+times out, and only a daemon that answers and is not the user's own is
+refused. Refusing on a probe that did not run would refuse config changes
+and `init` with no release while the daemon is down.
+
+## The P3b plan, 2026-11-26
+
+On branch `quadlet-p3b` from `main` at `da059ec0`. This builds the adapter
+in "Plan" above, on the P3a layout. Rows 26 to 29 and 32 govern it. G5 to
+G7 are decided in the build ("Rulings, and a second spike").
+
+### Measured for this plan
+
+Podman 6.1.1, the generator in dry run only
+(`QUADLET_UNIT_DIRS=<dir> /usr/lib/podman/quadlet -dryrun -user`). Nothing
+was started, and the directory was removed afterwards.
+
+1. **Subdirectories are read.** Units under `<dir>/morzer/demo/` were
+   generated.
+2. **Names.**
+   - `demo-web.container` becomes `demo-web.service`, and its container is
+     `systemd-%N`, so `systemd-demo-web`.
+   - `demo-data.volume` becomes the Podman volume `systemd-demo-data`,
+     created by `demo-data-volume.service`.
+   - `demo-net.network` becomes `systemd-demo-net`.
+   - A `.container` that names either gets `Requires=` and `After=` on its
+     unit.
+3. **`[Service] Type=oneshot` in a `.container` is kept.** The run drops
+   `-d` and `--sdnotify`, so the unit's start lasts as long as the
+   container.
+4. **`Volume=${DEMO_SECRETS_DIR}/token:/run/secrets/token:ro` passes
+   through** as `-v ${DEMO_SECRETS_DIR}/token:...`, with no volume unit.
+5. **`Notify=healthy` gives `--sdnotify=healthy`,** so a start waits for
+   health.
+6. **The generator is reached as
+   `/usr/lib/systemd/user-generators/podman-user-generator`**, a link to
+   `../../podman/quadlet` on this host. Distributions put the target
+   elsewhere.
+
+Read, not measured: the product unit and the backup service have
+`Requires=docker.service`
+(`internal/adapters/supervisor/systemd/systemd.go:651`, `:676`). A Quadlet
+installation has no such unit, so its product unit would never start.
+
+### Decisions the plan needs that nobody has settled
+
+Two are load-bearing, so the readiness gate does not fire. Both are part of
+the bundle format a vendor writes, so they are put to the author before
+any code.
+
+**Q1 — How a Quadlet installation's names are kept apart (load-bearing).**
+Unit names are global in the user's manager. Container, volume and network
+names are global in the user's Podman. Compose keeps installations apart
+with the project (row 20), and Quadlet has nothing like it. Two products
+that both ship `web.container` would replace each other's unit.
+- (a) **Recommended.** Every file in `runtimes.quadlet.files` is named
+  `<product>-<service>.<kind>`. The service is the name without the prefix,
+  so the manifest's references to services (parameters, secrets, tasks,
+  operations) mean the same under both runtimes.
+  - `Validate` refuses a file without the prefix.
+  - It also refuses a `ContainerName=`, `VolumeName=` or `NetworkName=`
+    that does not start with it, and a named `Volume=` source that is
+    neither a bundle `.volume` file nor prefixed.
+  - The vendor's files reach the machine unchanged.
+- (b) The adapter renames the files and rewrites what refers to them
+  (`Requires=db.service`, `Volume=data.volume:`). Rejected for row 27's
+  reason against templating: the files would differ between the bundle and
+  the machine.
+- (c) No namespace, and a collision is refused at install. Then two vendors
+  that both ship `web.container` cannot share an account.
+
+**Q2 — How a bundle keeps a one-shot out of `Up` (load-bearing).** Compose
+does it with a profile, as the contract fixture's `migrate` shows
+(`test/suite/runtime_docker_test.go:52`). Quadlet has no profiles, and `Up`
+is given no manifest. So G6's "needs no new field" holds for `RunOneShot`
+but not for `Up`.
+- (a) **Recommended.** A `.container` with `[Service] Type=oneshot` is one
+  `Up` never starts. It is systemd's own word for a unit that runs to
+  completion, and measurement 3 shows Quadlet keeps it. `RunOneShot` runs
+  any `.container`, as `compose run` runs any service.
+- (b) An adapter option that lists the one-shots. That is a second place to
+  say what the unit already can.
+
+### Governed, and counted for §6
+
+**The product unit's engine.** Row 14 sets the mechanism: the Supervisor
+asks the runtime rather than naming Docker.
+- A new optional capability names the unit a runtime's engine runs as.
+  Compose answers `docker.service`, and Quadlet declines.
+- The Supervisor writes `Requires=` and `After=` only when there is an
+  answer.
+- It is the first addition the second adapter forces. The surface today is
+  14 core methods and 14 optional capabilities: the baseline in "Plan",
+  plus `FileSharingProber` (RFC 0055, #377) and `EngineScopeProber`
+  (row 32). Neither of those two was forced by the second adapter.
+- §6 allows two additions. If Q1 and Q2 are ruled as recommended, the count
+  is one, and no method is a stub.
+
+### Decided in the build, each logged when it is made
+
+- **Where the units live:** `$XDG_RUNTIME_DIR/containers/systemd/morzer/<product>/`.
+  - The drop-ins and row 29's parameter copy sit beside the units, on the
+    user's tmpfs.
+  - A reboot clears all three, and `apply --startup` writes them again
+    before it starts anything. That is row 28's order.
+  - The adapter finds the directory through the variable Quadlet itself
+    reads, so `RuntimeConfig` gains no field.
+- **`Up`:**
+  - It writes the units and two drop-ins: `EnvironmentFile=` naming the
+    copy, without `-` (row 21), and a `Label=` with a hash of the unit's
+    text with the values put in.
+  - It then runs `daemon-reload`, resets any failed unit (row 28), and
+    starts every unit that is not a one-shot.
+  - A running unit whose hash changed is restarted, as Compose re-creates
+    on its config hash. `ForceRecreate` restarts the named units.
+    `RemoveOrphans` stops and deletes the product's units the release no
+    longer declares.
+  - `Wait` polls health for every container that has a healthcheck.
+- **`RunOneShot` uses a transient copy of the unit,
+  `<product>-<service>-run-<n>`.**
+  - Its drop-in sets the argv (`Exec=`), the extra environment, the mounts,
+    `Type=oneshot`, and stdout and stderr to separate files.
+  - Facts read stdout alone (`internal/lifecycle/ops/facts.go:253`), so the
+    two streams stay separate.
+  - It is started with `systemctl --user start --wait`, and the exit code is
+    read from `ExecMainStatus`.
+  - Rejected: `podman run` built from the generator's `ExecStart`, which
+    would mean parsing Podman's flags.
+- **`Status` reads the units and their containers.** A unit with no
+  container reports `exited`. `Stop` then keeps the count of services the
+  contract asserts (`test/contract/runtime.go:386`).
+- **`Logs`** reads the units' journal, framed `<container> | ...`.
+- **`Down`** stops and deletes the units. With `Volumes` set, it also
+  removes the `.volume` volumes.
+- **`Validate`** runs the generator in dry run over a temporary copy of the
+  files. It refuses:
+  - a kind other than `.container`, `.volume` and `.network`;
+  - an `[Install]` section (row 28);
+  - an anonymous volume (row 29);
+  - a relative host path, which would resolve against the copy;
+  - any option, because none is known;
+  - a non-empty `cfg.Profiles`.
+- **Root:** a Quadlet installation exists only in the user layout. Wired for
+  the system layout, the adapter refuses and says to run the command as the
+  user (row 26). Rootful Podman stays row 2's variant, not built.
+- **G5, choosing the runtime:**
+  - `Deps` carries every adapter. The composition root, which already reads
+    the installation (`internal/cli/root.go:1150`), wires the installation's
+    adapter by `Name()`.
+  - `init` picks from the release. A release declaring two runtimes needs
+    `init --runtime`, and row 12 retires.
+  - Import (row 13) refuses a runtime no adapter names.
+  - `doctor` with no installation reports each runtime's tools.
+- **G7, image ingest:** through the loopback registry, with
+  `--tls-verify=false` on that one pull only (§12 item 6).
+- **Volumes:** `Volumes` is read from the units. Capture, restore and size
+  reuse the helper container, run with `podman`. The code is shared with
+  Compose where Compose's argv stays byte for byte, and copied otherwise.
+- **The tool catalogue** gains `podman`, with a catalogue entry in the leak
+  inventory (row 7c).
+- **Capabilities.**
+  - Implemented: `ToolRequirer` (`podman`, `systemctl`), `ImageInspector`,
+    `ImageRemover`, `ServiceImager`, `BundleReader`, `VolumeInspector`,
+    `VolumeCapturer`, `ImageIngester`, and `DefinitionDrifter` through the
+    label.
+  - Declined: `HookVarSupplier`, `OptionResolver`, `FileSharingProber` and
+    `EngineScopeProber`. A rootless Podman is the user's own by
+    construction.
+  - `RegistryProber` is implemented only if Podman can probe a registry
+    without pulling. That is measured in the build.
+
+### Port and contract (row 29, consequences 1 and 4)
+
+- The comments on `Stop` and `Start` (`internal/ports/runtime.go:62-79`)
+  are restated to what row 29 protects.
+- A contract case: `Up` with a value, `Stop`, then `Start` with the value
+  changed in `cfg.Env`. `Exec` must read the value from before. It runs
+  against both real adapters, and against the fake if the fake can model
+  it.
+
+### Tests
+
+- `internal/adapters/runtime/quadlet`: unit tests against a fake runner.
+- `test/suite/runtime_podman_test.go`, `//go:build podman`:
+  - It runs `RunRuntimeSuite`, `RunRecreateSuite` and the new case.
+  - The Quadlet fixtures match the Compose ones.
+  - It runs on this host's rootless Podman and user manager, through a
+    `just` recipe. There is no CI lane (§12).
+- G5: `clitest` for `init` choosing a runtime, with `--runtime` and without
+  it, and an ops test for the import refusal.
+- Supervisor: the product unit with and without an engine unit.
+
+### Docs and changelog
+
+- `reference/manifest.md`: `runtimes.quadlet`, the naming rule, one-shots,
+  and `${...}`.
+- An operating page for a Podman installation.
+- `reference/commands.md`: `init --runtime`.
+- `CHANGELOG.md`, Unreleased: Added.
+
+### PRs
+
+1. The engine capability and the Supervisor's use of it, the restated
+   comments, and the new contract case on Compose and the fake.
+2. The adapter, wired, with G5, its suite, the docs and the changelog.
+   Until it lands there is one adapter, so row 12 stays in force.
