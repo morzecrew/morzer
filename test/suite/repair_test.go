@@ -718,6 +718,16 @@ func TestARepairWithABundleWithoutTheInstallationsRuntimeLeavesTheInstalledRelea
 	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a bundle this installation cannot run on replaced the installed release")
 
 	both := rewritten("runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n")
+	// Naming the other runtime is refused before the release is staged
+	// for it, though this host drives both and the bundle declares both.
+	h.Deps.Runtimes = []ports.Runtime{h.Runtime, runtimeNamingTools{fakes.NewRuntime(), "quadlet", nil}}
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: both, Repair: true, Runtime: "quadlet"})
+	require.ErrorContains(t, err, "runs on the compose runtime, and a repair keeps it")
+	landed, err = release.Load(installed.Root)
+	require.NoError(t, err)
+	assert.True(t, atomicfs.SameDigest(installed.Digest, landed.Digest), "a repair naming another runtime replaced the installed release")
+	assert.Same(t, h.Runtime, h.Deps.Runtime, "and the command still drives the installation's own")
+
 	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: both, Repair: true})
 	require.NoError(t, err)
 	inst, err := h.Deps.State.LoadInstallation(ctx)

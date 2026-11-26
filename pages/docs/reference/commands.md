@@ -134,7 +134,7 @@ morzer init --release ./bundle --profile embedded --domain example.com \
 | --- | --- |
 | `--release` | Release bundle to stage during init. The product name is taken from its manifest. |
 | `--profile` | Deployment profile from the release manifest. Repeat, or separate with commas, for several where the release lists them as [`combinable`](manifest.md#combinable-profiles). With `--release`, a selection the release cannot deploy is refused before anything is created. |
-| `--runtime` | The runtime to install with, one the release declares. Required when it declares several ([Choosing between runtimes](manifest.md#choosing-between-runtimes)), and checked when it declares one. Fixed for good once the installation exists. A repair keeps the installation's runtime. |
+| `--runtime` | The runtime to install with, one the release declares. Required when it declares several ([Choosing between runtimes](manifest.md#choosing-between-runtimes)), and checked when it declares one. Fixed for good once the installation exists. A repair keeps the installation's runtime, and refuses another named. |
 | `--domain` | Public domain. Repeat for several; the first is canonical. |
 | `--recovery-recipient` | Offline age public key that can also decrypt the secret state. |
 | `--no-recovery-recipient` | Proceed without one. Losing this machine then loses its secrets. |

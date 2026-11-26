@@ -234,6 +234,20 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 
+	// A repair carries its installation's runtime (decision 3). One naming
+	// another would stage and place the release for that runtime under a
+	// record of the old one, so it is refused before anything changes.
+	if opts.Repair && opts.Runtime != "" && exists {
+		existing, err := d.State.LoadInstallation(ctx)
+		if err != nil {
+			return Result{}, err
+		}
+		if have := existing.RuntimeName(); opts.Runtime != have {
+			return Result{}, domain.Usage("this installation runs on the %s runtime, and a repair keeps it", have).
+				WithHint("leave out --runtime, or pass --runtime %s", have)
+		}
+	}
+
 	// The engine too, for a user installation: on the system's, it would
 	// share its project with the system's installation (RFC 0023 row 32).
 	// Asked of the runtime the installation will run on: the one --runtime
