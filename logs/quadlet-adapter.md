@@ -729,3 +729,15 @@ evidence: internal/cli/layout_linux.go:55-75
 action: decided
 proposal: ASSUMED — as U11 attempt 3, with a link's target resolved component by component, as the kernel resolves it, and links followed by hand only as far as the kernel's own 40.
 ```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T09:53:07Z
+attempt: 5
+claim: U11, a dangling link's target ending in a slash had the slash trimmed before the split, so the link before it was joined back unfollowed
+evidence: internal/cli/layout_linux.go:80-83
+action: decided
+proposal: ASSUMED — as U11 attempt 4, with a trailing slash split off as an empty name, so the link before it is followed.
+```
