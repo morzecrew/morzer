@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `morzer ls` says whose installations it lists. With Docker Compose this is
   untested.
 
+- On Linux, a release can declare the `quadlet` runtime, and an installation
+  of your own then runs on rootless Podman under your own systemd manager.
+  It cannot load images out of a bundle yet, and is untested by the
+  acceptance run.
+
+- A release declaring several runtimes installs with the one
+  `morzer init --runtime` names. `release verify` checks each runtime's
+  files, and `doctor` with no installation reports each runtime's tools.
+
 ### Security
 
 - A machine that pins its vendor's key now checks the channel's signed index
