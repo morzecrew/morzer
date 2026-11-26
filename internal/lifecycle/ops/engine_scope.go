@@ -42,10 +42,14 @@ func (d *Deps) engineScopeProber() (ports.EngineScopeProber, bool) {
 	return prober, ok && d.Paths.UserLayout()
 }
 
-// refuseForeignEngine refuses `init` of a user installation on an engine that
-// is not the user's own, before anything is created (RFC 0023 row 32). A probe
-// that cannot run does not refuse: an installation with no release needs no
-// engine yet, and doctor reports it.
+// refuseForeignEngine refuses a user installation's command on an engine that
+// is not the user's own, before it changes anything (RFC 0023 row 32): `init`,
+// before anything is created, every command that takes the deployment lock,
+// and `exec`. Each asks in its own environment, so a unit's command is asked
+// about the daemon the unit reaches, whatever the shell that ran `init`
+// reached. A probe that cannot run does not refuse: a command that needs the
+// engine fails when it is not answered, an installation with no release needs
+// none yet, and doctor reports why.
 func (d *Deps) refuseForeignEngine(ctx context.Context) error {
 	prober, ok := d.engineScopeProber()
 	if !ok {

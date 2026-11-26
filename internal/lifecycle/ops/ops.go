@@ -654,12 +654,20 @@ func (d *Deps) engineOptions(opts Options, installationID string, prior *domain.
 
 // withLock takes the deployment lock for the duration of fn.
 //
-// Every mutating command goes through here. A dry run does not: planning
-// mutates nothing, and making `--dry-run` wait on a running update would
+// Every mutating command goes through here, and a user installation's is
+// refused here on an engine that is not the user's own. A dry run does not:
+// planning mutates nothing, and making `--dry-run` wait on a running update would
 // defeat the point of being able to inspect a plan while one is in flight.
 func (d *Deps) withLock(ctx context.Context, opID string, opType domain.OperationType, opts Options, fn func(context.Context) error) error {
 	if opts.DryRun {
 		return fn(ctx)
+	}
+
+	// A user installation's command on a daemon not the user's own would
+	// change the system's installation of the same product (RFC 0023 row
+	// 32), so it is refused before it waits on, or takes, anything.
+	if err := d.refuseForeignEngine(ctx); err != nil {
+		return err
 	}
 
 	release, err := d.Locker.Acquire(ctx, "deployment", ports.LockOptions{

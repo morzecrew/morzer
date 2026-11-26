@@ -402,6 +402,12 @@ func execSession(
 		return ExecResult{}, err
 	}
 
+	// Takes no lock, so asked here: on a daemon not the user's own, the
+	// service is the system installation's (RFC 0023 row 32).
+	if err := d.refuseForeignEngine(ctx); err != nil {
+		return ExecResult{}, err
+	}
+
 	// Refused here rather than left to the runtime, which reports a
 	// container that does not exist and says nothing about which services
 	// do. Asked before the redactor is armed and before anything is

@@ -111,7 +111,7 @@ in root's place:
 
 | Check | What it means |
 | --- | --- |
-| `runtime.engine-scope` | Fails while the Docker daemon is not your own. `init` refuses there too. |
+| `runtime.engine-scope` | Fails while the Docker daemon is not your own. `init`, every command that changes the installation, and `exec` refuse there too. |
 | `system.linger` | Warns while your account does not linger: your units stop when you log out and do not start at boot. |
 | `network.unprivileged-ports` | Warns while the release publishes a port below `net.ipv4.ip_unprivileged_port_start`. |
 | `manager.binary` | Fails while anyone but you and root could replace the binary your units run. |

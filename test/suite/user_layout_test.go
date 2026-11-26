@@ -63,6 +63,32 @@ func TestInitOfAUserInstallationRefusesTheSystemsEngine(t *testing.T) {
 	assert.True(t, exists, "a probe that could not run refused init")
 }
 
+// On an engine that is not the user's own, every command of a user installation
+// that changes it, or runs in its containers, is refused before it reaches the
+// engine, not only its `init`: a unit's command asks in the environment the
+// unit runs in, which the shell that ran `init` does not decide (RFC 0023 row
+// 32).
+func TestAUserInstallationsCommandsAreRefusedOnTheSystemsEngine(t *testing.T) {
+	ctx := context.Background()
+	h := newHarnessAt(t, "demo", userLayout)
+	h.install()
+	h.setHookEnv()
+	_, err := ops.Apply(ctx, h.Deps, ops.Options{})
+	require.NoError(t, err)
+
+	h.Runtime.Fail["ProbeEngineScope"] = domain.Preflight(nil, "the Docker daemon is the system's")
+	h.Runtime.Calls = nil
+	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	_, err = ops.Restart(ctx, h.Deps, ops.RestartOptions{Services: []string{"app"}})
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	_, err = ops.ExecInService(ctx, h.Deps, ops.ExecOptions{Service: "app", Argv: []string{"true"}})
+	require.ErrorIs(t, err, domain.ErrPreflight)
+	// Validate renders the configuration and asks no daemon anything.
+	assert.Subset(t, []string{"ProbeEngineScope", "Validate"}, h.Runtime.Calls,
+		"a refused command reached the engine")
+}
+
 // doctor runs a user installation's own checks: whose the engine is, failed on
 // the system's (RFC 0023 row 32), whether the account lingers, and whether a
 // published port needs privilege. A system installation runs none of them.

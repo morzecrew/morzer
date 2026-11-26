@@ -535,7 +535,7 @@ that user in root's place.
 
 | Check | What it means |
 | --- | --- |
-| `runtime.engine-scope` | Fails while the Docker daemon is not the user's own: `docker info` lists no `name=rootless`. On the system's daemon, the installation and a system one of the same product would share a Compose project. `init` refuses there too. Warns when the daemon cannot be asked. |
+| `runtime.engine-scope` | Fails while the Docker daemon is not the user's own: `docker info` lists no `name=rootless`. On the system's daemon, the installation and a system one of the same product would share a Compose project. `init`, every command that changes the installation, and `exec` refuse there too. Warns when the daemon cannot be asked. |
 | `system.linger` | Warns while the account does not linger, so its units stop at logout and do not start at boot. The remedy is `sudo loginctl enable-linger <user>`. |
 | `network.unprivileged-ports` | Warns while the release publishes a port below `net.ipv4.ip_unprivileged_port_start`, which an engine without `CAP_NET_BIND_SERVICE` cannot bind. |
 
