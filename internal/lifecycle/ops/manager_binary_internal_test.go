@@ -132,6 +132,8 @@ func TestAUserInstallationsSelfUpdateHintNeedsNoRoot(t *testing.T) {
 	d := &Deps{Paths: domain.UserPaths("/home/u/.local/share", "/run/user/1000", "demo"), ManagerPath: "/usr/local/bin/morzer"}
 	hint := d.elevationHint(SelfUpdateOptions{}, domain.MustParseVersion("0.20.0"))
 	assert.NotContains(t, hint, "sudo")
-	assert.Contains(t, hint, "install.sh | sh -s -- --version 0.20.0")
+	// The installer prefers a writable /usr/local/bin, whose group may write
+	// it too, so the directory is named.
+	assert.Contains(t, hint, "install.sh | sh -s -- --version 0.20.0 --dir ~/.local/bin")
 	assert.Contains(t, hint, "init --repair")
 }

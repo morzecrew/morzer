@@ -421,7 +421,7 @@ func (d *Deps) elevationHint(opts SelfUpdateOptions, target domain.Version) stri
 	// with its --root would write root's files into the user's tree.
 	if d.Paths.UserLayout() {
 		return fmt.Sprintf("install the manager for yourself instead with `curl -fsSL "+
-			"https://morzecrew.github.io/morzer/install.sh | sh -s -- --version %s`, then run "+
+			"https://morzecrew.github.io/morzer/install.sh | sh -s -- --version %s --dir ~/.local/bin`, then run "+
 			"`init --repair` with that copy", target)
 	}
 	// Root alone, whatever layout: sudo runs this copy as root.
