@@ -3,6 +3,7 @@ package clitest_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/morzecrew/morzer/test/clitest"
@@ -119,4 +120,31 @@ func TestAUserWithNoInstallationKeepsTheSystemLayout(t *testing.T) {
 			t.Errorf("an empty tree was listed as the user layout: %v", row)
 		}
 	}
+}
+
+// A directory in the user's tree that cannot be read is listed with what to do
+// about it, and that is not to re-run as root, which lists the system's
+// installations instead.
+func TestAnUnreadableUserInstallationIsNotSentToRoot(t *testing.T) {
+	r := initUser(t)
+	sealed := r.Path("data", "morzer", "etc", "sandbox")
+	if err := os.MkdirAll(sealed, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sealed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o750) })
+
+	rows, _ := r.Run("--json", "ls").ExitCode(0).Field("data").([]any)
+	for _, row := range rows {
+		if fields, _ := row.(map[string]any); fields["product"] == "sandbox" {
+			problem, _ := fields["problem"].(string)
+			if !strings.Contains(problem, "check that you can read its directory") || strings.Contains(problem, "root") {
+				t.Errorf("an unreadable user installation is told: %q", problem)
+			}
+			return
+		}
+	}
+	t.Fatalf("the unreadable directory was not listed: %v", rows)
 }

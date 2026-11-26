@@ -122,6 +122,12 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 	// whether the machine is bare or whether this process could not see it
 	// -- and that is the only question these rows answer, so they carry
 	// nothing else.
+	// Root lists the system's installations, so for the user's own it is no
+	// way to read one.
+	remedy := "re-run as root if it is one"
+	if d.Paths.UserLayout() {
+		remedy = "if it is one, check that you can read its directory"
+	}
 	for _, product := range inv.Undecidable {
 		out = append(out, InstallationEntry{
 			Product: product,
@@ -129,7 +135,7 @@ func ListInstallations(ctx context.Context, d *Deps, opts ListOptions) ([]Instal
 			Layout:  layoutName(d.Paths),
 			Skipped: true,
 			Problem: "cannot be read by this process, so it is not counted as an " +
-				"installation; re-run as root if it is one",
+				"installation; " + remedy,
 		})
 	}
 	return out, nil
