@@ -246,19 +246,18 @@ func (e journalEntry) text() string {
 	if json.Unmarshal(e.Message, &s) == nil {
 		return s
 	}
-	var raw []byte
-	if json.Unmarshal(e.Message, &raw) == nil {
-		return string(raw)
-	}
 	var nums []int
-	if json.Unmarshal(e.Message, &nums) == nil {
-		b := make([]byte, len(nums))
-		for i, n := range nums {
-			b[i] = byte(n)
-		}
-		return string(b)
+	if json.Unmarshal(e.Message, &nums) != nil {
+		return ""
 	}
-	return ""
+	b := make([]byte, 0, len(nums))
+	for _, n := range nums {
+		if n < 0 || n > 255 {
+			return ""
+		}
+		b = append(b, byte(n))
+	}
+	return string(b)
 }
 
 // Logs streams what the services' containers wrote, from the user's journal,

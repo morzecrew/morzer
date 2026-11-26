@@ -76,7 +76,7 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		env:    filepath.Join(dir, base+".env"),
 		log:    filepath.Join(dir, base+".log"),
 	}
-	defer r.cleanUp(unit, paths)
+	defer r.cleanUp(ctx, unit, paths)
 
 	if err := paths.write(u, cfg.Env, opts); err != nil {
 		return ports.ExitResult{}, err
@@ -183,10 +183,10 @@ func (p runPaths) write(u unitFile, env map[string]string, opts ports.RunOptions
 }
 
 // cleanUp stops the transient unit if it still runs and removes its files,
-// with a context of its own: a cancelled run must not leave its container
-// running or its unit loaded.
-func (r *Runtime) cleanUp(unit string, p runPaths) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+// with the run's cancellation taken away: a cancelled run must not leave its
+// container running or its unit loaded.
+func (r *Runtime) cleanUp(ctx context.Context, unit string, p runPaths) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 	_, _ = r.systemctlUser(ctx, time.Minute, "stop", unit)
 	for _, path := range []string{p.unit, p.env, p.log} {
