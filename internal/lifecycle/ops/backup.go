@@ -480,7 +480,7 @@ func stepPruneRemoteBackups(d *Deps, inst domain.Installation, rel domain.Releas
 			var total int
 			var errs []error
 			for _, remote := range pushed {
-				removed, err := d.remoteRetention(ctx, remote.Target, policy)
+				removed, err := d.remoteRetention(ctx, inst, remote.Target, policy)
 				total += len(removed)
 				if err != nil {
 					errs = append(errs, err)

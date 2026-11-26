@@ -191,6 +191,11 @@ type Backup struct {
 	// failed push fails the backup" actually lives.
 	Root string
 
+	// InstallationID is the installation every manifest names, as the real
+	// engine names the one it was built for. Remote retention counts only an
+	// installation's own backups, so a manifest naming none is never pruned.
+	InstallationID string
+
 	// Restores records the part each Restore call was asked for, in order.
 	Restores []ports.RestorePart
 
@@ -224,8 +229,9 @@ func (b *Backup) Create(ctx context.Context, scope ports.Scope, labels map[strin
 
 	manifest := ports.BackupManifest{
 		ID: id, CreatedAt: at, Reason: scope.Reason, Labels: labels,
-		Product:    "demo",
-		Components: []ports.ComponentRecord{{Component: ports.ComponentDatabase, Path: "db.sql.age"}},
+		InstallationID: b.InstallationID,
+		Product:        "demo",
+		Components:     []ports.ComponentRecord{{Component: ports.ComponentDatabase, Path: "db.sql.age"}},
 	}
 
 	// Recorded only after the write succeeds. A failed Create that had already

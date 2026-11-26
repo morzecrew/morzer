@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -298,6 +299,62 @@ func TestRetentionOnATargetKeepsTheSamePolicyAsLocally(t *testing.T) {
 	// The newest is always among them. Retention that could remove the most
 	// recent backup is retention that can leave a deployment with nothing.
 	assert.Equal(t, ids[len(ids)-1], manifests[0].ID)
+}
+
+// TestRetentionOnATargetLeavesOtherInstallationsBackupsAlone. One target can
+// hold several installations' backups: a fleet that gives every machine the same
+// URL shares it (#436). Retention counted every backup it listed, so each
+// machine's backups deleted the others' past its own keep count.
+//
+// A manifest naming no installation is left alone too. Nothing says whose it
+// is, and the safe answer to "may I delete a backup I cannot attribute" is no.
+func TestRetentionOnATargetLeavesOtherInstallationsBackupsAlone(t *testing.T) {
+	h := newHarness(t)
+	inst, offsite := h.withTargets(t)
+
+	inst.Policy.RetainBackups = 2
+	require.NoError(t, h.Deps.State.SaveInstallation(context.Background(), inst))
+
+	// Older than anything this installation takes, so a retention pass
+	// that counted them would put every one past the keep count.
+	foreign := map[string]string{
+		"20200101T000001Z": "inst_01NEIGHBOUR",
+		"20200101T000002Z": "inst_01NEIGHBOUR",
+		"20200101T000003Z": "inst_01NEIGHBOUR",
+		"20200101T000004Z": "",
+	}
+	for id, owner := range foreign {
+		at, err := time.Parse("20060102T150405Z", id)
+		require.NoError(t, err)
+		body, err := json.Marshal(ports.BackupManifest{
+			SchemaVersion: 1, ID: id, InstallationID: owner, Product: inst.Product,
+			CreatedAt: domain.NewTime(at), Reason: "scheduled",
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Join(offsite, id), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(offsite, id, ports.BackupManifestFileName), body, 0o600))
+	}
+
+	var own []string
+	for range 3 {
+		result, err := ops.Backup(context.Background(), h.Deps, ops.BackupOptions{
+			Reason: "manual", Verify: true, Prune: true, Push: true, PruneRemote: true,
+		})
+		require.NoError(t, err)
+		ref, ok := result.Data.(ports.BackupRef)
+		require.True(t, ok)
+		own = append(own, ref.ID)
+	}
+
+	manifests, err := localdir.New().List(context.Background(), mustTarget(t, offsite))
+	require.NoError(t, err)
+	listed := idsOfManifests(manifests)
+	for id := range foreign {
+		assert.Contains(t, listed, id, "retention deleted a backup this installation did not take")
+	}
+	assert.ElementsMatch(t, own[1:], listed[:2],
+		"this installation kept a different number of its own backups than the policy says")
+	assert.Len(t, listed, 2+len(foreign))
 }
 
 // TestAPreUpdateBackupIsExemptOnTheTargetToo. The exemption exists so the

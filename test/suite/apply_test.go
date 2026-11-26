@@ -247,6 +247,9 @@ func (h *harness) install() domain.Installation {
 		Policy:        domain.DefaultPolicy(),
 	}
 	require.NoError(h.t, h.Deps.State.SaveInstallation(ctx, inst))
+	// The real engine names the installation it was built for in every
+	// manifest, and remote retention counts only those.
+	h.Backup.InstallationID = inst.ID
 
 	require.NoError(h.t, h.Deps.State.SetCurrentRelease(ctx, domain.ReleaseRecord{
 		SchemaVersion: domain.InstallationSchemaVersion,
