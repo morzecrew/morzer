@@ -1196,3 +1196,42 @@ proposal: ASSUMED — `release verify` checks the files of every runtime the rel
 ```
 
 **Drift count: 0.**
+
+## Review of #441, 2026-11-26
+
+The first review of the adapter found real defects, and they are fixed on
+this branch. Two of the fixes are decisions, logged here.
+
+Measured while fixing, on Podman 6.1.1 and systemd 261:
+- Quadlet joins an `EnvironmentFile=` that starts with `${...}` onto the
+  unit directory. It passes `Volume=${...}` and `Mount=` through unchanged.
+- The generated `ExecStop=` removes the container by name, with no cidfile.
+- systemd unloads a oneshot unit that succeeded. Afterwards `systemctl
+  show` reads `ExecMainStatus=0` even when `SuccessExitStatus=` made a
+  non-zero exit a success.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T17:45:44Z
+attempt: 1
+claim: Up writes every service's files and the shared parameter copy, so with services named, a running service outside them whose definition the new files change would come back from its next Start with what no Up started; `config set` names only the services a parameter's declaration says it affects
+evidence: internal/adapters/runtime/quadlet/lifecycle.go:81
+action: decided
+proposal: ASSUMED — beside row 29, an Up with services named also recreates any running service outside them whose definition hash the new files change, so what Start restores is what runs. A stopped service outside them still comes back with the new files
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T17:45:44Z
+attempt: 1
+claim: systemd unloads a oneshot that succeeded, so a status that SuccessExitStatus= counts as a success could not be read back from the unit
+evidence: internal/adapters/runtime/quadlet/oneshot.go:216
+action: decided
+proposal: ASSUMED — the copy a one-shot runs writes systemd's $SERVICE_RESULT, $EXIT_CODE and $EXIT_STATUS to a file of the run's own from ExecStopPost=, and a success reports the status it wrote
+```
+
+**Drift count: 0.**

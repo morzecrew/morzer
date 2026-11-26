@@ -65,6 +65,7 @@ func checkBundle(cfg ports.RuntimeConfig) (bundle, error) {
 	if err != nil {
 		return b, err
 	}
+	b.env = cfg.Env
 	if len(b.containers()) == 0 {
 		return b, domain.ValidationError(nil, "the Quadlet files declare no .container file, so nothing would run")
 	}
@@ -95,9 +96,25 @@ func (b bundle) checkUnit(u unitFile) error {
 	for _, key := range []struct{ section, key string }{
 		{"Container", "ContainerName"}, {"Volume", "VolumeName"}, {"Network", "NetworkName"},
 	} {
-		if name, ok := u.last(key.section, key.key); ok && !strings.HasPrefix(name, own) {
+		name, ok := u.last(key.section, key.key)
+		if !ok {
+			continue
+		}
+		if !strings.HasPrefix(name, own) {
 			return refusal(u.name, "sets %s=%s, which does not start with %q, so it could name "+
 				"another installation's", key.key, name, own)
+		}
+		// systemd would expand a specifier or a variable in it, and the
+		// adapter would then address a container, volume or network that
+		// is not there.
+		if strings.ContainsAny(name, "%$") {
+			return refusal(u.name, "sets %s=%s, which systemd expands; write the name out", key.key, name)
+		}
+	}
+	for _, m := range u.values("Container", "Mount") {
+		if !strings.Contains(","+m+",", ",type=tmpfs,") {
+			return refusal(u.name, "mounts Mount=%s; declare storage with Volume=, which the manager "+
+				"reads for backups and removes with the installation", m)
 		}
 	}
 
@@ -112,9 +129,12 @@ func (b bundle) checkUnit(u unitFile) error {
 		}
 	}
 	for _, f := range u.values("Container", "EnvironmentFile") {
-		if relative(f) {
-			return refusal(u.name, "reads EnvironmentFile=%s, a relative path; it would resolve "+
-				"against the directory the units are installed in, not the release", f)
+		// Quadlet joins anything that is not an absolute path or a
+		// specifier onto the unit directory, `${...}` included, before
+		// systemd would expand it (measured on Podman 6.1.1).
+		if relative(f) || strings.HasPrefix(f, "$") {
+			return refusal(u.name, "reads EnvironmentFile=%s, which Quadlet resolves against the directory "+
+				"the units are installed in, not the release; write an absolute path", f)
 		}
 	}
 	return nil
@@ -135,7 +155,16 @@ func (b bundle) checkVolume(u unitFile, value string) error {
 	switch {
 	case source == "":
 		return refusal(u.name, "mounts Volume=%s, which names no source", value)
-	case strings.HasPrefix(source, "/"), strings.HasPrefix(source, "$"), strings.HasPrefix(source, "%"):
+	case strings.HasPrefix(source, "$"):
+		// systemd expands it when the unit starts. A value that is not a
+		// path makes it a named volume the files do not name, which no
+		// backup would capture and no removal would find.
+		if !strings.HasPrefix(expand(source, b.env), "/") {
+			return refusal(u.name, "mounts Volume=%s, whose source is not a path once its values are set; "+
+				"write a named volume out, or a .volume file of the bundle", value)
+		}
+		return nil
+	case strings.HasPrefix(source, "/"), strings.HasPrefix(source, "%"):
 		return nil
 	case strings.HasSuffix(source, ".volume"):
 		if _, ok := b.file(source); !ok {

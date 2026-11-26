@@ -1,14 +1,18 @@
 package quadlet
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/ports"
 )
 
@@ -65,7 +69,14 @@ func TestAUnitTheAdapterCannotRunAsWrittenIsRefused(t *testing.T) {
 		"another's network":         {web + "Network=shared\n", `does not start with "demo-"`},
 		"a container name":          {web + "ContainerName=web\n", "ContainerName=web"},
 		"a pod":                     {web + "Pod=demo-p.pod\n", "pod"},
-		"a relative env file":       {web + "EnvironmentFile=app.env\n", "relative path"},
+		"a relative env file":       {web + "EnvironmentFile=app.env\n", "resolves against"},
+		// Quadlet joins it onto the unit directory before systemd expands
+		// it (measured on Podman 6.1.1).
+		"an env file under a variable":   {web + "EnvironmentFile=${DEMO_RELEASE_DIR}/app.env\n", "resolves against"},
+		"a container name specifier":     {web + "ContainerName=demo-%N\n", "systemd expands"},
+		"a container name variable":      {web + "ContainerName=demo-$X\n", "systemd expands"},
+		"a mount the manager cannot see": {web + "Mount=type=volume,source=demo-data,target=/m\n", "Mount="},
+		"a variable naming a volume":     {web + "Volume=${DEMO_PARAM_DATA}:/data\n", "not a path once its values are set"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -79,11 +90,35 @@ func TestAUnitTheAdapterCannotRunAsWrittenIsRefused(t *testing.T) {
 func TestWhatTheAdapterCanRunIsAccepted(t *testing.T) {
 	_, err := checkBundle(bundleOf(t, "demo", map[string]string{
 		"demo-web.container": web + "Volume=demo-data.volume:/data\nVolume=${DEMO_SECRETS_DIR}/t:/run/t:ro\n" +
-			"Volume=demo-cache:/cache\nNetwork=demo-net.network\nContainerName=demo-web-1\n",
+			"Volume=demo-cache:/cache\nNetwork=demo-net.network\nContainerName=demo-web-1\n" +
+			"Mount=type=tmpfs,target=/scratch\n",
 		"demo-data.volume": "[Volume]\n",
 		"demo-net.network": "[Network]\n",
 	}))
 	assert.NoError(t, err)
+}
+
+// A variable that sets a path is a bind, which systemd expands at start; one
+// whose value is not a path would make a named volume no file declares.
+func TestAVolumeUnderAVariableIsAPathOnceSet(t *testing.T) {
+	cfg := bundleOf(t, "demo", map[string]string{"demo-web.container": web + "Volume=${DEMO_PARAM_DATA}:/data\n"})
+	cfg.Env = map[string]string{"DEMO_PARAM_DATA": "/srv/data"}
+	_, err := checkBundle(cfg)
+	assert.NoError(t, err)
+	cfg.Env["DEMO_PARAM_DATA"] = "demo-data"
+	_, err = checkBundle(cfg)
+	assert.ErrorContains(t, err, "not a path once its values are set")
+}
+
+// A volume or network unit's name, and a container's, can coincide:
+// both files would generate demo-data-volume.service.
+func TestTwoFilesGeneratingOneUnitAreRefused(t *testing.T) {
+	_, err := checkBundle(bundleOf(t, "demo", map[string]string{
+		"demo-web.container":         web,
+		"demo-data-volume.container": web,
+		"demo-data.volume":           "[Volume]\n",
+	}))
+	assert.ErrorContains(t, err, "generates the unit demo-data-volume.service")
 }
 
 func TestOptionsAndProfilesAreRefused(t *testing.T) {
@@ -119,6 +154,11 @@ func TestAUnitIsReadAsSystemdReadsIt(t *testing.T) {
 
 	_, err = parseUnit("x", []byte("Image=x\n"))
 	assert.ErrorContains(t, err, "before any section")
+
+	entries, err = parseUnit("x", []byte("[Container]\nExec=sh \\\n# a comment\n  -c true\n"))
+	require.NoError(t, err, "a comment inside a continuation is skipped, as systemd skips it")
+	exec, _ = (unitFile{entries: entries}).last("Container", "Exec")
+	assert.Equal(t, "sh    -c true", exec)
 }
 
 // systemd reads the parameter file at every start (RFC 0023 row 29, measured),
@@ -244,4 +284,83 @@ func TestTheBundleIsReadWithoutPodman(t *testing.T) {
 	assert.ErrorContains(t, err, `does not start with "other-"`)
 	_, err = (&Runtime{}).ReadBundle("my-app", root, []string{"../outside/my-app-web.container"})
 	assert.Error(t, err, "a file outside the release is not read")
+}
+
+// No record, line or stream of a one-shot's log is held past the capture
+// bound, however long a line the one-shot wrote without a newline.
+func TestAOneShotsLogIsBoundedHoweverLongALine(t *testing.T) {
+	limit := exec.DefaultMaxCapture
+	path := filepath.Join(t.TempDir(), "run.log")
+	piece := strings.Repeat("x", limit/2)
+	var log strings.Builder
+	for range 4 {
+		log.WriteString("2026-11-26T17:44:33.1+03:00 stdout P " + piece + "\n")
+	}
+	log.WriteString("2026-11-26T17:44:33.2+03:00 stdout F end\n")
+	log.WriteString("2026-11-26T17:44:33.3+03:00 stderr F " + strings.Repeat("y", 2*limit) + "\n")
+	require.NoError(t, os.WriteFile(path, []byte(log.String()), 0o600))
+
+	stdout, stderr, output, truncated := readRunLog(path)
+	assert.True(t, truncated)
+	assert.LessOrEqual(t, len(stdout), limit, "the pieces of one line are bounded as they are joined")
+	assert.LessOrEqual(t, len(stderr), limit, "one record is bounded as it is read")
+	assert.LessOrEqual(t, len(output), 2*limit)
+}
+
+// The copy of a service a one-shot runs has a container of its own, so a
+// service that names its container keeps running beside it; and its timeout
+// keeps a fraction of a second.
+func TestAOneShotsCopyNamesItsOwnContainer(t *testing.T) {
+	dir := t.TempDir()
+	p := runPaths{
+		unit: filepath.Join(dir, "demo-web-run-1.container"), dropIn: filepath.Join(dir, "demo-web-run-1.container.d"),
+		env: filepath.Join(dir, "demo-web-run-1.env"), log: filepath.Join(dir, "demo-web-run-1.log"),
+		status: filepath.Join(dir, "demo-web-run-1.status"),
+	}
+	u := unitFile{name: "demo-web.container", kind: kindContainer, text: []byte(web + "ContainerName=demo-web-1\n")}
+	require.NoError(t, p.write(u, "demo-web-run-1", nil, ports.RunOptions{Timeout: 1500 * time.Millisecond}))
+	got, err := os.ReadFile(filepath.Join(p.dropIn, dropIn))
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "\nContainerName=demo-web-run-1\n")
+	assert.Contains(t, string(got), "\nTimeoutStartSec=1500ms\n")
+}
+
+// With no service installed, as after a reboot before the first apply, an
+// unfiltered journal would be every other service's, so nothing is read.
+func TestLogsWithNothingInstalledReadNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the adapter refuses root")
+	}
+	r := &Runtime{runtimeDir: t.TempDir()}
+	rc, err := r.Logs(context.Background(), ports.RuntimeConfig{Product: "demo"}, ports.LogOptions{})
+	require.NoError(t, err)
+	got, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// recorder is a runner that runs nothing and remembers what it was asked.
+type recorder struct{ argv [][]string }
+
+func (r *recorder) Run(_ context.Context, cmd exec.Command) (exec.Result, error) {
+	r.argv = append(r.argv, cmd.Argv)
+	return exec.Result{}, nil
+}
+func (r *recorder) Look(name string) (string, error) { return name, nil }
+
+// An installed `.volume` file and the declared one of the same name may set
+// different names; Down with volumes removes both.
+func TestBothNamesOfAVolumeAreRemoved(t *testing.T) {
+	rec := &recorder{}
+	r := &Runtime{runner: rec, podman: "podman"}
+	b := bundle{product: "demo", units: []unitFile{
+		{name: "demo-data.volume", kind: kindVolume, entries: []entry{{section: "Volume", key: "VolumeName", value: "demo-old"}}},
+		{name: "demo-data.volume", kind: kindVolume, entries: []entry{{section: "Volume", key: "VolumeName", value: "demo-new"}}},
+	}}
+	require.NoError(t, r.removeVolumes(context.Background(), b))
+	var removed []string
+	for _, a := range rec.argv {
+		removed = append(removed, a[len(a)-1])
+	}
+	assert.ElementsMatch(t, []string{"demo-old", "demo-new"}, removed)
 }

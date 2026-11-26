@@ -318,3 +318,138 @@ func TestQuadletRunOneShotKeepsItsStreamsApart(t *testing.T) {
 		t.Errorf("the one-shot's transient unit is still loaded:\n%s", out)
 	}
 }
+
+// loop is a service that stays up until it is stopped.
+const loop = `Exec=sh -c "while true; do sleep 1; done"`
+
+// TestQuadletUpEndsTheWaitWhenAServiceStops. A unit that ended after its start
+// will not bring its container up, so the wait says so at once rather than at
+// its deadline.
+func TestQuadletUpEndsTheWaitWhenAServiceStops(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	pullPodman(t, quadletBusybox)
+	rt, cfg := quadletProject(t, map[string]string{
+		// Starting for its health check's start period, then gone, so
+		// only the unit can say it will not come up.
+		"app.container": fmt.Sprintf("[Container]\nImage=%s\nExec=sh -c \"sleep 2; exit 1\"\n"+
+			"HealthCmd=/bin/false\nHealthStartPeriod=5m\nHealthInterval=1s\n", quadletBusybox),
+	})
+	began := time.Now()
+	err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 3 * time.Minute})
+	if err == nil || !strings.Contains(err.Error(), "stopped while it was starting") {
+		t.Fatalf("Up returned %v, want the unit named as stopped", err)
+	}
+	if waited := time.Since(began); waited > time.Minute {
+		t.Errorf("the wait ran %s before it noticed", waited)
+	}
+}
+
+// TestQuadletUpReplacesARenamedContainer. Podman's stop removes a container
+// by name, so a unit whose ContainerName= changed is stopped under its old
+// definition before the reload; otherwise the old container would go on.
+func TestQuadletUpReplacesARenamedContainer(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	pullPodman(t, quadletBusybox)
+	rt, cfg := quadletProject(t, map[string]string{
+		"app.container": fmt.Sprintf("[Container]\nImage=%s\nRunInit=true\n%s\nContainerName=%%s-app-old\n", quadletBusybox, loop),
+	})
+	cfg = fixVolumeRefs(t, cfg)
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	text, err := os.ReadFile(cfg.Files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.Files[0], []byte(strings.Replace(string(text), "-app-old", "-app-new", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := osexec.Command("podman", "ps", "--format", "{{.Names}}").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), cfg.Product+"-app-old") {
+		t.Errorf("the container under its old name still runs:\n%s", out)
+	}
+	if !strings.Contains(string(out), cfg.Product+"-app-new") {
+		t.Errorf("the container under its new name does not run:\n%s", out)
+	}
+}
+
+// TestQuadletTargetedUpRecreatesWhatTheValuesChange. Up writes every
+// service's files and the shared parameter copy, so a service outside the
+// named ones whose definition changes is recreated too; otherwise its next
+// Start would run what no Up started.
+func TestQuadletTargetedUpRecreatesWhatTheValuesChange(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	pullPodman(t, quadletBusybox)
+	service := fmt.Sprintf("[Container]\nImage=%s\nRunInit=true\n%s\nEnvironment=VALUE=${%s}\n",
+		quadletBusybox, loop, contract.ValueVar)
+	rt, cfg := quadletProject(t, map[string]string{"web.container": service, "db.container": service})
+	value := func(svc string) string {
+		res, err := rt.Exec(ctx, cfg, svc, []string{"sh", "-c", `printf %s "$VALUE"`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Stdout
+	}
+	cfg.Env = map[string]string{contract.ValueVar: "before"}
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true}); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Env = map[string]string{contract.ValueVar: "after"}
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Services: []string{"web"}, Wait: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := value("web"); got != "after" {
+		t.Errorf("the named service reads %q", got)
+	}
+	if got := value("db"); got != "after" {
+		t.Errorf("the service outside the named ones reads %q, while its unit now names another value", got)
+	}
+}
+
+// TestQuadletOneShotOfANamedContainerLeavesTheServiceRunning. The copy a
+// one-shot runs names a container of its own: Quadlet runs with --replace, so
+// under the service's name it would take the running service's place. Its
+// output is scrubbed as the runner scrubs, and a status systemd counts as a
+// success still reaches the caller.
+func TestQuadletOneShotOfANamedContainerLeavesTheServiceRunning(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	pullPodman(t, quadletBusybox)
+	rt, cfg := quadletProject(t, map[string]string{
+		"app.container": fmt.Sprintf("[Container]\nImage=%s\nRunInit=true\n%s\nContainerName=%%s-app-1\n\n[Service]\nSuccessExitStatus=4\n",
+			quadletBusybox, loop),
+	})
+	cfg = fixVolumeRefs(t, cfg)
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true, WaitTimeout: 2 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	scrubbed := quadlet.New(infraexec.New(), quadlet.WithRedaction([]string{"s3cr3t-value"}))
+	res, err := scrubbed.RunOneShot(ctx, cfg, "app", ports.RunOptions{
+		Argv: []string{"sh", "-c", "echo the secret is s3cr3t-value; exit 4"}, Remove: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Stdout+res.Output, "s3cr3t-value") {
+		t.Errorf("the one-shot's output carries a redacted value: %q", res.Stdout)
+	}
+	if res.ExitCode != 4 {
+		t.Errorf("the one-shot exited %d, want 4, which the unit counts as a success", res.ExitCode)
+	}
+	out, err := osexec.Command("podman", "ps", "--format", "{{.Names}}").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), cfg.Product+"-app-1") {
+		t.Errorf("the service's container no longer runs after the one-shot:\n%s", out)
+	}
+}

@@ -75,17 +75,21 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 		dropIn: filepath.Join(dir, base+".container.d"),
 		env:    filepath.Join(dir, base+".env"),
 		log:    filepath.Join(dir, base+".log"),
+		status: filepath.Join(dir, base+".status"),
 	}
 	defer r.cleanUp(ctx, unit, paths)
 
-	if err := paths.write(u, cfg.Env, opts); err != nil {
+	if err := paths.write(u, base, cfg.Env, opts); err != nil {
 		return ports.ExitResult{}, err
 	}
 	if err := r.reload(ctx); err != nil {
 		return ports.ExitResult{}, err
 	}
 
-	timeout := unitTimeout
+	// With no timeout the run is bounded by the context alone, as the unit's
+	// TimeoutStartSec=infinity is: a bound here would stop the client
+	// while the task went on.
+	timeout := time.Duration(0)
 	if opts.Timeout > 0 {
 		timeout = opts.Timeout + time.Minute
 	}
@@ -96,14 +100,30 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 
 	out := ports.ExitResult{Duration: time.Since(started)}
 	out.Stdout, out.Stderr, out.Output, out.Truncated = readRunLog(paths.log)
+	// Read from a file rather than through the runner, so scrubbed here
+	// as the runner scrubs what it captures.
+	out.Stdout = exec.Redact(r.redact, out.Stdout)
+	out.Stderr = exec.Redact(r.redact, out.Stderr)
+	out.Output = exec.Redact(r.redact, out.Output)
 
 	states, err := r.unitStates(ctx, []string{unit})
 	if err != nil {
 		return out, err
 	}
 	st := states[0]
+	// Result reads success while the unit still runs, so only a unit that
+	// has ended has a result to report.
+	if st.active != "inactive" && st.active != "failed" {
+		return out, domain.RuntimeError(runErr, "the one-shot %s did not finish (%s)", service, st.active).
+			WithHint("run `journalctl --user -u %s` to see where it was", unit)
+	}
 	switch st.result {
 	case "success":
+		// SuccessExitStatus= makes a non-zero exit a success to
+		// systemd, and the caller is still told the status. A unit that
+		// succeeded is unloaded at once, so `systemctl show` reads 0 for
+		// it; the status is the one the unit wrote as it stopped.
+		out.ExitCode = readExitStatus(paths.status)
 		return out, nil
 	case "exit-code":
 		if st.exitStatus == podmanFailed {
@@ -126,11 +146,31 @@ func (r *Runtime) RunOneShot(ctx context.Context, cfg ports.RuntimeConfig, servi
 
 // runPaths are the files of one transient one-shot.
 type runPaths struct {
-	unit, dropIn, env, log string
+	unit, dropIn, env, log, status string
 }
 
-// write lays down the copy of the unit, its drop-in, and its values.
-func (p runPaths) write(u unitFile, env map[string]string, opts ports.RunOptions) error {
+// readExitStatus reads the status the unit wrote as it stopped: systemd's
+// result, how the process ended, and its status. Only an exit has a number;
+// anything else is reported by the unit's state, which a unit that did not
+// succeed keeps.
+func readExitStatus(path string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) != 3 || fields[1] != "exited" {
+		return 0
+	}
+	code, _ := strconv.Atoi(fields[2])
+	return code
+}
+
+// write lays down the copy of the unit, its drop-in, and its values. The copy
+// runs a container named after itself, so a service that sets ContainerName=
+// keeps its own: Quadlet runs with --replace, and the copy would otherwise take
+// the running service's place.
+func (p runPaths) write(u unitFile, name string, env map[string]string, opts ports.RunOptions) error {
 	values, err := environmentFile(env)
 	if err != nil {
 		return err
@@ -144,6 +184,7 @@ func (p runPaths) write(u unitFile, env map[string]string, opts ports.RunOptions
 
 	var c strings.Builder
 	c.WriteString("[Container]\n")
+	c.WriteString("ContainerName=" + name + "\n")
 	c.WriteString("LogDriver=k8s-file\n")
 	c.WriteString("PodmanArgs=--log-opt " + systemdWord("path="+p.log) + "\n")
 	if len(opts.Argv) > 0 {
@@ -170,9 +211,15 @@ func (p runPaths) write(u unitFile, env map[string]string, opts ports.RunOptions
 	}
 	c.WriteString("\n[Service]\nType=oneshot\nRestart=no\nRemainAfterExit=no\n")
 	c.WriteString("EnvironmentFile=" + p.env + "\n")
+	// systemd forgets a unit that succeeded, its exit status with it, so
+	// the unit writes it down as it stops.
+	c.WriteString(`ExecStopPost=/bin/sh -c 'printf "%%s %%s %%s\n" "$$SERVICE_RESULT" "$$EXIT_CODE" "$$EXIT_STATUS" > "` +
+		strings.NewReplacer("$", "$$", "%", "%%").Replace(p.status) + `"'` + "\n")
 	timeout := "infinity"
 	if opts.Timeout > 0 {
-		timeout = strconv.Itoa(int(opts.Timeout.Seconds())) + "s"
+		// In milliseconds, so a fraction of a second is kept, and never
+		// zero, which systemd reads as no timeout at all.
+		timeout = strconv.FormatInt(max(opts.Timeout.Milliseconds(), 1), 10) + "ms"
 	}
 	c.WriteString("TimeoutStartSec=" + timeout + "\n")
 
@@ -189,7 +236,7 @@ func (r *Runtime) cleanUp(ctx context.Context, unit string, p runPaths) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 	_, _ = r.systemctlUser(ctx, time.Minute, "stop", unit)
-	for _, path := range []string{p.unit, p.env, p.log} {
+	for _, path := range []string{p.unit, p.env, p.log, p.status} {
 		_ = os.Remove(path)
 	}
 	_ = os.RemoveAll(p.dropIn)
@@ -202,6 +249,10 @@ func (r *Runtime) cleanUp(ctx context.Context, unit string, p runPaths) {
 // entry of the same stream. It keeps the head of each stream, as the runner
 // keeps the head of a pipe, and the last lines of both in the order they
 // arrived.
+//
+// Bounded as the runner is: no record, line or stream is held past
+// exec.DefaultMaxCapture, however long a line the one-shot wrote, and what is
+// dropped is reported as truncated.
 func readRunLog(path string) (stdout, stderr, output string, truncated bool) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -209,11 +260,12 @@ func readRunLog(path string) (stdout, stderr, output string, truncated bool) {
 	}
 	defer func() { _ = f.Close() }()
 
+	limit := exec.DefaultMaxCapture
 	var out, errs strings.Builder
 	var tail []string
 	pending := map[string]*strings.Builder{"stdout": {}, "stderr": {}}
 	keep := func(b *strings.Builder, s string) {
-		if room := exec.DefaultMaxCapture - b.Len(); room < len(s) {
+		if room := limit - b.Len(); room < len(s) {
 			truncated = true
 			if room > 0 {
 				b.WriteString(s[:room])
@@ -224,8 +276,8 @@ func readRunLog(path string) (stdout, stderr, output string, truncated bool) {
 	}
 	rd := bufio.NewReader(f)
 	for {
-		line, err := rd.ReadString('\n')
-		line = strings.TrimSuffix(line, "\n")
+		line, cut, err := readRecord(rd, limit)
+		truncated = truncated || cut
 		if line != "" {
 			fields := strings.SplitN(line, " ", 4)
 			if len(fields) >= 3 {
@@ -238,7 +290,7 @@ func readRunLog(path string) (stdout, stderr, output string, truncated bool) {
 					target = &errs
 				}
 				if p := pending[stream]; p != nil {
-					p.WriteString(text)
+					keep(p, text)
 					if tag != "P" {
 						keep(target, p.String()+"\n")
 						if strings.TrimSpace(p.String()) != "" {
@@ -268,4 +320,20 @@ func readRunLog(path string) (stdout, stderr, output string, truncated bool) {
 	}
 	return strings.TrimSuffix(out.String(), "\n"), strings.TrimSuffix(errs.String(), "\n"),
 		strings.Join(tail, "\n"), truncated
+}
+
+// readRecord reads one line of the log, keeping at most limit bytes of it and
+// reading past the rest.
+func readRecord(rd *bufio.Reader, limit int) (line string, cut bool, err error) {
+	var b []byte
+	for {
+		chunk, more, err := rd.ReadLine()
+		if room := limit - len(b); len(chunk) > room {
+			chunk, cut = chunk[:max(room, 0)], true
+		}
+		b = append(b, chunk...)
+		if err != nil || !more {
+			return string(b), cut, err
+		}
+	}
 }

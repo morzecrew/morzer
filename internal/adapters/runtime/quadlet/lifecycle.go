@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,6 +23,16 @@ const unitTimeout = 15 * time.Minute
 // A running service whose definition changed, or every named one with
 // ForceRecreate, is restarted rather than started: a start of an active unit
 // does nothing, and the container would go on with what it was created from.
+//
+// Every service's files and the shared parameter copy are written, so with
+// Services named, a running service outside them whose definition the new
+// files change is restarted with them. Otherwise its next Start would run what
+// no Up started, where Stop and Start promise what was stopped (row 29).
+//
+// A service whose container is renamed is stopped before the manager reloads,
+// while it still runs the unit that names the old container: Podman's stop
+// removes the container by name, so after the reload it would remove one that
+// does not exist and leave the old one running.
 func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.UpOptions) error {
 	b, err := checkBundle(cfg)
 	if err != nil {
@@ -37,13 +48,43 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 		if err := b.defines(opts.Services); err != nil {
 			return err
 		}
-		targets = opts.Services
+		// A one-shot is a service Up never starts, named or not (Q2).
+		targets = nil
+		for _, s := range opts.Services {
+			if u, _ := b.service(s); !u.oneshot() {
+				targets = append(targets, s)
+			}
+		}
 	}
 
 	before, err := installed(dir, cfg.Product)
 	if err != nil {
 		return err
 	}
+	var start, restart, renamed []string
+	for _, service := range b.started() {
+		u, _ := b.service(service)
+		unit := u.unitName()
+		name := b.containerName(u)
+		if old, ok := before.service(service); ok {
+			name = before.containerName(old)
+		}
+		label, running, err := r.runningDefinition(ctx, name)
+		if err != nil {
+			return err
+		}
+		target := slices.Contains(targets, service)
+		switch {
+		case running && name != b.containerName(u):
+			renamed = append(renamed, unit)
+			start = append(start, unit)
+		case target && opts.ForceRecreate, running && label != definition(u, cfg.Env):
+			restart = append(restart, unit)
+		case target:
+			start = append(start, unit)
+		}
+	}
+
 	if err := install(dir, b, cfg.Env, installOptions{parameters: true, containers: true}); err != nil {
 		return err
 	}
@@ -52,27 +93,13 @@ func (r *Runtime) Up(ctx context.Context, cfg ports.RuntimeConfig, opts ports.Up
 			return err
 		}
 	}
-	if err := r.reload(ctx); err != nil {
+	// Before the reload: the manager still runs the unit that names the
+	// old container.
+	if err := r.unitCommand(ctx, "stop", renamed); err != nil {
 		return err
 	}
-
-	var start, restart []string
-	for _, service := range targets {
-		u, _ := b.service(service)
-		unit := u.unitName()
-		if opts.ForceRecreate {
-			restart = append(restart, unit)
-			continue
-		}
-		label, running, err := r.runningDefinition(ctx, b.containerName(u))
-		if err != nil {
-			return err
-		}
-		if running && label != definition(u, cfg.Env) {
-			restart = append(restart, unit)
-		} else {
-			start = append(start, unit)
-		}
+	if err := r.reload(ctx); err != nil {
+		return err
 	}
 	// A unit an earlier start left failed is reset first, so a start limit
 	// it ran into does not refuse this one (RFC 0023 row 28).
@@ -245,11 +272,12 @@ func (r *Runtime) waitHealthy(ctx context.Context, b bundle, targets []string, t
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	var names []string
+	var names, units []string
 	for _, s := range targets {
 		u, _ := b.service(s)
 		if !u.oneshot() {
 			names = append(names, b.containerName(u))
+			units = append(units, u.unitName())
 		}
 	}
 	for {
@@ -258,11 +286,13 @@ func (r *Runtime) waitHealthy(ctx context.Context, b bundle, targets []string, t
 			return err
 		}
 		pending := ""
-		for _, n := range names {
+		var waiting []int
+		for i, n := range names {
 			c, ok := found[n]
 			switch {
 			case !ok || c.State.Status != ports.StateRunning:
 				pending = n
+				waiting = append(waiting, i)
 			case c.State.Health != nil && c.State.Health.Status == "unhealthy":
 				return domain.RuntimeError(nil, "%s is unhealthy", n).
 					WithHint("run `podman healthcheck run %s` and `journalctl --user -t %s` to see why", n, n)
@@ -273,12 +303,39 @@ func (r *Runtime) waitHealthy(ctx context.Context, b bundle, targets []string, t
 		if pending == "" {
 			return nil
 		}
+		// A container that is not running may be on its way up, or its
+		// unit may have ended: only the unit can say which.
+		if err := r.unitsStillStarting(ctx, units, waiting); err != nil {
+			return err
+		}
 		select {
 		case <-ctx.Done():
 			return domain.RuntimeError(ctx.Err(), "%s did not become ready in time", pending)
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+}
+
+// unitsStillStarting refuses a wait on a unit that has ended: one that is
+// inactive or failed after its start will not bring its container up, and
+// waiting for it would run to the deadline, or for ever with none.
+func (r *Runtime) unitsStillStarting(ctx context.Context, units []string, which []int) error {
+	asked := make([]string, len(which))
+	for i, w := range which {
+		asked[i] = units[w]
+	}
+	states, err := r.unitStates(ctx, asked)
+	if err != nil {
+		return err
+	}
+	for i, st := range states {
+		if st.active == "inactive" || st.active == "failed" {
+			return domain.RuntimeError(nil, "%s stopped while it was starting (%s, %s)",
+				asked[i], st.active, st.result).
+				WithHint("run `journalctl --user -u %s` for what it wrote", asked[i])
+		}
+	}
+	return nil
 }
 
 // Down stops the installation's units and removes them. Volumes are removed
