@@ -1109,3 +1109,90 @@ Declined for this PR, each for the wiring PR to settle:
   Podman is the user's own, and there is no daemon unit.
 
 **Drift count: 0.**
+
+## The wiring, 2026-11-26
+
+The author ruled the `BundleReader` question on 2026-11-26 as (a), the
+recommendation: `ReadBundle` is given the product. Compose ignores it, and
+Quadlet strips the prefix with it. With that, `release verify` checks a
+Quadlet bundle's variables and its secrets' services as it checks a Compose
+bundle's.
+
+This PR (branch `quadlet-wiring`, on `quadlet-adapter-build`) makes the
+adapter reachable:
+- Every adapter this host can run is wired at the composition root, with
+  Quadlet on Linux only.
+- `init --runtime` chooses between the runtimes a release declares (G5).
+- `installation import`, `ls` and `doctor` follow each installation's own
+  runtime.
+- The `podman` tool is added to the catalogue.
+- `release verify` checks each declared runtime.
+- The docs and the changelog are updated.
+
+Image ingest (G7) and the registry probe stay out. A Quadlet release that
+carries its images in the bundle meets the refusal that already exists for
+a runtime with no `ImageIngester` (`internal/lifecycle/ops/ingest.go:181`).
+Also out: the `init` wizard asking which runtime to use, and
+`release new --runtime`.
+
+```divergence
+decision: 12
+grade: ASSUMED
+class: discovery
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: decision 12 expires with the second adapter, as the row says it would: with Compose and Quadlet both wired the manager knows which runtimes it drives from the adapters themselves, so a release declaring two no longer has to be refused
+evidence: internal/lifecycle/ops/init.go:1398-1404
+action: departed
+proposal: ASSUMED — supersedes 12. A release declaring one runtime installs with it; one declaring several needs `init --runtime <name>`, naming a runtime it declares, and is refused without it. No probing. A runtime with no adapter on this host is refused at `init` rather than at the first operation (G5)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: G5 has the composition root pick the adapter whose name the installation records, but every operation reads one wired runtime: `ls` asks it about every installation on the machine, and `init` and `installation import` learn the runtime only after the root has wired
+evidence: internal/lifecycle/ops/list.go:249
+action: decided
+proposal: ASSUMED — the root wires every adapter this host can run, Compose first, and Deps.Runtime is the one the installation in hand records, chosen from its state when the command is wired. `ls` chooses per row. `init` and `installation import` choose when they learn the runtime, and refuse one this host has no adapter for
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: with no installation `doctor` checks the wired runtime's tools as fatal, so with two runtimes wired a host with Docker and no Podman, or the reverse, would fail checks for a runtime it may never use
+evidence: internal/lifecycle/ops/doctor.go:1479-1494
+action: decided
+proposal: ASSUMED — with several runtimes wired, each runtime's tools are warnings that name the runtime, and one fatal check passes when some runtime has every tool it needs
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: ReadBundle is given no product, and a Quadlet file's service is its name without the product's prefix; a product name may hold a dash, so the prefix cannot be found from the files alone
+evidence: internal/ports/runtime.go:657-661
+action: decided
+proposal: ASSUMED — ReadBundle(product, root, files), as the author ruled on 2026-11-26. It changes an existing optional capability's signature and adds none, so §6's count of additions the second adapter forced stays at one (EngineUnitNamer)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: `release verify` reads the runtime files of the wired runtime only, so in a bundle declaring two runtimes one runtime's files go unchecked
+evidence: internal/cli/release.go:583-591
+action: decided
+proposal: ASSUMED — `release verify` checks the files of every runtime the release declares that a wired adapter can read, and each problem names its runtime
+```
+
+**Drift count: 0.**
