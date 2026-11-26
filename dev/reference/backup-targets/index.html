@@ -1634,6 +1634,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#several-installations-on-one-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several installations on one target
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recovering-an-identity-without-downloading-the-backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2357,6 +2368,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#several-installations-on-one-target" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Several installations on one target
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recovering-an-identity-without-downloading-the-backup" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2614,6 +2636,27 @@ error you get instead.</p>
 files — an interrupted restore leaves decrypted components in a staging
 directory beside the encrypted ones — and copying those would put a plaintext
 database dump on a second machine.</p>
+<h2 id="several-installations-on-one-target">Several installations on one target<a class="headerlink" href="#several-installations-on-one-target" title="Permanent link">&para;</a></h2>
+<p>A target can hold the backups of several installations, for example when every
+machine in a fleet is given the same URL. Retention on the target counts and
+removes only the installation's own backups: those whose manifest names its
+installation id and product. A backup whose manifest names no installation is
+never removed.</p>
+<p>Two things are still shared:</p>
+<ul>
+<li><strong>Backup ids.</strong> An id is the second the backup was taken, so two
+  installations that back up in the same second write into one directory, and
+  the second push replaces the first's files.</li>
+<li><strong>Credentials.</strong> Retention lists, reads and deletes at the target's root, so
+  no credential can be limited to one installation's backups.</li>
+</ul>
+<p>To avoid both, give each installation a target with a prefix of its own, such
+as <code>s3://bucket/fleet/backups/&lt;machine&gt;</code>. The manager lists only one level under
+a target's root, so installations with separate prefixes never see each other's
+backups, and each credential can be limited to its prefix.</p>
+<p>An installation re-created with <code>init</code> gets a new installation id. Its
+retention does not count the backups its predecessor left on the target, so
+remove those by hand or with a lifecycle rule.</p>
 <h2 id="recovering-an-identity-without-downloading-the-backup">Recovering an identity without downloading the backup<a class="headerlink" href="#recovering-an-identity-without-downloading-the-backup" title="Permanent link">&para;</a></h2>
 <p>Every backup carries the deployment's identity, and reading it does not require
 fetching the archive around it:</p>
