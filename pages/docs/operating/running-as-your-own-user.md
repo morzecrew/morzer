@@ -1,14 +1,15 @@
 ---
 title: Running as your own user
 icon: lucide/user
-summary: An installation in your own home directory, run by your own systemd manager on rootless Docker, with no command that needs root
+summary: An installation in your own home directory, run by your own systemd manager on rootless Docker, with no manager command that needs root
 ---
 
 # Running an installation as your own user
 
 An installation does not have to belong to root. Run `morzer init` as an
 ordinary user and the installation lives in your own directories, its units
-run under your own systemd manager, and no command needs `sudo`. Nothing in it
+run under your own systemd manager, and no `morzer` command needs `sudo`. Only
+turning on lingering does, once, before you start. Nothing in the installation
 is root's, so nothing in it hands anyone root.
 
 With Docker Compose this is an untested configuration: it needs rootless
