@@ -1235,3 +1235,38 @@ proposal: ASSUMED — the copy a one-shot runs writes systemd's $SERVICE_RESULT,
 ```
 
 **Drift count: 0.**
+
+## The wiring, run against real Podman, 2026-11-26
+
+The built binary was run against rootless Podman on the development host. It
+ran `release verify`, `init`, `apply`, `status`, `logs`, `doctor` and
+`installation remove`, on a bundle declaring both runtimes. Two things came out
+of it.
+
+- **`init` asked Docker about a Quadlet installation.** A user installation's
+  `init` asks whether the engine is the user's own (row 32). It asked before
+  the runtime was chosen, and again when it took the deployment lock, so the
+  adapter it asked was always the default one. `init --runtime quadlet` was
+  refused because the Docker daemon is the system's. Without `--runtime`, the
+  same refusal came before "choose one with --runtime". Now `init` asks the
+  runtime it installs with. It asks early when `--runtime` names that runtime
+  or there is no release, and otherwise once the staged release has chosen
+  it. The lock no longer asks for `init`.
+- **Podman's store follows `XDG_DATA_HOME`.** With it set in the shell and not
+  in the user's manager, `morzer` read a store the units did not use, and
+  `apply` waited for containers until its deadline. The operating page says to
+  keep the two alike. Nothing in the code changed.
+
+```divergence
+decision: 32
+grade: ASSUMED
+kind: resolved
+at: 2026-11-26T18:12:58Z
+attempt: 1
+claim: row 32 is honoured for the runtime an installation is created on: a user's `init` refuses a system Docker daemon when it installs on Compose, and does not ask Docker at all when it installs on a runtime with no daemon of its own
+evidence: internal/lifecycle/ops/init.go:248
+action: decided
+proposal: ASSUMED — as row 32, asked of the runtime `init` installs with, once it is known
+```
+
+**Drift count: 0.**

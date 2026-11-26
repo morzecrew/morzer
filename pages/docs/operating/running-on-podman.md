@@ -29,6 +29,12 @@ exercise it yet.
 
 - **A login session of your own**, which sets `XDG_RUNTIME_DIR`. The units and
   the rendered secrets live there, on your tmpfs. `sudo -u` does not set it.
+- **One data home for you and your systemd manager.** Podman keeps its
+  containers under `$XDG_DATA_HOME`, and your units run with your manager's
+  environment, not your shell's. If the two differ, `morzer` looks for the
+  containers in a store the units do not use, and `apply` waits for them
+  until its deadline. Leave `XDG_DATA_HOME` unset, or set it for your manager
+  too, in `~/.config/environment.d/`.
 - **The manager where only you and root can replace it**, such as
   `~/.local/bin`, which is where the installer puts it when run without
   `sudo`.
