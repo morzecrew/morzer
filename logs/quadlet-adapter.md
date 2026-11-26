@@ -953,3 +953,17 @@ asks the runtime rather than naming Docker.
    comments, and the new contract case on Compose and the fake.
 2. The adapter, wired, with G5, its suite, the docs and the changelog.
    Until it lands there is one adapter, so row 12 stays in force.
+
+## Rulings on Q1 and Q2, 2026-11-26
+
+The author ruled both on 2026-11-26, as recommended. They are proposed as
+rows for RFC 0023 when U1 to U13 and these are reconciled.
+- **Q1 (a).** Every file in `runtimes.quadlet.files` is named
+  `<product>-<service>.<kind>`, and the service is the name without the
+  prefix.
+  - `Validate` refuses a file without the prefix.
+  - It also refuses a `ContainerName=`, `VolumeName=` or `NetworkName=`
+    that does not start with it, and a named `Volume=` source that is
+    neither a bundle `.volume` file nor prefixed.
+- **Q2 (a).** A `.container` with `[Service] Type=oneshot` is one `Up`
+  never starts. `RunOneShot` runs any `.container`.
