@@ -74,6 +74,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A channel-marks file left holding only `null` is now refused as damaged
   installation state. The next channel poll used to crash on it.
 
+- A scheduled backup now starts after the Docker daemon when it has to
+  start the daemon. It required the daemon without waiting for it, so a
+  backup the timer started while the daemon was down could run before the
+  daemon answered. The backup unit is rewritten after the next `apply`,
+  `start` or `update`.
+
 ## [0.19.1] - 2026-11-22
 
 A service with an image mount starts again after the machine restarts, which

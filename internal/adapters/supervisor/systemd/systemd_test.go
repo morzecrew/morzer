@@ -1300,7 +1300,9 @@ func TestAUserScopeDrivesTheUsersOwnManager(t *testing.T) {
 
 // TestTheUnitsWaitOnlyForTheEngineTheRuntimeNames. The product unit and the
 // backup service require the runtime's engine and start after it, and the
-// runtime names it. A runtime with no engine, such as rootless Podman, names
+// runtime names it. `Requires=` alone starts the engine beside the backup, not
+// before it, so a backup the timer started while the engine was down could run
+// before the engine answered. A runtime with no engine, such as rootless Podman, names
 // none, and a unit that still required one would never start (RFC 0023
 // row 14). Compose names docker.service, and its units render as they always
 // have.
@@ -1331,8 +1333,8 @@ func TestTheUnitsWaitOnlyForTheEngineTheRuntimeNames(t *testing.T) {
 		t.Errorf("the product unit's header changed:\n got %q\nwant %q", got, want)
 	}
 	if got, want := header(t, units, "demo-backup.service"),
-		"[Unit]\nDescription=demo backup\nAfter=demo.service\nRequires=docker.service\n"; got != want {
-		t.Errorf("the backup service's header changed:\n got %q\nwant %q", got, want)
+		"[Unit]\nDescription=demo backup\nAfter=demo.service docker.service\nRequires=docker.service\n"; got != want {
+		t.Errorf("the backup service does not wait for the engine it requires:\n got %q\nwant %q", got, want)
 	}
 
 	units, err = systemd.BuildUnits(params)
