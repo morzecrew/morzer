@@ -56,13 +56,16 @@ phase shipped, and a reader deciding what to work on needs the other half.
   scaffold, which had been emitting the deprecated block all along, now writes
   `runtimes:` and declares the manager version it needs. That declaration is what
   exposed a manager built between tags understating its own version badly enough
-  to refuse the bundle its own scaffold had just written. **What remains of this
+  to refuse the bundle its own scaffold had just written. ~~**What remains of this
   RFC is P3, the Quadlet adapter, and the two phases behind it** — an acceptance
   stage and the report that says whether the port survived being implemented
-  twice, which is the question the RFC was opened to answer. **The removal came
+  twice, which is the question the RFC was opened to answer.~~ **The removal came
   early**: `runtime:` stops being read in **0.3.0**, not 0.4.0, because the
   window 0.4.0 was buying turned out never to have existed — no released manager
-  reads `runtimes:`, so no version reads both (decision 23).
+  reads `runtimes:`, so no version reads both (decision 23). **P3 shipped
+  2026-11-27**: a layout for an installation of a user's own, then the Quadlet
+  adapter, wired in and loading a bundle's images (decisions 33–61). **What
+  remains is P4**, a rootless Podman acceptance stage, and P5, the report.
 - **[0024 — The support bundle](0024-the-support-bundle.md).** ✅ Complete. The
   inventory, the archive, redaction proved against seeded values, `support
   redact --check`, an archive encrypted to the vendor and unreadable by the

@@ -353,3 +353,10 @@ softening the sentence to match the run that happened.
   finding is never confused with a Docker upgrade regression.
 
 ---
+
+## Reconciled in RFC 0023, 2026-11-27
+
+D-001 and D-006 were accepted on 2026-11-27, once both were built: D-001 as
+row 56, with the ingest built in #443, and D-006 as row 43, with `doctor`'s
+lingering check built in #434. D-002 stays outstanding against RFC 0011, and
+D-007 against RFC 0010. See logs/quadlet-adapter.md ("Reconciled").
