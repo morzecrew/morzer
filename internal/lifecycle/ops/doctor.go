@@ -1348,7 +1348,7 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 					remedy = e.Hint
 				}
 				return preflight.Warn(
-					remedy+"; updates will fail while this is unreachable",
+					remedy+"; updates will fail until this check passes",
 					"cannot reach the registry for %s: %s",
 					domain.ShortImageRef(refs[0]), e.Message)
 			}

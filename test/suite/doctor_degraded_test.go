@@ -459,13 +459,13 @@ func TestDoctorTakesTheRegistrysRemedyFromTheRuntime(t *testing.T) {
 			WithHint("run `podman login <registry>`")}
 	check := doctorCheck(t, h, "network.registry")
 	assert.Equal(t, events.CheckWarn, check.Status, check.Message)
-	assert.Equal(t, "run `podman login <registry>`; updates will fail while this is unreachable",
+	assert.Equal(t, "run `podman login <registry>`; updates will fail until this check passes",
 		check.Remedy)
 
 	h.Deps.Runtime = refusingRegistry{Runtime: h.Runtime,
 		err: domain.RuntimeError(nil, "no route to host")}
 	check = doctorCheck(t, h, "network.registry")
 	assert.Equal(t, events.CheckWarn, check.Status, check.Message)
-	assert.Equal(t, "check network access and registry credentials; updates will fail while this is unreachable",
+	assert.Equal(t, "check network access and registry credentials; updates will fail until this check passes",
 		check.Remedy)
 }
