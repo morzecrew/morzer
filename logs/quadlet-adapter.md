@@ -1373,3 +1373,101 @@ proposal: ASSUMED — `init` reads the manifest of the release it is given befor
 ```
 
 **Drift count: 0.**
+
+## Image ingest and the registry probe, 2026-11-27
+
+#442 merged as `9d3a9100`. This PR (branch `quadlet-ingest`, from `main`)
+gives the Quadlet adapter the two capabilities the adapter PR declined:
+`ImageIngester` (G7) and `RegistryProber`.
+
+### Measured for this plan
+
+Podman 6.1.1, on the development host, 2026-11-27.
+
+1. **A manifest inspect asks the registry, and pulls nothing.**
+   `podman manifest inspect <ref>` read `docker.io/library/alpine:3.20`'s
+   index with exit 0. With that image in the store, a run at
+   `--log-level=debug` still sent its requests to the registry, so a local
+   copy cannot answer for an unreachable registry. The image store's IDs
+   were the same before and after the probes that pulled nothing.
+2. **What each failure says.** Exit 125 in every case:
+   - a digest nobody published: `manifest unknown` (Docker Hub, ghcr.io);
+   - a repository that does not exist or is private on Docker Hub:
+     `requested access to the resource is denied`;
+   - the same on quay.io: `unauthorized: access to the requested resource
+     is not authorized`.
+3. **Untagging a digest name keeps the image.** An image pulled by digest
+   carries that digest reference as its only name. After `podman tag` gave
+   it the alias, `podman rmi <repo@digest>` printed `Untagged:` and the
+   alias still resolved. That is Docker's `rmi`, so the ingest's three
+   commands are Compose's, with `--tls-verify=false` on the pull alone.
+   The test image was removed afterwards.
+
+### Plan
+
+- **`compose/ingest.go`:** the pull, tag and untag of one image, with the
+  server's diagnosis of a failed pull, move into an exported
+  `compose.ImageLoader`, the way `VolumeHelper` is shared. Compose keeps
+  its relay and its `DOCKER_HOST` refusal, and its argv stays byte for
+  byte.
+- **`quadlet/ingest.go`:** `IngestImages` skips what is present, serves
+  the layout on loopback, and loads each image through the loader with
+  `--tls-verify=false` on that pull. No relay and no remote-daemon
+  refusal: rootless Podman on Linux has no daemon elsewhere.
+- **`quadlet/images.go`:** `ProbeRegistry` through `podman manifest
+  inspect`, classified as measured above, with `podman login` as the
+  remedy for credentials.
+- **`ops/doctor.go`:** the registry check's remedy comes from the
+  runtime's error, so a Quadlet installation is not told to run
+  `docker login`.
+- **Tests:** the argv in unit tests (the flag on the loopback pull, never
+  on `Pull`; the probe's classes on the measured text), and a Podman
+  suite case for the ingest and the probe against real Podman.
+- **Docs and changelog:** `running-on-podman.md`, `bundled-images.md`, and
+  the Unreleased entry that says Quadlet cannot load a bundle's images.
+
+### Rulings, 2026-11-27
+
+The author ruled the plan's three questions as recommended.
+- G7 goes through the loopback registry (D-001). The `oci:` transport
+  (D-002) is not used.
+- The ingest's per-image commands are shared with Compose.
+- `doctor` takes the registry check's remedy from the runtime.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: no row says how a Quadlet installation loads a bundle's images; Podman refuses the loopback registry over plain HTTP unless TLS verification is off, and the `oci:` transport that would avoid the registry is unmeasured on whether it keeps the pinned digest
+evidence: rfcs/0023-runtimes-beyond-compose.md:658-670
+action: decided
+proposal: ASSUMED — a Quadlet ingest pulls each bundled image from the manager's loopback registry with `--tls-verify=false` on that pull alone, never on `Pull` and never in a field another call reaches, and names it by its local alias as Compose does (D-001); the `oci:` transport stays unused until its digest fidelity is measured (D-002)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: Podman can probe a registry without pulling, which the P3b plan made the condition for a Quadlet `RegistryProber`; `podman manifest inspect` asks the registry even with the image local
+evidence: `podman --log-level=debug manifest inspect docker.io/library/alpine:3.20` — with the image in the store, 4 debug lines name `GET https://` or `registry-1.docker.io`; the store's image IDs unchanged across the probes
+action: decided
+proposal: ASSUMED — the Quadlet adapter probes a registry with `podman manifest inspect`, and reads a denied or unauthorized answer as missing credentials, with `podman login` as the remedy
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: the `network.registry` check names `docker login` as its remedy whatever the runtime, which tells a Quadlet installation to log in with a tool it does not use
+evidence: internal/lifecycle/ops/doctor.go:1343-1346
+action: decided
+proposal: ASSUMED — a check that reports a runtime's failure takes its remedy from the runtime's error, and says nothing runtime-specific of its own
+```
+
+**Drift count: 0.**
