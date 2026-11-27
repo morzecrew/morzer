@@ -1373,3 +1373,193 @@ proposal: ASSUMED — `init` reads the manifest of the release it is given befor
 ```
 
 **Drift count: 0.**
+
+## Image ingest and the registry probe, 2026-11-27
+
+#442 merged as `9d3a9100`. This PR (branch `quadlet-ingest`, from `main`)
+gives the Quadlet adapter the two capabilities the adapter PR declined:
+`ImageIngester` (G7) and `RegistryProber`.
+
+### Measured for this plan
+
+Podman 6.1.1, on the development host, 2026-11-27.
+
+1. **A manifest inspect asks the registry, and pulls nothing.**
+   `podman manifest inspect <ref>` read `docker.io/library/alpine:3.20`'s
+   index with exit 0. With that image in the store, a run at
+   `--log-level=debug` still sent its requests to the registry, so a local
+   copy cannot answer for an unreachable registry. The image store's IDs
+   were the same before and after the probes that pulled nothing.
+2. **What each failure says.** Exit 125 in every case:
+   - a digest nobody published: `manifest unknown` (Docker Hub, ghcr.io);
+   - a repository that does not exist or is private on Docker Hub:
+     `requested access to the resource is denied`;
+   - the same on quay.io: `unauthorized: access to the requested resource
+     is not authorized`.
+3. **Untagging a digest name keeps the image.** An image pulled by digest
+   carries that digest reference as its only name. After `podman tag` gave
+   it the alias, `podman rmi <repo@digest>` printed `Untagged:` and the
+   alias still resolved. That is Docker's `rmi`, so the ingest's three
+   commands are Compose's, with `--tls-verify=false` on the pull alone.
+   The test image was removed afterwards.
+
+### Plan
+
+- **`compose/ingest.go`:** the pull, tag and untag of one image, with the
+  server's diagnosis of a failed pull, move into an exported
+  `compose.ImageLoader`, the way `VolumeHelper` is shared. Compose keeps
+  its relay and its `DOCKER_HOST` refusal, and its argv stays byte for
+  byte.
+- **`quadlet/ingest.go`:** `IngestImages` skips what is present, serves
+  the layout on loopback, and loads each image through the loader with
+  `--tls-verify=false` on that pull. No relay and no remote-daemon
+  refusal: rootless Podman on Linux has no daemon elsewhere.
+- **`quadlet/images.go`:** `ProbeRegistry` through `podman manifest
+  inspect`, classified as measured above, with `podman login` as the
+  remedy for credentials.
+- **`ops/doctor.go`:** the registry check's remedy comes from the
+  runtime's error, so a Quadlet installation is not told to run
+  `docker login`.
+- **Tests:** the argv in unit tests (the flag on the loopback pull, never
+  on `Pull`; the probe's classes on the measured text), and a Podman
+  suite case for the ingest and the probe against real Podman.
+- **Docs and changelog:** `running-on-podman.md`, `bundled-images.md`, and
+  the Unreleased entry that says Quadlet cannot load a bundle's images.
+
+### Rulings, 2026-11-27
+
+The author ruled the plan's three questions as recommended.
+- G7 goes through the loopback registry (D-001). The `oci:` transport
+  (D-002) is not used.
+- The ingest's per-image commands are shared with Compose.
+- `doctor` takes the registry check's remedy from the runtime.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: no row says how a Quadlet installation loads a bundle's images; Podman refuses the loopback registry over plain HTTP unless TLS verification is off, and the `oci:` transport that would avoid the registry is unmeasured on whether it keeps the pinned digest
+evidence: rfcs/0023-runtimes-beyond-compose.md:658-670
+action: decided
+proposal: ASSUMED — a Quadlet ingest pulls each bundled image from the manager's loopback registry with `--tls-verify=false` on that pull alone, never on `Pull` and never in a field another call reaches, and names it by its local alias as Compose does (D-001); the `oci:` transport stays unused until its digest fidelity is measured (D-002)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: Podman can probe a registry without pulling, which the P3b plan made the condition for a Quadlet `RegistryProber`; `podman manifest inspect` asks the registry even with the image local
+evidence: `podman --log-level=debug manifest inspect docker.io/library/alpine:3.20` — with the image in the store, 4 debug lines name `GET https://` or `registry-1.docker.io`; the store's image IDs unchanged across the probes
+action: decided
+proposal: ASSUMED — the Quadlet adapter probes a registry with `podman manifest inspect`, and reads a denied or unauthorized answer as missing credentials, with `podman login` as the remedy
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-27T17:39:53Z
+attempt: 1
+claim: the `network.registry` check names `docker login` as its remedy whatever the runtime, which tells a Quadlet installation to log in with a tool it does not use
+evidence: internal/lifecycle/ops/doctor.go:1343-1346
+action: decided
+proposal: ASSUMED — a check that reports a runtime's failure takes its remedy from the runtime's error, and says nothing runtime-specific of its own
+```
+
+**Drift count: 0.**
+
+### Built, 2026-11-27
+
+Commits `58c248ca` to `3f349761`, as planned.
+
+Measured against Podman 6.1.1 while building:
+- **The vendor's reference resolves after an ingest**, as it does on
+  Docker's containerd store and not on its classic one. The alias names
+  the vendor's repository, and the image carries the pinned digest. The
+  units still run the alias. The Podman suite asserts it, so a change is
+  seen.
+- **A layout written by `podman push … oci:<dir>`** has a manifest of its
+  own digest, and the image it loads is the one already in the store under
+  the suite's busybox: one image ID, more names.
+- **A loopback name left behind is invisible to `podman images`**, which
+  lists tags, not digest references. It shows among the image's
+  `RepoDigests`.
+
+Found while building, each before the PR:
+- **The probe's message repeated Podman's stderr.** The runner puts it in
+  both the result and the exit error. Podman's trailing newline hides that
+  from `firstLine`, but the fake has none. The message now comes from the
+  exit error alone, as in Compose's probe.
+- **The Podman suite's check for a loopback name passed with the untag
+  removed**, because of the third measurement above. Fixed in `3f349761`.
+  The run that showed it left such a name on the suite's busybox, which was
+  removed by name afterwards.
+
+Sabotaged, each red, each file restored:
+- the flag left off the loopback pull (unit and Podman suite);
+- the flag added to `Pull` (unit);
+- the untag skipped (unit and Podman suite);
+- an image already present loaded again (unit and Podman suite);
+- Docker Hub's refusal not read as missing credentials (unit);
+- `doctor` ignoring the runtime's remedy (suite).
+
+Not run: a release with bundled images, end to end through the binary on
+Podman. The capability is proved at the adapter, and the step that calls
+it is unchanged.
+
+**Drift count: 0.**
+
+## Review of #443, 2026-11-27
+
+The first review found four things, each reproduced against Podman 6.1.1
+first. Three are fixed, and one is documented and kept.
+- **A digest pinned to one image's manifest failed the probe.** The
+  registry served it, and `podman manifest inspect`, which reads only
+  lists, exited 125: `Treating single images as manifest lists is not
+  implemented`. That answer now counts as reachable (`88527069`). The
+  measurement above used an index, which is why it passed.
+- **A 404 from an endpoint read as an unpublished digest.** Podman says
+  `StatusCode: 404, "404 page not found"` for an endpoint that is not a
+  registry, and the probe matched "not found". Only `manifest unknown` is
+  read that way now (`bd705fd1`).
+- **A manifest list the user made answers the probe from the store**, with
+  exit 0 and no registry. Podman has no flag to skip that, and the manager
+  makes no lists, so the comment says so and the behaviour stays
+  (`3ef1490d`).
+- **`doctor`'s suffix said "while this is unreachable"** after a remedy
+  saying the digest was never published. It now says "until this check
+  passes" (`662b6fb1`).
+
+Left for the author: `CONTAINER_HOST` makes every `podman` command
+remote, so the adapter would drive a remote service while systemd runs
+the units here. That reaches the whole adapter, not only the ingest.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T18:23:54Z
+attempt: 1
+claim: a registry answers a digest pinned to one image's manifest, and `podman manifest inspect` then fails because it reads only lists; this replaces the probe proposal above, which was measured against an index alone
+evidence: `podman manifest inspect docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e` — exit 125, `Treating single images as manifest lists is not implemented`, after the manifest was fetched
+action: decided
+proposal: ASSUMED — the Quadlet adapter probes a registry with `podman manifest inspect`; a served single image's manifest counts as reachable, a denied or unauthorized answer as missing credentials with `podman login` as the remedy, `manifest unknown` as an unpublished digest, and anything else is reported in Podman's words
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T18:23:54Z
+attempt: 1
+claim: with CONTAINER_HOST set, every `podman` command the adapter runs goes to that service, while systemd runs the units with the local Podman; nothing in the adapter or the RFC says which Podman the adapter drives
+evidence: `CONTAINER_HOST=tcp://127.0.0.1:1 podman image exists docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0` — exit 125, `unable to connect to Podman socket: Get "http://127.0.0.1:1/v6.1.1/libpod/_ping"`
+action: decided
+proposal: OPEN — whether the Quadlet adapter drops CONTAINER_HOST and CONTAINER_CONNECTION from the commands it runs, so it drives the Podman its units run on, or refuses them; left as it is in #443
+```
+
+**Drift count: 0.**

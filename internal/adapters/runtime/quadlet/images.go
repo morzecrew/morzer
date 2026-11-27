@@ -50,6 +50,53 @@ func (r *Runtime) RemoveImage(ctx context.Context, ref string) error {
 	return domain.RuntimeError(err, "cannot remove %s: %s", ref, firstLine(exitErr.Stderr))
 }
 
+var _ ports.RegistryProber = (*Runtime)(nil)
+
+// ProbeRegistry checks that an image's registry answers for it, pulling
+// nothing. `podman manifest inspect` fetches the manifest alone, and asks the
+// registry even when the image is in the store, so a local copy cannot answer
+// for a registry this machine no longer reaches (measured on Podman 6.1.1).
+// A manifest list the user made under the same name is the exception: Podman
+// reads that from the store, and has no flag to skip it. The manager makes no
+// lists, so this needs one made by hand under a reference a release pins.
+//
+// A refusal is read as missing credentials, whichever words the registry
+// uses: Docker Hub says "requested access to the resource is denied", quay.io
+// "unauthorized".
+func (r *Runtime) ProbeRegistry(ctx context.Context, imageRef string) error {
+	cmd := r.command(30*time.Second, r.podman, "manifest", "inspect", imageRef)
+	cmd.OnLine = nil // the manifest itself, which nobody reads
+	res, err := r.runner.Run(ctx, cmd)
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if !asExit(err, &exitErr) {
+		return domain.RuntimeError(err, "cannot probe the registry")
+	}
+	lower := strings.ToLower(res.Stderr + exitErr.Stderr)
+	switch {
+	// A digest pinned to one image's manifest rather than to an index:
+	// the registry served it, and the command, which reads only lists,
+	// refused what it got. Checked first, since the text carries the
+	// manifest itself.
+	case strings.Contains(lower, "treating single images as manifest lists is not implemented"):
+		return nil
+	case strings.Contains(lower, "unauthorized"),
+		strings.Contains(lower, "authentication required"),
+		strings.Contains(lower, "requested access to the resource is denied"):
+		return domain.RuntimeError(err, "the registry refused access").
+			WithHint("run `podman login <registry>` as the user the manager runs as -- " +
+				"a registry may answer the same for a repository that does not exist")
+	// "manifest unknown" alone: an endpoint's 404 also says "not found",
+	// and says nothing about the digest.
+	case strings.Contains(lower, "manifest unknown"):
+		return domain.RuntimeError(err, "the image does not exist in the registry").
+			WithHint("the release may reference a digest that was never published")
+	}
+	return domain.RuntimeError(err, "%s", firstLine(exitErr.Stderr))
+}
+
 // ServiceImages maps each service to the image its unit runs, with the
 // variables in `Image=` filled in from cfg, as systemd fills them in. With no
 // names it covers the services Up starts; a named one-shot is covered too.

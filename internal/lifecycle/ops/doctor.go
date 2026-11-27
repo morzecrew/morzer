@@ -1340,11 +1340,17 @@ func (d *Deps) checkRegistryReachable(rel domain.Release) preflight.Check {
 			}
 
 			if err := prober.ProbeRegistry(probeCtx, refs[0]); err != nil {
+				// The remedy is the runtime's: which tool logs in
+				// to a registry depends on the engine that pulls.
+				e := domain.AsError(err)
+				remedy := "check network access and registry credentials"
+				if e.Hint != "" {
+					remedy = e.Hint
+				}
 				return preflight.Warn(
-					"check network access and registry credentials (`docker login`); "+
-						"updates will fail while this is unreachable",
+					remedy+"; updates will fail until this check passes",
 					"cannot reach the registry for %s: %s",
-					domain.ShortImageRef(refs[0]), domain.AsError(err).Message)
+					domain.ShortImageRef(refs[0]), e.Message)
 			}
 			return preflight.OK("reachable")
 		},

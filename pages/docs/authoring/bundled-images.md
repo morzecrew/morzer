@@ -140,6 +140,11 @@ loopback to the Mac's. The pull, and what it verifies, are the same. Managers
 up to 0.18.0 refuse a release that bundles its images on a Mac; see
 [Platforms](../explanation/platforms.md#bundled-images-go-through-a-relay).
 
+On [Podman](../operating/running-on-podman.md), for a release that declares the
+`quadlet` runtime, the pull out of `127.0.0.1` runs with TLS verification off,
+because Podman, unlike Docker, does not exempt loopback from it. It is off for
+that pull alone, and it still checks every blob against its digest.
+
 ### The image is deployed under a name you did not publish
 
 ```text
