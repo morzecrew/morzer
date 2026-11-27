@@ -66,9 +66,10 @@ func TestQuadletIngestLeavesTheAliasAndNoLoopbackName(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	before, err := r.HasImage(ctx, alias)
+	here, err := r.HasImage(ctx, alias)
 	require.NoError(t, err)
-	require.False(t, before, "the alias was here before the ingest")
+	require.False(t, here, "the alias was here before the ingest")
+	before := loopbackDigests(t, quadletBusybox)
 
 	require.NoError(t, r.IngestImages(ctx, layoutDir, []string{vendorRef}))
 	present, err := r.HasImage(ctx, alias)
@@ -88,14 +89,27 @@ func TestQuadletIngestLeavesTheAliasAndNoLoopbackName(t *testing.T) {
 	require.NoError(t, r.IngestImages(ctx, t.TempDir(), []string{vendorRef}),
 		"an image already here was loaded again")
 
-	out, err := osexec.Command("podman", "images", "--format", "{{.Repository}}").CombinedOutput()
+	// The loopback name is a digest reference, which `podman images` does
+	// not list. It shows among the image's digests, compared with what the
+	// image carried before, since the suite's busybox is the same image.
+	assert.Equal(t, before, loopbackDigests(t, alias),
+		"a loopback name outlived the ingest that made it")
+}
+
+// loopbackDigests is the image's digest references on 127.0.0.1.
+func loopbackDigests(t *testing.T, ref string) []string {
+	t.Helper()
+	out, err := osexec.Command("podman", "image", "inspect", "--format", "{{json .RepoDigests}}", ref).CombinedOutput()
 	require.NoError(t, err, "%s", out)
-	for _, repo := range strings.Split(string(out), "\n") {
-		repo = strings.TrimSpace(repo)
-		if strings.HasPrefix(repo, "127.0.0.1:") && strings.HasSuffix(repo, "/morzer-test/quadlet-app") {
-			t.Errorf("a loopback name outlived the ingest that made it: %s", repo)
+	var digests []string
+	require.NoError(t, json.Unmarshal(out, &digests), "%s", out)
+	var loopback []string
+	for _, d := range digests {
+		if strings.HasPrefix(d, "127.0.0.1:") {
+			loopback = append(loopback, d)
 		}
 	}
+	return loopback
 }
 
 // A manifest whose bytes are not its digest is refused, the refusal names
