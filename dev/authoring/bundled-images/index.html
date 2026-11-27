@@ -2647,6 +2647,10 @@ volume helper image on the VM's host network, which forwards the daemon's
 loopback to the Mac's. The pull, and what it verifies, are the same. Managers
 up to 0.18.0 refuse a release that bundles its images on a Mac; see
 <a href="../../explanation/platforms/#bundled-images-go-through-a-relay">Platforms</a>.</p>
+<p>On <a href="../../operating/running-on-podman/">Podman</a>, for a release that declares the
+<code>quadlet</code> runtime, the pull out of <code>127.0.0.1</code> runs with TLS verification off,
+because Podman, unlike Docker, does not exempt loopback from it. It is off for
+that pull alone, and it still checks every blob against its digest.</p>
 <h3 id="the-image-is-deployed-under-a-name-you-did-not-publish">The image is deployed under a name you did not publish<a class="headerlink" href="#the-image-is-deployed-under-a-name-you-did-not-publish" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>registry.example/demo/app:morzer-sha256-0000000000000000…
 </code></pre></div>

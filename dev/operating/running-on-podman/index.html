@@ -2483,8 +2483,11 @@ name could not run them.</p>
   inside a container is gone at its next stop.</li>
 <li><strong>A one-shot</strong>, a migration or a task, runs as a copy of its service's unit,
   with a container of its own beside the running service.</li>
-<li><strong>Images come from a registry.</strong> A release that carries its images in the
-  bundle is refused, since this runtime cannot load them yet.</li>
+<li><strong>A release can carry its images in the bundle.</strong> <code>init</code> and <code>update</code> load
+  them into your Podman store, as they load Docker's: Podman pulls each one
+  out of the bundle, served on <code>127.0.0.1</code>, and checks every blob against its
+  digest. Podman checks TLS even on <code>127.0.0.1</code>, so that pull alone runs with
+  <code>--tls-verify=false</code>. A pull from a registry never does.</li>
 </ul>
 <h2 id="what-doctor-checks">What doctor checks<a class="headerlink" href="#what-doctor-checks" title="Permanent link">&para;</a></h2>
 <p>With no installation, <code>doctor</code> reports the tools of every runtime this
@@ -2494,6 +2497,10 @@ machine with Docker and no Podman is not reported unfit. The
 <p>With an installation, <code>doctor</code> checks what it checks on any installation of
 your own. A Quadlet installation has no daemon of its own, so there is no
 <code>runtime.engine-scope</code> check.</p>
+<p><code>network.registry</code> asks the registry of the release's first pulled image for
+its manifest, with <code>podman manifest inspect</code>, which pulls nothing. A registry
+that refuses is a warning whose remedy is <code>podman login &lt;registry&gt;</code>, run as
+you. Docker Hub refuses the same way for a repository that does not exist.</p>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../../reference/manifest/#quadlet"><code>runtimes.quadlet</code></a> is what a release
