@@ -1563,3 +1563,25 @@ proposal: OPEN — whether the Quadlet adapter drops CONTAINER_HOST and CONTAINE
 ```
 
 **Drift count: 0.**
+
+## Rulings on the P3b reconciliation, 2026-11-27
+
+#443 merged as `2eb2959d`, which ends P3. The author ruled the
+reconciliation plan on 2026-11-27, as recommended.
+- **The rows (option A).** RFC 0023 gains a row for each proposal in this
+  log that a later reader needs, in its last form: U1, U3 to U7, U9, the
+  final U10 and U11, U12, and the P3b proposals from "The P3b build" to
+  "Review of #443". The two older outstanding proposals for this RFC in
+  `logs/wave-25.md`, D-001 and D-006, go in too, since both are built.
+  Row 12 is marked superseded in place.
+- **Not rows.** U2 and U8, which are how `Paths` is built. U13, which is
+  how one check reads the units. The sharing of `VolumeHelper` and
+  `ImageLoader`, which is code structure. Every attempt a later one
+  replaced. This log keeps them all.
+- **Q1 and Q2** were ruled on 2026-11-26 to become rows at this
+  reconciliation, and the plan's list left them out. They are added as
+  that ruling said.
+- **`CONTAINER_HOST`: dropped.** The adapter removes `CONTAINER_HOST` and
+  `CONTAINER_CONNECTION` from the commands it runs, so it drives the
+  Podman its units run on. ASSUMED. The code follows in its own PR.
+
