@@ -73,6 +73,12 @@ func (r *Runtime) ProbeRegistry(ctx context.Context, imageRef string) error {
 	}
 	lower := strings.ToLower(res.Stderr + exitErr.Stderr)
 	switch {
+	// A digest pinned to one image's manifest rather than to an index:
+	// the registry served it, and the command, which reads only lists,
+	// refused what it got. Checked first, since the text carries the
+	// manifest itself.
+	case strings.Contains(lower, "treating single images as manifest lists is not implemented"):
+		return nil
 	case strings.Contains(lower, "unauthorized"),
 		strings.Contains(lower, "authentication required"),
 		strings.Contains(lower, "requested access to the resource is denied"):

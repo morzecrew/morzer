@@ -119,3 +119,14 @@ func TestARegistryProbeSaysWhatWentWrong(t *testing.T) {
 	assert.Equal(t, []string{"podman manifest inspect " + appRef}, commandsWith(runner, "manifest"))
 	assert.Empty(t, commandsWith(runner, " pull "), "the probe pulled")
 }
+
+// A digest pinned to one image's manifest, rather than to an index, is
+// served by the registry and then refused by `podman manifest inspect`,
+// which reads only lists. The registry answered, which is all the probe asks.
+func TestARegistryThatServesOneImagesManifestAnswers(t *testing.T) {
+	runner := fakes.NewScripted()
+	runner.OnExit("manifest inspect", 125,
+		`Error: parsing manifest blob "{\n  \"schemaVersion\": 2,\n  \"mediaType\": \"application/vnd.oci.image.manifest.v1+json\"\n}" `+
+			`as a "application/vnd.oci.image.manifest.v1+json": Treating single images as manifest lists is not implemented`+"\n")
+	assert.NoError(t, New(runner).ProbeRegistry(context.Background(), appRef))
+}
