@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/morzecrew/morzer/internal/domain"
 	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
 )
@@ -79,4 +80,42 @@ func TestABundledImageAlreadyHereIsNotLoadedAgain(t *testing.T) {
 	require.NoError(t, r.IngestImages(context.Background(), t.TempDir(), []string{appRef}))
 	assert.Empty(t, commandsWith(runner, " pull "), runner.CommandLines())
 	assert.True(t, runner.Ran("image exists "+appAlias), runner.CommandLines())
+}
+
+// The probe reads each answer Podman 6.1.1 gave a registry, as measured.
+func TestARegistryProbeSaysWhatWentWrong(t *testing.T) {
+	const prefix = `Error: reading image "docker://demo/app@sha256:00": reading manifest sha256:00 in docker.io/demo/app: `
+	cases := []struct {
+		name, stderr, message, hint string
+	}{
+		{"Docker Hub refuses", prefix + "requested access to the resource is denied",
+			"the registry refused access", "podman login"},
+		{"quay.io refuses", prefix + "unauthorized: access to the requested resource is not authorized",
+			"the registry refused access", "podman login"},
+		{"no such digest", prefix + "manifest unknown",
+			"the image does not exist in the registry", "never published"},
+		{"no registry answers",
+			`Error: reading image "docker://registry.invalid/demo/app@sha256:00": pinging container registry registry.invalid: Get "https://registry.invalid/v2/": EOF`,
+			`Error: reading image "docker://registry.invalid/demo/app@sha256:00": pinging container registry registry.invalid: Get "https://registry.invalid/v2/": EOF`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := fakes.NewScripted()
+			runner.OnExit("manifest inspect", 125, tc.stderr)
+			err := New(runner).ProbeRegistry(context.Background(), appRef)
+			require.Error(t, err)
+			e := domain.AsError(err)
+			assert.Equal(t, tc.message, e.Message)
+			if tc.hint == "" {
+				assert.Empty(t, e.Hint)
+			} else {
+				assert.Contains(t, e.Hint, tc.hint)
+			}
+		})
+	}
+
+	runner := fakes.NewScripted()
+	require.NoError(t, New(runner).ProbeRegistry(context.Background(), appRef))
+	assert.Equal(t, []string{"podman manifest inspect " + appRef}, commandsWith(runner, "manifest"))
+	assert.Empty(t, commandsWith(runner, " pull "), "the probe pulled")
 }

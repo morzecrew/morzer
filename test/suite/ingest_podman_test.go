@@ -20,7 +20,7 @@ import (
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 )
 
-// The Quadlet adapter's ingest against this user's
+// The Quadlet adapter's ingest and registry probe against this user's
 // rootless Podman. What a fake cannot say is what Podman's store holds
 // afterwards.
 
@@ -117,4 +117,27 @@ func TestQuadletIngestRefusesABlobThatIsNotItsDigest(t *testing.T) {
 	present, hasErr := r.HasImage(ctx, alias)
 	require.NoError(t, hasErr)
 	assert.False(t, present, "an alias was made for bytes that were refused")
+}
+
+// The probe runs against real Podman and says something for a registry that
+// does not answer and for one that does not exist, pulling nothing.
+func TestQuadletProbeRegistryFailsWithoutAnAnsweringRegistry(t *testing.T) {
+	requirePodman(t)
+	r := quadlet.New(infraexec.New())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	for _, ref := range []string{
+		"127.0.0.1:1/nothing@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		"registry.example.invalid/nothing@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+	} {
+		err := r.ProbeRegistry(ctx, ref)
+		require.Error(t, err, ref)
+		assert.NotEmpty(t, domain.AsError(err).Message, ref)
+		assert.NotEqual(t, "the registry refused access", domain.AsError(err).Message,
+			"%s: a registry that never answered was reported as refusing credentials", ref)
+		present, err := r.HasImage(ctx, ref)
+		require.NoError(t, err)
+		assert.False(t, present, "%s: the probe pulled", ref)
+	}
 }
