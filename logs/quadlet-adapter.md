@@ -1471,3 +1471,44 @@ proposal: ASSUMED — a check that reports a runtime's failure takes its remedy 
 ```
 
 **Drift count: 0.**
+
+### Built, 2026-11-27
+
+Commits `58c248ca` to `3f349761`, as planned.
+
+Measured against Podman 6.1.1 while building:
+- **The vendor's reference resolves after an ingest**, as it does on
+  Docker's containerd store and not on its classic one. The alias names
+  the vendor's repository, and the image carries the pinned digest. The
+  units still run the alias. The Podman suite asserts it, so a change is
+  seen.
+- **A layout written by `podman push … oci:<dir>`** has a manifest of its
+  own digest, and the image it loads is the one already in the store under
+  the suite's busybox: one image ID, more names.
+- **A loopback name left behind is invisible to `podman images`**, which
+  lists tags, not digest references. It shows among the image's
+  `RepoDigests`.
+
+Found while building, each before the PR:
+- **The probe's message repeated Podman's stderr.** The runner puts it in
+  both the result and the exit error. Podman's trailing newline hides that
+  from `firstLine`, but the fake has none. The message now comes from the
+  exit error alone, as in Compose's probe.
+- **The Podman suite's check for a loopback name passed with the untag
+  removed**, because of the third measurement above. Fixed in `3f349761`.
+  The run that showed it left such a name on the suite's busybox, which was
+  removed by name afterwards.
+
+Sabotaged, each red, each file restored:
+- the flag left off the loopback pull (unit and Podman suite);
+- the flag added to `Pull` (unit);
+- the untag skipped (unit and Podman suite);
+- an image already present loaded again (unit and Podman suite);
+- Docker Hub's refusal not read as missing credentials (unit);
+- `doctor` ignoring the runtime's remedy (suite).
+
+Not run: a release with bundled images, end to end through the binary on
+Podman. The capability is proved at the adapter, and the step that calls
+it is unchanged.
+
+**Drift count: 0.**
