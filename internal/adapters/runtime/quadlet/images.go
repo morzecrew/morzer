@@ -56,6 +56,9 @@ var _ ports.RegistryProber = (*Runtime)(nil)
 // nothing. `podman manifest inspect` fetches the manifest alone, and asks the
 // registry even when the image is in the store, so a local copy cannot answer
 // for a registry this machine no longer reaches (measured on Podman 6.1.1).
+// A manifest list the user made under the same name is the exception: Podman
+// reads that from the store, and has no flag to skip it. The manager makes no
+// lists, so this needs one made by hand under a reference a release pins.
 //
 // A refusal is read as missing credentials, whichever words the registry
 // uses: Docker Hub says "requested access to the resource is denied", quay.io
