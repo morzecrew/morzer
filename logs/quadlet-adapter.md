@@ -1628,3 +1628,15 @@ Each proposal, and what became of it in RFC 0023.
 
 Row 12 is marked superseded by row 50 in place. The close-outs of rows 3,
 26, 30 and 32 add no row, and row 28's became row 45.
+
+## Review of #444, 2026-11-27
+
+- **Row 39** recorded U9's first form of the self-update hint. It now
+  records the form the P3a self-audit settled: a user installation's hint
+  names no `sudo` (`internal/lifecycle/ops/self_update.go:419-426`).
+- **Row 40** now says a probe that times out counts as one that did not
+  run, and that this is a risk the author accepted on 2026-11-26 ("After
+  #435"), not a case shown safe. The review asked for a user installation
+  to change nothing through an engine the probe did not confirm, by
+  refusing or by asking again. That reverses the 2026-11-26 ruling, so it
+  is the author's to decide, and it is not changed here.
