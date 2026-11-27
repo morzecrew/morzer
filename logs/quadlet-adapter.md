@@ -1585,3 +1585,46 @@ reconciliation plan on 2026-11-27, as recommended.
   `CONTAINER_CONNECTION` from the commands it runs, so it drives the
   Podman its units run on. ASSUMED. The code follows in its own PR.
 
+### Reconciled, 2026-11-27
+
+Each proposal, and what became of it in RFC 0023.
+
+| Row | Outcome | Grade | Decision | From |
+|---|---|---|---|---|
+| 33 | Accepted | ASSUMED | `$XDG_RUNTIME_DIR` required for the user layout | U1 |
+| — | Not a row | — | The user layout derived from `Paths` | U2 |
+| 34 | Accepted | ASSUMED | User units drop `network-online.target` | U3 |
+| 35 | Accepted | ASSUMED | `ls` says which layout it lists | U4 |
+| 36 | Accepted | ASSUMED | The user layout on Linux only | U5 |
+| 37 | Accepted | ASSUMED | Units carry `Environment=XDG_DATA_HOME` | U6 |
+| 38 | Accepted | ASSUMED | `ports.EngineScopeProber` | U7 |
+| — | Not a row | — | `Paths.For(product)` | U8 |
+| 39 | Accepted | ASSUMED | Binary checks for a user layout | U9 |
+| 40 | Accepted | ASSUMED | The engine asked under the lock | U10, attempt 2 |
+| 41 | Accepted | ASSUMED | A root is the user's tree when it resolves to it | U11, attempt 5 |
+| 42 | Accepted | ASSUMED | One systemd word per path | U12 |
+| — | Not a row | — | A user installation's units read whatever `Available` says | U13 |
+| 43 | Accepted | ASSUMED | `doctor` warns an account that does not linger | wave-25 D-006 |
+| 44 | Accepted | ASSUMED | `ports.EngineUnitNamer` | "The P3b build" |
+| 45 | Accepted | ASSUMED | Where the units live | "The adapter", row 28 |
+| 46 | Accepted | ASSUMED | `SuccessExitStatus=143` | "The adapter" |
+| 47 | Accepted | ASSUMED | How a one-shot runs and is read back | "The adapter", "Review of #441" |
+| 48 | Accepted | ASSUMED | A one-shot before and after the first `Up` | "The adapter" |
+| — | Not a row | — | `VolumeHelper` exported from Compose | "The adapter" |
+| 49 | Accepted | ASSUMED | A targeted `Up` recreates what the files change | "Review of #441" |
+| 50 | Accepted | ASSUMED | `init --runtime`; supersedes row 12 | "The wiring", G5 |
+| 51 | Accepted | ASSUMED | Every adapter wired, chosen by the record | "The wiring", "Review of #442" |
+| 52 | Accepted | ASSUMED | `doctor` with several runtimes | "The wiring" |
+| 53 | Accepted | ASSUMED | `ReadBundle(product, root, files)` | "The wiring" |
+| 54 | Accepted | ASSUMED | The release commands read every runtime | "Review of #442", replacing "The wiring" |
+| 55 | Accepted | ASSUMED | `init` reads the manifest first | "Review of #442" |
+| 56 | Accepted | ASSUMED | Images through the loopback registry | wave-25 D-001, "Image ingest and the registry probe" |
+| — | Not a row | — | `ImageLoader` shared with Compose | "Image ingest and the registry probe" |
+| 57 | Accepted | ASSUMED | The registry probe | "Review of #443", replacing "Image ingest and the registry probe" |
+| 58 | Accepted | ASSUMED | A check's remedy from the runtime | "Image ingest and the registry probe" |
+| 59 | Accepted | ASSUMED | Quadlet file names carry the product | Q1 |
+| 60 | Accepted | ASSUMED | `Type=oneshot` is never started by `Up` | Q2 |
+| 61 | Accepted | ASSUMED | `CONTAINER_HOST` dropped; not built yet | "Review of #443" |
+
+Row 12 is marked superseded by row 50 in place. The close-outs of rows 3,
+26, 30 and 32 add no row, and row 28's became row 45.
