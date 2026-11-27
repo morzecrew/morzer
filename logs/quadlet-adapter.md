@@ -1512,3 +1512,54 @@ Podman. The capability is proved at the adapter, and the step that calls
 it is unchanged.
 
 **Drift count: 0.**
+
+## Review of #443, 2026-11-27
+
+The first review found four things, each reproduced against Podman 6.1.1
+first. Three are fixed, and one is documented and kept.
+- **A digest pinned to one image's manifest failed the probe.** The
+  registry served it, and `podman manifest inspect`, which reads only
+  lists, exited 125: `Treating single images as manifest lists is not
+  implemented`. That answer now counts as reachable (`88527069`). The
+  measurement above used an index, which is why it passed.
+- **A 404 from an endpoint read as an unpublished digest.** Podman says
+  `StatusCode: 404, "404 page not found"` for an endpoint that is not a
+  registry, and the probe matched "not found". Only `manifest unknown` is
+  read that way now (`bd705fd1`).
+- **A manifest list the user made answers the probe from the store**, with
+  exit 0 and no registry. Podman has no flag to skip that, and the manager
+  makes no lists, so the comment says so and the behaviour stays
+  (`3ef1490d`).
+- **`doctor`'s suffix said "while this is unreachable"** after a remedy
+  saying the digest was never published. It now says "until this check
+  passes" (`662b6fb1`).
+
+Left for the author: `CONTAINER_HOST` makes every `podman` command
+remote, so the adapter would drive a remote service while systemd runs
+the units here. That reaches the whole adapter, not only the ingest.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T18:23:54Z
+attempt: 1
+claim: a registry answers a digest pinned to one image's manifest, and `podman manifest inspect` then fails because it reads only lists; this replaces the probe proposal above, which was measured against an index alone
+evidence: `podman manifest inspect docker.io/library/alpine@sha256:c64c687cbea9300178b30c95835354e34c4e4febc4badfe27102879de0483b5e` — exit 125, `Treating single images as manifest lists is not implemented`, after the manifest was fetched
+action: decided
+proposal: ASSUMED — the Quadlet adapter probes a registry with `podman manifest inspect`; a served single image's manifest counts as reachable, a denied or unauthorized answer as missing credentials with `podman login` as the remedy, `manifest unknown` as an unpublished digest, and anything else is reported in Podman's words
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-27T18:23:54Z
+attempt: 1
+claim: with CONTAINER_HOST set, every `podman` command the adapter runs goes to that service, while systemd runs the units with the local Podman; nothing in the adapter or the RFC says which Podman the adapter drives
+evidence: `CONTAINER_HOST=tcp://127.0.0.1:1 podman image exists docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0` — exit 125, `unable to connect to Podman socket: Get "http://127.0.0.1:1/v6.1.1/libpod/_ping"`
+action: decided
+proposal: OPEN — whether the Quadlet adapter drops CONTAINER_HOST and CONTAINER_CONNECTION from the commands it runs, so it drives the Podman its units run on, or refuses them; left as it is in #443
+```
+
+**Drift count: 0.**
