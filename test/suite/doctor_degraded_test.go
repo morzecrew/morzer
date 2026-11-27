@@ -438,3 +438,34 @@ func TestApplyDoesNotTakeAnUnhealthyProductsPortForAConflict(t *testing.T) {
 	_, err = ops.Apply(ctx, h.Deps, ops.Options{})
 	require.NoError(t, err, "apply took the product's own port for a conflict")
 }
+
+// refusingRegistry answers every probe with the error its runtime gave.
+type refusingRegistry struct {
+	*fakes.Runtime
+	err error
+}
+
+func (r refusingRegistry) ProbeRegistry(context.Context, string) error { return r.err }
+
+// The registry check's remedy is the runtime's, so an installation whose
+// engine logs in with another tool is not sent to `docker login`. A failure
+// with no remedy of its own names no tool.
+func TestDoctorTakesTheRegistrysRemedyFromTheRuntime(t *testing.T) {
+	h := newHarness(t)
+	h.install()
+
+	h.Deps.Runtime = refusingRegistry{Runtime: h.Runtime,
+		err: domain.RuntimeError(nil, "the registry refused access").
+			WithHint("run `podman login <registry>`")}
+	check := doctorCheck(t, h, "network.registry")
+	assert.Equal(t, events.CheckWarn, check.Status, check.Message)
+	assert.Equal(t, "run `podman login <registry>`; updates will fail while this is unreachable",
+		check.Remedy)
+
+	h.Deps.Runtime = refusingRegistry{Runtime: h.Runtime,
+		err: domain.RuntimeError(nil, "no route to host")}
+	check = doctorCheck(t, h, "network.registry")
+	assert.Equal(t, events.CheckWarn, check.Status, check.Message)
+	assert.Equal(t, "check network access and registry credentials; updates will fail while this is unreachable",
+		check.Remedy)
+}
