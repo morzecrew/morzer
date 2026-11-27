@@ -211,6 +211,68 @@ belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.
 
+### Choosing between runtimes
+
+A release may declare several runtimes, each with its own files. An
+installation runs on one. `init` takes the one a release declares, or with
+several the one [`init --runtime`](commands.md#init) names; without
+`--runtime` it refuses, since nothing on the machine decides which one an
+operator meant. On Linux the manager drives `compose` and `quadlet`, and on
+a Mac `compose` only. A runtime the machine's manager cannot drive is
+refused before anything is created.
+
+### quadlet
+
+The `quadlet` runtime runs each service as a `.container` unit under the
+user's own systemd manager, on rootless Podman. See
+[Running on Podman](../operating/running-on-podman.md) for the operator's
+side.
+
+```yaml
+runtimes:
+  quadlet:
+    files:
+      - quadlet/demo-app.container
+      - quadlet/demo-migrate.container
+      - quadlet/demo-data.volume
+compatibility:
+  min_manager_version: "0.20.0"
+```
+
+- **Every file is named `<product>-<name>.<kind>`**, where the product is
+  `metadata.name`. Only `.container`, `.volume` and `.network` files are
+  carried: a `.pod`, `.kube`, `.image` or `.build` file is refused. A service
+  is a `.container` file's name without the product and the kind, so the
+  files above define `app` and `migrate`. The prefix keeps two installations'
+  units, containers, volumes and networks apart.
+- **A `.container` with `Type=oneshot` in `[Service]` is never started by
+  `apply`.** It is still a service: an operation or a task runs it.
+- **Values arrive as they do in a Compose file**: `${DEMO_PARAM_HTTP_PORT}` and
+  `${DEMO_IMAGE_APP}` (see [Variables](variables.md)). systemd expands them, so
+  there is no `${NAME:-default}`, and a `$` meant for the container's shell is
+  written `$$`.
+- **What the manager could not run as written is refused**, never rewritten:
+  - an `[Install]` section, since the manager starts every unit itself after it
+    renders what the unit reads;
+  - a `Pod=`;
+  - a `ContainerName=`, `VolumeName=` or `NetworkName=` that does not start
+    with `<product>-`, or that holds a `%` or a `$`;
+  - an anonymous volume, which a stop deletes with its data;
+  - a relative bind, or a named volume or network that does not start with
+    `<product>-`;
+  - a `Volume=` whose source under a variable is not a path once its values
+    are set;
+  - a `Mount=` other than `type=tmpfs`;
+  - an `EnvironmentFile=` that is not an absolute path.
+- **There are no `options` and no `profiles`.** A release that sets either for
+  `quadlet` is refused.
+- **`compatibility.min_manager_version` should be at least 0.20.0.** An older
+  manager cannot run the release, and the floor has it refuse at `init`.
+
+`release verify` reads the files without Podman. Every image and parameter
+variable they name must be declared, and every service a secret restarts must
+be one of the `.container` files.
+
 ## runtime (removed in 0.3.0)
 
 The original single-runtime block. **It is no longer read.** A manifest carrying

@@ -28,6 +28,7 @@ const (
 	Age     = "age"
 	Restic  = "restic"
 	Systemd = "systemctl"
+	Podman  = "podman"
 )
 
 // probe describes how to discover one tool's version.
@@ -49,6 +50,8 @@ var probes = map[string]probe{
 	Age:     {binary: "age", argv: []string{"--version"}, parse: parseSemverish},
 	Restic:  {binary: "restic", argv: []string{"version"}, parse: parseSemverish},
 	Systemd: {binary: "systemctl", argv: []string{"--version"}, parse: parseSemverish},
+	// `podman --version` prints `podman version 6.1.1`.
+	Podman: {binary: "podman", argv: []string{"--version"}, parse: parseSemverish},
 }
 
 // Registry resolves tools and caches the results.

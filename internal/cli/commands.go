@@ -26,6 +26,7 @@ func newInitCommand(app *App) *cobra.Command {
 		product          string
 		releasePath      string
 		profiles         []string
+		runtimeName      string
 		domains          []string
 		recoveryKey      string
 		noRecoveryKey    bool
@@ -84,12 +85,36 @@ func newInitCommand(app *App) *cobra.Command {
 			}
 			// The product name may come from the bundle, so it is
 			// resolved before the paths are finalised.
+			//
+			// So is the runtime a release leaves to itself: `init` asks
+			// its engine before it creates anything, which needs to
+			// know which runtime that is. A remote one named by
+			// --product is fetched for it too, into the command's cache
+			// the staging step reads, except by a plan, which fetches
+			// nothing. A manifest that does not read is left to the
+			// steps that report it, and `init` then asks once the
+			// staged release has chosen. A repair keeps the runtime its
+			// installation records.
+			needRuntime := runtimeName == "" && !repair
 			if product == "" && releasePath != "" {
 				manifest, err := app.releaseManifest(cmd.Context(), releasePath)
 				if err != nil {
 					return err
 				}
 				product = manifest.Metadata.Name
+				if needRuntime {
+					if runtimeName, err = ops.RuntimeForManifest(manifest); err != nil {
+						return err
+					}
+				}
+			} else if needRuntime && releasePath != "" {
+				if ref, err := ports.ParseRef(releasePath); err == nil && (ref.IsLocal() || !app.Flags.dryRun) {
+					if manifest, err := app.releaseManifest(cmd.Context(), releasePath); err == nil {
+						if runtimeName, err = ops.RuntimeForManifest(manifest); err != nil {
+							return err
+						}
+					}
+				}
 			}
 			// A repair is about an installation that exists, so it
 			// finds it the way every other command does: the one this
@@ -146,6 +171,7 @@ func newInitCommand(app *App) *cobra.Command {
 				Product:              product,
 				ReleasePath:          releasePath,
 				Profiles:             profileFlag(profiles),
+				Runtime:              runtimeName,
 				Domains:              domains,
 				RecoveryRecipient:    recoveryKey,
 				NoRecoveryKey:        noRecoveryKey,
@@ -256,6 +282,8 @@ func newInitCommand(app *App) *cobra.Command {
 	f.StringVar(&releasePath, "release", "", "release bundle to stage during init")
 	f.StringSliceVar(&profiles, "profile", nil,
 		"deployment profile from the release manifest; repeat, or separate with commas, for several")
+	f.StringVar(&runtimeName, "runtime", "",
+		"runtime to install with, one the release declares; required when it declares several, and fixed for good")
 	f.StringSliceVar(&domains, "domain", nil, "public domain; repeat for several, the first is canonical")
 	f.StringVar(&recoveryKey, "recovery-recipient", "", "offline age public key that can decrypt the secret state")
 	f.BoolVar(&noRecoveryKey, "no-recovery-recipient", false,

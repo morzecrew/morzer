@@ -67,7 +67,7 @@ func newReleasePushCommand(app *App) *cobra.Command {
 			}
 			defer cleanup()
 
-			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
+			if err := checkBundleIntegrity(rel, app.bundleRuntimes); err != nil {
 				return err
 			}
 			// The keys before the signature, in the verifier's order: a malformed

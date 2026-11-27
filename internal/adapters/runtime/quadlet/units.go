@@ -169,13 +169,19 @@ type bundle struct {
 // volumes and networks cannot meet in the user's manager or the user's Podman
 // (logs/quadlet-adapter.md, Q1).
 func loadBundle(cfg ports.RuntimeConfig) (bundle, error) {
-	b := bundle{product: cfg.Product}
-	if cfg.Product == "" {
+	return readFiles(cfg.Product, cfg.Files, os.ReadFile)
+}
+
+// readFiles reads the named files with read, which loadBundle points at the
+// filesystem and ReadBundle inside the release.
+func readFiles(product string, paths []string, read func(string) ([]byte, error)) (bundle, error) {
+	b := bundle{product: product}
+	if product == "" {
 		return b, domain.Internal(nil, "a Quadlet configuration names no product")
 	}
 	seen := map[string]bool{}
 	generated := map[string]string{}
-	for _, path := range cfg.Files {
+	for _, path := range paths {
 		name := filepath.Base(path)
 		kind := strings.TrimPrefix(filepath.Ext(name), ".")
 		switch kind {
@@ -184,18 +190,18 @@ func loadBundle(cfg ports.RuntimeConfig) (bundle, error) {
 			return b, refusal(name, "is a .%s file, and a Quadlet bundle may carry only "+
 				".container, .volume and .network files", kind)
 		}
-		service := strings.TrimSuffix(strings.TrimPrefix(name, cfg.Product+"-"), "."+kind)
-		if !strings.HasPrefix(name, cfg.Product+"-") || !serviceName.MatchString(service) {
+		service := strings.TrimSuffix(strings.TrimPrefix(name, product+"-"), "."+kind)
+		if !strings.HasPrefix(name, product+"-") || !serviceName.MatchString(service) {
 			return b, refusal(name, "does not start with %q followed by a name: every Quadlet "+
 				"file is named <product>-<name>.<kind>, so its unit, container, volume or network "+
-				"cannot be another installation's", cfg.Product+"-")
+				"cannot be another installation's", product+"-")
 		}
 		if seen[name] {
 			return b, refusal(name, "is listed twice")
 		}
 		seen[name] = true
 
-		text, err := os.ReadFile(path)
+		text, err := read(path)
 		if err != nil {
 			return b, domain.ValidationError(err, "cannot read Quadlet file %s", name)
 		}

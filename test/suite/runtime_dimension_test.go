@@ -2,18 +2,23 @@ package suite
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/adapters/runtime/compose"
+	"github.com/morzecrew/morzer/internal/adapters/runtime/quadlet"
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/events"
 	infraexec "github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/tools"
 	"github.com/morzecrew/morzer/internal/lifecycle/ops"
 	"github.com/morzecrew/morzer/internal/ports"
+	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // The runtime an installation is fixed to, at the two places RFC 0023 P2 left
@@ -224,6 +229,49 @@ func TestARuntimeThatNamesNoToolsIsNotGuessedAt(t *testing.T) {
 
 type runtimeWithoutTools struct{ ports.Runtime }
 
+// A runtime standing in for one of several, with its own name and tools.
+type runtimeNamingTools struct {
+	ports.Runtime
+	name  string
+	tools []string
+}
+
+func (r runtimeNamingTools) Name() string            { return r.name }
+func (r runtimeNamingTools) RequiredTools() []string { return r.tools }
+
+// With several runtimes wired, the next installation may use any of them, so a
+// host missing one runtime's tools is not unfit: each runtime's tools are
+// warnings, and what fails is no runtime having all of its own
+// (logs/quadlet-adapter.md, "The wiring").
+func TestDoctorWithSeveralRuntimesNeedsOneOfThemReady(t *testing.T) {
+	h := newHarness(t)
+	ready := runtimeNamingTools{h.Runtime, "first", nil}
+	missing := runtimeNamingTools{h.Runtime, "second", []string{"no-such-tool"}}
+	results := func() map[string]events.CheckResult {
+		report, err := ops.Doctor(context.Background(), h.Deps)
+		require.NoError(t, err)
+		out := map[string]events.CheckResult{}
+		for _, r := range report.Results {
+			out[r.ID] = r
+		}
+		return out
+	}
+
+	h.Deps.Runtime, h.Deps.Runtimes = ready, []ports.Runtime{ready, missing}
+	got := results()
+	assert.Equal(t, events.CheckWarn, got["tools.no-such-tool"].Status,
+		"a runtime the next installation need not use is not a reason to fail")
+	assert.Contains(t, got["tools.no-such-tool"].Description, "second runtime")
+	assert.Equal(t, events.CheckOK, got["runtime.tools"].Status)
+	assert.Equal(t, "first", got["runtime.tools"].Message)
+
+	alsoMissing := runtimeNamingTools{h.Runtime, "first", []string{"no-such-tool"}}
+	h.Deps.Runtime, h.Deps.Runtimes = alsoMissing, []ports.Runtime{alsoMissing, missing}
+	got = results()
+	assert.Equal(t, events.CheckFail, got["runtime.tools"].Status, "with no runtime ready there is nothing to init with")
+	assert.Contains(t, got["runtime.tools"].Message, "first, second")
+}
+
 // The adapter names tools; the registry probes them. Nothing else asserts that
 // the two vocabularies are the same one, and a name the catalogue has no probe
 // for does not fail quietly -- it produces an internal error wearing a doctor
@@ -237,15 +285,80 @@ func TestEveryToolTheRuntimeAsksForHasAProbe(t *testing.T) {
 	ctx := context.Background()
 	registry := tools.NewRegistry(infraexec.New())
 
-	runtime := compose.New(infraexec.New())
-	names := runtime.RequiredTools()
-	require.NotEmpty(t, names)
+	for _, runtime := range []ports.ToolRequirer{compose.New(infraexec.New()), quadlet.New(infraexec.New())} {
+		names := runtime.RequiredTools()
+		require.NotEmpty(t, names)
 
-	for _, name := range names {
-		_, err := registry.Lookup(ctx, name)
-		if err != nil {
-			assert.NotContains(t, err.Error(), "no version probe is defined",
-				"the runtime asks for %q and the tool catalogue has never heard of it", name)
+		for _, name := range names {
+			_, err := registry.Lookup(ctx, name)
+			if err != nil {
+				assert.NotContains(t, err.Error(), "no version probe is defined",
+					"the runtime asks for %q and the tool catalogue has never heard of it", name)
+			}
 		}
 	}
+}
+
+// G5, which retired decision 12. A release declaring two runtimes installs
+// with the one the operator names, and never with one picked for them; a
+// runtime this host has no adapter for is refused before anything is written.
+func TestInitInstallsWithTheRuntimeNamedOfTwoDeclared(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw),
+		"runtimes:\n", "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n", 1)), 0o644))
+	initWith := func(runtime string, dryRun bool) error {
+		opts := ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src, Runtime: runtime}
+		opts.DryRun = dryRun
+		_, err := ops.Init(ctx, h.Deps, opts)
+		return err
+	}
+	noInstallation := func(msg string) {
+		exists, err := h.Deps.State.InstallationExists(ctx)
+		require.NoError(t, err)
+		assert.False(t, exists, msg)
+	}
+
+	assert.ErrorContains(t, initWith("", true), "choose one with --runtime", "the plan refuses as the operation does")
+	assert.ErrorContains(t, initWith("", false), "choose one with --runtime")
+	noInstallation("a refused choice writes nothing")
+
+	assert.ErrorContains(t, initWith("quadlet", true), "cannot drive the quadlet runtime on this host")
+	assert.ErrorContains(t, initWith("quadlet", false), "cannot drive the quadlet runtime on this host")
+	noInstallation("a runtime with no adapter here writes nothing")
+
+	second := fakes.NewRuntime()
+	second.RuntimeName = "quadlet"
+	h.Deps.Runtimes = []ports.Runtime{h.Runtime, second}
+	require.NoError(t, initWith("quadlet", false))
+	inst, err := h.Deps.State.LoadInstallation(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "quadlet", inst.RuntimeName())
+	assert.Same(t, second, h.Deps.Runtime, "the operation goes on with the adapter it chose")
+}
+
+// --runtime names one of the runtimes a release declares, so without a release
+// it is refused, by the plan as by the operation, before init writes anything.
+func TestARuntimeNamedWithoutAReleaseIsRefusedUpFront(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.setHookEnv()
+	realIdentity(t, h)
+	for _, dryRun := range []bool{true, false} {
+		opts := ops.InitOptions{Product: "demo", NoRecoveryKey: true, Runtime: "compose"}
+		opts.DryRun = dryRun
+		_, err := ops.Init(ctx, h.Deps, opts)
+		assert.ErrorContains(t, err, "--runtime needs a release", "dry run: %v", dryRun)
+	}
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists, "a refused init wrote the installation")
 }

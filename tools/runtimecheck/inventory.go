@@ -152,6 +152,16 @@ var inventory = []Entry{
 			"which is the most concrete form of a runtime named as data there is",
 	},
 	{
+		File: "internal/infra/tools/registry.go", Symbol: "name Podman", Class: Catalogue,
+		Why: "the catalogue key for the binary the Quadlet adapter names in RequiredTools, " +
+			"and what a vendor writes in requirements.tools for a Quadlet bundle. The " +
+			"entry the Docker one above said the catalogue would grow",
+	},
+	{
+		File: "internal/infra/tools/registry.go", Symbol: `literal "podman"`, Class: Catalogue,
+		Why: "the binary that probe resolves in PATH and runs as `podman --version`",
+	},
+	{
 		File: "internal/infra/tools/registry.go", Symbol: "func parseDockerVersion", Class: Catalogue,
 		Why: "parses that shape, falling back when the daemon is down. One catalogue " +
 			"entry's parser, not a statement about the installation",

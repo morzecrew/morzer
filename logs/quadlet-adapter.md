@@ -1110,6 +1110,93 @@ Declined for this PR, each for the wiring PR to settle:
 
 **Drift count: 0.**
 
+## The wiring, 2026-11-26
+
+The author ruled the `BundleReader` question on 2026-11-26 as (a), the
+recommendation: `ReadBundle` is given the product. Compose ignores it, and
+Quadlet strips the prefix with it. With that, `release verify` checks a
+Quadlet bundle's variables and its secrets' services as it checks a Compose
+bundle's.
+
+This PR (branch `quadlet-wiring`, on `quadlet-adapter-build`) makes the
+adapter reachable:
+- Every adapter this host can run is wired at the composition root, with
+  Quadlet on Linux only.
+- `init --runtime` chooses between the runtimes a release declares (G5).
+- `installation import`, `ls` and `doctor` follow each installation's own
+  runtime.
+- The `podman` tool is added to the catalogue.
+- `release verify` checks each declared runtime.
+- The docs and the changelog are updated.
+
+Image ingest (G7) and the registry probe stay out. A Quadlet release that
+carries its images in the bundle meets the refusal that already exists for
+a runtime with no `ImageIngester` (`internal/lifecycle/ops/ingest.go:181`).
+Also out: the `init` wizard asking which runtime to use, and
+`release new --runtime`.
+
+```divergence
+decision: 12
+grade: ASSUMED
+class: discovery
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: decision 12 expires with the second adapter, as the row says it would: with Compose and Quadlet both wired the manager knows which runtimes it drives from the adapters themselves, so a release declaring two no longer has to be refused
+evidence: internal/lifecycle/ops/init.go:1398-1404
+action: departed
+proposal: ASSUMED — supersedes 12. A release declaring one runtime installs with it; one declaring several needs `init --runtime <name>`, naming a runtime it declares, and is refused without it. No probing. A runtime with no adapter on this host is refused at `init` rather than at the first operation (G5)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: G5 has the composition root pick the adapter whose name the installation records, but every operation reads one wired runtime: `ls` asks it about every installation on the machine, and `init` and `installation import` learn the runtime only after the root has wired
+evidence: internal/lifecycle/ops/list.go:249
+action: decided
+proposal: ASSUMED — the root wires every adapter this host can run, Compose first, and Deps.Runtime is the one the installation in hand records, chosen from its state when the command is wired. `ls` chooses per row. `init` and `installation import` choose when they learn the runtime, and refuse one this host has no adapter for
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: with no installation `doctor` checks the wired runtime's tools as fatal, so with two runtimes wired a host with Docker and no Podman, or the reverse, would fail checks for a runtime it may never use
+evidence: internal/lifecycle/ops/doctor.go:1479-1494
+action: decided
+proposal: ASSUMED — with several runtimes wired, each runtime's tools are warnings that name the runtime, and one fatal check passes when some runtime has every tool it needs
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: ReadBundle is given no product, and a Quadlet file's service is its name without the product's prefix; a product name may hold a dash, so the prefix cannot be found from the files alone
+evidence: internal/ports/runtime.go:657-661
+action: decided
+proposal: ASSUMED — ReadBundle(product, root, files), as the author ruled on 2026-11-26. It changes an existing optional capability's signature and adds none, so §6's count of additions the second adapter forced stays at one (EngineUnitNamer)
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T17:10:25Z
+attempt: 1
+claim: `release verify` reads the runtime files of the wired runtime only, so in a bundle declaring two runtimes one runtime's files go unchecked
+evidence: internal/cli/release.go:583-591
+action: decided
+proposal: ASSUMED — `release verify` checks the files of every runtime the release declares that a wired adapter can read, and each problem names its runtime
+```
+
+**Drift count: 0.**
+
 ## Review of #441, 2026-11-26
 
 The first review of the adapter found real defects, and they are fixed on
@@ -1145,6 +1232,144 @@ claim: systemd unloads a oneshot that succeeded, so a status that SuccessExitSta
 evidence: internal/adapters/runtime/quadlet/oneshot.go:216
 action: decided
 proposal: ASSUMED — the copy a one-shot runs writes systemd's $SERVICE_RESULT, $EXIT_CODE and $EXIT_STATUS to a file of the run's own from ExecStopPost=, and a success reports the status it wrote
+```
+
+**Drift count: 0.**
+
+## The wiring, run against real Podman, 2026-11-26
+
+The built binary was run against rootless Podman on the development host. It
+ran `release verify`, `init`, `apply`, `status`, `logs`, `doctor` and
+`installation remove`, on a bundle declaring both runtimes. Two things came out
+of it.
+
+- **`init` asked Docker about a Quadlet installation.** A user installation's
+  `init` asks whether the engine is the user's own (row 32). It asked before
+  the runtime was chosen, and again when it took the deployment lock, so the
+  adapter it asked was always the default one. `init --runtime quadlet` was
+  refused because the Docker daemon is the system's. Without `--runtime`, the
+  same refusal came before "choose one with --runtime". Now `init` asks the
+  runtime it installs with. It asks early when `--runtime` names that runtime
+  or there is no release, and otherwise once the staged release has chosen
+  it. The lock no longer asks for `init`.
+- **Podman's store follows `XDG_DATA_HOME`.** With it set in the shell and not
+  in the user's manager, `morzer` read a store the units did not use, and
+  `apply` waited for containers until its deadline. The operating page says to
+  keep the two alike. Nothing in the code changed.
+
+```divergence
+decision: 32
+grade: ASSUMED
+kind: resolved
+at: 2026-11-26T18:12:58Z
+attempt: 1
+claim: row 32 is honoured for the runtime an installation is created on: a user's `init` refuses a system Docker daemon when it installs on Compose, and does not ask Docker at all when it installs on a runtime with no daemon of its own
+evidence: internal/lifecycle/ops/init.go:248
+action: decided
+proposal: ASSUMED — as row 32, asked of the runtime `init` installs with, once it is known
+```
+
+**Drift count: 0.**
+
+Correction to the section above, 2026-11-26. Asking the engine only once the
+staged release had chosen the runtime moved the refusal into a step. A user's
+`init` on the system's Docker daemon then exited 11, after its changes were
+rolled back, where it had exited 3 before anything was created.
+`TestInitOfAUserInstallationRefusesTheSystemsDaemon` caught it. Now the CLI
+reads the manifest it already reads for the product's name, and names the
+release's one runtime before `init` runs, through `ops.RuntimeForManifest`.
+A release declaring several runtimes is refused there, exit 2, asking for
+`--runtime`. A repair asks the runtime its installation records, which the
+command is wired with. The check inside the step remains, for a caller that
+names no runtime.
+
+**Drift count: 0.**
+
+A second correction, 2026-11-26. Reading the manifest early whenever no
+runtime was named broke the plan over a remote reference. That plan does not
+fetch, and now it did, failing on a registry that does not answer. It also
+moved a broken archive's refusal out of the step that reports it. Four
+clitests in `deprecation_test.go` caught both. The manifest is now read early
+for the runtime only when it is read anyway, for the product's name, or when
+the bundle is on this machine. A manifest that does not read is left to the
+steps.
+
+**Drift count: 0.**
+
+## Review of #442, 2026-11-26
+
+The first review of the wiring PR found six defects, each reproduced before it
+was fixed. Two of them reverse decisions this log recorded above. Those
+entries stay as written, and the entries below replace them.
+
+- **A repair could name another runtime.** `init --repair --runtime quadlet`
+  on a Compose installation staged the release for Quadlet while the record
+  kept Compose. Now refused before anything changes (row 3).
+- **`--runtime` with no `--release`** was refused only by the step that
+  writes the installation, after the directories existed, and never by the
+  plan. Now refused with `--set`'s check of the same kind.
+- **A remote release named with `--product` was not read early.** So `init`
+  did not know its runtime before it created anything. A user's `init` on
+  the system's daemon was then refused inside a step, exit 11, where it had
+  exited 3. The second correction above chose this, to keep a plan from
+  fetching. Now the CLI reads the remote manifest early, except for a plan.
+  The command's download cache means the staging step downloads nothing more.
+- **The lock no longer re-asked `init` about the engine.** The pre-lock
+  probe stays. `init` asks again under the lock whenever it knows the
+  runtime by then, as every command that takes the lock is asked.
+- **Root was offered Quadlet.** `init --runtime quadlet` as root created an
+  installation that the adapter refuses at its first `apply` (row 26). Linux
+  now offers root no runtime beside the incumbent.
+- **`release verify` on a Mac skipped Quadlet's files.** The release
+  commands read with only the adapters this host drives. Now they read with
+  an adapter of every runtime the build has, on any host and as any user.
+
+```divergence
+decision: 3
+grade: LOCKED
+kind: resolved
+at: 2026-11-26T20:59:00Z
+attempt: 1
+claim: row 3 is honoured by a repair that names a runtime: one naming another than its installation records is refused before the release is staged for it or the adapter switched, and one naming its own runs as without
+evidence: internal/lifecycle/ops/init.go:251
+action: decided
+proposal: LOCKED — as row 3
+```
+
+```divergence
+decision: 26
+grade: LOCKED
+kind: resolved
+at: 2026-11-26T20:59:00Z
+attempt: 1
+claim: row 26 is honoured at `init` as well as by the adapter: root is offered no Quadlet adapter to drive, so `init --runtime quadlet` as root is refused as a runtime this manager cannot drive here, and root's `doctor` does not report Podman's tools
+evidence: internal/cli/runtimes_linux.go:19
+action: decided
+proposal: LOCKED — as row 26
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T20:59:00Z
+attempt: 1
+claim: `release verify` read the files of the runtimes this host drives, so a Mac, or root in a build container, skipped Quadlet's files though reading them runs nothing; this replaces the proposal above that verify checks what a wired adapter can read
+evidence: internal/cli/root.go:1056
+action: decided
+proposal: ASSUMED — the release commands read a bundle's files with an adapter of every runtime the build has, on any host and as any user, and drive nothing with them
+```
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: spec-gap
+at: 2026-11-26T20:59:00Z
+attempt: 1
+claim: a remote release named with --product was not read before `init` created anything, so its runtime, and the engine to ask about, was known only once a step had staged it; this replaces the second correction's choice not to fetch it
+evidence: internal/cli/commands.go:111
+action: decided
+proposal: ASSUMED — `init` reads the manifest of the release it is given before it creates anything, from this machine or the network, into the command's download cache; a plan does not fetch, and a manifest that does not read is left to the steps
 ```
 
 **Drift count: 0.**

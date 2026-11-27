@@ -104,7 +104,7 @@ func newReleaseBuildCommand(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
+			if err := checkBundleIntegrity(rel, app.bundleRuntimes); err != nil {
 				return err
 			}
 

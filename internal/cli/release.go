@@ -339,7 +339,7 @@ func newReleaseVerifyCommand(app *App) *cobra.Command {
 				fmt.Fprintf(app.Stream.Err, "warning: %s; `release build` refuses it\n", p)
 			}
 
-			if err := checkBundleIntegrity(rel, app.Deps.Runtime); err != nil {
+			if err := checkBundleIntegrity(rel, app.bundleRuntimes); err != nil {
 				return err
 			}
 
@@ -444,7 +444,7 @@ func checkShippedKey(app *App, root string) (string, error) {
 // `archive` would otherwise be gated by two rules that drift apart, and the
 // direction they drift in is always the same one -- the producing command grows
 // lenient, because that is the one somebody is fighting at the time.
-func checkBundleIntegrity(rel domain.Release, runtime ports.Runtime) error {
+func checkBundleIntegrity(rel domain.Release, runtimes []ports.Runtime) error {
 	if err := checkProviders(rel.Manifest); err != nil {
 		return err
 	}
@@ -471,7 +471,7 @@ func checkBundleIntegrity(rel domain.Release, runtime ports.Runtime) error {
 	if err := checkTemplateReferences(rel, schema); err != nil {
 		return err
 	}
-	if err := checkRuntimeFiles(rel, schema, runtime); err != nil {
+	if err := checkRuntimeFiles(rel, schema, runtimes); err != nil {
 		return err
 	}
 
@@ -576,50 +576,61 @@ func checkTemplateReferences(rel domain.Release, schema domain.SecretSchema) err
 // manifest does not declare: an image or parameter variable nothing sets, and a
 // service a secret's rotation would restart that no file defines.
 //
-// The files are read by the runtime's adapter, which knows what they mean, and
-// a runtime that cannot read them alone is not checked. Only the two variable
-// families the manifest names are judged: any other name in the product's
-// namespace falls back to its default everywhere, which may be what was meant.
-func checkRuntimeFiles(rel domain.Release, schema domain.SecretSchema, runtime ports.Runtime) error {
-	reader, ok := runtime.(ports.BundleReader)
-	if !ok {
-		return nil
-	}
-	decl, ok := rel.Manifest.DeclaredRuntimes()[runtime.Name()]
-	if !ok {
-		return nil
-	}
-	files := decl.Files
-	for _, profile := range slices.Sorted(maps.Keys(decl.Profiles)) {
-		for _, f := range decl.Profiles[profile] {
-			if !slices.Contains(files, f) {
-				files = append(files, f)
-			}
-		}
-	}
-	read, err := reader.ReadBundle(rel.Root, files)
-	if err != nil {
-		return err
-	}
-
-	var problems []string
+// The files are read by each runtime's adapter, which knows what they mean, and
+// a runtime with no adapter here, or one that cannot read its files alone, is
+// not checked. Every runtime the release declares is, since an installation may
+// be created on any of them (logs/quadlet-adapter.md, "The wiring"), and with
+// more than one each problem names its runtime. Only the two variable families
+// the manifest names are judged: any other name in the product's namespace
+// falls back to its default everywhere, which may be what was meant.
+func checkRuntimeFiles(rel domain.Release, schema domain.SecretSchema, runtimes []ports.Runtime) error {
+	declaredRuntimes := rel.Manifest.DeclaredRuntimes()
 	prefix := ports.HookEnv{Product: rel.Name()}.Prefix() + "_"
 	declared := ops.ReleaseVariables(rel.Name(), rel.Manifest)
-	for _, v := range read.Variables {
-		judged := strings.HasPrefix(v, prefix+"IMAGE_") || strings.HasPrefix(v, prefix+"PARAM_")
-		if judged && !declared[v] {
-			problems = append(problems, fmt.Sprintf(
-				"%s is interpolated, and no image or parameter in the manifest sets it", v))
+
+	var problems []string
+	for _, runtime := range runtimes {
+		reader, ok := runtime.(ports.BundleReader)
+		if !ok {
+			continue
 		}
-	}
-	// A file that includes others defines services this did not read, and
-	// refusing one of those would refuse a correct bundle.
-	if !read.ServicesPartial {
-		for _, s := range schema.Secrets {
-			for _, svc := range s.Services {
-				if !slices.Contains(read.Services, svc) {
-					problems = append(problems, fmt.Sprintf(
-						"secret %q restarts service %q, which no runtime file defines", s.Name, svc))
+		decl, ok := declaredRuntimes[runtime.Name()]
+		if !ok {
+			continue
+		}
+		files := decl.Files
+		for _, profile := range slices.Sorted(maps.Keys(decl.Profiles)) {
+			for _, f := range decl.Profiles[profile] {
+				if !slices.Contains(files, f) {
+					files = append(files, f)
+				}
+			}
+		}
+		read, err := reader.ReadBundle(rel.Name(), rel.Root, files)
+		if err != nil {
+			return err
+		}
+
+		label := ""
+		if len(declaredRuntimes) > 1 {
+			label = runtime.Name() + ": "
+		}
+		for _, v := range read.Variables {
+			judged := strings.HasPrefix(v, prefix+"IMAGE_") || strings.HasPrefix(v, prefix+"PARAM_")
+			if judged && !declared[v] {
+				problems = append(problems, fmt.Sprintf(
+					"%s%s is interpolated, and no image or parameter in the manifest sets it", label, v))
+			}
+		}
+		// A file that includes others defines services this did not
+		// read, and refusing one of those would refuse a correct bundle.
+		if !read.ServicesPartial {
+			for _, s := range schema.Secrets {
+				for _, svc := range s.Services {
+					if !slices.Contains(read.Services, svc) {
+						problems = append(problems, fmt.Sprintf(
+							"%ssecret %q restarts service %q, which no runtime file defines", label, s.Name, svc))
+					}
 				}
 			}
 		}

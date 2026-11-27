@@ -431,6 +431,40 @@ func TestVerifyRefusesWhatTheRuntimeFilesNeedAndTheManifestDoesNotDeclare(t *tes
 	r.Run("release", "verify", r.Bundle).ExitCode(0)
 }
 
+// TestVerifyChecksEveryRuntimeTheReleaseDeclares: an installation may be
+// created on any runtime its release declares, so each one's files are read,
+// and a problem names the runtime whose files have it
+// (logs/quadlet-adapter.md, "The wiring"). On every host: reading a runtime's
+// files runs none of it, so a Mac checks a Quadlet bundle as Linux does.
+func TestVerifyChecksEveryRuntimeTheReleaseDeclares(t *testing.T) {
+	r := clitest.New(t)
+	dir := filepath.Join(r.Bundle, "quadlet")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	write := func(name, text string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600))
+	}
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_APP}\n")
+	write("demo-db.container", "[Container]\nImage=${DEMO_IMAGE_DB}\n")
+	manifest := filepath.Join(r.Bundle, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), "runtimes:\n",
+		"runtimes:\n  quadlet:\n    files: [quadlet/demo-app.container, quadlet/demo-db.container]\n", 1)), 0o600))
+	r.Run("release", "verify", r.Bundle).ExitCode(0)
+
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_AP}\n")
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains("quadlet: DEMO_IMAGE_AP is interpolated")
+
+	write("demo-app.container", "[Container]\nImage=${DEMO_IMAGE_APP}\n")
+	require.NoError(t, os.Remove(filepath.Join(dir, "demo-db.container")))
+	write("demo-dbb.container", "[Container]\nImage=${DEMO_IMAGE_DB}\n")
+	require.NoError(t, os.WriteFile(manifest, []byte(strings.Replace(string(raw), "runtimes:\n",
+		"runtimes:\n  quadlet:\n    files: [quadlet/demo-app.container, quadlet/demo-dbb.container]\n", 1)), 0o600))
+	r.Run("release", "verify", r.Bundle).Failed().
+		OutputContains(`quadlet: secret "db_password" restarts service "db"`)
+}
+
 // TestVerifyAndShowReadTheArchiveAnAuthorShips: the archive `release archive`
 // writes is what reaches a customer, so it is what an author checks. It is
 // unpacked as `init` unpacks one, checked as its directory would be, and the

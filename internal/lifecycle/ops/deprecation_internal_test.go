@@ -192,7 +192,7 @@ func TestAPlanDoesNotReachForARemoteBundle(t *testing.T) {
 	d.Source = src
 
 	validated, err := d.checkPlannedRelease(
-		context.Background(), "oci://registry.invalid/demo:1.2.0", nil, nil)
+		context.Background(), "oci://registry.invalid/demo:1.2.0", nil, nil, "")
 
 	require.NoError(t, err, "declining to look is not a refusal")
 	assert.False(t, validated, "nothing was validated")
@@ -214,7 +214,7 @@ func TestAPlanDoesReachForALocalBundle(t *testing.T) {
 	src := &countingSource{}
 	d.Source = src
 
-	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil)
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil, "")
 
 	assert.Equal(t, 1, src.fetches,
 		"a local reference is materialised through the source, whatever shape it is")
@@ -260,7 +260,7 @@ func TestAPlanReportsAValidatedManifest(t *testing.T) {
 	src := &bundleSource{dir: exampleBundle(t)}
 	d.Source = src
 
-	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil)
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil, "")
 
 	require.NoError(t, err)
 	assert.True(t, validated, "a manifest that validates is reported as validated")
@@ -273,7 +273,7 @@ func TestAPlanRefusesAnUndeclaredAssignment(t *testing.T) {
 	d.Source = &bundleSource{dir: exampleBundle(t)}
 
 	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(),
-		map[string]string{"nosuchparameter": "1"}, nil)
+		map[string]string{"nosuchparameter": "1"}, nil, "")
 
 	require.Error(t, err, "stage-release refuses this, so the plan describing it must too")
 	assert.False(t, validated)
@@ -289,7 +289,7 @@ func TestAPlanRefusesAReferenceItCannotParse(t *testing.T) {
 	d.Source = src
 
 	validated, err := d.checkPlannedRelease(
-		context.Background(), "file://elsewhere/bundle", nil, nil)
+		context.Background(), "file://elsewhere/bundle", nil, nil, "")
 
 	require.Error(t, err)
 	assert.False(t, validated)
@@ -305,7 +305,7 @@ func TestAPlanRefusesABundleWithNoManifest(t *testing.T) {
 	d, _ := warned(t)
 	d.Source = &bundleSource{dir: t.TempDir()} // an empty directory
 
-	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil)
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil, "")
 
 	require.Error(t, err, "a bundle with no manifest is not a bundle that is fine")
 	assert.False(t, validated)
@@ -334,7 +334,7 @@ func TestAPlanRefusesAMissingValueForADeclaredParameter(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(rewritten), 0o644))
 	d.Source = &bundleSource{dir: dir}
 
-	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil)
+	validated, err := d.checkPlannedRelease(context.Background(), t.TempDir(), nil, nil, "")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "admin_email")
@@ -346,7 +346,7 @@ func TestANotValidatedNoteWithNoBusIsSilentRatherThanFatal(t *testing.T) {
 	d := &Deps{Source: &countingSource{}}
 
 	validated, err := d.checkPlannedRelease(
-		context.Background(), "oci://registry.invalid/demo:1.2.0", nil, nil)
+		context.Background(), "oci://registry.invalid/demo:1.2.0", nil, nil, "")
 
 	require.NoError(t, err)
 	assert.False(t, validated)

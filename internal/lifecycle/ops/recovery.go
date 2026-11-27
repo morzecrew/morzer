@@ -409,15 +409,20 @@ func Import(ctx context.Context, d *Deps, opts ImportOptions) (Result, error) {
 	// export.Validate already exits 9 for. Two spellings of "wrong manager"
 	// leaving Import with two exit codes is what an operator's script would
 	// trip over.
-	if have, ok := d.drivesRuntime(export.Installation); !ok {
+	//
+	// Asked of every runtime this manager drives here, not only the one the
+	// command happened to be wired with, and the import goes on with the
+	// export's own.
+	if d.canDrive(export.Installation.RuntimeName()) != nil {
 		return Result{}, domain.IncompatibleError(nil,
 			"this export is from an installation on the %s runtime and this manager "+
-				"is configured for %s", export.Installation.RuntimeName(), have).
+				"is configured for %s", export.Installation.RuntimeName(), d.runtimeNames()).
 			WithHint("the runtime is fixed when an installation is created and does " +
 				"not transition, so importing it here would rebuild a machine " +
 				"nothing could operate; import it with a manager built for that " +
 				"runtime, or `init` a new installation and `restore` into it")
 	}
+	d.selectRuntimeFor(export.Installation)
 
 	// Before the directories, the key check and the lock: a refusal about
 	// what this machine is for should arrive with nothing created.

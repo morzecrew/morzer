@@ -656,8 +656,11 @@ type DefinitionDrifter interface {
 // read its files alone is not checked.
 type BundleReader interface {
 	// ReadBundle reports what the files, named relative to root and read
-	// inside it, define and interpolate.
-	ReadBundle(root string, files []string) (BundleFiles, error)
+	// inside it, define and interpolate. The product is the release's: a
+	// runtime whose files carry it in their names needs it to tell a
+	// service's name from the product's, since a product name may itself
+	// hold a dash.
+	ReadBundle(product, root string, files []string) (BundleFiles, error)
 }
 
 // BundleFiles is what a bundle's runtime files say about themselves.

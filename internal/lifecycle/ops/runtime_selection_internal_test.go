@@ -1,17 +1,22 @@
 package ops
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/state"
+	"github.com/morzecrew/morzer/internal/ports"
 	"github.com/morzecrew/morzer/test/fakes"
 )
 
 // Which runtime an installation is fixed to, at the moment it is fixed.
-// RFC 0023 decisions 3, 5 and 12.
+// RFC 0023 decisions 3 and 5, and G5, which retired decision 12
+// (logs/quadlet-adapter.md, "The wiring").
 
 func releaseDeclaring(runtimes domain.Runtimes) domain.Release {
 	return domain.Release{
@@ -23,39 +28,89 @@ func releaseDeclaring(runtimes domain.Runtimes) domain.Release {
 func TestASingleDeclaredRuntimeIsWhatTheInstallationIsFixedTo(t *testing.T) {
 	got, err := runtimeForRelease(releaseDeclaring(domain.Runtimes{
 		"quadlet": {Files: []string{"app.container"}},
-	}))
+	}), "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "quadlet", got,
 		"the recorded runtime is the one the release declares, not the one the manager happens to have")
 }
 
-// Decision 12. The manager cannot yet tell which of two declared runtimes it is
-// able to drive, and the two ways to find out are both barred: a branch on a
-// runtime's name above internal/adapters, which decision 7 forbids, or a name
-// injected at the composition root that every test would set and no test would
-// exercise as production leaves it. So it refuses.
-//
-// The refusal is asserted rather than the absence of a crash, because the
-// failure this prevents is silent: picking one of the two and installing with
-// it would produce a working machine running a substrate the operator never
-// chose, and nothing downstream would ever contradict it.
-func TestAReleaseDeclaringSeveralRuntimesIsRefusedRatherThanPickedFrom(t *testing.T) {
-	got, err := runtimeForRelease(releaseDeclaring(domain.Runtimes{
+// G5. Of two declared runtimes the operator names one, and none is picked
+// without: picking would produce a working machine on a substrate nobody chose,
+// and since the runtime never transitions, nothing downstream would contradict
+// it.
+func TestAReleaseDeclaringSeveralRuntimesNeedsOneNamed(t *testing.T) {
+	both := releaseDeclaring(domain.Runtimes{
 		"compose": {Files: []string{"compose.yaml"}},
 		"quadlet": {Files: []string{"app.container"}},
-	}))
+	})
 
+	got, err := runtimeForRelease(both, "")
 	require.Error(t, err)
 	assert.Empty(t, got, "a refusal must not also return a runtime somebody might record")
-	assert.Contains(t, err.Error(), "cannot yet choose between them")
-
+	assert.Contains(t, err.Error(), "choose one with --runtime")
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
-	assert.Contains(t, domErr.Hint, "compose")
-	assert.Contains(t, domErr.Hint, "quadlet")
-	assert.Contains(t, domErr.Hint, "the second runtime adapter",
-		"a refusal that expires should say what it is waiting for")
+	assert.Contains(t, domErr.Hint, "compose, quadlet")
+
+	got, err = runtimeForRelease(both, "quadlet")
+	require.NoError(t, err)
+	assert.Equal(t, "quadlet", got)
+}
+
+// A name the release does not declare is a typo or the wrong bundle, refused
+// whatever the release declares, rather than recorded.
+func TestARuntimeTheReleaseDoesNotDeclareIsRefused(t *testing.T) {
+	_, err := runtimeForRelease(releaseDeclaring(domain.Runtimes{
+		"compose": {Files: []string{"compose.yaml"}},
+	}), "quadlet")
+	assert.ErrorContains(t, err, "does not declare the quadlet runtime")
+
+	legacy := (domain.Installation{}).RuntimeName()
+	got, err := runtimeForRelease(releaseDeclaring(nil), legacy)
+	require.NoError(t, err, "a release declaring nothing runs on the legacy runtime, so naming it is no conflict")
+	assert.Empty(t, got, "and still records nothing")
+	_, err = runtimeForRelease(releaseDeclaring(nil), "quadlet")
+	assert.ErrorContains(t, err, "declares no runtime")
+}
+
+// The root wires every adapter this host can run, and the installation a
+// command is on picks among them by the name it records (G5).
+func TestTheWiredRuntimeIsTheOneTheInstallationRecords(t *testing.T) {
+	ctx := context.Background()
+	paths := domain.PathsUnder(t.TempDir(), "demo")
+	for _, dir := range paths.ManagedDirs() {
+		require.NoError(t, os.MkdirAll(dir.Path, os.FileMode(dir.Mode)))
+	}
+	first := &fakes.Runtime{RuntimeName: "compose"}
+	second := &fakes.Runtime{RuntimeName: "quadlet"}
+	d := &Deps{Paths: paths, State: state.New(paths), Runtime: first, Runtimes: []ports.Runtime{first, second}}
+
+	d.SelectRuntime(ctx)
+	assert.Same(t, first, d.Runtime, "with no installation the default stays")
+
+	require.NoError(t, d.State.SaveInstallation(ctx, domain.Installation{
+		SchemaVersion: domain.InstallationSchemaVersion, ID: "i", Product: "demo", Runtime: "quadlet",
+	}))
+	d.SelectRuntime(ctx)
+	assert.Same(t, second, d.Runtime)
+	_, ok := d.drivesRuntime(domain.Installation{Runtime: "quadlet"})
+	assert.True(t, ok)
+}
+
+// A runtime this host has no adapter for is refused when the installation is
+// created, not by the first operation after it.
+func TestARuntimeWithNoAdapterHereIsRefusedWhenChosen(t *testing.T) {
+	first := &fakes.Runtime{RuntimeName: "compose"}
+	d := &Deps{Runtime: first, Runtimes: []ports.Runtime{first}}
+
+	err := d.useRuntime("quadlet")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot drive the quadlet runtime on this host; it drives compose")
+	assert.Same(t, first, d.Runtime)
+
+	require.NoError(t, d.useRuntime(""), "nothing named is the legacy runtime")
+	assert.NoError(t, (&Deps{}).useRuntime("quadlet"), "a Deps with no runtime refuses nothing")
 }
 
 // A release declaring nothing at all records nothing, and
@@ -63,7 +118,7 @@ func TestAReleaseDeclaringSeveralRuntimesIsRefusedRatherThanPickedFrom(t *testin
 // default here instead would make "created before the field" and "chose the
 // incumbent" the same value for ever after.
 func TestAReleaseDeclaringNoRuntimeRecordsNothing(t *testing.T) {
-	got, err := runtimeForRelease(releaseDeclaring(nil))
+	got, err := runtimeForRelease(releaseDeclaring(nil), "")
 
 	require.NoError(t, err)
 	assert.Empty(t, got)

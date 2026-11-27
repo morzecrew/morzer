@@ -1470,26 +1470,81 @@ func checkMode(inst domain.Installation) preflight.Check {
 	}
 }
 
-// runtimeToolChecks asks the wired runtime what it needs on this host.
+// runtimeToolChecks asks the wired runtimes what they need on this host.
 //
-// Nothing when no runtime is wired, and nothing when the adapter declines to
-// answer -- an adapter that is not a separate binary has no tool to name, and
-// checking a guess would report a machine unfit for an installation it could
-// run perfectly well. `doctor` says less rather than something untrue.
+// Nothing for a runtime whose adapter declines to answer -- an adapter that is
+// not a separate binary has no tool to name, and checking a guess would report
+// a machine unfit for an installation it could run perfectly well. `doctor`
+// says less rather than something untrue.
+//
+// With one runtime its tools are required. With several, the next installation
+// may use any of them, so each runtime's tools are warnings naming it, and one
+// fatal check asks that some runtime has every tool it needs
+// (logs/quadlet-adapter.md, "The wiring").
 func (d *Deps) runtimeToolChecks() []preflight.Check {
-	requirer, ok := d.Runtime.(ports.ToolRequirer)
-	if !ok {
-		return nil
+	type needs struct {
+		runtime string
+		tools   []string
 	}
-	names := requirer.RequiredTools()
-	out := make([]preflight.Check, 0, len(names))
-	for _, name := range names {
-		// No constraint: with no installation there is no manifest, so
-		// there is no version anybody has asked for. Presence is the
-		// whole question.
-		out = append(out, preflight.Tool(d.Tools, name, domain.Constraint{}))
+	var all []needs
+	for _, r := range d.EveryRuntime() {
+		if requirer, ok := r.(ports.ToolRequirer); ok {
+			all = append(all, needs{r.Name(), requirer.RequiredTools()})
+		}
 	}
-	return out
+	// No constraint: with no installation there is no manifest, so there
+	// is no version anybody has asked for. Presence is the whole question.
+	if len(all) == 1 {
+		out := make([]preflight.Check, 0, len(all[0].tools))
+		for _, name := range all[0].tools {
+			out = append(out, preflight.Tool(d.Tools, name, domain.Constraint{}))
+		}
+		return out
+	}
+
+	var out []preflight.Check
+	seen := map[string]bool{}
+	for _, n := range all {
+		for _, name := range n.tools {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			check := preflight.Tool(d.Tools, name, domain.Constraint{})
+			check.Fatal = false
+			check.Description = "tool for the " + n.runtime + " runtime: " + name
+			out = append(out, check)
+		}
+	}
+	if len(all) == 0 {
+		return out
+	}
+	return append(out, preflight.Check{
+		ID:          "runtime.tools",
+		Category:    preflight.CategoryRuntime,
+		Description: "a runtime this manager drives has its tools",
+		Fatal:       true,
+		Run: func(ctx context.Context) events.CheckResult {
+			var ready, names []string
+			for _, n := range all {
+				names = append(names, n.runtime)
+				missing := false
+				for _, name := range n.tools {
+					if _, err := d.Tools.Require(ctx, name, domain.Constraint{}); err != nil {
+						missing = true
+					}
+				}
+				if !missing {
+					ready = append(ready, n.runtime)
+				}
+			}
+			if len(ready) == 0 {
+				return preflight.Fail("install the tools of the runtime the installation will use",
+					"no runtime this manager drives has its tools here: %s", strings.Join(names, ", "))
+			}
+			return preflight.OK("%s", strings.Join(ready, ", "))
+		},
+	})
 }
 
 // checkDeclaredRuntime reports the runtime this installation is fixed to, and
