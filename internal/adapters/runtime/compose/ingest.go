@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/morzecrew/morzer/internal/domain"
+	"github.com/morzecrew/morzer/internal/infra/exec"
 	"github.com/morzecrew/morzer/internal/infra/ociserve"
 	"github.com/morzecrew/morzer/internal/ports"
 )
@@ -48,7 +49,8 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 	// should not read a directory, bind a port, or say it did anything.
 	// This is what makes the step cheap to re-run, which is what makes a
 	// failed update retryable.
-	pending, err := r.pendingIngest(ctx, refs)
+	loader := r.images()
+	pending, err := loader.Pending(ctx, refs)
 	if err != nil {
 		return err
 	}
@@ -97,7 +99,7 @@ func (r *Runtime) IngestImages(ctx context.Context, layoutDir string, refs []str
 	}
 
 	for _, ref := range pending {
-		if err := r.ingestOne(ctx, srv, addr, ref); err != nil {
+		if err := loader.Load(ctx, srv, addr, ref); err != nil {
 			return err
 		}
 	}
@@ -115,15 +117,72 @@ const (
 	ingestUntagTimeout = 2 * time.Minute
 )
 
-// pendingIngest drops the images that are already here.
-func (r *Runtime) pendingIngest(ctx context.Context, refs []string) ([]string, error) {
+// ImageLoader pulls a bundle's images out of the manager's loopback registry
+// into an engine's image store, and names each by its local alias.
+//
+// Shared with the Quadlet adapter, the way VolumeHelper is: Podman's pull, tag
+// and untag are Docker's, but for one flag on the pull (RFC 0023 §12 item 6).
+// What surrounds the loop stays with each runtime: the relay and the refusal
+// of a remote daemon are Docker's alone.
+type ImageLoader struct {
+	Runner exec.Runner
+
+	// Bin is the engine's CLI, which the commands run.
+	Bin string
+
+	// PullFlags go on the pull out of the loopback registry, and on nothing
+	// else. Podman's `--tls-verify=false` is one: the loopback registry
+	// needs it, and on a pull from a real registry it would turn the
+	// verification off.
+	PullFlags []string
+
+	// HasImage reports whether a reference is in the engine's image store,
+	// as the runtime's own ImageInspector answers it.
+	HasImage func(ctx context.Context, ref string) (bool, error)
+
+	// Command builds one run as the runtime builds its other commands, so
+	// the environment, the redaction and the output sink are the same.
+	Command func(cfg ports.RuntimeConfig, timeout time.Duration, argv ...string) exec.Command
+
+	// PullHint is the remedy for a pull out of the served layout that
+	// failed, when the server has no diagnosis of its own.
+	PullHint string
+}
+
+// images is this runtime's loader: Docker's CLI, and a remedy that knows
+// whether a relay carried the pull.
+func (r *Runtime) images() ImageLoader {
+	hint := "the image is served from this machine's loopback, so nothing was " +
+		"fetched over a network: either the layout is damaged, which " +
+		"`morzer release verify` checks, or the container runtime cannot " +
+		"reach this machine -- a daemon in a VM or behind a socket that " +
+		"fronts one has its own loopback, and this needs the daemon to " +
+		"share ours"
+	if r.relayFor != "" {
+		hint = "the image is served from this machine's loopback, through a relay " +
+			"that reached this manager before the first pull: either the layout is " +
+			"damaged, which `morzer release verify` checks, or the relay stopped " +
+			"while the image was loading -- Docker Desktop restarted, or the ingest " +
+			"outlasted its bound"
+	}
+	return ImageLoader{
+		Runner:   r.runner,
+		Bin:      r.docker,
+		HasImage: r.HasImage,
+		Command:  r.command,
+		PullHint: hint,
+	}
+}
+
+// Pending drops the images that are already here.
+func (l ImageLoader) Pending(ctx context.Context, refs []string) ([]string, error) {
 	var pending []string
 	for _, ref := range refs {
 		alias, ok := domain.ImageSpec{Ref: ref}.LocalAlias()
 		if !ok {
 			return nil, unpinned(ref)
 		}
-		present, err := r.HasImage(ctx, alias)
+		present, err := l.HasImage(ctx, alias)
 		if err != nil {
 			// "Cannot tell" is not "already here": ingesting again
 			// is idempotent and cheap to be wrong about, while
@@ -138,9 +197,9 @@ func (r *Runtime) pendingIngest(ctx context.Context, refs []string) ([]string, e
 	return pending, nil
 }
 
-// ingestOne pulls one image out of the served layout, reached at addr, and
-// names it locally.
-func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref string) error {
+// Load pulls one image out of the served layout, reached at addr, and names
+// it locally.
+func (l ImageLoader) Load(ctx context.Context, srv *ociserve.Server, addr, ref string) error {
 	spec := domain.ImageSpec{Ref: ref}
 	digest, ok := spec.Digest()
 	if !ok {
@@ -149,8 +208,9 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref
 	alias, _ := spec.LocalAlias()
 	loopback := addr + "/" + repositoryPath(ref) + "@" + digest
 
-	pull := r.command(ports.RuntimeConfig{}, ingestPullTimeout, r.docker, "pull", loopback)
-	if _, err := r.runner.Run(ctx, pull); err != nil {
+	argv := append(append([]string{l.Bin, "pull"}, l.PullFlags...), loopback)
+	pull := l.Command(ports.RuntimeConfig{}, ingestPullTimeout, argv...)
+	if _, err := l.Runner.Run(ctx, pull); err != nil {
 		// The server's own diagnosis first, when it has one. The
 		// daemon refuses a blob that does not match its digest -- that
 		// is the guarantee -- but it says so as "filesystem layer
@@ -164,27 +224,14 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref
 		if serveErr := srv.ServeError(); serveErr != nil {
 			return serveErr
 		}
-		hint := "the image is served from this machine's loopback, so nothing was " +
-			"fetched over a network: either the layout is damaged, which " +
-			"`morzer release verify` checks, or the container runtime cannot " +
-			"reach this machine -- a daemon in a VM or behind a socket that " +
-			"fronts one has its own loopback, and this needs the daemon to " +
-			"share ours"
-		if r.relayFor != "" {
-			hint = "the image is served from this machine's loopback, through a relay " +
-				"that reached this manager before the first pull: either the layout is " +
-				"damaged, which `morzer release verify` checks, or the relay stopped " +
-				"while the image was loading -- Docker Desktop restarted, or the ingest " +
-				"outlasted its bound"
-		}
-		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle", hint)
+		return wrapExit(err, "cannot load "+domain.ShortImageRef(ref)+" out of the bundle", l.PullHint)
 	}
 
 	// The alias is what the deployment resolves through, so a failure here
 	// leaves an image nothing can name -- reported rather than swallowed,
 	// even though the bytes are safely in the store.
-	tag := r.command(ports.RuntimeConfig{}, ingestTagTimeout, r.docker, "tag", loopback, alias)
-	if _, err := r.runner.Run(ctx, tag); err != nil {
+	tag := l.Command(ports.RuntimeConfig{}, ingestTagTimeout, l.Bin, "tag", loopback, alias)
+	if _, err := l.Runner.Run(ctx, tag); err != nil {
 		return wrapExit(err, "cannot name "+domain.ShortImageRef(ref)+" locally", "")
 	}
 
@@ -193,8 +240,8 @@ func (r *Runtime) ingestOne(ctx context.Context, srv *ociserve.Server, addr, ref
 	// `docker images` for the life of the machine. Untagging one of an
 	// image's several names does not remove the image, and best-effort
 	// because tidiness is not worth failing an install over.
-	untag := r.command(ports.RuntimeConfig{}, ingestUntagTimeout, r.docker, "rmi", loopback)
-	_, _ = r.runner.Run(ctx, untag)
+	untag := l.Command(ports.RuntimeConfig{}, ingestUntagTimeout, l.Bin, "rmi", loopback)
+	_, _ = l.Runner.Run(ctx, untag)
 	return nil
 }
 
