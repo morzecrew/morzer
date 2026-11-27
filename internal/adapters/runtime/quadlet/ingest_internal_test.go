@@ -97,6 +97,10 @@ func TestARegistryProbeSaysWhatWentWrong(t *testing.T) {
 		{"no registry answers",
 			`Error: reading image "docker://registry.invalid/demo/app@sha256:00": pinging container registry registry.invalid: Get "https://registry.invalid/v2/": EOF`,
 			`Error: reading image "docker://registry.invalid/demo/app@sha256:00": pinging container registry registry.invalid: Get "https://registry.invalid/v2/": EOF`, ""},
+		// An endpoint's 404 says nothing about the digest.
+		{"the endpoint is not a registry",
+			`Error: reading image "docker://proxy.example/demo/app@sha256:00": fetching manifest sha256:00 in proxy.example/demo/app: pinging container registry proxy.example: StatusCode: 404, "404 page not found\n"`,
+			`Error: reading image "docker://proxy.example/demo/app@sha256:00": fetching manifest sha256:00 in proxy.example/demo/app: pinging container registry proxy.example: StatusCode: 404, "404 page not found\n"`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

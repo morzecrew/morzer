@@ -85,7 +85,9 @@ func (r *Runtime) ProbeRegistry(ctx context.Context, imageRef string) error {
 		return domain.RuntimeError(err, "the registry refused access").
 			WithHint("run `podman login <registry>` as the user the manager runs as -- " +
 				"a registry may answer the same for a repository that does not exist")
-	case strings.Contains(lower, "manifest unknown"), strings.Contains(lower, "not found"):
+	// "manifest unknown" alone: an endpoint's 404 also says "not found",
+	// and says nothing about the digest.
+	case strings.Contains(lower, "manifest unknown"):
 		return domain.RuntimeError(err, "the image does not exist in the registry").
 			WithHint("the release may reference a digest that was never published")
 	}
