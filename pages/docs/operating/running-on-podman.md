@@ -86,8 +86,11 @@ morzer apply
   inside a container is gone at its next stop.
 - **A one-shot**, a migration or a task, runs as a copy of its service's unit,
   with a container of its own beside the running service.
-- **Images come from a registry.** A release that carries its images in the
-  bundle is refused, since this runtime cannot load them yet.
+- **A release can carry its images in the bundle.** `init` and `update` load
+  them into your Podman store, as they load Docker's: Podman pulls each one
+  out of the bundle, served on `127.0.0.1`, and checks every blob against its
+  digest. Podman checks TLS even on `127.0.0.1`, so that pull alone runs with
+  `--tls-verify=false`. A pull from a registry never does.
 
 ## What doctor checks
 
@@ -99,6 +102,11 @@ machine with Docker and no Podman is not reported unfit. The
 With an installation, `doctor` checks what it checks on any installation of
 your own. A Quadlet installation has no daemon of its own, so there is no
 `runtime.engine-scope` check.
+
+`network.registry` asks the registry of the release's first pulled image for
+its manifest, with `podman manifest inspect`, which pulls nothing. A registry
+that refuses is a warning whose remedy is `podman login <registry>`, run as
+you. Docker Hub refuses the same way for a repository that does not exist.
 
 ## Next
 

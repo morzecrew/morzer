@@ -50,8 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - On Linux, a release can declare the `quadlet` runtime, and an installation
   of your own then runs on rootless Podman under your own systemd manager.
-  It cannot load images out of a bundle yet, and is untested by the
-  acceptance run.
+  It loads the images a bundle carries, and `doctor` checks that the
+  registry it pulls from answers. It is untested by the acceptance run.
 
 - A release declaring several runtimes installs with the one
   `morzer init --runtime` names. `release verify` checks each runtime's
