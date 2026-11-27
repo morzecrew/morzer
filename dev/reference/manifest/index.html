@@ -1009,6 +1009,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/running-on-podman/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running on Podman
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
         
   
@@ -1831,6 +1860,28 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         Options
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#choosing-between-runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Choosing between runtimes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quadlet" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        quadlet
       </span>
     </span>
   </a>
@@ -2741,6 +2792,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#choosing-between-runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Choosing between runtimes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quadlet" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        quadlet
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3602,6 +3675,62 @@ transitions. The state directory records volume names and image references that
 belong to one runtime, so changing it is a migration of everything the manager
 knows rather than a setting. A release that does not declare the runtime an
 installation was created against is refused rather than run on a substitute.</p>
+<h3 id="choosing-between-runtimes">Choosing between runtimes<a class="headerlink" href="#choosing-between-runtimes" title="Permanent link">&para;</a></h3>
+<p>A release may declare several runtimes, each with its own files. An
+installation runs on one. <code>init</code> takes the one a release declares, or with
+several the one <a href="../commands/#init"><code>init --runtime</code></a> names; without
+<code>--runtime</code> it refuses, since nothing on the machine decides which one an
+operator meant. On Linux the manager drives <code>compose</code> and <code>quadlet</code>, and on
+a Mac <code>compose</code> only. A runtime the machine's manager cannot drive is
+refused before anything is created.</p>
+<h3 id="quadlet">quadlet<a class="headerlink" href="#quadlet" title="Permanent link">&para;</a></h3>
+<p>The <code>quadlet</code> runtime runs each service as a <code>.container</code> unit under the
+user's own systemd manager, on rootless Podman. See
+<a href="../../operating/running-on-podman/">Running on Podman</a> for the operator's
+side.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">runtimes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">quadlet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">files</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">quadlet/demo-app.container</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">quadlet/demo-migrate.container</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">quadlet/demo-data.volume</span>
+<span class="nt">compatibility</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">min_manager_version</span><span class="p">:</span><span class="w"> </span><span class="s">"0.20.0"</span>
+</code></pre></div>
+<ul>
+<li><strong>Every file is named <code>&lt;product&gt;-&lt;name&gt;.&lt;kind&gt;</code></strong>, where the product is
+  <code>metadata.name</code>. Only <code>.container</code>, <code>.volume</code> and <code>.network</code> files are
+  carried: a <code>.pod</code>, <code>.kube</code>, <code>.image</code> or <code>.build</code> file is refused. A service
+  is a <code>.container</code> file's name without the product and the kind, so the
+  files above define <code>app</code> and <code>migrate</code>. The prefix keeps two installations'
+  units, containers, volumes and networks apart.</li>
+<li><strong>A <code>.container</code> with <code>Type=oneshot</code> in <code>[Service]</code> is never started by
+  <code>apply</code>.</strong> It is still a service: an operation or a task runs it.</li>
+<li><strong>Values arrive as they do in a Compose file</strong>: <code>${DEMO_PARAM_HTTP_PORT}</code> and
+  <code>${DEMO_IMAGE_APP}</code> (see <a href="../variables/">Variables</a>). systemd expands them, so
+  there is no <code>${NAME:-default}</code>, and a <code>$</code> meant for the container's shell is
+  written <code>$$</code>.</li>
+<li><strong>What the manager could not run as written is refused</strong>, never rewritten:</li>
+<li>an <code>[Install]</code> section, since the manager starts every unit itself after it
+    renders what the unit reads;</li>
+<li>a <code>Pod=</code>;</li>
+<li>a <code>ContainerName=</code>, <code>VolumeName=</code> or <code>NetworkName=</code> that does not start
+    with <code>&lt;product&gt;-</code>, or that holds a <code>%</code> or a <code>$</code>;</li>
+<li>an anonymous volume, which a stop deletes with its data;</li>
+<li>a relative bind, or a named volume or network that does not start with
+    <code>&lt;product&gt;-</code>;</li>
+<li>a <code>Volume=</code> whose source under a variable is not a path once its values
+    are set;</li>
+<li>a <code>Mount=</code> other than <code>type=tmpfs</code>;</li>
+<li>an <code>EnvironmentFile=</code> that is not an absolute path.</li>
+<li><strong>There are no <code>options</code> and no <code>profiles</code>.</strong> A release that sets either for
+  <code>quadlet</code> is refused.</li>
+<li><strong><code>compatibility.min_manager_version</code> should be at least 0.20.0.</strong> An older
+  manager cannot run the release, and the floor has it refuse at <code>init</code>.</li>
+</ul>
+<p><code>release verify</code> reads the files without Podman. Every image and parameter
+variable they name must be declared, and every service a secret restarts must
+be one of the <code>.container</code> files.</p>
 <h2 id="runtime-removed-in-030">runtime (removed in 0.3.0)<a class="headerlink" href="#runtime-removed-in-030" title="Permanent link">&para;</a></h2>
 <p>The original single-runtime block. <strong>It is no longer read.</strong> A manifest carrying
 it is refused, naming what to write instead — the manager will not install a

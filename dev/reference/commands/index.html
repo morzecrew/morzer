@@ -1009,6 +1009,35 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operating/running-on-podman/" class="md-nav__link">
+        
+  
+  
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+  
+  <span class="md-ellipsis">
+    
+  
+  Running on Podman
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operating/managing-from-elsewhere/" class="md-nav__link">
         
   
@@ -3509,6 +3538,10 @@ run <code>apply</code> afterwards.</p>
 <tr>
 <td><code>--profile</code></td>
 <td>Deployment profile from the release manifest. Repeat, or separate with commas, for several where the release lists them as <a href="../manifest/#combinable-profiles"><code>combinable</code></a>. With <code>--release</code>, a selection the release cannot deploy is refused before anything is created.</td>
+</tr>
+<tr>
+<td><code>--runtime</code></td>
+<td>The runtime to install with, one the release declares. Required when it declares several (<a href="../manifest/#choosing-between-runtimes">Choosing between runtimes</a>), and checked when it declares one. Fixed for good once the installation exists. A repair keeps the installation's runtime, and refuses another named. Refused without <code>--release</code>.</td>
 </tr>
 <tr>
 <td><code>--domain</code></td>
