@@ -163,13 +163,16 @@ in_db() {
 }
 
 # assert_active waits for both services' units, which a start reports before
-# the container's health has settled.
+# the container's health has settled. One unit at a time: given several,
+# `is-active` succeeds when any one of them is active.
 assert_active() {
-	local deadline=$(($(date +%s) + 60))
-	until systemctl --user is-active --quiet demo-app.service demo-db.service; do
-		[ "$(date +%s)" -lt "${deadline}" ] ||
-			fail "demo-app and demo-db are not both active after 60s: $(systemctl --user is-active demo-app.service demo-db.service | tr '\n' ' ')"
-		sleep 1
+	local deadline=$(($(date +%s) + 60)) unit
+	for unit in demo-app.service demo-db.service; do
+		until systemctl --user is-active --quiet "${unit}"; do
+			[ "$(date +%s)" -lt "${deadline}" ] ||
+				fail "${unit} is $(systemctl --user is-active "${unit}") after 60s"
+			sleep 1
+		done
 	done
 	info "demo-app and demo-db are active"
 }
