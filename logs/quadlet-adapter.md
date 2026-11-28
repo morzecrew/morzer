@@ -1724,3 +1724,35 @@ the runtime is unreleased, so the Podman page alone says it.
   them new.
 
 **Drift count: 0.**
+
+## Review of #447, 2026-11-28
+
+- **The units unset both variables too.** A unit runs Podman with the
+  environment of the user's systemd manager. A manager holding
+  `CONTAINER_HOST`, as `systemctl --user import-environment` leaves it,
+  would run the units on that service while the adapter drives the local
+  Podman, the opposite of what row 61 is for. Every drop-in, a
+  one-shot copy's included, now carries `UnsetEnvironment=CONTAINER_HOST
+  CONTAINER_CONNECTION`. The definition hash reads the bundle's file and
+  its values, not the drop-in, so no container is recreated for it.
+- **The suite test does not call `Logs`**, though the plan said it
+  would. `journalctl` reads neither variable, and the unit test covers
+  the journal reader's environment. The test calls `Up`, `Status`,
+  `Exec`, `ExecInteractive` and `Down`, and now reads back what the
+  manager made of two units' drop-ins.
+- **`CONTAINERS_CONF`** and the other configuration variables stay with
+  the open proposal of 2026-11-28.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-28T01:36:48Z
+attempt: 1
+claim: row 61 drops the two variables from the adapter's commands, and reasons that systemd runs the units on the local Podman; a unit runs Podman with the manager's environment, so a manager holding CONTAINER_HOST would run the units elsewhere while the adapter drives the local Podman
+evidence: `systemd-run --user --quiet --wait --collect --setenv=CONTAINER_HOST=tcp://127.0.0.1:1 podman image exists docker.io/library/busybox` — exit 125; the same with `-p UnsetEnvironment="CONTAINER_HOST CONTAINER_CONNECTION"` — exit 0
+action: decided
+proposal: ASSUMED — every drop-in the Quadlet adapter writes, a one-shot copy's included, carries `UnsetEnvironment=CONTAINER_HOST CONTAINER_CONNECTION`, so the units run on the Podman the adapter drives whatever the user's manager holds
+```
+
+**Drift count: 0.**
