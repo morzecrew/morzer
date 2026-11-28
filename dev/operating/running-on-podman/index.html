@@ -2488,6 +2488,9 @@ name could not run them.</p>
   out of the bundle, served on <code>127.0.0.1</code>, and checks every blob against its
   digest. Podman checks TLS even on <code>127.0.0.1</code>, so that pull alone runs with
   <code>--tls-verify=false</code>. A pull from a registry never does.</li>
+<li><strong><code>CONTAINER_HOST</code> and <code>CONTAINER_CONNECTION</code> are ignored.</strong> morzer's
+  <code>podman</code> commands and its units both run on your own Podman, whichever
+  service your shell or your systemd manager names.</li>
 </ul>
 <h2 id="what-doctor-checks">What doctor checks<a class="headerlink" href="#what-doctor-checks" title="Permanent link">&para;</a></h2>
 <p>With no installation, <code>doctor</code> reports the tools of every runtime this
