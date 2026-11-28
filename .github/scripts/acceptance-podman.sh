@@ -73,6 +73,8 @@ cleanup() {
 	if [ "${STARTED_REGISTRY}" = 1 ]; then
 		podman rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
+	# The stubs as built, which a run that failed before packing leaves.
+	podman rmi -f "${REGISTRY}/demo/app:acceptance" "${REGISTRY}/demo/db:acceptance" >/dev/null 2>&1 || true
 	if [ -n "${KEEP_WORK:-}" ]; then
 		info "keeping ${WORK}"
 	else
