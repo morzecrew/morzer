@@ -248,8 +248,14 @@ func (r *Runtime) generate(ctx context.Context, b bundle) error {
 	if err != nil {
 		var exitErr *exec.ExitError
 		if asExit(err, &exitErr) {
+			// The exit's stderr is an excerpt of the run's, so only one of
+			// them is read, or every reason would be named twice.
+			stderr := res.Stderr
+			if stderr == "" {
+				stderr = exitErr.Stderr
+			}
 			return domain.ValidationError(err, "the Quadlet generator refused the bundle: %s",
-				generatorError(res.Stderr+exitErr.Stderr, ""))
+				generatorError(stderr, ""))
 		}
 		return domain.RuntimeError(err, "cannot run the Quadlet generator")
 	}
@@ -284,9 +290,12 @@ func (r *Runtime) findGenerator() (string, error) {
 func generatorError(stderr, file string) string {
 	var reasons []string
 	for _, line := range strings.Split(stderr, "\n") {
-		// `quadlet-generator[<pid>]: ` leads every line.
-		if _, rest, ok := strings.Cut(line, "]: "); ok {
-			line = rest
+		// `quadlet-generator[<pid>]: ` leads a line it logs. Only that is
+		// cut: a reason can hold `]: ` itself, as an IPv6 address does.
+		if strings.HasPrefix(line, "quadlet-generator[") {
+			if _, rest, ok := strings.Cut(line, "]: "); ok {
+				line = rest
+			}
 		}
 		if !strings.HasPrefix(line, `converting "`) {
 			continue
