@@ -700,7 +700,7 @@ func (d *Deps) withLock(ctx context.Context, opID string, opType domain.Operatio
 	// it may not know its runtime yet, and asks under the lock itself once
 	// it does.
 	if opType != domain.OpTypeInit {
-		if err := d.refuseForeignEngine(ctx); err != nil {
+		if err := d.refuseUnfitRuntime(ctx); err != nil {
 			return err
 		}
 	}

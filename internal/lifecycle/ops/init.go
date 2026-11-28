@@ -266,7 +266,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 	if runtimeKnownUpFront(opts) {
-		if err := d.refuseForeignEngine(ctx); err != nil {
+		if err := d.refuseUnfitRuntime(ctx); err != nil {
 			return Result{}, err
 		}
 	}
@@ -364,7 +364,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		// engine it is about to use. A runtime the staged release chooses
 		// is asked when the installation is written instead.
 		if runtimeKnownUpFront(opts) {
-			if err := d.refuseForeignEngine(ctx); err != nil {
+			if err := d.refuseUnfitRuntime(ctx); err != nil {
 				return err
 			}
 		}
@@ -816,7 +816,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		return domain.Installation{}, err
 	}
 	if !runtimeKnownUpFront(opts) {
-		if err := d.refuseForeignEngine(ctx); err != nil {
+		if err := d.refuseUnfitRuntime(ctx); err != nil {
 			return domain.Installation{}, err
 		}
 	}

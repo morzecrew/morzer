@@ -223,6 +223,9 @@ func (d *Deps) doctorChecks(ctx context.Context) []preflight.Check {
 	if prober, ok := d.engineScopeProber(); ok {
 		checks = append(checks, d.checkEngineScope(prober))
 	}
+	if check, ok := d.checkToolFloors(); ok {
+		checks = append(checks, check)
+	}
 
 	// Whether the product expects its backups off the machine (RFC 0061
 	// §5.3). A release that cannot be read reads as one that does not: its
@@ -1486,24 +1489,26 @@ func checkMode(inst domain.Installation) preflight.Check {
 // With one runtime its tools are required. With several, the next installation
 // may use any of them, so each runtime's tools are warnings naming it, and one
 // fatal check asks that some runtime has every tool it needs
-// (logs/quadlet-adapter.md, "The wiring").
+// (logs/quadlet-adapter.md, "The wiring"). A tool is held to the floor its
+// runtime names, if any.
 func (d *Deps) runtimeToolChecks() []preflight.Check {
 	type needs struct {
 		runtime string
 		tools   []string
+		floors  map[string]domain.Constraint
 	}
 	var all []needs
 	for _, r := range d.EveryRuntime() {
 		if requirer, ok := r.(ports.ToolRequirer); ok {
-			all = append(all, needs{r.Name(), requirer.RequiredTools()})
+			all = append(all, needs{r.Name(), requirer.RequiredTools(), toolFloors(r)})
 		}
 	}
-	// No constraint: with no installation there is no manifest, so there
-	// is no version anybody has asked for. Presence is the whole question.
+	// No release constraint: with no installation there is no manifest, so
+	// the runtime's own floor is the only version anybody has asked for.
 	if len(all) == 1 {
 		out := make([]preflight.Check, 0, len(all[0].tools))
 		for _, name := range all[0].tools {
-			out = append(out, preflight.Tool(d.Tools, name, domain.Constraint{}))
+			out = append(out, d.runtimeTool(all[0].runtime, name, all[0].floors[name]))
 		}
 		return out
 	}
@@ -1516,7 +1521,7 @@ func (d *Deps) runtimeToolChecks() []preflight.Check {
 				continue
 			}
 			seen[name] = true
-			check := preflight.Tool(d.Tools, name, domain.Constraint{})
+			check := d.runtimeTool(n.runtime, name, n.floors[name])
 			check.Fatal = false
 			check.Description = "tool for the " + n.runtime + " runtime: " + name
 			out = append(out, check)
@@ -1536,7 +1541,7 @@ func (d *Deps) runtimeToolChecks() []preflight.Check {
 				names = append(names, n.runtime)
 				missing := false
 				for _, name := range n.tools {
-					if _, err := d.Tools.Require(ctx, name, domain.Constraint{}); err != nil {
+					if _, err := d.toolFit(ctx, n.runtime, name, n.floors[name]); err != nil {
 						missing = true
 					}
 				}

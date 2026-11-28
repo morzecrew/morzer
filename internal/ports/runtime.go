@@ -513,6 +513,20 @@ type ToolRequirer interface {
 	RequiredTools() []string
 }
 
+// ToolFloorer names the oldest version of a required tool a runtime can drive,
+// where one exists.
+//
+// Optional beside ToolRequirer: a runtime whose tools work at any version a
+// release would ask for has no floor to name, and a release states its own in
+// `requirements.tools`. For §6's count it is forced by Podman's history, not by
+// the second adapter: Quadlet gained what the adapter relies on in Podman 5.0
+// and 5.3 (logs/quadlet-podman-floor.md).
+type ToolFloorer interface {
+	// ToolFloors maps a tool, named as RequiredTools names it, to the
+	// constraint its version must meet. A tool left out has no floor.
+	ToolFloors() map[string]domain.Constraint
+}
+
 // HookVarSupplier names the hook variables this runtime contributes.
 //
 // The hook ABI has a core set every installation gets, and this is how a
