@@ -28,8 +28,10 @@ MORZER="$(cd "$(dirname "${MORZER}")" && pwd)/$(basename "${MORZER}")"
 
 # Its own port, so this registry and acceptance.sh's can run side by side.
 REGISTRY="localhost:${ACCEPTANCE_PODMAN_REGISTRY_PORT:-5001}"
-# Named for this run, so a cleanup only ever removes its own.
+# Named for this run, so a cleanup only ever removes its own: the registry,
+# and the stubs as built.
 REGISTRY_NAME="morzer-acceptance-podman-registry-$$"
+STUB_TAG="acceptance-$$"
 
 # Not the bundle's default, and not acceptance.sh's ports either, so a failure
 # naming a port names the run it came from.
@@ -74,7 +76,7 @@ cleanup() {
 		podman rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 	fi
 	# The stubs as built, which a run that failed before packing leaves.
-	podman rmi -f "${REGISTRY}/demo/app:acceptance" "${REGISTRY}/demo/db:acceptance" >/dev/null 2>&1 || true
+	podman rmi -f "${REGISTRY}/demo/app:${STUB_TAG}" "${REGISTRY}/demo/db:${STUB_TAG}" >/dev/null 2>&1 || true
 	if [ -n "${KEEP_WORK:-}" ]; then
 		info "keeping ${WORK}"
 	else
@@ -201,7 +203,7 @@ curl -fsS "http://${REGISTRY}/v2/" >/dev/null 2>&1 || fail "the registry did not
 # variables, and a proxy on the host's loopback is not on the build's.
 push_stub() {
 	local name=$1 tag base
-	tag="${REGISTRY}/demo/${name}:acceptance"
+	tag="${REGISTRY}/demo/${name}:${STUB_TAG}"
 	base="$(sed -n 's/^FROM //p' "${ROOT_DIR}/testdata/acceptance/${name}/Dockerfile" | head -1)"
 	podman build --quiet --http-proxy=false --from "docker.io/library/${base}" -t "${tag}" \
 		"${ROOT_DIR}/testdata/acceptance/${name}" >/dev/null
@@ -242,7 +244,7 @@ info "1.2.0 and 1.2.1 carry both images"
 step "the registry goes away, and so do the local copies"
 podman rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
 STARTED_REGISTRY=0
-podman rmi -f "${REGISTRY}/demo/app:acceptance" "${REGISTRY}/demo/db:acceptance" >/dev/null 2>&1 || true
+podman rmi -f "${REGISTRY}/demo/app:${STUB_TAG}" "${REGISTRY}/demo/db:${STUB_TAG}" >/dev/null 2>&1 || true
 for ref in "${REGISTRY}/demo/app@${APP_DIGEST}" "${REGISTRY}/demo/db@${DB_DIGEST}"; do
 	! podman image exists "${ref}" || fail "${ref} is still in the store, so the install would prove nothing"
 done
