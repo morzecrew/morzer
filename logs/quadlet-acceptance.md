@@ -133,3 +133,48 @@ Checked:
 - `just ci` passes at 88.0%.
 
 **Drift count: 0.**
+
+## The first run on Podman 4.9.3, 2026-11-28
+
+The job failed at `apply`, step `validate-runtime`: `the Quadlet
+generator refused the bundle: quadlet-generator[5931]: Loading source unit
+file /tmp/morzer-quadlet-1401314803/demo-app.container`. The message is the
+generator's first line, a log line, so it hides the cause. Podman's own
+source gives it, and two more gaps behind it:
+
+- **`PublishPort=` takes no variable before Podman 5.3.** Quadlet checks
+  each host and container port against `\d+(-\d+)?(/udp|/tcp)?$` and
+  refuses `${DEMO_PARAM_HTTP_PORT}` with `invalid port format`
+  (`pkg/systemd/quadlet/quadlet.go` at v4.9.3, line 1459). From v5.3.0
+  only `ExposeHostPort=` is checked.
+- **A rootless Quadlet reads `$XDG_RUNTIME_DIR/containers/systemd` only
+  from Podman 5.3.** At v5.2.0, `getUnitDirs` (`cmd/quadlet/main.go`)
+  reads `$XDG_CONFIG_HOME/containers/systemd` and
+  `/etc/containers/systemd/users`; v5.3.0 adds the runtime directory.
+  Row 45 installs every unit there.
+- **Drop-ins arrive in Podman 5.0.** v4.9.3's `cmd/quadlet/main.go` reads
+  no `.d` directory, and row 27 delivers parameters, the definition
+  label, `SuccessExitStatus=143` and `UnsetEnvironment=` through one.
+
+So the adapter needs Podman 5.3 or later, and nothing says so:
+`findGenerator`'s hint asks for 4.4. `ubuntu-24.04` cannot run it.
+`ubuntu-latest` is now `ubuntu-26.04`, whose image ships Podman 5.7.0
+(`images/ubuntu/Ubuntu2604-Readme.md` in `actions/runner-images`).
+
+```divergence
+decision: D-2
+grade: LOCKED
+class: discovery
+at: 2026-11-28T12:52:55Z
+attempt: 1
+claim: the quadlet adapter cannot run on Podman 4.9.3, the version D-1 put the stage on; rows 27 and 45 need drop-ins (Podman 5.0) and the runtime directory in Quadlet's search path (Podman 5.3), and a port parameter needs PublishPort without Quadlet's number check (Podman 5.3); serving 4.9.3 means reversing rows 27 and 45, and declaring a floor means a design that init and doctor enforce, so D-2's ruling halts the work
+evidence: `gh api 'repos/containers/podman/contents/cmd/quadlet/main.go?ref=v5.3.0'` — `getRootlessDirs` appends `$XDG_RUNTIME_DIR/containers/systemd`; the same file at `ref=v5.2.0` names no runtime directory; `pkg/systemd/quadlet/quadlet.go` at `ref=v4.9.3` holds `invalid port format` for a `PublishPort=` host port
+action: halted
+proposal: ASSUMED — the quadlet runtime needs Podman 5.3 or later; `init` refuses it on an older Podman and `doctor` reports the version against the floor, and the acceptance stage runs on `ubuntu-26.04`
+```
+
+Also found, for whichever change comes next: a refusal from the
+generator is reported by its first line, which on 4.9.3 is a log line
+rather than the error.
+
+**Drift count: 0.**
