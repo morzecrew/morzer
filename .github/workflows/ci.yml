@@ -390,10 +390,10 @@ jobs:
     if: >-
       needs.changes.outputs.run_full == 'true' ||
       needs.changes.outputs.code == 'true'
-    # By name rather than ubuntu-latest: the Podman version is what this
-    # tests. 26.04 ships 5.7.0; the quadlet runtime needs 5.3, which 24.04's
-    # 4.9.3 is not.
-    runs-on: ubuntu-26.04
+    # ubuntu-latest is 26.04, which ships Podman 5.7.0. The quadlet runtime
+    # needs 5.3, which 24.04's 4.9.3 is not. Not named as ubuntu-26.04,
+    # which the pinned actionlint does not know.
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       # As in the Docker scenario: whether a token exists, never the token.
