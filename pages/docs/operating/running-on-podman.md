@@ -13,8 +13,8 @@ as on [rootless Docker](running-as-your-own-user.md), and no `morzer` command
 needs `sudo`.
 
 This runtime exists on Linux only. The acceptance run installs, reconfigures,
-updates, rolls back and restores an installation of it on Ubuntu 24.04's
-Podman 4.9.3.
+updates, rolls back and restores an installation of it on Ubuntu 26.04's
+Podman 5.7.0.
 
 ## Before you start
 
