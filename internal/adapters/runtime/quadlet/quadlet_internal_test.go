@@ -185,6 +185,28 @@ func TestTheDropInNamesTheParameterCopyWithoutTheDash(t *testing.T) {
 	assert.Contains(t, got, "Label="+definitionLabel+"=abc")
 }
 
+// A unit runs Podman with the user's manager's environment, so every drop-in,
+// a one-shot copy's included, unsets what would send that Podman elsewhere
+// (RFC 0023 row 61).
+func TestEveryUnitRunsPodmanHere(t *testing.T) {
+	const unset = "\nUnsetEnvironment=CONTAINER_HOST CONTAINER_CONNECTION\n"
+	for _, kind := range []string{kindContainer, kindVolume, kindNetwork} {
+		assert.Contains(t, string(dropInFor(unitFile{kind: kind}, "/run/user/1/x/parameters.env", "abc")), unset, kind)
+	}
+
+	dir := t.TempDir()
+	p := runPaths{
+		unit: filepath.Join(dir, "demo-web-run-1.container"), dropIn: filepath.Join(dir, "demo-web-run-1.container.d"),
+		env: filepath.Join(dir, "demo-web-run-1.env"), log: filepath.Join(dir, "demo-web-run-1.log"),
+		status: filepath.Join(dir, "demo-web-run-1.status"),
+	}
+	u := unitFile{name: "demo-web.container", kind: kindContainer, text: []byte(web)}
+	require.NoError(t, p.write(u, "demo-web-run-1", nil, ports.RunOptions{}))
+	got, err := os.ReadFile(filepath.Join(p.dropIn, dropIn))
+	require.NoError(t, err)
+	assert.Contains(t, string(got), unset)
+}
+
 // A changed value a unit names re-creates its container; one it does not name
 // does not.
 func TestTheDefinitionFollowsTheValuesAUnitNames(t *testing.T) {

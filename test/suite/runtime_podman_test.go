@@ -225,11 +225,11 @@ func TestQuadletDownKeepsTheVolumeAndDownWithVolumesDoesNot(t *testing.T) {
 	}
 }
 
-// TestQuadletDrivesThePodmanItsUnitsRunOn. systemd runs the units on this
-// user's Podman, so a CONTAINER_HOST or CONTAINER_CONNECTION in the manager's
-// environment must not send the adapter's own commands elsewhere (RFC 0023 row
-// 61). Both name a service that does not exist, so a command that kept either
-// fails.
+// TestQuadletDrivesThePodmanItsUnitsRunOn. A CONTAINER_HOST or
+// CONTAINER_CONNECTION in the manager's environment must not send its own
+// commands elsewhere, and the units unset both, so the two drive one Podman
+// (RFC 0023 row 61). Both name a service that does not exist, so a command
+// that kept either fails.
 func TestQuadletDrivesThePodmanItsUnitsRunOn(t *testing.T) {
 	requirePodman(t)
 	ctx := context.Background()
@@ -239,6 +239,13 @@ func TestQuadletDrivesThePodmanItsUnitsRunOn(t *testing.T) {
 
 	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true}); err != nil {
 		t.Fatal(err)
+	}
+	// What the generator made of the drop-ins, read back from the manager.
+	for _, unit := range []string{cfg.Product + "-web.service", cfg.Product + "-data-volume.service"} {
+		out, err := osexec.Command("systemctl", "--user", "show", "--property=UnsetEnvironment", "--value", unit).Output()
+		if err != nil || strings.TrimSpace(string(out)) != "CONTAINER_HOST CONTAINER_CONNECTION" {
+			t.Errorf("%s unsets %q, %v", unit, strings.TrimSpace(string(out)), err)
+		}
 	}
 	if _, err := rt.Status(ctx, cfg); err != nil {
 		t.Fatal(err)

@@ -25,6 +25,11 @@ const parametersFile = "parameters.env"
 // drop-ins sort before it.
 const dropIn = "90-morzer.conf"
 
+// unsetRemote keeps remoteEnv out of the Podman a unit runs, should the user's
+// manager hold it, so the units and the adapter's own commands drive the same
+// Podman (localEnv).
+var unsetRemote = "UnsetEnvironment=" + strings.Join(remoteEnv, " ") + "\n"
+
 // definitionLabel carries a container's definition hash, as Compose's
 // config-hash label does: Up re-creates a container whose label differs from
 // its unit's, and DefinitionDrift reads it.
@@ -98,6 +103,7 @@ func dropInFor(u unitFile, parameters, hash string) []byte {
 	// Without the `-`: a unit started before the manager rendered the file
 	// fails rather than running on empty values (RFC 0023 row 21).
 	b.WriteString("[Service]\nEnvironmentFile=" + parameters + "\n")
+	b.WriteString(unsetRemote)
 	if u.kind == kindContainer {
 		// A stop sends SIGTERM, and Podman returns the container's 143 for
 		// it. Counted as a failure, every Stop, the cold capture's

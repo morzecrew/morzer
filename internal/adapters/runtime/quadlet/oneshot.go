@@ -211,6 +211,7 @@ func (p runPaths) write(u unitFile, name string, env map[string]string, opts por
 	}
 	c.WriteString("\n[Service]\nType=oneshot\nRestart=no\nRemainAfterExit=no\n")
 	c.WriteString("EnvironmentFile=" + p.env + "\n")
+	c.WriteString(unsetRemote)
 	// systemd forgets a unit that succeeded, its exit status with it, so
 	// the unit writes it down as it stops.
 	c.WriteString(`ExecStopPost=/bin/sh -c 'printf "%%s %%s %%s\n" "$$SERVICE_RESULT" "$$EXIT_CODE" "$$EXIT_STATUS" > "` +
