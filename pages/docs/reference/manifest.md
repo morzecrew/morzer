@@ -224,7 +224,7 @@ refused before anything is created.
 ### quadlet
 
 The `quadlet` runtime runs each service as a `.container` unit under the
-user's own systemd manager, on rootless Podman. See
+user's own systemd manager, on rootless Podman 5.3 or later. See
 [Running on Podman](../operating/running-on-podman.md) for the operator's
 side.
 

@@ -116,6 +116,7 @@ var (
 	_ ports.VolumeCapturer  = (*Runtime)(nil)
 
 	_ ports.DefinitionDrifter = (*Runtime)(nil)
+	_ ports.ToolFloorer       = (*Runtime)(nil)
 )
 
 // Name is the key a manifest declares this runtime under.
@@ -124,6 +125,19 @@ func (r *Runtime) Name() string { return Name }
 // RequiredTools are Podman, which runs the containers, and systemctl, which
 // starts their units.
 func (r *Runtime) RequiredTools() []string { return []string{"podman", "systemctl"} }
+
+// MinPodman is the oldest Podman this adapter can drive. Quadlet reads drop-ins
+// from 5.0, and a rootless one reads $XDG_RUNTIME_DIR/containers/systemd, where
+// the units live, and takes a variable in PublishPort=, from 5.3.
+const MinPodman = "5.3.0"
+
+// A literal, so it parses; TestPodmanIsHeldToItsFloor holds it to that.
+var podmanFloor, _ = domain.ParseConstraint(">=" + MinPodman)
+
+// ToolFloors holds Podman to MinPodman.
+func (r *Runtime) ToolFloors() map[string]domain.Constraint {
+	return map[string]domain.Constraint{"podman": podmanFloor}
+}
 
 // unitDir is where an installation's units live: a directory of the user's
 // runtime directory that Quadlet reads, which a reboot clears. `apply

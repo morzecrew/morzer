@@ -530,6 +530,14 @@ func (s *Store) SetUpdateCandidate(ctx context.Context, c domain.UpdateCandidate
 	return atomicfs.WriteFile(s.paths.UpdateCandidateFile(), append(data, '\n'), 0o640)
 }
 
+// ClearCurrentRelease forgets the current release, leaving previous as it is.
+func (s *Store) ClearCurrentRelease(ctx context.Context) error {
+	if err := os.Remove(s.paths.CurrentReleaseFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return domain.InstallationError(err, "cannot remove %s", s.paths.CurrentReleaseFile())
+	}
+	return nil
+}
+
 // ClearUpdateCandidate forgets the candidate, which is what applying it means.
 func (s *Store) ClearUpdateCandidate(ctx context.Context) error {
 	if err := os.Remove(s.paths.UpdateCandidateFile()); err != nil && !errors.Is(err, fs.ErrNotExist) {

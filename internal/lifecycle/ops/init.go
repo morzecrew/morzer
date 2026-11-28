@@ -266,7 +266,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		}
 	}
 	if runtimeKnownUpFront(opts) {
-		if err := d.refuseForeignEngine(ctx); err != nil {
+		if err := d.refuseUnfitRuntime(ctx); err != nil {
 			return Result{}, err
 		}
 	}
@@ -364,7 +364,7 @@ func Init(ctx context.Context, d *Deps, opts InitOptions) (Result, error) {
 		// engine it is about to use. A runtime the staged release chooses
 		// is asked when the installation is written instead.
 		if runtimeKnownUpFront(opts) {
-			if err := d.refuseForeignEngine(ctx); err != nil {
+			if err := d.refuseUnfitRuntime(ctx); err != nil {
 				return err
 			}
 		}
@@ -816,7 +816,7 @@ func (d *Deps) buildInstallation(ctx context.Context, st *engine.State, opts Ini
 		return domain.Installation{}, err
 	}
 	if !runtimeKnownUpFront(opts) {
-		if err := d.refuseForeignEngine(ctx); err != nil {
+		if err := d.refuseUnfitRuntime(ctx); err != nil {
 			return domain.Installation{}, err
 		}
 	}
@@ -1233,6 +1233,20 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				return nil
 			}
 			if r, ok := rel.(domain.Release); ok {
+				// The step made this release current, and with its
+				// directory gone nothing is: the link and the record go
+				// with it, so a refused first init leaves no release
+				// pointing at nothing.
+				if target, err := os.Readlink(d.Paths.CurrentLink()); err == nil && target == r.Root {
+					if err := os.Remove(d.Paths.CurrentLink()); err != nil {
+						return err
+					}
+				}
+				if current, err := d.State.CurrentRelease(ctx); err == nil && current.Root == r.Root {
+					if err := d.State.ClearCurrentRelease(ctx); err != nil {
+						return err
+					}
+				}
 				return atomicfs.RemoveAll(r.Root)
 			}
 			return nil

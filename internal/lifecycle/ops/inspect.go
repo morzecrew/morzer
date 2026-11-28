@@ -404,7 +404,7 @@ func execSession(
 
 	// Takes no lock, so asked here: on a daemon not the user's own, the
 	// service is the system installation's (RFC 0023 row 32).
-	if err := d.refuseForeignEngine(ctx); err != nil {
+	if err := d.refuseUnfitRuntime(ctx); err != nil {
 		return ExecResult{}, err
 	}
 

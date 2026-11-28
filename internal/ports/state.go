@@ -29,6 +29,10 @@ type StateStore interface {
 	// crash leaves one of the two consistent states, never a third.
 	SetCurrentRelease(ctx context.Context, r domain.ReleaseRecord) error
 
+	// ClearCurrentRelease forgets the current release, which is what undoing
+	// the first one an installation staged means. Previous is left as it is.
+	ClearCurrentRelease(ctx context.Context) error
+
 	// UpdateCandidate reads what a followed channel last pointed at, or the
 	// zero value when nothing is being followed. A missing record is a
 	// normal state, not an error.

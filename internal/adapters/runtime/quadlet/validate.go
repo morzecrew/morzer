@@ -248,8 +248,14 @@ func (r *Runtime) generate(ctx context.Context, b bundle) error {
 	if err != nil {
 		var exitErr *exec.ExitError
 		if asExit(err, &exitErr) {
+			// The exit's stderr is an excerpt of the run's, so only one of
+			// them is read, or every reason would be named twice.
+			stderr := res.Stderr
+			if stderr == "" {
+				stderr = exitErr.Stderr
+			}
 			return domain.ValidationError(err, "the Quadlet generator refused the bundle: %s",
-				firstLine(res.Stderr+exitErr.Stderr))
+				generatorError(stderr, ""))
 		}
 		return domain.RuntimeError(err, "cannot run the Quadlet generator")
 	}
@@ -258,7 +264,7 @@ func (r *Runtime) generate(ctx context.Context, b bundle) error {
 	for _, u := range b.units {
 		if !bytes.Contains([]byte(res.Stdout), []byte("---"+u.unitName()+"---")) {
 			return domain.ValidationError(nil, "the Quadlet generator would not generate %s: %s",
-				u.name, firstLine(res.Stderr))
+				u.name, generatorError(res.Stderr, u.name))
 		}
 	}
 	return nil
@@ -274,5 +280,33 @@ func (r *Runtime) findGenerator() (string, error) {
 		}
 	}
 	return "", domain.RuntimeError(domain.ErrToolMissing, "the Quadlet generator is not installed").
-		WithHint("install Podman 4.4 or later, which ships it as systemd's podman-user-generator")
+		WithHint("install Podman %s or later, which ships it as systemd's podman-user-generator", MinPodman)
+}
+
+// generatorError picks the generator's reasons out of what it logged: each
+// `converting "<file>": <reason>` line, for file alone when one is named. It
+// logs every file it loads first, so its first line names a file and no
+// reason, on Podman 4.9.3 and on 6.1.1 alike.
+func generatorError(stderr, file string) string {
+	var reasons []string
+	for _, line := range strings.Split(stderr, "\n") {
+		// `quadlet-generator[<pid>]: ` leads a line it logs. Only that is
+		// cut: a reason can hold `]: ` itself, as an IPv6 address does.
+		if strings.HasPrefix(line, "quadlet-generator[") {
+			if _, rest, ok := strings.Cut(line, "]: "); ok {
+				line = rest
+			}
+		}
+		if !strings.HasPrefix(line, `converting "`) {
+			continue
+		}
+		if file != "" && !strings.HasPrefix(line, `converting "`+file+`"`) {
+			continue
+		}
+		reasons = append(reasons, strings.TrimSpace(line))
+	}
+	if len(reasons) == 0 {
+		return firstLine(stderr)
+	}
+	return strings.Join(reasons, "; ")
 }

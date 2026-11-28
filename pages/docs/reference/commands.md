@@ -538,6 +538,7 @@ that user in root's place.
 | --- | --- |
 | `runtime.engine-scope` | Fails while the Docker daemon is not the user's own: `docker info` lists no `name=rootless`. On the system's daemon, the installation and a system one of the same product would share a Compose project. `init`, every command that changes the installation, and `exec` refuse there too. Warns when the daemon cannot be asked. |
 | `system.linger` | Warns while the account does not linger, so its units stop at logout and do not start at boot. The remedy is `sudo loginctl enable-linger <user>`. |
+| `runtime.tool-floor` | Fails while a tool of the installation's runtime is missing or older than the runtime can drive: Podman before 5.3, for the quadlet runtime. `init`, every command that changes the installation, and `exec` refuse a tool that is too old. A missing one is left to the commands that run it. |
 | `network.unprivileged-ports` | Warns while the release publishes a port below `net.ipv4.ip_unprivileged_port_start`, which an engine without `CAP_NET_BIND_SERVICE` cannot bind. |
 
 ## history

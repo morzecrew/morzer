@@ -327,20 +327,16 @@ func TestAFailedIngestDuringInitUnwindsTheInstallation(t *testing.T) {
 	assert.False(t, exists, "a failed init left an installation behind")
 	assert.NoDirExists(t, stagedReleaseRoot(h), "a failed init left the staged release behind")
 
-	// What is *not* asserted, because it is not true and pretending
-	// otherwise would hide it: `current-release.json` and the `current`
-	// symlink survive. stepStageRelease writes all three in one Execute and
-	// its compensator removes only the directory, which is pre-existing --
-	// every init step after it has always left the same residue. Un-adopting
-	// safely needs the compensator to know whether *this* Execute created
-	// the pointer, since `init --repair` runs over an installation that
-	// already had one. Harmless here: with the installation gone the machine
-	// reads as uninstalled and nothing consults the record.
-	stale, err := h.Deps.State.CurrentRelease(context.Background())
+	// Nor the pointer to it. stepStageRelease writes the symlink and the
+	// current-release record in the same Execute, and its undo removes
+	// them with the directory, when they name a directory this Execute
+	// created: `init --repair` runs over an installation that already had
+	// one, and keeps it.
+	current, err := h.Deps.State.CurrentRelease(context.Background())
 	require.NoError(t, err)
-	assert.False(t, stale.IsZero(),
-		"the stale pointer is gone -- if stepStageRelease learned to un-adopt, "+
-			"delete this assertion and assert IsZero above instead")
+	assert.True(t, current.IsZero(), "a failed init left a current release: %+v", current)
+	_, err = os.Lstat(h.Deps.Paths.CurrentLink())
+	assert.ErrorIs(t, err, os.ErrNotExist, "a failed init left the current link")
 }
 
 // stagedReleaseRoot is where init stages the 1.2.0 fixture.
