@@ -243,7 +243,7 @@ func (r *Runtime) generate(ctx context.Context, b bundle) error {
 
 	cmd := r.command(time.Minute, generator, "-dryrun", "-user")
 	cmd.OnLine = nil
-	cmd.Env = exec.BaseEnv(map[string]string{"QUADLET_UNIT_DIRS": dir})
+	cmd.Env = localEnv(map[string]string{"QUADLET_UNIT_DIRS": dir})
 	res, err := r.runner.Run(ctx, cmd)
 	if err != nil {
 		var exitErr *exec.ExitError

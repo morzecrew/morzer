@@ -344,13 +344,48 @@ func TestLogsWithNothingInstalledReadNothing(t *testing.T) {
 }
 
 // recorder is a runner that runs nothing and remembers what it was asked.
-type recorder struct{ argv [][]string }
+type recorder struct{ argv, env [][]string }
 
 func (r *recorder) Run(_ context.Context, cmd exec.Command) (exec.Result, error) {
 	r.argv = append(r.argv, cmd.Argv)
+	r.env = append(r.env, cmd.Env)
 	return exec.Result{}, nil
 }
 func (r *recorder) Look(name string) (string, error) { return name, nil }
+
+// systemd runs the units on this user's Podman, so a CONTAINER_HOST or a
+// CONTAINER_CONNECTION in the manager's environment reaches none of the
+// commands that drive them (RFC 0023 row 61). The rest of the environment
+// still does.
+func TestNoCommandIsSentToAPodmanElsewhere(t *testing.T) {
+	t.Setenv("CONTAINER_HOST", "tcp://127.0.0.1:1")
+	t.Setenv("CONTAINER_CONNECTION", "elsewhere")
+	rec := &recorder{}
+	r := &Runtime{runner: rec, podman: "podman", systemctl: "systemctl", generator: "generator"}
+	ctx := context.Background()
+
+	_, err := r.HasImage(ctx, "busybox")
+	require.NoError(t, err)
+	_, err = r.systemctlUser(ctx, time.Minute, "daemon-reload")
+	require.NoError(t, err)
+	require.NoError(t, r.generate(ctx, bundle{product: "demo"}))
+	rc, err := r.stream(ctx, []string{"journalctl", "--user"}, func(line string) (string, bool) { return line, true })
+	require.NoError(t, err)
+	_, err = io.ReadAll(rc)
+	require.NoError(t, err)
+
+	require.Len(t, rec.env, 4)
+	for i, env := range rec.env {
+		var names []string
+		for _, kv := range env {
+			name, _, _ := strings.Cut(kv, "=")
+			names = append(names, name)
+		}
+		assert.NotContains(t, names, "CONTAINER_HOST", rec.argv[i])
+		assert.NotContains(t, names, "CONTAINER_CONNECTION", rec.argv[i])
+		assert.Contains(t, names, "PATH", rec.argv[i])
+	}
+}
 
 // An installed `.volume` file and the declared one of the same name may set
 // different names; Down with volumes removes both.
