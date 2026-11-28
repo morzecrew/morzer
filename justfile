@@ -330,6 +330,11 @@ verify-bundle:
 acceptance: build
     .github/scripts/acceptance.sh
 
+# The same lifecycle on the quadlet runtime, as the user, on rootless Podman.
+# Needs podman, a systemd manager of your own, sops and jq.
+acceptance-podman: build
+    .github/scripts/acceptance-podman.sh
+
 # The release PR commits a run on a Mac, and the release builds its darwin
 # archive only beside it (RFC 0055 decisions 9 and 20). So only a run that
 # passes writes the record, and only from a tree with nothing uncommitted,
