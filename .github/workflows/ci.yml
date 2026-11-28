@@ -382,6 +382,64 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  acceptance-podman:
+    name: Acceptance (rootless Podman)
+    needs: [changes, test]
+    # The quadlet runtime's lifecycle, on the runner's own Podman (RFC 0023
+    # P4). It runs when the Docker scenario does, for the same reason.
+    if: >-
+      needs.changes.outputs.run_full == 'true' ||
+      needs.changes.outputs.code == 'true'
+    # By name rather than ubuntu-latest: the Podman version is what this
+    # tests, and 24.04 ships 4.9.3.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # As in the Docker scenario: whether a token exists, never the token.
+      DOCKERHUB_CONFIGURED: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Log Podman in to Docker Hub when a token is configured
+        if: ${{ env.DOCKERHUB_CONFIGURED == 'true' }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | podman login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      - name: Install sops
+        run: .github/scripts/install-sops.sh "$SOPS_VERSION"
+
+      # A runner's steps run in no login session, so the user's systemd
+      # manager, which runs the units, starts only once lingering is on.
+      - name: Start the runner user's systemd manager
+        run: |
+          set -euo pipefail
+          sudo loginctl enable-linger "$USER"
+          uid=$(id -u)
+          for _ in $(seq 1 30); do
+            [ -S "/run/user/${uid}/bus" ] && break
+            sleep 1
+          done
+          echo "XDG_RUNTIME_DIR=/run/user/${uid}" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus" >> "$GITHUB_ENV"
+
+      - name: Check the runner has what the scenario needs
+        run: |
+          set -euo pipefail
+          podman version
+          systemctl --user show-environment >/dev/null
+          jq --version
+
+      - run: just acceptance-podman
+
   containers:
     name: Container suites (real services)
     needs: [changes, test]
@@ -578,6 +636,7 @@ jobs:
       - macos
       - docs
       - acceptance
+      - acceptance-podman
       - containers
       - coverage
     runs-on: ubuntu-latest
