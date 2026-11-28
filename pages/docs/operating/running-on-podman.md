@@ -20,8 +20,10 @@ exercise it yet.
 - **Podman 5.3 or later, with its Quadlet generator**, which Podman installs
   as a systemd user generator. An older Quadlet does not read the directory
   the units are installed in, or a parameter in `PublishPort=`. Ubuntu 24.04
-  ships Podman 4.9.3, so there an installation runs on Compose. `doctor` with
-  no installation reports `podman`, against 5.3, and `systemctl`.
+  ships Podman 4.9.3: there, a release that also declares Compose installs
+  with `--runtime compose`, and one that declares only `quadlet` is refused.
+  `doctor` with no installation reports `podman`, against 5.3, and
+  `systemctl`.
 - **Lingering**, so your units start at boot and keep running after you log
   out:
 
@@ -108,7 +110,7 @@ With an installation, `doctor` checks what it checks on any installation of
 your own. A Quadlet installation has no daemon of its own, so there is no
 `runtime.engine-scope` check. `runtime.tool-floor` fails while Podman is
 missing or older than 5.3, and every command that changes the installation
-refuses there too.
+refuses an older one too.
 
 `network.registry` asks the registry of the release's first pulled image for
 its manifest, with `podman manifest inspect`, which pulls nothing. A registry
