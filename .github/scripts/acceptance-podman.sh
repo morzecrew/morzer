@@ -28,7 +28,8 @@ MORZER="$(cd "$(dirname "${MORZER}")" && pwd)/$(basename "${MORZER}")"
 
 # Its own port, so this registry and acceptance.sh's can run side by side.
 REGISTRY="localhost:${ACCEPTANCE_PODMAN_REGISTRY_PORT:-5001}"
-REGISTRY_NAME="morzer-acceptance-podman-registry"
+# Named for this run, so a cleanup only ever removes its own.
+REGISTRY_NAME="morzer-acceptance-podman-registry-$$"
 
 # Not the bundle's default, and not acceptance.sh's ports either, so a failure
 # naming a port names the run it came from.
@@ -61,12 +62,13 @@ cleanup() {
 			"${MORZER}" --root "${ROOT}" installation remove --force --purge --confirm "${id}" >/dev/null 2>&1 || true
 		fi
 		# What a failed remove leaves, so the next run is not refused for it.
-		systemctl --user stop 'demo-*.service' >/dev/null 2>&1 || true
+		# Every name is one the preconditions found free.
+		systemctl --user stop "${UNITS[@]}" >/dev/null 2>&1 || true
 		rm -rf -- "${UNIT_DIR}"
 		systemctl --user daemon-reload >/dev/null 2>&1 || true
-		systemctl --user reset-failed 'demo-*.service' >/dev/null 2>&1 || true
-		podman rm -f systemd-demo-app systemd-demo-db >/dev/null 2>&1 || true
-		podman volume rm -f systemd-demo-uploads >/dev/null 2>&1 || true
+		systemctl --user reset-failed "${UNITS[@]}" >/dev/null 2>&1 || true
+		podman rm -f "${CONTAINERS[@]}" >/dev/null 2>&1 || true
+		podman volume rm -f "${VOLUMES[@]}" >/dev/null 2>&1 || true
 	fi
 	if [ "${STARTED_REGISTRY}" = 1 ]; then
 		podman rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
@@ -99,9 +101,20 @@ for tool in podman systemctl sops jq curl; do require_tool "${tool}"; done
 [ -n "${XDG_RUNTIME_DIR:-}" ] || fail "XDG_RUNTIME_DIR is not set; log in as the user, or enable lingering"
 systemctl --user show-environment >/dev/null 2>&1 ||
 	fail "no systemd manager of your own answers; enable lingering with \`loginctl enable-linger\`"
+# What an installation of demo owns on this machine, whatever its root. A
+# reboot clears the unit directory and keeps the volumes, so each is checked.
 UNIT_DIR="${XDG_RUNTIME_DIR}/containers/systemd/morzer/demo"
+UNITS=(demo-app.service demo-db.service demo-uploads-volume.service demo-database-volume.service)
+CONTAINERS=(systemd-demo-app systemd-demo-db)
+VOLUMES=(systemd-demo-uploads systemd-demo-database)
 [ ! -e "${UNIT_DIR}" ] ||
 	fail "${UNIT_DIR} exists: an installation of demo has units here, and this run would replace them"
+for name in "${CONTAINERS[@]}"; do
+	! podman container exists "${name}" || fail "the container ${name} exists, and this run would replace it"
+done
+for name in "${VOLUMES[@]}"; do
+	! podman volume exists "${name}" || fail "the volume ${name} exists, and this run would remove it"
+done
 info "$(podman --version)"
 info "$(systemctl --version | head -1)"
 info "$(sops --version 2>&1 | head -1)"
@@ -167,7 +180,7 @@ answers() {
 # A registry, so the stubs have digests, then bundles that carry them
 
 step "starting a throwaway registry at ${REGISTRY}"
-podman rm -f "${REGISTRY_NAME}" >/dev/null 2>&1 || true
+# A port already taken fails the run here, before anything is installed.
 podman run -d --rm --name "${REGISTRY_NAME}" \
 	-p "127.0.0.1:${REGISTRY##*:}:5000" docker.io/library/registry:2 >/dev/null
 STARTED_REGISTRY=1
@@ -236,7 +249,6 @@ info "only the bundles hold the images"
 step "init"
 mkdir -p "${WORK}/keys"
 RECOVERY=$("${MORZER}" secret recipients generate-recovery-key "${WORK}/keys/recovery.key" | tail -1)
-INSTALLED=1
 "${MORZER}" --root "${ROOT}" init \
 	--release "${WORK}/bundle-1.2.0" \
 	--domain acceptance.example \
@@ -244,6 +256,8 @@ INSTALLED=1
 	--install-units=false \
 	--set http_port="${HTTP_PORT}" \
 	--set log_level=debug
+# From here this run owns what the preconditions found free.
+INSTALLED=1
 
 step "apply"
 "${MORZER}" --root "${ROOT}" apply
