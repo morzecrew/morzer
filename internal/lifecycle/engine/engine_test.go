@@ -52,6 +52,7 @@ func (s *journalStore) PreviousRelease(context.Context) (domain.ReleaseRecord, e
 	return domain.ReleaseRecord{}, nil
 }
 func (s *journalStore) SetCurrentRelease(context.Context, domain.ReleaseRecord) error { return nil }
+func (s *journalStore) ClearCurrentRelease(context.Context) error                     { return nil }
 func (s *journalStore) UpdateCandidate(context.Context) (domain.UpdateCandidate, error) {
 	return domain.UpdateCandidate{}, nil
 }

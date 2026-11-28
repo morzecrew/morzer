@@ -84,3 +84,41 @@ func TestInitRefusesAToolBelowTheRuntimesFloor(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, exists(h))
 }
+
+// A release declaring quadlet alone names its runtime only once it is staged,
+// so the refusal comes after the release is made current. The refused `init`
+// still leaves nothing behind: no installation, and no current release
+// pointing at a directory its undo removed.
+func TestARefusedInitOfAStagedReleaseLeavesNoCurrentRelease(t *testing.T) {
+	ctx := context.Background()
+	h := newHarnessAt(t, "demo", userLayout)
+	h.setHookEnv()
+	realIdentity(t, h)
+	h.Deps.Tools = tools.NewRegistry(podmanReports{infraexec.New(), "4.9.3"})
+	h.Deps.Runtimes = []ports.Runtime{h.Runtime,
+		runtimeWithFloor{runtimeNamingTools{fakes.NewRuntime(), "quadlet", []string{"podman"}}}}
+	src := filepath.Join(t.TempDir(), "bundle-1.2.0")
+	copyBundle(t, testBundlePath(t), src)
+	retargetManifest(t, src, h.Root)
+	manifest := filepath.Join(src, "manifest.yaml")
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	text := string(raw)
+	start := strings.Index(text, "runtimes:\n")
+	end := strings.Index(text, "\nrequirements:")
+	require.True(t, start >= 0 && end > start, "the fixture's runtimes block moved")
+	text = text[:start] + "runtimes:\n  quadlet:\n    files: [compose/compose.yaml]\n" + text[end:]
+	require.NoError(t, os.WriteFile(manifest, []byte(text), 0o644))
+
+	_, err = ops.Init(ctx, h.Deps, ops.InitOptions{Product: "demo", NoRecoveryKey: true, ReleasePath: src})
+	require.ErrorIs(t, err, domain.ErrToolIncompatible)
+
+	exists, err := h.Deps.State.InstallationExists(ctx)
+	require.NoError(t, err)
+	assert.False(t, exists)
+	_, err = os.Lstat(h.Deps.Paths.CurrentLink())
+	assert.ErrorIs(t, err, os.ErrNotExist, "the current link outlived the release it pointed at")
+	current, err := h.Deps.State.CurrentRelease(ctx)
+	require.NoError(t, err)
+	assert.True(t, current.IsZero(), "a current release is recorded for a release the undo removed: %+v", current)
+}

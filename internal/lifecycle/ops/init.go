@@ -1233,6 +1233,20 @@ func stepStageRelease(d *Deps, opts InitOptions, trust releaseTrust) engine.Step
 				return nil
 			}
 			if r, ok := rel.(domain.Release); ok {
+				// The step made this release current, and with its
+				// directory gone nothing is: the link and the record go
+				// with it, so a refused first init leaves no release
+				// pointing at nothing.
+				if target, err := os.Readlink(d.Paths.CurrentLink()); err == nil && target == r.Root {
+					if err := os.Remove(d.Paths.CurrentLink()); err != nil {
+						return err
+					}
+				}
+				if current, err := d.State.CurrentRelease(ctx); err == nil && current.Root == r.Root {
+					if err := d.State.ClearCurrentRelease(ctx); err != nil {
+						return err
+					}
+				}
 				return atomicfs.RemoveAll(r.Root)
 			}
 			return nil
