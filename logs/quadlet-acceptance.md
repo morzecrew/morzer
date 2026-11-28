@@ -93,3 +93,43 @@ re-create-not-restart assertion), updates, rolls back and restores.
 
 Whether the new job is a required check is a branch-protection setting,
 the user's.
+
+### Rulings, 2026-11-28
+
+The author took every lean on 2026-11-28: D-1 a CI job on `ubuntu-24.04`
+with its own Podman 4.9.3, and the script locally; D-2 a small fix that
+holds on both versions lands here, and a gap needing a design halts; D-3
+`testdata/bundle-quadlet/`, with 1.2.1 derived by the script; D-4 bundled,
+packed images; D-5 no coverage instrumentation.
+
+### Built, 2026-11-28
+
+Built as planned, with three changes.
+
+- **The fixture is a whole bundle.** `testdata/bundle-quadlet/` holds
+  copies of `testdata/bundle`'s hooks, template, secrets schema and
+  release notes, so `release verify` reads it on its own. Its images are
+  plain references. The script marks both `from: bundle` before packing,
+  as `acceptance.sh` does for its air-gapped bundle.
+- **The job is part of the required verdict.** The plan left that to
+  branch protection. But "Required Continuous Integration" refuses a job
+  missing from its `needs`, and fails when any job fails, so every job in
+  `ci.yml` is required, this one included.
+- **`podman build` runs with `--http-proxy=false`.** Podman hands a build
+  the shell's proxy variables, and a proxy on the host's loopback is not
+  on the build's. The first local run failed on it: `apk` could not reach
+  its index.
+
+Checked:
+
+- `just acceptance-podman` passes locally, rootless, on Podman 6.1.1 and
+  systemd 261.
+- One sabotage run, with the definition hash made to ignore values
+  (`internal/adapters/runtime/quadlet/install.go`, `definition`). The
+  stage failed at the update, with `the container still runs 1.2.0`. The
+  port move passed under it, because `config set` forces a re-create of
+  the services a parameter names (`stepRecreateServices`,
+  `internal/lifecycle/ops/config.go`), whatever the hash says.
+- `just ci` passes at 88.0%.
+
+**Drift count: 0.**
