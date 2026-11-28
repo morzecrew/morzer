@@ -1,0 +1,26 @@
+#!/bin/sh
+# Backup hook.
+#
+# The manager creates and owns BACKUP_DIR; this hook writes the product's own
+# data into it and reports what it produced, with checksums, on the result
+# descriptor.
+set -eu
+
+dir="${DEMO_BACKUP_DIR:?DEMO_BACKUP_DIR is required}"
+data="${DEMO_DATA_DIR:?DEMO_DATA_DIR is required}"
+
+echo "dumping database"
+if [ -f "$data/.schema" ]; then
+    cp "$data/.schema" "$dir/database.sql"
+else
+    echo "-- empty database" > "$dir/database.sql"
+fi
+
+echo "archiving files"
+tar -cf "$dir/files.tar" -C "$data" . 2>/dev/null || tar -cf "$dir/files.tar" -T /dev/null
+
+schema=0
+[ -f "$data/.schema" ] && schema=$(cat "$data/.schema")
+
+printf '{"message":"backup complete","schema_version":%s,"artifacts":[{"name":"database","path":"database.sql"},{"name":"files","path":"files.tar"}]}' \
+    "$schema" >&"${DEMO_RESULT_FD:-3}"

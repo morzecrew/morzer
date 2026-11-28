@@ -1,0 +1,11 @@
+#!/bin/sh
+# Health check the manager cannot make on its own: whether the schema is at
+# the version the running release expects.
+set -eu
+
+marker="${DEMO_DATA_DIR:?DEMO_DATA_DIR is required}/.schema"
+if [ ! -f "$marker" ]; then
+    echo "schema marker is missing" >&2
+    exit 1
+fi
+echo "schema at $(cat "$marker")"

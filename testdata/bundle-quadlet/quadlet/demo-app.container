@@ -1,0 +1,22 @@
+# The application, as testdata/bundle's Compose file runs it.
+[Unit]
+Description=demo application
+
+[Container]
+Image=${DEMO_IMAGE_APP}
+PublishPort=${DEMO_PARAM_HTTP_PORT}:18080
+Environment=DEMO_CONFIG_FILE=/etc/demo/application.yaml
+Environment=DEMO_LOG_LEVEL=${DEMO_PARAM_LOG_LEVEL}
+Environment=DEMO_DB_PASSWORD_FILE=/run/secrets/db_password
+# So an update and a rollback show inside the container.
+Environment=DEMO_VERSION=${DEMO_VERSION}
+Volume=${DEMO_CONFIG_FILE}:/etc/demo/application.yaml:ro
+Volume=${DEMO_DATA_DIR}:/var/lib/demo:rw
+# The named volume the manager backs up for itself.
+Volume=demo-uploads.volume:/var/lib/demo/uploads
+Volume=${DEMO_SECRETS_DIR}/db_password:/run/secrets/db_password:ro
+Volume=${DEMO_SECRETS_DIR}/session_key:/run/secrets/session_key:ro
+HealthCmd=true
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5

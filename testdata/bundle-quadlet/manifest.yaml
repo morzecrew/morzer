@@ -1,0 +1,102 @@
+# yaml-language-server: $schema=https://morzecrew.github.io/morzer/schemas/selfhost-v1alpha1-manifest.json
+# testdata/bundle, declaring the quadlet runtime instead of Compose.
+#
+# The rootless Podman acceptance stage installs, reconfigures, updates, rolls
+# back and restores it (RFC 0023 P4). Its hooks, template, secrets and
+# parameters are testdata/bundle's, so a difference between the two stages is
+# a difference between the runtimes, not between the products.
+api_version: selfhost/v1alpha1
+kind: application-release
+
+metadata:
+  name: demo
+  version: 1.2.0
+  description: Demo self-hosted bundle on rootless Podman, used by the acceptance run
+  vendor: example
+  release_notes: RELEASE.md
+  support_url: https://support.example/demo
+
+providers:
+  secrets: {name: sops-age}
+  backup: {name: hooks}
+  health: {name: http}
+
+runtimes:
+  quadlet:
+    files:
+      - quadlet/demo-app.container
+      - quadlet/demo-db.container
+      - quadlet/demo-uploads.volume
+      - quadlet/demo-database.volume
+
+requirements:
+  architectures: [amd64, arm64]
+  memory: 2GiB
+  disk: 5GiB
+  cpus: 1
+  ports: ["{{ .Parameters.http_port }}"]
+
+parameters:
+  http_port:
+    type: port
+    default: 18080
+    description: Port the application is published on
+    services: [app]
+  log_level:
+    type: enum
+    values: [debug, info, warn, error]
+    default: info
+    description: Application log verbosity
+    services: [app]
+
+images:
+  app: registry.example/demo/app@sha256:0000000000000000000000000000000000000000000000000000000000000001
+  db: registry.example/demo/db@sha256:0000000000000000000000000000000000000000000000000000000000000002
+
+configuration:
+  - template: templates/application.yaml.tmpl
+    target: /etc/demo/application.yaml
+    mode: "0640"
+
+secrets:
+  source: /etc/demo/secrets.sops.yaml
+  render_to: /run/demo/secrets
+  schema: secrets.schema.yaml
+
+operations:
+  migrate:
+    kind: hook
+    command: ["hooks/migrate"]
+    timeout: 10m
+  smoke_test:
+    kind: hook
+    command: ["hooks/smoke-test"]
+    timeout: 5m
+  backup:
+    kind: hook
+    command: ["hooks/backup"]
+    timeout: 60m
+  restore:
+    kind: hook
+    command: ["hooks/restore"]
+    timeout: 120m
+
+backup:
+  volumes:
+    uploads: {consistency: hot}
+
+health:
+  checks:
+    - {name: api, type: http, url: "http://127.0.0.1:{{ .Parameters.http_port }}/health/ready", timeout: 30s}
+    - {name: db, type: command, command: ["hooks/check-db"], timeout: 15s}
+
+compatibility:
+  database_schema_min: 10
+  database_schema_max: 12
+  rollback_safe: true
+  min_manager_version: "0.0.0"
+  upgrade_from: ">=1.0.0 <2.0.0"
+
+retention:
+  releases: 3
+  backups: 7

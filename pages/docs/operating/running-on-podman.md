@@ -12,8 +12,9 @@ manager starts, with no daemon in between. The installation belongs to you,
 as on [rootless Docker](running-as-your-own-user.md), and no `morzer` command
 needs `sudo`.
 
-This runtime exists on Linux only. It is new: the acceptance run does not
-exercise it yet.
+This runtime exists on Linux only. The acceptance run installs, reconfigures,
+updates, rolls back and restores an installation of it on Ubuntu 26.04's
+Podman 5.7.0.
 
 ## Before you start
 
@@ -29,11 +30,13 @@ exercise it yet.
 
 - **A login session of your own**, which sets `XDG_RUNTIME_DIR`. The units and
   the rendered secrets live there, on your tmpfs. `sudo -u` does not set it.
-- **One data home for you and your systemd manager.** Podman keeps its
-  containers under `$XDG_DATA_HOME`, and your units run with your manager's
-  environment, not your shell's. If the two differ, `morzer` looks for the
-  containers in a store the units do not use, and `apply` waits for them
-  until its deadline. Leave `XDG_DATA_HOME` unset, or set it for your manager
+- **One data home and one Podman configuration for you and your systemd
+  manager.** Podman keeps its containers under `$XDG_DATA_HOME`, and your
+  units run with your manager's environment, not your shell's. If the two
+  differ, `morzer` looks for the containers in a store the units do not use,
+  and `apply` waits for them until its deadline. The same holds for
+  `CONTAINERS_CONF`, `CONTAINERS_STORAGE_CONF` and
+  `CONTAINERS_REGISTRIES_CONF`. Leave each unset, or set it for your manager
   too, in `~/.config/environment.d/`.
 - **The manager where only you and root can replace it**, such as
   `~/.local/bin`, which is where the installer puts it when run without

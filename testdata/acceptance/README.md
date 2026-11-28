@@ -32,3 +32,9 @@ Built and pushed to a throwaway local registry by
 then rewrites the example bundle's manifest to pin the digests the registry
 returned. That is the only way to get a `name@sha256:…` reference for an image
 that was built locally, and pinning by digest is what the manifest requires.
+
+[`.github/scripts/acceptance-podman.sh`](../../.github/scripts/acceptance-podman.sh)
+builds `app` and `db` with Podman for the same scenario on the quadlet
+runtime. It packs both into
+[`testdata/bundle-quadlet`](../bundle-quadlet/manifest.yaml) and stops its
+registry before installing, so the units run what the bundle carried.

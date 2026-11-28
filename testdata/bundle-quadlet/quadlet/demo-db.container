@@ -1,0 +1,15 @@
+# The database the embedded profile runs beside the application.
+[Unit]
+Description=demo database
+
+[Container]
+Image=${DEMO_IMAGE_DB}
+# A named volume where the Compose file binds the data directory's db, which
+# Docker creates and Podman does not. Left out of backup.volumes, so a
+# backup captures it cold, with the service stopped.
+Volume=demo-database.volume:/var/lib/postgresql/data
+Volume=${DEMO_SECRETS_DIR}/db_password:/run/secrets/db_password:ro
+HealthCmd=true
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=5

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Smoke test: verifies the product is not merely up but behaving.
+set -eu
+
+test -f "${DEMO_CONFIG_FILE:?DEMO_CONFIG_FILE is required}" || {
+    echo "configuration file is missing" >&2
+    exit 1
+}
+test -r "${DEMO_SECRETS_DIR:?DEMO_SECRETS_DIR is required}/db_password" || {
+    echo "db_password was not rendered" >&2
+    exit 1
+}
+
+printf '{"message":"smoke test passed"}' >&"${DEMO_RESULT_FD:-3}"
+echo "smoke test passed"
