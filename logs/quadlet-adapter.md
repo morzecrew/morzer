@@ -1640,3 +1640,65 @@ Row 12 is marked superseded by row 50 in place. The close-outs of rows 3,
   to change nothing through an engine the probe did not confirm, by
   refusing or by asking again. That reverses the 2026-11-26 ruling, so it
   is the author's to decide, and it is not changed here.
+
+## Rulings after #444, 2026-11-28
+
+- **Row 40 is kept as ruled.** A probe that times out still counts as one
+  that did not run, and the command goes ahead. The author kept the
+  2026-11-26 ruling on 2026-11-28, after the review of #444 asked for a
+  refusal on a timeout. Nothing is added to the RFC.
+
+## Row 61, CONTAINER_HOST, 2026-11-28
+
+### Measured for this plan
+
+On Podman 6.1.1, rootless:
+
+- `CONTAINER_CONNECTION=nosuch podman image exists docker.io/library/busybox`
+  fails with `connection "nosuch" not found`, so the variable reaches
+  every command as `CONTAINER_HOST` does ("Review of #443").
+- A `containers.conf` holding `[engine] remote = true`, named by
+  `CONTAINERS_CONF`, makes `podman image exists` fail with `unable to
+  connect to Podman socket`. The same file in the user's own
+  configuration directory is read by the units' Podman too, so only the
+  variable makes the two differ.
+- `systemctl --user show-environment` holds no `CONTAINER*` variable on
+  this machine, so the units ran on the local Podman.
+
+### Plan
+
+- `internal/adapters/runtime/quadlet/quadlet.go`: one function builds a
+  command's environment, the manager's own (`exec.BaseEnv`) without
+  `CONTAINER_HOST` and `CONTAINER_CONNECTION`. `command` sets it, so
+  every `podman`, `systemctl` and `journalctl` run through it is covered.
+- `validate.go` (the generator's dry run), `status.go` (`stream`, the
+  journal) and `exec.go` (`ExecInteractive`, started without the runner)
+  build their commands outside `command`, and take the same environment.
+- Tests: a unit test sets both variables and checks that no command the
+  adapter records carries them, and that `PATH` still reaches it. A
+  Podman suite test sets `CONTAINER_HOST=tcp://127.0.0.1:1` and runs an
+  installation through `Up`, `Exec`, `ExecInteractive`, `Logs` and
+  `Down`; with the variable passed through, the first `podman` command
+  fails.
+- Docs: "Running on Podman", "What is different", gains one bullet: the
+  manager ignores both variables, and drives the user's own Podman,
+  which its units run on. The Unreleased `quadlet` entry gains one
+  sentence.
+
+`BaseEnv` also drops the variable the manager stamps its own lines by,
+which these commands inherit today. None of the three tools reads it,
+and Compose's commands already drop it.
+
+```divergence
+decision: UNLISTED
+grade: UNLISTED
+class: discovery
+at: 2026-11-28T00:29:16Z
+attempt: 1
+claim: row 61's reason, that the adapter drives the Podman its units run on, reaches further than its two variables; a shell's `CONTAINERS_CONF`, `CONTAINERS_STORAGE_CONF` or `CONTAINERS_REGISTRIES_CONF` points the adapter's Podman at a configuration, a store or registries the units' Podman does not read
+evidence: `CONTAINERS_CONF=<file holding [engine] remote = true> podman image exists docker.io/library/busybox` — `unable to connect to Podman socket`; plain `podman image exists docker.io/library/busybox` exits 0
+action: decided
+proposal: OPEN — whether the Quadlet adapter drops the `CONTAINERS_*` configuration variables too, or passes an allow-list as Compose does; this PR builds row 61 as written and drops the two variables alone
+```
+
+**Drift count: 0.**
