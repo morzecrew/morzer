@@ -1756,3 +1756,24 @@ proposal: ASSUMED — every drop-in the Quadlet adapter writes, a one-shot copy'
 ```
 
 **Drift count: 0.**
+
+## Rulings after #447, 2026-11-28
+
+The author ruled both outstanding questions on 2026-11-28, taking the
+recommendation on each.
+
+- **The units unset both variables.** The ASSUMED proposal of "Review of
+  #447" is accepted. It becomes a row of RFC 0023 at the next
+  reconciliation, which the P5 report carries.
+- **The `CONTAINERS_*` variables pass through.** The OPEN proposal of
+  2026-11-28 is decided: the adapter neither drops `CONTAINERS_CONF`,
+  `CONTAINERS_STORAGE_CONF` and `CONTAINERS_REGISTRIES_CONF` nor passes
+  an allow-list. `CONTAINER_HOST` has no reading under which a rootless
+  Quadlet unit should honour it. Each of these three is a configuration a
+  user may set for their systemd manager on purpose, and dropping it
+  would override that. The units run with the manager's environment, so
+  "Running on Podman" names the three beside `XDG_DATA_HOME`: leave them
+  unset, or set them for the manager too. This also becomes a row at the
+  next reconciliation. What reopens it is a user who meets the mismatch.
+  The fix then is the adapter taking these variables from the manager's
+  environment (`systemctl --user show-environment`), not dropping them.
