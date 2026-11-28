@@ -27,6 +27,7 @@ runtimes:
       - quadlet/demo-app.container
       - quadlet/demo-db.container
       - quadlet/demo-uploads.volume
+      - quadlet/demo-database.volume
 
 requirements:
   architectures: [amd64, arm64]

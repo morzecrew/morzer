@@ -143,6 +143,10 @@ in_app() {
 	"${MORZER}" --root "${ROOT}" exec app -- "$@"
 }
 
+in_db() {
+	"${MORZER}" --root "${ROOT}" exec db -- "$@"
+}
+
 # assert_active waits for both services' units, which a start reports before
 # the container's health has settled.
 assert_active() {
@@ -266,11 +270,15 @@ info "a new container answers on ${MOVED_PORT}, and ${HTTP_PORT} is free"
 
 step "backup"
 "${MORZER}" --root "${ROOT}" backup target add "file://${ROOT}/offsite"
-in_app sh -c 'echo acceptance-marker > /var/lib/demo/uploads/marker'
+# One marker for each way a backup reaches data: the hook's data directory,
+# a volume captured hot, and one captured cold with its service stopped.
 echo acceptance-marker >"${ROOT}/var/lib/demo/data/marker"
+in_app sh -c 'echo acceptance-marker > /var/lib/demo/uploads/marker'
+in_db sh -c 'echo acceptance-marker > /var/lib/postgresql/data/marker'
 "${MORZER}" --root "${ROOT}" backup --reason acceptance
+assert_active
 "${MORZER}" --root "${ROOT}" backup verify --remote
-info "a backup holding both markers is on the target"
+info "a backup holding the three markers is on the target, and both services run again"
 
 step "update to 1.2.1"
 "${MORZER}" --root "${ROOT}" update "${WORK}/bundle-1.2.1"
@@ -291,6 +299,7 @@ info "1.2.0 runs again"
 
 step "restore"
 in_app rm -f /var/lib/demo/uploads/marker
+in_db rm -f /var/lib/postgresql/data/marker
 rm -f -- "${ROOT}/var/lib/demo/data/marker"
 "${MORZER}" --root "${ROOT}" restore --force --confirm "$(status_field '.data.installation_id')"
 assert_active
@@ -298,8 +307,10 @@ assert_active
 	fail "the restore did not bring the data directory back"
 [ "$(in_app cat /var/lib/demo/uploads/marker)" = acceptance-marker ] ||
 	fail "the restore did not bring the uploads volume back"
+[ "$(in_db cat /var/lib/postgresql/data/marker)" = acceptance-marker ] ||
+	fail "the restore did not bring the database volume back"
 answers "${MOVED_PORT}" || fail "nothing answers on ${MOVED_PORT} after the restore"
-info "both markers are back, and the app answers"
+info "the three markers are back, and the app answers"
 
 step "doctor, after everything"
 "${MORZER}" --root "${ROOT}" doctor
