@@ -81,3 +81,32 @@ proposal: ASSUMED — a generator refusal is reported by its `converting` lines,
 ```
 
 **Drift count: 0.**
+
+## Review of #450, 2026-11-28
+
+- **A refused first `init` left a current release pointing at nothing.**
+  A release declaring `quadlet` alone names its runtime once it is
+  staged, so the refusal comes in `write-installation`, after
+  `stage-release` has made the release current. That step's undo removed
+  the release directory and left the link and the record. It did so for
+  the engine-scope refusal too, and for any failure of a later step.
+  Reproduced red by `TestARefusedInitOfAStagedReleaseLeavesNoCurrentRelease`.
+  The undo now also removes the link and the record when they name the
+  directory it removes, through a new `StateStore.ClearCurrentRelease`.
+  `TestAFailedIngestDuringInitUnwindsTheInstallation` had pinned the
+  residue, with a note to assert it gone once the undo learned this; it
+  now does. A repair's pointer is kept: the undo touches only a
+  directory its own Execute created.
+- **The generator's reasons were named twice.** The exit's stderr is an
+  excerpt of the run's, and both were read. Only the run's is now, and
+  only a line that starts with `quadlet-generator[` has its prefix cut,
+  so a reason holding `]: `, as an IPv6 address does, is kept whole.
+- **The docs said Ubuntu 24.04 runs on Compose**, as though `init`
+  chose it. They now say a release that also declares Compose installs
+  with `--runtime compose`, and one declaring only `quadlet` is refused.
+  The `doctor` table no longer says a missing tool refuses a command.
+- **A version probe that fails does not refuse**, as a failed engine
+  probe does not (`refuseUnfitRuntime`): the commands that need Podman
+  fail on it, and `runtime.tool-floor` fails in `doctor`. Kept.
+
+**Drift count: 0.**
