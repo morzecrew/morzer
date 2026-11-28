@@ -109,8 +109,14 @@ info "work directory ${WORK}"
 
 # The volume helper, decided the way the manager decides it (see acceptance.sh):
 # a backup refuses when it is not in the store, and a runner starts with none.
-HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go")"
-[ -n "${HELPER_IMAGE}" ] || fail "cannot read DefaultHelperImage from the source"
+# MORZER_VOLUME_HELPER_IMAGE wins when set, trimmed, as the manager trims it.
+HELPER_IMAGE="${MORZER_VOLUME_HELPER_IMAGE:-}"
+HELPER_IMAGE="${HELPER_IMAGE#"${HELPER_IMAGE%%[![:space:]]*}"}"
+HELPER_IMAGE="${HELPER_IMAGE%"${HELPER_IMAGE##*[![:space:]]}"}"
+if [ -z "${HELPER_IMAGE}" ]; then
+	HELPER_IMAGE="$(sed -n 's/^const DefaultHelperImage = "\(.*\)"$/\1/p' "${ROOT_DIR}/internal/adapters/runtime/compose/volumes.go")"
+	[ -n "${HELPER_IMAGE}" ] || fail "cannot read DefaultHelperImage from the source"
+fi
 if ! podman image exists "${HELPER_IMAGE}"; then
 	info "pulling volume helper ${HELPER_IMAGE}"
 	podman pull --quiet "${HELPER_IMAGE}" >/dev/null ||
