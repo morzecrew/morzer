@@ -205,3 +205,18 @@ generator's refusal reported by its error rather than its first line.
   the run unless the data directory's marker comes back.
 
 **Drift count: 0.**
+
+### Round 2, 2026-11-28
+
+- **The stub tags were shared between runs.** A second run, failing at
+  its registry because the first held the port, removed the first's
+  stubs on exit. They are tagged `acceptance-<pid>` now.
+- **"Lint workflows" failed on `ubuntu-26.04`**: the pinned actionlint
+  does not know the label. The job runs on `ubuntu-latest`, which is
+  26.04, with Podman 5.7.0.
+- The first review's two notes without a thread are fixed: each service
+  is waited for on its own (`ab5b1d69`), since `systemctl is-active`
+  succeeds when any listed unit is active, and a run that fails before
+  packing removes its stub tags (`73d7aef1`).
+
+**Drift count: 0.**
