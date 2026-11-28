@@ -178,3 +178,30 @@ generator is reported by its first line, which on 4.9.3 is a log line
 rather than the error.
 
 **Drift count: 0.**
+
+### Ruling on the halt, 2026-11-28
+
+The author ruled on 2026-11-28: the quadlet runtime needs Podman 5.3 or
+later. The halt's proposal stands as the row to add at the next
+reconciliation. D-1 is superseded: the stage runs on `ubuntu-26.04`,
+whose Podman is 5.7.0. The floor itself, `init` refusing an older Podman
+and `doctor` reporting the version, is a separate change, with the
+generator's refusal reported by its error rather than its first line.
+
+## Review of #449, 2026-11-28
+
+- **The stage could remove a real installation's data.** It refused only
+  an existing unit directory, which a reboot clears while the volumes
+  stay, and it counted itself the owner before `init`. It now refuses
+  existing `demo` containers and volumes too, owns them only once `init`
+  succeeds, and its cleanup names its units rather than `demo-*.service`
+  (`c3376e9c`). The registry is named for the run.
+- **The volume helper override was ignored** (`235fb346`).
+- **The db unit kept no data.** It now mounts `demo-database.volume`,
+  which a backup captures cold, and the stage checks a marker in it
+  survives the restore (`73b747fe`). The local run took one volume cold
+  and one hot, and left no unit failed.
+- **The backup hook's empty archive** is refuted: the restore step fails
+  the run unless the data directory's marker comes back.
+
+**Drift count: 0.**
