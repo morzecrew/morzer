@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -148,16 +149,33 @@ func (r *Runtime) unitDir(product string) (string, error) {
 	return filepath.Join(base, "containers", "systemd", "morzer", product), nil
 }
 
-// command is one run of a tool, with the environment the manager runs in. A
-// unit's values reach it from its parameter file, not from here.
+// command is one run of a tool, with the environment the manager runs in,
+// less what would send Podman elsewhere (localEnv). A unit's values reach it
+// from its parameter file, not from here.
 func (r *Runtime) command(timeout time.Duration, argv ...string) exec.Command {
 	return exec.Command{
 		Argv:          argv,
+		Env:           localEnv(nil),
 		Timeout:       timeout,
 		Redact:        r.redact,
 		OnLine:        r.onLine,
 		CaptureOutput: true,
 	}
+}
+
+// remoteEnv names the variables that send every `podman` command to a service
+// elsewhere: a URL, or a connection `podman system connection` saved.
+var remoteEnv = []string{"CONTAINER_HOST", "CONTAINER_CONNECTION"}
+
+// localEnv is the manager's environment with overrides applied, and without
+// remoteEnv. systemd runs the units on this user's Podman whatever the
+// manager's shell holds, so the commands that drive them use that one too (RFC
+// 0023 row 61).
+func localEnv(overrides map[string]string) []string {
+	return slices.DeleteFunc(exec.BaseEnv(overrides), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return slices.Contains(remoteEnv, name)
+	})
 }
 
 // helperCommand is command in the shape compose.VolumeHelper takes.

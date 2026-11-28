@@ -77,6 +77,7 @@ func (r *Runtime) ExecInteractive(
 
 	cmd := osexec.CommandContext(ctx, r.podman, args...) //nolint:gosec // the operator's own command, by design
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = streams.Stdin, streams.Stdout, streams.Stderr
+	cmd.Env = localEnv(nil)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = interactiveStopGrace
 

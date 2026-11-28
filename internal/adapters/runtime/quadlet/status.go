@@ -329,7 +329,7 @@ func (r *Runtime) stream(ctx context.Context, argv []string, frame func(string) 
 	pr, pw := io.Pipe()
 	lines := &lineWriter{frame: frame, out: pw}
 	go func() {
-		_, err := r.runner.Run(ctx, exec.Command{Argv: argv, Stdout: lines, Redact: r.redact})
+		_, err := r.runner.Run(ctx, exec.Command{Argv: argv, Env: localEnv(nil), Stdout: lines, Redact: r.redact})
 		lines.flush()
 		if ctx.Err() != nil {
 			err = nil

@@ -91,6 +91,9 @@ morzer apply
   out of the bundle, served on `127.0.0.1`, and checks every blob against its
   digest. Podman checks TLS even on `127.0.0.1`, so that pull alone runs with
   `--tls-verify=false`. A pull from a registry never does.
+- **`CONTAINER_HOST` and `CONTAINER_CONNECTION` are ignored.** morzer's
+  `podman` commands and its units both run on your own Podman, whichever
+  service your shell or your systemd manager names.
 
 ## What doctor checks
 

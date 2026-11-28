@@ -225,6 +225,46 @@ func TestQuadletDownKeepsTheVolumeAndDownWithVolumesDoesNot(t *testing.T) {
 	}
 }
 
+// TestQuadletDrivesThePodmanItsUnitsRunOn. A CONTAINER_HOST or
+// CONTAINER_CONNECTION in the manager's environment must not send its own
+// commands elsewhere, and the units unset both, so the two drive one Podman
+// (RFC 0023 row 61). Both name a service that does not exist, so a command
+// that kept either fails.
+func TestQuadletDrivesThePodmanItsUnitsRunOn(t *testing.T) {
+	requirePodman(t)
+	ctx := context.Background()
+	rt, cfg := mainProject(t)
+	t.Setenv("CONTAINER_HOST", "tcp://127.0.0.1:1")
+	t.Setenv("CONTAINER_CONNECTION", "morzer-test-nowhere")
+
+	if err := rt.Up(ctx, cfg, ports.UpOptions{Wait: true}); err != nil {
+		t.Fatal(err)
+	}
+	// What the generator made of the drop-ins, read back from the manager.
+	for _, unit := range []string{cfg.Product + "-web.service", cfg.Product + "-data-volume.service"} {
+		out, err := osexec.Command("systemctl", "--user", "show", "--property=UnsetEnvironment", "--value", unit).Output()
+		if err != nil || strings.TrimSpace(string(out)) != "CONTAINER_HOST CONTAINER_CONNECTION" {
+			t.Errorf("%s unsets %q, %v", unit, strings.TrimSpace(string(out)), err)
+		}
+	}
+	if _, err := rt.Status(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	res, err := rt.Exec(ctx, cfg, "web", []string{"echo", "here"})
+	if err != nil || res.ExitCode != 0 || strings.TrimSpace(res.Stdout) != "here" {
+		t.Fatalf("Exec: %+v, %v", res, err)
+	}
+	var out strings.Builder
+	code, err := rt.ExecInteractive(ctx, cfg, "web", []string{"echo", "there"},
+		ports.ExecIO{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &out})
+	if err != nil || code != 0 || strings.TrimSpace(out.String()) != "there" {
+		t.Fatalf("ExecInteractive: exit %d, %v\n%s", code, err, out.String())
+	}
+	if err := rt.Down(ctx, cfg, ports.DownOptions{Volumes: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestQuadletStopLeavesNoFailedUnit. A stop sends SIGTERM, and a container
 // that ends on it exits 143; a unit counting that as a failure would leave the
 // user's manager degraded after every backup's cold capture.
