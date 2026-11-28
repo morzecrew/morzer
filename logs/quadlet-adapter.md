@@ -1702,3 +1702,25 @@ proposal: OPEN — whether the Quadlet adapter drops the `CONTAINERS_*` configur
 ```
 
 **Drift count: 0.**
+
+### Built, 2026-11-28
+
+Built as planned, in `f3f7b99e` and `b4f3ba56`, with one change. The
+Unreleased `quadlet` changelog entry gains no sentence: with it, the
+entry broke the house limits of 320 characters and three sentences, and
+the runtime is unreleased, so the Podman page alone says it.
+
+- `localEnv` (`internal/adapters/runtime/quadlet/quadlet.go`) is
+  `exec.BaseEnv` without `CONTAINER_HOST` and `CONTAINER_CONNECTION`.
+  `command` sets it. The generator's dry run, `stream` and
+  `ExecInteractive` take it too.
+- Six sabotage runs, each failing a test. With `command` left without
+  it, both tests failed; the Podman suite failed at `Up`, with
+  `connection "morzer-test-nowhere" not found`. Also caught: the
+  generator back on `BaseEnv`, `stream` without it, and only
+  `CONTAINER_HOST` dropped (unit test), and `ExecInteractive` without it
+  (Podman suite, exit 125).
+- `just ci` passes at 88.0%. The Quadlet suite passes, 15 tests, one of
+  them new.
+
+**Drift count: 0.**
